@@ -5,7 +5,8 @@ import os
 import sys
 from pathlib import Path
 
-_active_workspace: str | None = None
+_active_center: str | None = None
+_active_country: str | None = None
 
 
 def is_frozen() -> bool:
@@ -41,24 +42,85 @@ def data_root() -> Path:
     return (server_root() / "workspaces").resolve()
 
 
-def set_active_workspace(workspace: str | None) -> None:
-    """Bind calc ``app_root()`` to ``data_root/<workspace>``."""
-    global _active_workspace
-    _active_workspace = (workspace or "").strip() or None
+def list_country_folders() -> list[str]:
+    """First-level folders under data_root that hold centers (nederland, uk, …)."""
+    from app.yearpath import has_person_layout
+
+    root = data_root()
+    if not root.is_dir():
+        return []
+    names: list[str] = []
+    for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+        if not child.is_dir() or child.name.startswith(".") or child.name.startswith("_"):
+            continue
+        if has_person_layout(child):
+            continue
+        names.append(child.name)
+    return names
 
 
-def active_workspace() -> str | None:
-    return _active_workspace
+def resolve_country_for_center(center: str) -> str | None:
+    """Country folder that contains ``center``, or the active country if already set."""
+    name = (center or "").strip()
+    if not name:
+        return None
+    if _active_country:
+        candidate = data_root() / _active_country / name
+        if candidate.is_dir():
+            return _active_country
+    matches: list[str] = []
+    for country in list_country_folders():
+        if (data_root() / country / name).is_dir():
+            matches.append(country)
+    if _active_country and _active_country in matches:
+        return _active_country
+    return matches[0] if matches else None
+
+
+def set_active_center(center: str | None, *, country: str | None = None) -> None:
+    """Bind calc ``app_root()`` to ``data_root/<country>/<center>`` (center)."""
+    global _active_center, _active_country
+    _active_center = (center or "").strip() or None
+    explicit = (country or "").strip() or None
+    if explicit:
+        _active_country = explicit
+    elif _active_center:
+        _active_country = resolve_country_for_center(_active_center)
+    else:
+        _active_country = None
+
+
+def active_center() -> str | None:
+    return _active_center
+
+
+def active_country() -> str | None:
+    return _active_country
+
+
+def country_root() -> Path:
+    """Active country folder (``categories.json`` + center dirs)."""
+    root = data_root()
+    if _active_country:
+        return (root / _active_country).resolve()
+    return root
 
 
 def app_root() -> Path:
-    """Active workspace folder (person packs) for calc."""
+    """Active center folder (person packs) for calc."""
     root = data_root()
-    if _active_workspace:
-        return (root / _active_workspace).resolve()
+    if _active_country and _active_center:
+        return (root / _active_country / _active_center).resolve()
+    if _active_center:
+        country = resolve_country_for_center(_active_center)
+        if country:
+            return (root / country / _active_center).resolve()
+        return (root / _active_center).resolve()
+    if _active_country:
+        return (root / _active_country).resolve()
     return root
 
 
 def is_central_admin() -> bool:
-    """Hub always runs calc against workspace data (secrets optional)."""
+    """Hub always runs calc against center data (secrets optional)."""
     return True

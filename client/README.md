@@ -1,6 +1,6 @@
 # boekhouding-client
 
-Thin BFF + frontend. All data comes from the hub (no local workspace copies).
+Thin BFF + frontend. All data comes from the hub (no local center copies).
 
 ## Configuration (no config file)
 
@@ -14,9 +14,9 @@ Defaults are hardcoded. Override only via environment variables when needed.
 | `CLIENT_SESSION_SECRET` | insecure dev string | Cookie signing secret — **set in production** |
 | `CENTRALE_API_KEY` | empty | Optional hub Bearer token |
 | `CENTRALE_SYNC` | on | Set `0`/`false` to disable hub sync |
-| `CLIENT_BOOTSTRAP_WORKSPACE` | first hub workspace / `dkg` | Workspace used before login (auth on) |
+| `CLIENT_BOOTSTRAP_CENTER` | first hub center / `dkg` | Center used before login (auth on) |
 | `CLIENT_ACCESS` | `local` | Only when auth off |
-| `CLIENT_WORKSPACE` | empty | Only when auth off |
+| `CLIENT_CENTER` | empty | Only when auth off |
 | `CLIENT_PERSON` | empty | Only when auth off |
 
 There is **no** `client_config.json`.

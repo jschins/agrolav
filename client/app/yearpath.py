@@ -136,7 +136,7 @@ def ensure_year_folder(
     """Create ``person/Y`` with empty books and the previous year's closing balance.
 
     Creates the person folder and year folder when missing. Never creates the
-    parent workspace folder — that must already exist on disk.
+    parent center folder — that must already exist on disk.
 
     Idempotent: if the year directory already exists, it is left unchanged.
     """
@@ -145,11 +145,11 @@ def ensure_year_folder(
     if folder.is_dir():
         return folder
 
-    workspace = person_folder.parent
-    if not workspace.is_dir():
+    center = person_folder.parent
+    if not center.is_dir():
         raise FileNotFoundError(
-            f"Workspace folder does not exist: {workspace}. "
-            "The hub does not create workspace folders; only person packs inside them."
+            f"Center folder does not exist: {center}. "
+            "The hub does not create center folders; only person packs inside them."
         )
 
     prev = previous_year_name(person_folder, y)

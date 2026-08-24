@@ -153,7 +153,7 @@ def bind_person(pack: PersonPack) -> Iterator[PersonPack]:
 
 
 def configure() -> list[PersonPack]:
-    """Discover person packs under app_root (empty workspace is allowed)."""
+    """Discover person packs under app_root (empty center is allowed)."""
     from app.people import list_people
 
     people = list_people()

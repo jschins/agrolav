@@ -188,7 +188,12 @@ def discover_person_banks(person: str, center: str) -> tuple[str, ...]:
     """Bank subfolder names already present under ``YYYY/`` (directory names only)."""
     from app.yearpath import list_year_names
 
-    person_folder = data_root() / center / person
+    from app.runtime import resolve_country_for_center
+
+    country = resolve_country_for_center(center)
+    person_folder = (
+        data_root() / country / center / person if country else data_root() / center / person
+    )
     if not person_folder.is_dir():
         return ()
     modalities = bank_modalities()
@@ -203,7 +208,7 @@ def discover_person_banks(person: str, center: str) -> tuple[str, ...]:
 
 
 def person_csv_banks(person: str, center: str) -> list[str]:
-    """Distinct bank subfolder names for ``person`` (from workspace layout)."""
+    """Distinct bank subfolder names for ``person`` (from center layout)."""
     return list(discover_person_banks(person, center))
 
 

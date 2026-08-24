@@ -6,7 +6,7 @@ Hub + client for `https://boekhouding.agrolav.nl` (Caddy on AWS Lightsail → Ta
 agrolav/
   hub/          :8200 — data API, refresh, upload, add-person
   client/       :8300 — BFF + React UI
-  shared/       banking-app-shared (local package)
+  shared/       login access helpers (user_access)
   workspaces/   data + secrets (not for public git)
   deploy/       optional ops notes / Caddyfile samples
 ```

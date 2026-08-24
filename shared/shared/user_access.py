@@ -1,4 +1,4 @@
-"""Derive login access mode from user-store fields (person + workspace only)."""
+"""Derive login access mode from user-store fields (person + center + country)."""
 from __future__ import annotations
 
 from typing import Any
@@ -8,46 +8,60 @@ ACCESS_LOCAL = "local"
 ACCESS_REGIONAL_ADMIN = "regional_admin"
 
 
-def parse_workspaces(raw: str | None) -> list[str]:
-    """Split ``workspace`` field: ``dkg,jl`` → ``['dkg', 'jl']``.
+def parse_centers(raw: str | None) -> list[str]:
+    """Split ``center`` field: ``dkg,jl`` → ``['dkg', 'jl']``.
 
-    ``NULL``, missing, and empty string all yield ``[]`` (all hub folders when
-    access is regional_admin).
+    ``NULL``, missing, and empty string all yield ``[]``.
     """
     if raw is None:
         return []
     return [part.strip() for part in str(raw).split(",") if part.strip()]
 
 
-def deduce_access(*, person: str, workspaces: list[str]) -> str:
+def deduce_access(*, person: str, center: str = "", country: str = "") -> str:
     """Return ``personal``, ``local``, or ``regional_admin``.
 
-    - ``person`` set → personal (one person only)
-    - ``person`` empty, multiple workspaces → regional_admin (subset switcher)
-    - ``person`` empty, one workspace → local (whole workspace, all persons)
-    - ``person`` empty, workspace NULL/empty → regional_admin (all hub folders)
+    - ``person`` set → personal (one person in one center)
+    - ``person`` empty, one center → local (whole center)
+    - ``person`` empty, several centers → regional_admin (switcher, still one country)
+    - ``person`` empty, center empty, ``country`` set → regional_admin (all
+      centers in that country)
+    - country empty and center empty → local (incomplete row; never all countries)
     """
     if str(person or "").strip():
         return ACCESS_PERSONAL
-    if len(workspaces) > 1:
-        return ACCESS_REGIONAL_ADMIN
-    if len(workspaces) == 1:
+    centers = parse_centers(center)
+    if len(centers) == 1:
         return ACCESS_LOCAL
-    return ACCESS_REGIONAL_ADMIN
+    if len(centers) > 1:
+        return ACCESS_REGIONAL_ADMIN
+    if str(country or "").strip():
+        return ACCESS_REGIONAL_ADMIN
+    return ACCESS_LOCAL
 
 
 def enrich_user_record(user: dict[str, Any]) -> dict[str, Any]:
-    """Add derived ``access`` and parsed ``workspaces`` list to a user dict."""
+    """Add derived ``access`` and parsed ``centers`` list to a user dict.
+
+    ``center`` / ``centers`` are the API names for the center folder(s).
+    ``workspace`` is accepted as a legacy key when ``center`` is empty.
+    There is no all-countries login.
+    """
     person = str(user.get("person") or "").strip()
-    raw_ws = user.get("workspace")
-    workspaces = parse_workspaces(None if raw_ws is None else str(raw_ws))
-    access = deduce_access(person=person, workspaces=workspaces)
+    raw_center = user.get("center")
+    if raw_center is None or str(raw_center).strip() == "":
+        raw_center = user.get("workspace")
+    center = "" if raw_center is None else str(raw_center).strip()
+    country = str(user.get("country") or "").strip()
+    centers = parse_centers(center)
+    access = deduce_access(person=person, center=center, country=country)
     return {
         "username": str(user.get("username") or "").strip(),
         "title": str(user.get("title") or "").strip(),
         "access": access,
-        "workspace": "" if raw_ws is None else str(raw_ws).strip(),
-        "workspaces": workspaces,
+        "country": country,
+        "center": center,
+        "centers": centers,
         "person": person,
         "format": str(user.get("format") or "").strip(),
     }

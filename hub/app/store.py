@@ -1,4 +1,4 @@
-"""Workspace file I/O, per-file revisions, and change events."""
+"""Center file I/O, per-file revisions, and change events."""
 from __future__ import annotations
 
 import json
@@ -25,13 +25,13 @@ CATEGORIZED = "categorized_transactions.json"
 CATEGORY_TOTALS = "category_totals.json"
 DOWNLOADED = "downloaded_transactions.json"
 SHARED_CATEGORIES = "categories.json"
-# Synthetic workspace id for events on the single root categories.json
-SHARED_META_WORKSPACE = "_shared"
+# Synthetic center id for events on the single root categories.json
+SHARED_META_CENTER = "_shared"
 _YEAR_FILES = frozenset({CATEGORIZED, CATEGORY_TOTALS, DOWNLOADED})
 _PERSON_DATA_FILES = _YEAR_FILES | {PERSONAL_CATEGORIES}
 
 # Back-compat alias (older event viewers / docs).
-MERGED_WORKSPACE = SHARED_META_WORKSPACE
+MERGED_CENTER = SHARED_META_CENTER
 
 
 def _prune_sessions_unlocked(now: float | None = None) -> None:
@@ -41,20 +41,22 @@ def _prune_sessions_unlocked(now: float | None = None) -> None:
         _local_sessions.pop(label, None)
 
 
-def get_status() -> dict[str, Any]:
+def get_status(*, country: str | None = None) -> dict[str, Any]:
     with _lock:
         _prune_sessions_unlocked()
         return {
             "local_sessions": sorted(_local_sessions.keys()),
             "event_count": len(_events),
             "latest_event_id": (_events[-1]["id"] if _events else 0),
-            "workspaces": list_workspaces(),
+            "countries": list_countries(),
+            "centers": list_centers(country),
+            "country": (country or "").strip(),
             "session_ttl_sec": _SESSION_TTL_SEC,
         }
 
 
 def local_session_start(client_addr: str) -> dict[str, Any]:
-    """Register / refresh a connected client (``ip:port (workspace)``)."""
+    """Register / refresh a connected client (``ip:port (center)``)."""
     label = _clean_client_addr(client_addr)
     with _lock:
         _prune_sessions_unlocked()
@@ -90,52 +92,68 @@ def _clean_client_addr(client_addr: str) -> str:
     return label
 
 
-def _clean_workspace(workspace: str) -> str:
-    ws = workspace.strip().replace("\\", "/").strip("/")
+def _clean_center(center: str) -> str:
+    ws = center.strip().replace("\\", "/").strip("/")
     if not ws or ".." in ws.split("/") or ws.startswith("/"):
-        raise ValueError(f"Invalid workspace: {workspace!r}")
+        raise ValueError(f"Invalid center: {center!r}")
     return ws
 
 
-def workspace_dir(workspace: str) -> Path:
-    """Path to an existing-or-not workspace folder (never created here)."""
+def center_dir(center: str) -> Path:
+    """Path to a center folder: ``data_root/<country>/<center>``."""
+    from app.runtime import active_country, resolve_country_for_center
+
     base = data_root()
-    ws = _clean_workspace(workspace)
+    ws = _clean_center(center)
     if base.name.lower() == ws.lower():
         return base
+    country = active_country() or resolve_country_for_center(ws)
+    if country:
+        return base / country / ws
     return base / ws
 
 
-def require_workspace_dir(workspace: str) -> Path:
-    """Return the workspace folder, or raise if it is missing.
+def require_center_dir(center: str) -> Path:
+    """Return the center folder, or raise if it is missing.
 
-    Workspace directories are created outside the hub (by an admin on disk).
-    The hub only scaffolds person packs *inside* an existing workspace.
+    Center directories are created outside the hub (by an admin on disk).
+    The hub only scaffolds person packs *inside* an existing center.
     """
-    path = workspace_dir(workspace)
+    path = center_dir(center)
     if not path.is_dir():
         raise FileNotFoundError(
-            f"Workspace {workspace!r} does not exist under {data_root()}. "
-            "Create the workspace folder on disk first; the hub does not initialize workspaces."
+            f"Center {center!r} does not exist under {data_root()}. "
+            "Create the country/center folders on disk first; the hub does not initialize them."
         )
     return path
 
 
-def list_workspaces() -> list[str]:
-    """Peer workspace folder names under the data root (e.g. dkg, jl, gph).
+def list_countries() -> list[str]:
+    from app.runtime import list_country_folders
 
-    Lists directories that already exist on disk (including empty ones).
-    Does not create workspace folders. Skips known meta dirs/names.
+    return list_country_folders()
+
+
+def list_centers(country: str | None = None) -> list[str]:
+    """Center folder names under one country (e.g. dkg, gph).
+
+    Does not list country folders themselves. Without ``country`` (and without
+    an active country) returns an empty list — there is no all-countries view.
     """
+    from app.runtime import active_country
+
     skip = frozenset({"upload_acl.json", "users.db", "upload.log", "categories.json"})
-    root = data_root()
+    name = (country or active_country() or "").strip()
+    if not name:
+        return []
+    root = data_root() / name
     if not root.is_dir():
         return []
     names: list[str] = []
     for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
         if not child.is_dir():
             continue
-        if child.name.startswith("_"):
+        if child.name.startswith("_") or child.name.startswith("."):
             continue
         if child.name in skip:
             continue
@@ -143,8 +161,8 @@ def list_workspaces() -> list[str]:
     return names
 
 
-def list_person_folders(workspace: str) -> list[str]:
-    root = workspace_dir(workspace)
+def list_person_folders(center: str) -> list[str]:
+    root = center_dir(center)
     if not root.is_dir():
         return []
     names: list[str] = []
@@ -155,8 +173,10 @@ def list_person_folders(workspace: str) -> list[str]:
 
 
 def shared_categories_path() -> Path:
-    """Single ``categories.json`` at the hub data root (all workspaces)."""
-    return data_root() / SHARED_CATEGORIES
+    """``categories.json`` for the active country."""
+    from app.paths import shared_categories_path as _person_cats
+
+    return _person_cats()
 
 
 def merged_categories_path() -> Path:
@@ -203,29 +223,29 @@ def _path_triggers_recalc(rel_path: str) -> bool:
     return False
 
 
-def recalculate_workspace(
-    workspace: str,
+def recalculate_center(
+    center: str,
     *,
     skip_events: bool = False,
     person_folders: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Run boekhouding-style recalculate for one workspace under data_root.
+    """Run boekhouding-style recalculate for one center under data_root.
 
     When ``person_folders`` is set, only those person packs are recategorized
     and only their derived files are re-published.
     """
     from app.matrix import recalculate_all
     from app.paths import CALC_LOCK
-    from app.runtime import set_active_workspace
+    from app.runtime import set_active_center
     from app.settings import init_app
 
-    ws = _clean_workspace(workspace)
+    ws = _clean_center(center)
     wanted = {Path(name).name for name in person_folders} if person_folders else None
     with CALC_LOCK:
-        set_active_workspace(ws)
+        set_active_center(ws)
         init_app()
         matrix = recalculate_all(person_folders=list(wanted) if wanted else None)
-        root = workspace_dir(ws)
+        root = center_dir(ws)
         for child in root.iterdir():
             if not child.is_dir() or not has_person_layout(child):
                 continue
@@ -260,12 +280,12 @@ def recalculate_workspace(
                     skip_recalc=True,
                     skip_event=skip_events,
                 )
-        return {"ok": True, "workspace": ws, "matrix": matrix}
+        return {"ok": True, "center": ws, "matrix": matrix}
 
 
-def derived_paths_for_workspace(workspace: str) -> list[str]:
-    """categorized_transactions + category_totals for every person in ``workspace``."""
-    ws = _clean_workspace(workspace)
+def derived_paths_for_center(center: str) -> list[str]:
+    """categorized_transactions + category_totals for every person in ``center``."""
+    ws = _clean_center(center)
     paths: list[str] = []
     for name in list_person_folders(ws):
         paths.append(f"{ws}/{person_year_rel(name, CATEGORIZED)}")
@@ -273,8 +293,8 @@ def derived_paths_for_workspace(workspace: str) -> list[str]:
     return paths
 
 
-def derived_paths_for_person(workspace: str, folder_name: str) -> list[str]:
-    ws = _clean_workspace(workspace)
+def derived_paths_for_person(center: str, folder_name: str) -> list[str]:
+    ws = _clean_center(center)
     safe = Path(folder_name).name
     return [
         f"{ws}/{person_year_rel(safe, CATEGORIZED)}",
@@ -286,17 +306,17 @@ def _normalize_input_path(raw: str, primary: str) -> str:
     p = str(raw).replace("\\", "/").lstrip("/")
     if p == SHARED_CATEGORIES:
         return SHARED_CATEGORIES
-    if any(p.startswith(f"{w}/") for w in list_workspaces()):
+    if any(p.startswith(f"{w}/") for w in list_centers()):
         return p
     return f"{primary}/{p}"
 
 
-def _person_folder_from_path(path: str, workspace: str) -> str | None:
+def _person_folder_from_path(path: str, center: str) -> str | None:
     """Return person folder from ``ws/person/YYYY/...`` or ``.../secret/...`` paths."""
     p = str(path).replace("\\", "/").lstrip("/")
     if p == SHARED_CATEGORIES:
         return None
-    prefix = f"{_clean_workspace(workspace)}/"
+    prefix = f"{_clean_center(center)}/"
     if p.startswith(prefix):
         p = p[len(prefix) :]
     parts = p.split("/")
@@ -309,9 +329,9 @@ def _mutation_scope(
     primary: str,
     input_paths: list[str],
     *,
-    recalc_all_workspaces: bool,
+    recalc_all_centers: bool,
 ) -> tuple[list[str], list[str] | None, bool]:
-    """Return (expected announce paths, person_folders or None=all, multi-workspace)."""
+    """Return (expected announce paths, person_folders or None=all, multi-center)."""
     expected: list[str] = []
     person_folders: set[str] = set()
     scope_all_people = False
@@ -331,17 +351,17 @@ def _mutation_scope(
         else:
             scope_all_people = True
 
-    multi = bool(recalc_all_workspaces or SHARED_CATEGORIES in normalized)
-    targets = list_workspaces() if multi else [primary]
+    multi = bool(recalc_all_centers or SHARED_CATEGORIES in normalized)
+    targets = list_centers() if multi else [primary]
     if primary not in targets:
         targets.insert(0, primary)
 
     if scope_all_people or not person_folders:
         for ws in targets:
-            expected.extend(derived_paths_for_workspace(ws))
+            expected.extend(derived_paths_for_center(ws))
         return expected, None, multi
 
-    # Person-scoped: only that pack's derived files in the primary workspace.
+    # Person-scoped: only that pack's derived files in the primary center.
     for folder in sorted(person_folders):
         expected.extend(derived_paths_for_person(primary, folder))
     return expected, sorted(person_folders), False
@@ -360,29 +380,29 @@ def _dedupe_paths(paths: list[str]) -> list[str]:
 
 
 def announce_mutation(
-    workspace: str,
+    center: str,
     paths: list[str],
     *,
     source: str = "central",
 ) -> list[str]:
     """Broadcast deduped file paths for client / hub notification chips."""
-    ws = _clean_workspace(workspace)
+    ws = _clean_center(center)
     unique = _dedupe_paths(paths)
     if not unique:
         return []
     with _lock:
         meta = dict(
-            _file_meta.get(_meta_key(SHARED_META_WORKSPACE, "mutation"))
+            _file_meta.get(_meta_key(SHARED_META_CENTER, "mutation"))
             or {"revision": 0}
         )
         new_rev = int(meta.get("revision") or 0) + 1
-        _file_meta[_meta_key(SHARED_META_WORKSPACE, "mutation")] = {
+        _file_meta[_meta_key(SHARED_META_CENTER, "mutation")] = {
             "revision": new_rev,
             "source": source,
             "mtime": time.time(),
         }
         _append_event_unlocked(
-            workspace=ws,
+            center=ws,
             file_path="mutation",
             source=source,
             revision=new_rev,
@@ -394,22 +414,22 @@ def announce_mutation(
 
 
 def mutate_and_recalculate(
-    workspace: str,
+    center: str,
     input_paths: list[str],
     *,
     source: str = "central",
-    recalc_all_workspaces: bool = False,
+    recalc_all_centers: bool = False,
 ) -> dict[str, Any]:
-    """Announce expected files, recalculate affected person(s)/workspace(s), return matrix."""
+    """Announce expected files, recalculate affected person(s)/center(s), return matrix."""
     from app.paths import CALC_LOCK
 
-    primary = _clean_workspace(workspace)
+    primary = _clean_center(center)
     expected, person_folders, multi = _mutation_scope(
         primary,
         input_paths,
-        recalc_all_workspaces=recalc_all_workspaces,
+        recalc_all_centers=recalc_all_centers,
     )
-    targets = list_workspaces() if multi else [primary]
+    targets = list_centers() if multi else [primary]
     if primary not in targets:
         targets.insert(0, primary)
 
@@ -423,49 +443,49 @@ def mutate_and_recalculate(
             )
             if folders == []:
                 continue
-            matrices[ws] = recalculate_workspace(
+            matrices[ws] = recalculate_center(
                 ws,
                 skip_events=True,
                 person_folders=folders,
             )
     primary_result = matrices.get(primary) or {}
     matrix_payload = primary_result.get("matrix")
-    if isinstance(matrix_payload, dict) and "workspace" not in matrix_payload:
-        matrix_payload = {**matrix_payload, "workspace": primary}
+    if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
+        matrix_payload = {**matrix_payload, "center": primary}
     return {
         "ok": True,
-        "workspace": primary,
+        "center": primary,
         "affected_files": announced,
         "matrix": matrix_payload,
         "recalculated": list(matrices.keys()),
     }
 
 
-def _meta_key(workspace: str, rel_path: str) -> str:
-    return f"{_clean_workspace(workspace)}/{_normalize_rel_path(rel_path)}"
+def _meta_key(center: str, rel_path: str) -> str:
+    return f"{_clean_center(center)}/{_normalize_rel_path(rel_path)}"
 
 
-def resolve_file_path(workspace: str, rel_path: str) -> Path:
+def resolve_file_path(center: str, rel_path: str) -> Path:
     rel = _normalize_rel_path(rel_path)
     if not _is_tracked(rel):
         raise ValueError(f"Path is not a tracked sync file: {rel}")
     if rel == SHARED_CATEGORIES:
         return shared_categories_path()
-    return workspace_dir(workspace) / rel
+    return center_dir(center) / rel
 
 
-def read_file(workspace: str, rel_path: str) -> dict[str, Any]:
+def read_file(center: str, rel_path: str) -> dict[str, Any]:
     rel = _normalize_rel_path(rel_path)
-    path = resolve_file_path(workspace, rel)
-    ws = _clean_workspace(workspace)
-    meta_ws = SHARED_META_WORKSPACE if rel == SHARED_CATEGORIES else ws
+    path = resolve_file_path(center, rel)
+    ws = _clean_center(center)
+    meta_ws = SHARED_META_CENTER if rel == SHARED_CATEGORIES else ws
     key = _meta_key(meta_ws, rel)
     content = _read_json_or_none(path)
     with _lock:
         meta = dict(_file_meta.get(key) or {})
     return {
         "ok": True,
-        "workspace": ws,
+        "center": ws,
         "path": rel,
         "content": content,
         "revision": int(meta.get("revision") or 0),
@@ -475,7 +495,7 @@ def read_file(workspace: str, rel_path: str) -> dict[str, Any]:
 
 
 def put_file(
-    workspace: str,
+    center: str,
     rel_path: str,
     content: Any,
     *,
@@ -488,9 +508,9 @@ def put_file(
     if source not in ("local", "central"):
         raise ValueError("source must be 'local' or 'central'")
     rel = _normalize_rel_path(rel_path)
-    path = resolve_file_path(workspace, rel)
-    ws = _clean_workspace(workspace)
-    meta_ws = SHARED_META_WORKSPACE if rel == SHARED_CATEGORIES else ws
+    path = resolve_file_path(center, rel)
+    ws = _clean_center(center)
+    meta_ws = SHARED_META_CENTER if rel == SHARED_CATEGORIES else ws
     key = _meta_key(meta_ws, rel)
 
     with _lock:
@@ -505,7 +525,7 @@ def put_file(
                 return {
                     "ok": False,
                     "central_wins": True,
-                    "workspace": ws,
+                    "center": ws,
                     "path": rel,
                     "content": existing,
                     "revision": current_rev,
@@ -518,7 +538,7 @@ def put_file(
                 "ok": True,
                 "central_wins": False,
                 "unchanged": True,
-                "workspace": ws,
+                "center": ws,
                 "path": rel,
                 "content": existing,
                 "revision": current_rev,
@@ -533,7 +553,7 @@ def put_file(
         event = None
         if not skip_event:
             event = _append_event_unlocked(
-                workspace=meta_ws if rel == SHARED_CATEGORIES else ws,
+                center=meta_ws if rel == SHARED_CATEGORIES else ws,
                 file_path=rel,
                 source=source,
                 revision=new_rev,
@@ -544,7 +564,7 @@ def put_file(
         result = {
             "ok": True,
             "central_wins": False,
-            "workspace": ws,
+            "center": ws,
             "path": rel,
             "content": content,
             "revision": new_rev,
@@ -554,7 +574,7 @@ def put_file(
 
     if not skip_recalc and _path_triggers_recalc(rel) and not result.get("central_wins"):
         try:
-            result["recalculate"] = recalculate_workspace(ws, skip_events=True)
+            result["recalculate"] = recalculate_center(ws, skip_events=True)
         except Exception as exc:  # noqa: BLE001
             result["recalculate_error"] = str(exc)
     return result
@@ -562,7 +582,7 @@ def put_file(
 
 def _append_event_unlocked(
     *,
-    workspace: str,
+    center: str,
     file_path: str,
     source: str,
     revision: int,
@@ -574,9 +594,9 @@ def _append_event_unlocked(
     files = _dedupe_paths(affected_files or ([display_path] if display_path else [file_path]))
     event = {
         "id": _next_event_id,
-        "workspace": workspace,
+        "center": center,
         "file_path": file_path,
-        "display_path": display_path or f"{workspace}/{file_path}",
+        "display_path": display_path or f"{center}/{file_path}",
         "source": source,
         "revision": revision,
         "broadcast": broadcast,
@@ -594,7 +614,7 @@ def list_events(
     *,
     since_id: int = 0,
     viewer: str = "central",
-    workspace: str | None = None,
+    center: str | None = None,
 ) -> dict[str, Any]:
     """Filter change events for clients.
 
@@ -613,18 +633,18 @@ def list_events(
         if viewer == "central":
             if ev["source"] != "local":
                 continue
-            if workspace and ev["workspace"] != _clean_workspace(workspace):
+            if center and ev["center"] != _clean_center(center):
                 continue
             out.append(ev)
         elif viewer == "local":
-            if not workspace:
-                raise ValueError("workspace is required for viewer=local")
-            ws = _clean_workspace(workspace)
+            if not center:
+                raise ValueError("center is required for viewer=local")
+            ws = _clean_center(center)
             if ev["source"] != "central":
                 continue
             if ev["file_path"] == SHARED_CATEGORIES:
                 continue
-            if ev["workspace"] == ws:
+            if ev["center"] == ws:
                 out.append(ev)
         else:
             raise ValueError("viewer must be 'central' or 'local'")
@@ -632,11 +652,11 @@ def list_events(
     return {"events": out, "latest_id": (events[-1]["id"] if events else 0)}
 
 
-def read_workspace_files(workspace: str) -> dict[str, Any]:
-    root = workspace_dir(workspace)
+def read_center_files(center: str) -> dict[str, Any]:
+    root = center_dir(center)
     categories = _read_json_or_none(merged_categories_path())
     people: dict[str, Any] = {}
-    for name in list_person_folders(workspace):
+    for name in list_person_folders(center):
         data = root / name / parse_year(None)
         secret = root / name / "secret"
         people[name] = {
@@ -645,17 +665,17 @@ def read_workspace_files(workspace: str) -> dict[str, Any]:
             "category_totals": _read_json_or_none(data / CATEGORY_TOTALS),
             "downloaded_transactions": _read_json_or_none(data / DOWNLOADED),
         }
-    return {"workspace": _clean_workspace(workspace), "categories": categories, "people": people}
+    return {"center": _clean_center(center), "categories": categories, "people": people}
 
 
-def write_workspace_files(
-    workspace: str,
+def write_center_files(
+    center: str,
     payload: dict[str, Any],
     *,
     source: str = "local",
 ) -> dict[str, Any]:
     if "categories" in payload and payload["categories"] is not None:
-        put_file(workspace, SHARED_CATEGORIES, payload["categories"], source=source)
+        put_file(center, SHARED_CATEGORIES, payload["categories"], source=source)
     people = payload.get("people")
     if isinstance(people, dict):
         for person, files in people.items():
@@ -664,19 +684,19 @@ def write_workspace_files(
             safe = Path(person).name
             if files.get("categorized_transactions") is not None:
                 put_file(
-                    workspace,
+                    center,
                     f"{person_year_rel(safe, CATEGORIZED)}",
                     files["categorized_transactions"],
                     source=source,
                 )
             if files.get("personal_categories") is not None:
                 put_file(
-                    workspace,
+                    center,
                     person_secret_rel(safe, PERSONAL_CATEGORIES),
                     files["personal_categories"],
                     source=source,
                 )
-    return read_workspace_files(workspace)
+    return read_center_files(center)
 
 
 def _read_json_or_none(path: Path) -> Any | None:

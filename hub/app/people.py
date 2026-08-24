@@ -1,4 +1,4 @@
-"""Discover person packs under the active workspace folder (hub)."""
+"""Discover person packs under the active center folder (hub)."""
 from __future__ import annotations
 
 from pathlib import Path

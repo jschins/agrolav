@@ -18,7 +18,7 @@ import {
   recordModification,
   refreshAll,
   refreshPerson,
-  setWorkspace,
+  setCenter,
   updateSettings,
   type CentralWinsAlert,
   type CentraleSyncStatus,
@@ -35,10 +35,21 @@ import type {
 
 const CHANNEL = "boekhouding";
 const REFRESH_STATUS_KEY = "boekhouding-refresh-status";
-const BANK_SALDO_CATEGORY = "banksaldo";
 
-function categoryLabel(category: string): string {
-  return category === BANK_SALDO_CATEGORY ? "Banksaldo" : category;
+function matrixFooterNames(matrix: MatrixResponse): { balance: string; last_booked: string } {
+  return {
+    balance: matrix.footers?.balance ?? "saldo",
+    last_booked: matrix.footers?.last_booked ?? "datum",
+  };
+}
+
+function isBookingCategoryName(name: string): boolean {
+  return /^\d{2}/.test(name);
+}
+
+function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
+  const footers = matrixFooterNames(matrix);
+  return category === footers.balance || category === footers.last_booked;
 }
 
 type HeaderAction = {
@@ -57,13 +68,13 @@ type StoredRefreshStatus = {
 };
 
 type RefreshStatusScope = {
-  workspace: string;
+  center: string;
   person: string;
 };
 
 function refreshStatusStorageKey(scope?: RefreshStatusScope | null): string {
-  if (scope?.workspace && scope?.person) {
-    return `${REFRESH_STATUS_KEY}:${scope.workspace}:${scope.person}`;
+  if (scope?.center && scope?.person) {
+    return `${REFRESH_STATUS_KEY}:${scope.center}:${scope.person}`;
   }
   return REFRESH_STATUS_KEY;
 }
@@ -128,7 +139,7 @@ function saveStoredRefreshStatus(
 ): void {
   try {
     sessionStorage.setItem(refreshStatusStorageKey(scope), JSON.stringify(payload));
-    if (scope?.workspace && scope?.person) {
+    if (scope?.center && scope?.person) {
       sessionStorage.removeItem(REFRESH_STATUS_KEY);
     }
   } catch {
@@ -138,7 +149,7 @@ function saveStoredRefreshStatus(
 
 function clearStoredRefreshStatus(scope?: RefreshStatusScope | null): void {
   try {
-    if (scope?.workspace && scope?.person) {
+    if (scope?.center && scope?.person) {
       sessionStorage.removeItem(refreshStatusStorageKey(scope));
       return;
     }
@@ -216,13 +227,13 @@ function brandTitle(status: CentraleSyncStatus | null): string {
   return `Boekhouding ${username.toUpperCase()}`;
 }
 
-function WorkspaceSwitcher({
-  workspace,
-  workspaces,
+function CenterSwitcher({
+  center,
+  centers,
   onSelect,
 }: {
-  workspace: string;
-  workspaces: string[];
+  center: string;
+  centers: string[];
   onSelect: (ws: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -238,31 +249,31 @@ function WorkspaceSwitcher({
   }, [open]);
 
   return (
-    <div className="workspace-switcher" ref={rootRef}>
+    <div className="center-switcher" ref={rootRef}>
       <button
         type="button"
-        className="workspace-switcher-trigger"
+        className="center-switcher-trigger"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="workspace-switcher-chevron" aria-hidden>
+        <span className="center-switcher-chevron" aria-hidden>
           ▾
         </span>
-        <span className="workspace-switcher-label">{workspace}</span>
+        <span className="center-switcher-label">{center}</span>
       </button>
       {open && (
-        <ul className="workspace-switcher-menu" role="listbox">
-          {workspaces.map((ws) => (
+        <ul className="center-switcher-menu" role="listbox">
+          {centers.map((ws) => (
             <li key={ws}>
               <button
                 type="button"
                 role="option"
-                aria-selected={ws === workspace}
-                className={ws === workspace ? "is-selected" : undefined}
+                aria-selected={ws === center}
+                className={ws === center ? "is-selected" : undefined}
                 onClick={() => {
                   setOpen(false);
-                  if (ws !== workspace) onSelect(ws);
+                  if (ws !== center) onSelect(ws);
                 }}
               >
                 {ws}
@@ -298,21 +309,21 @@ function BankSwitcher({
   }, [open]);
 
   return (
-    <div className="workspace-switcher" ref={rootRef}>
+    <div className="center-switcher" ref={rootRef}>
       <button
         type="button"
-        className="workspace-switcher-trigger"
+        className="center-switcher-trigger"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="workspace-switcher-chevron" aria-hidden>
+        <span className="center-switcher-chevron" aria-hidden>
           ▾
         </span>
-        <span className="workspace-switcher-label">{view}</span>
+        <span className="center-switcher-label">{view}</span>
       </button>
       {open && (
-        <ul className="workspace-switcher-menu" role="listbox">
+        <ul className="center-switcher-menu" role="listbox">
           {options.map((name) => (
             <li key={name}>
               <button
@@ -357,21 +368,21 @@ function YearSwitcher({
   }, [open]);
 
   return (
-    <div className="workspace-switcher" ref={rootRef}>
+    <div className="center-switcher" ref={rootRef}>
       <button
         type="button"
-        className="workspace-switcher-trigger"
+        className="center-switcher-trigger"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="workspace-switcher-chevron" aria-hidden>
+        <span className="center-switcher-chevron" aria-hidden>
           ▾
         </span>
-        <span className="workspace-switcher-label">{year}</span>
+        <span className="center-switcher-label">{year}</span>
       </button>
       {open && (
-        <ul className="workspace-switcher-menu" role="listbox">
+        <ul className="center-switcher-menu" role="listbox">
           {years.map((y) => (
             <li key={y}>
               <button
@@ -410,27 +421,27 @@ function ActionsMenu({ items }: { items: HeaderAction[] }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="workspace-switcher actions-menu" ref={rootRef}>
+    <div className="center-switcher actions-menu" ref={rootRef}>
       <button
         type="button"
-        className="workspace-switcher-trigger"
+        className="center-switcher-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="workspace-switcher-chevron" aria-hidden>
+        <span className="center-switcher-chevron" aria-hidden>
           ▾
         </span>
-        <span className="workspace-switcher-label">menu</span>
+        <span className="center-switcher-label">menu</span>
       </button>
       {open && (
-        <ul className="workspace-switcher-menu" role="menu">
+        <ul className="center-switcher-menu" role="menu">
           {items.map((item) => (
             <li key={item.id}>
               {item.href ? (
                 <a
                   role="menuitem"
-                  className="workspace-switcher-link"
+                  className="center-switcher-link"
                   href={item.href}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -462,12 +473,12 @@ function ActionsMenu({ items }: { items: HeaderAction[] }) {
 
 function SyncNotifyShell({
   children,
-  onWorkspaceChanged,
+  onCenterChanged,
   termsView = false,
   onLogout,
 }: {
   children: (brandName: string, activeYear: string, bankView: string) => ReactNode;
-  onWorkspaceChanged?: () => void;
+  onCenterChanged?: () => void;
   termsView?: boolean;
   onLogout?: () => void;
 }) {
@@ -502,7 +513,7 @@ function SyncNotifyShell({
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status?.workspace]);
+  }, [status?.center]);
 
   useEffect(() => {
     const access = (status?.access || "").trim().toLowerCase();
@@ -531,7 +542,7 @@ function SyncNotifyShell({
         setBankOptions([]);
         setUploadUrl("");
       });
-  }, [status?.access, activeYear, status?.workspace, status?.centrale_url]);
+  }, [status?.access, activeYear, status?.center, status?.centrale_url]);
 
   useEffect(() => {
     document.title = termsView ? `${brandName} — Terms` : brandName;
@@ -550,7 +561,7 @@ function SyncNotifyShell({
               dataEpochRef.current = epoch;
             } else if (epoch > dataEpochRef.current) {
               dataEpochRef.current = epoch;
-              onWorkspaceChanged?.();
+              onCenterChanged?.();
             }
           }
         })
@@ -577,25 +588,25 @@ function SyncNotifyShell({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [onWorkspaceChanged]);
+  }, [onCenterChanged]);
 
   const access = (status?.access || "").trim().toLowerCase();
   const isRegionalAdmin = access === "regional_admin";
-  // Multi-workspace login: switcher when access allows.
-  const workspaces = isRegionalAdmin
-    ? status?.workspaces?.length
-      ? status.workspaces
-      : status?.workspace
-        ? [status.workspace]
+  // Multi-center login: switcher when access allows.
+  const centers = isRegionalAdmin
+    ? status?.centers?.length
+      ? status.centers
+      : status?.center
+        ? [status.center]
         : []
     : [];
 
   function handleSelect(ws: string) {
     if (!isRegionalAdmin) return;
     setSwitching(true);
-    setWorkspace(ws)
+    setCenter(ws)
       .then(() => {
-        onWorkspaceChanged?.();
+        onCenterChanged?.();
       })
       .catch(() => {})
       .finally(() => setSwitching(false));
@@ -608,11 +619,11 @@ function SyncNotifyShell({
       .then((res) => {
         const next = (res.alerts || [])[0] || null;
         setRefusal(next);
-        onWorkspaceChanged?.();
+        onCenterChanged?.();
       })
       .catch(() => {
         setRefusal(null);
-        onWorkspaceChanged?.();
+        onCenterChanged?.();
       });
   }
 
@@ -638,9 +649,9 @@ function SyncNotifyShell({
         <div className="centrale-status-bar">
           <div className="centrale-status-left">
             {isRegionalAdmin ? (
-              <WorkspaceSwitcher
-                workspace={status?.workspace || "…"}
-                workspaces={workspaces}
+              <CenterSwitcher
+                center={status?.center || "…"}
+                centers={centers}
                 onSelect={handleSelect}
               />
             ) : null}
@@ -650,7 +661,7 @@ function SyncNotifyShell({
                 years={yearOptions}
                 onSelect={(y) => {
                   setActiveYear(y);
-                  onWorkspaceChanged?.();
+                  onCenterChanged?.();
                 }}
               />
             ) : null}
@@ -660,7 +671,7 @@ function SyncNotifyShell({
                 folders={bankOptions}
                 onSelect={(v) => {
                   setBankView(v);
-                  onWorkspaceChanged?.();
+                  onCenterChanged?.();
                 }}
               />
             ) : null}
@@ -670,7 +681,7 @@ function SyncNotifyShell({
                 Log out
               </button>
             ) : null}
-            {switching ? <span className="workspace-switcher-busy">switching…</span> : null}
+            {switching ? <span className="center-switcher-busy">switching…</span> : null}
             {status?.error ? <span> · sync error: {status.error}</span> : null}
           </div>
           <div className="sync-notify-row">
@@ -840,7 +851,7 @@ export default function App() {
             }
           : undefined
       }
-      onWorkspaceChanged={() => setWsEpoch((n) => n + 1)}
+      onCenterChanged={() => setWsEpoch((n) => n + 1)}
     >
       {(brandName, year, bankView) =>
         isTerms ? (
@@ -952,9 +963,9 @@ function MainApp({
         const scoped = Boolean((s.person || "").trim());
         setCanAddPerson(!scoped);
         const hub = (s.centrale_url || "").replace(/\/$/, "");
-        const ws = (s.workspace || "").trim();
+        const ws = (s.center || "").trim();
         if (hub && ws) {
-          setAddPersonUrl(`${hub}/add-person?workspace=${encodeURIComponent(ws)}`);
+          setAddPersonUrl(`${hub}/add-person?center=${encodeURIComponent(ws)}`);
         } else if (hub) {
           setAddPersonUrl(`${hub}/add-person`);
         } else {
@@ -963,7 +974,7 @@ function MainApp({
         // Personal login: restore this person's refresh status only (no auto-fetch).
         const person = (s.person || "").trim();
         const scope =
-          scoped && ws && person ? { workspace: ws, person } : null;
+          scoped && ws && person ? { center: ws, person } : null;
         setRefreshScope(scope);
         const defaults = previousMonthRange();
         setDateFrom(defaults.from);
@@ -1102,7 +1113,7 @@ function MainApp({
   }, []);
 
   function selectCell(short: string, category: string) {
-    if (category === BANK_SALDO_CATEGORY) return;
+    if (matrix && isMatrixFooter(matrix, category)) return;
     const sel = { short, category };
     setSelection(sel);
     setError(null);
@@ -1610,6 +1621,7 @@ function MatrixTable({
   onPick: (short: string, category: string) => void;
 }) {
   const { categories, people, cells } = matrix;
+  const footers = matrixFooterNames(matrix);
   return (
     <table className="totals-table matrix-table">
       <thead>
@@ -1626,21 +1638,23 @@ function MatrixTable({
         {categories.map((cat) => (
           <tr
             key={cat}
-            className={`${selection?.category === cat ? "active" : ""}${cat === BANK_SALDO_CATEGORY ? " banksaldo-row" : ""}`}
+            className={`${selection?.category === cat ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}`}
           >
-            <td className="cat">{categoryLabel(cat)}</td>
+            <td className="cat">{cat}</td>
             {people.map((p) => {
               const amount = cells[cat]?.[p.short] ?? "";
               const isActive =
                 selection?.short === p.short && selection?.category === cat;
-              const clickable = cat !== BANK_SALDO_CATEGORY && amount !== "";
+              const clickable = !isMatrixFooter(matrix, cat) && amount !== "";
+              const display =
+                amount === "" ? "" : cat === footers.last_booked ? amount : `€${amount}`;
               return (
                 <td
                   key={p.short}
                   className={`num${clickable ? " clickable" : ""}${isActive ? " active-cell" : ""}`}
                   onClick={clickable ? () => onPick(p.short, cat) : undefined}
                 >
-                  {amount === "" ? "" : `€${amount}`}
+                  {display}
                 </td>
               );
             })}
@@ -1663,6 +1677,7 @@ function PersonColumnTable({
   onPick: (category: string) => void;
 }) {
   const { categories, cells } = matrix;
+  const footers = matrixFooterNames(matrix);
   return (
     <table className="totals-table">
       <thead>
@@ -1675,18 +1690,20 @@ function PersonColumnTable({
         {categories.map((cat) => (
           <tr
             key={cat}
-            className={`${cat === selectedCategory ? "active" : ""}${cat === BANK_SALDO_CATEGORY ? " banksaldo-row" : ""}`}
+            className={`${cat === selectedCategory ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}`}
           >
-            <td className="cat">{categoryLabel(cat)}</td>
+            <td className="cat">{cat}</td>
             {(() => {
               const amount = cells[cat]?.[personShort] ?? "";
-              const clickable = cat !== BANK_SALDO_CATEGORY && amount !== "";
+              const clickable = !isMatrixFooter(matrix, cat) && amount !== "";
+              const display =
+                amount === "" ? "" : cat === footers.last_booked ? amount : `€${amount}`;
               return (
                 <td
                   className={`num${clickable ? " clickable" : ""}`}
                   onClick={clickable ? () => onPick(cat) : undefined}
                 >
-                  {amount === "" ? "" : `€${amount}`}
+                  {display}
                 </td>
               );
             })()}
@@ -1863,7 +1880,7 @@ function TermContextMenu({
   const [pos, setPos] = useState({ left: x, top: y });
 
   const categories = settings.categories.filter(
-    (name) => name !== settings.remainder_category
+    (name) => name !== settings.remainder_category && isBookingCategoryName(name)
   );
 
   useEffect(() => {
@@ -2045,7 +2062,9 @@ function wordAtClick(root: EventTarget, clientX: number, clientY: number): strin
 }
 
 function termsTableCategories(settings: SettingsResponse): string[] {
-  return settings.categories.filter((name) => name !== settings.remainder_category);
+  return settings.categories.filter(
+    (name) => name !== settings.remainder_category && isBookingCategoryName(name)
+  );
 }
 
 function termsColumnWidths(

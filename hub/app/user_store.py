@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from shared.user_access import enrich_user_record, parse_workspaces
+from shared.user_access import ACCESS_REGIONAL_ADMIN, enrich_user_record, parse_centers
 
 from app.runtime import data_root
 
@@ -29,14 +29,15 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL COLLATE NOCASE UNIQUE,
     title TEXT,
-    workspace TEXT,
+    country TEXT,
+    center TEXT,
     person TEXT,
     format TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_users_person_workspace
-    ON users(person COLLATE NOCASE, workspace COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_users_person_center
+    ON users(person COLLATE NOCASE, center COLLATE NOCASE);
 """
 
 
@@ -110,11 +111,18 @@ def _utc_today() -> str:
 
 def _row_to_user(row: sqlite3.Row) -> dict[str, Any]:
     keys = set(row.keys())
+    center = ""
+    if "center" in keys and row["center"] is not None:
+        center = str(row["center"])
+    elif "workspace" in keys and row["workspace"] is not None:
+        center = str(row["workspace"])
+    country = str(row["country"] or "") if "country" in keys and row["country"] is not None else ""
     return {
         "id": int(row["id"]),
         "username": str(row["username"] or ""),
         "title": str(row["title"] or "") if "title" in keys else "",
-        "workspace": str(row["workspace"]) if row["workspace"] is not None else "",
+        "country": country,
+        "center": center,
         "person": str(row["person"]) if row["person"] is not None else "",
         "format": (
             str(row["format"]).strip()
@@ -125,7 +133,14 @@ def _row_to_user(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _public_user(user: dict[str, Any]) -> dict[str, Any]:
-    return enrich_user_record(user)
+    rec = enrich_user_record(user)
+    if rec["access"] == ACCESS_REGIONAL_ADMIN and not rec["centers"] and rec["country"]:
+        from app.store import list_centers
+
+        rec["centers"] = list_centers(rec["country"])
+        if rec["centers"] and not rec["center"]:
+            rec["center"] = rec["centers"][0]
+    return rec
 
 
 def _strip_timestamps_to_dates(conn: sqlite3.Connection) -> None:
@@ -146,6 +161,99 @@ def _strip_timestamps_to_dates(conn: sqlite3.Connection) -> None:
     )
 
 
+def _table_columns(conn: sqlite3.Connection) -> set[str]:
+    return {str(row[1]) for row in conn.execute("PRAGMA table_info(users)")}
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    cols = _table_columns(conn)
+    if not cols:
+        return
+    if "workspace" in cols and "center" not in cols:
+        conn.execute("ALTER TABLE users RENAME COLUMN workspace TO center")
+        cols = _table_columns(conn)
+    if "center" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN center TEXT")
+    if "country" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN country TEXT")
+    conn.execute("DROP INDEX IF EXISTS idx_users_person_workspace")
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_users_person_center
+        ON users(person COLLATE NOCASE, center COLLATE NOCASE)
+        """
+    )
+
+
+def _csv_cell(row: dict[str, str], *keys: str) -> str:
+    for key in keys:
+        if key in row and row[key] is not None:
+            return str(row[key]).strip()
+    return ""
+
+
+def _import_users_csv(conn: sqlite3.Connection) -> None:
+    """Load ``users.csv`` next to ``users.db`` when present (exported layout)."""
+    import csv
+
+    path = users_db_path().parent / "users.csv"
+    if not path.is_file():
+        return
+    today = _utc_today()
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for raw in reader:
+            name = _csv_cell(raw, "username")
+            if not name:
+                continue
+            country = _csv_cell(raw, "country") or None
+            center = _csv_cell(raw, "center", "workspace") or None
+            person = _csv_cell(raw, "person") or None
+            fmt = _csv_cell(raw, "format") or None
+            created = _csv_cell(raw, "created_at") or today
+            updated = _csv_cell(raw, "updated_at") or created
+            row = conn.execute(
+                "SELECT id FROM users WHERE username = ? COLLATE NOCASE",
+                (name,),
+            ).fetchone()
+            if row:
+                conn.execute(
+                    """
+                    UPDATE users
+                    SET country = ?, center = ?, person = ?, format = ?,
+                        created_at = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        country,
+                        center,
+                        person,
+                        fmt,
+                        created[:10],
+                        updated[:10],
+                        int(row["id"]),
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO users
+                        (username, title, country, center, person, format, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        name,
+                        _csv_cell(raw, "title") or None,
+                        country,
+                        center,
+                        person,
+                        fmt,
+                        created[:10],
+                        updated[:10],
+                    ),
+                )
+
+
 def _connect() -> sqlite3.Connection:
     global _CONN
     if _CONN is not None:
@@ -155,6 +263,8 @@ def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    _migrate_schema(conn)
+    _import_users_csv(conn)
     _strip_timestamps_to_dates(conn)
     conn.commit()
     _CONN = conn
@@ -209,7 +319,8 @@ def upsert_user(
     *,
     username: str,
     title: str = "",
-    workspace: str = "",
+    center: str = "",
+    country: str = "",
     person: str = "",
 ) -> dict[str, Any]:
     """Insert or update a user. Does not change ``format`` or ``updated_at`` on update."""
@@ -217,7 +328,8 @@ def upsert_user(
     if not name:
         raise ValueError("username is required")
     title_s = (title or "").strip() or None
-    ws = (workspace or "").strip() or None
+    center_s = (center or "").strip() or None
+    country_s = (country or "").strip() or None
     person_s = (person or "").strip() or None
     today = _utc_today()
     with _LOCK:
@@ -231,19 +343,19 @@ def upsert_user(
             conn.execute(
                 """
                 UPDATE users
-                SET title = ?, workspace = ?, person = ?
+                SET title = ?, country = ?, center = ?, person = ?
                 WHERE id = ?
                 """,
-                (title_s, ws, person_s, int(row["id"])),
+                (title_s, country_s, center_s, person_s, int(row["id"])),
             )
         else:
             conn.execute(
                 """
                 INSERT INTO users
-                    (username, title, workspace, person, format, created_at, updated_at)
-                VALUES (?, ?, ?, ?, NULL, ?, ?)
+                    (username, title, country, center, person, format, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
                 """,
-                (name, title_s, ws, person_s, today, today),
+                (name, title_s, country_s, center_s, person_s, today, today),
             )
         conn.commit()
     user = find_user(name)
@@ -254,16 +366,21 @@ def upsert_user(
 
 def upsert_personal_login(
     *,
-    workspace: str,
+    center: str,
     person: str,
+    country: str = "",
 ) -> dict[str, Any]:
     folder = (person or "").strip()
-    ws = (workspace or "").strip()
+    ws = (center or "").strip()
     if not folder or not ws:
-        raise ValueError("workspace and person are required")
+        raise ValueError("center and person are required")
+    from app.runtime import active_country, resolve_country_for_center
+
+    country_s = (country or active_country() or resolve_country_for_center(ws) or "").strip()
     return upsert_user(
         username=folder,
-        workspace=ws,
+        center=ws,
+        country=country_s,
         person=folder,
     )
 
@@ -322,19 +439,19 @@ def upload_token_by_person_center() -> dict[tuple[str, str], str]:
         init_user_store()
         rows = _connect().execute(
             """
-            SELECT person, workspace
+            SELECT person, center
             FROM users
             WHERE person IS NOT NULL AND person != ''
-              AND workspace IS NOT NULL AND workspace != ''
+              AND center IS NOT NULL AND center != ''
             """
         ).fetchall()
     out: dict[tuple[str, str], str] = {}
     for row in rows:
         person = str(row["person"] or "").strip()
-        raw_ws = str(row["workspace"] or "").strip()
+        raw_ws = str(row["center"] or "").strip()
         if not person:
             continue
-        for center in parse_workspaces(raw_ws) or ([raw_ws] if raw_ws else []):
+        for center in parse_centers(raw_ws) or ([raw_ws] if raw_ws else []):
             if center:
                 out[(person, center)] = DEFAULT_UPLOAD_TOKEN
     return out

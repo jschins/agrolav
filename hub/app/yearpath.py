@@ -31,6 +31,15 @@ def is_year_name(name: str) -> bool:
     return name.isdigit() and len(name) == 4 and YEAR_MIN <= int(name) <= YEAR_MAX
 
 
+def _is_booking_category_name(name: str) -> bool:
+    """True when the label starts with a two-digit local code (not saldo/datum)."""
+    try:
+        int(str(name)[:2])
+        return True
+    except ValueError:
+        return False
+
+
 def parse_year(raw: str | None) -> str:
     text = str(raw or "").strip()
     if not text:
@@ -77,13 +86,19 @@ def _zero_categories(categories_path: Path, prev_totals: dict[str, Any]) -> dict
             payload = json.loads(categories_path.read_text(encoding="utf-8"))
             categories = payload.get("categories") if isinstance(payload, dict) else None
             if isinstance(categories, dict):
-                names = [str(name) for name in categories]
+                names = [
+                    str(name) for name in categories if _is_booking_category_name(str(name))
+                ]
         except (OSError, json.JSONDecodeError):
             names = []
     if not names:
         existing = prev_totals.get("categories")
         if isinstance(existing, dict):
-            names = [str(name) for name in existing]
+            names = [
+                str(name)
+                for name in existing
+                if _is_booking_category_name(str(name))
+            ]
     return {name: "0.00" for name in names}
 
 
@@ -159,7 +174,7 @@ def ensure_year_folder(
     """Create ``person/Y`` with empty books and the previous year's closing balance.
 
     Creates the person folder and year folder when missing. Never creates the
-    parent workspace folder — that must already exist on disk.
+    parent center folder — that must already exist on disk.
 
     Idempotent: if the year directory already exists, it is left unchanged.
     """
@@ -169,11 +184,11 @@ def ensure_year_folder(
         _sync_category_names(folder / CATEGORY_TOTALS_FILENAME, categories_path)
         return folder
 
-    workspace = person_folder.parent
-    if not workspace.is_dir():
+    center = person_folder.parent
+    if not center.is_dir():
         raise FileNotFoundError(
-            f"Workspace folder does not exist: {workspace}. "
-            "The hub does not create workspace folders; only person packs inside them."
+            f"Center folder does not exist: {center}. "
+            "The hub does not create center folders; only person packs inside them."
         )
 
     prev = previous_year_name(person_folder, y)

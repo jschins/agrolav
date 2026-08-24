@@ -9,7 +9,8 @@ from app.paths import PersonPack, bind_person
 from app.people import get_person, list_people
 from app.settings import get_people, refresh_people
 
-BANK_SALDO_CATEGORY = "banksaldo"
+FOOTER_BALANCE = "saldo"
+FOOTER_DATUM = "datum"
 
 
 def _read_json(path: Path) -> Any:
@@ -94,6 +95,33 @@ def person_current_balance(pack: PersonPack) -> str | None:
     return f"{cents / 100:.2f}"
 
 
+def person_last_booked(pack: PersonPack) -> str | None:
+    """Latest transaction ``date`` as ``DD-MM-YYYY``, or None if none."""
+    from app.core.categorize import _load_json_object
+    from app.user_store import latest_transaction_date
+    import app.paths as paths
+
+    with bind_person(pack):
+        data = _load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH)
+    txs = data.get("transactions") if isinstance(data, dict) else None
+    if not isinstance(txs, list):
+        return None
+    iso = latest_transaction_date(txs)
+    if not iso or len(iso) < 10:
+        return None
+    return f"{iso[8:10]}-{iso[5:7]}-{iso[0:4]}"
+
+
+def _footer_labels(categories: list[str]) -> tuple[str, str]:
+    """Catalog keys without a two-digit prefix: first = saldo, second = datum."""
+    from app.core.categorize import _category_code
+
+    uncoded = [name for name in categories if _category_code(name) is None]
+    balance = uncoded[0] if uncoded else FOOTER_BALANCE
+    booked = uncoded[1] if len(uncoded) > 1 else FOOTER_DATUM
+    return balance, booked
+
+
 def build_matrix(
     people: list[PersonPack] | None = None,
     *,
@@ -101,7 +129,7 @@ def build_matrix(
     bank: str | None = None,
 ) -> dict[str, Any]:
     from app.core.bank_csv import pack_for_bank_view
-    from app.runtime import active_workspace
+    from app.runtime import active_center
 
     if people is not None:
         packs = people
@@ -110,43 +138,31 @@ def build_matrix(
         packs = list_people(year=year)
     else:
         packs = get_people()
+    from app.core.categorize import _category_code
+
     categories = category_names(packs)
+    balance_name, date_name = _footer_labels(categories)
+    booking = [name for name in categories if _category_code(name) is not None]
+    category_list = booking + [balance_name, date_name]
     columns = [{"short": p.short, "folder": p.folder_name} for p in packs]
-    cells: dict[str, dict[str, str]] = {name: {} for name in categories}
-    ws = active_workspace() or ""
+    cells: dict[str, dict[str, str]] = {name: {} for name in category_list}
+    ws = active_center() or ""
     for pack in packs:
         view_pack = pack_for_bank_view(pack, bank, center=ws) if bank else pack
         totals = person_totals(view_pack)
-        for name in categories:
+        for name in booking:
             cells[name][pack.short] = str(totals.get(name, "0.00"))
-        # Include any unexpected keys from totals (should not happen)
-        for name, amount in totals.items():
-            if name not in cells:
-                cells[name] = {p.short: "0.00" for p in packs}
-                cells[name][pack.short] = str(amount)
-    category_list = list(cells.keys()) if cells else list(categories)
-    balance_row: dict[str, str] = {}
-    has_balance = False
-    for pack in packs:
-        view_pack = pack_for_bank_view(pack, bank, center=ws) if bank else pack
-        balance = person_current_balance(view_pack)
-        if balance is not None:
-            has_balance = True
-            balance_row[pack.short] = balance
-        else:
-            balance_row[pack.short] = ""
-    if has_balance:
-        cells[BANK_SALDO_CATEGORY] = balance_row
-        if BANK_SALDO_CATEGORY not in category_list:
-            category_list.append(BANK_SALDO_CATEGORY)
+        cells[balance_name][pack.short] = person_current_balance(view_pack) or ""
+        cells[date_name][pack.short] = person_last_booked(view_pack) or ""
     payload: dict[str, Any] = {
         "categories": category_list,
         "people": columns,
         "cells": cells,
+        "footers": {"balance": balance_name, "last_booked": date_name},
     }
-    ws = active_workspace()
+    ws = active_center()
     if ws:
-        payload["workspace"] = ws
+        payload["center"] = ws
     return payload
 
 
@@ -325,14 +341,14 @@ def _bank_refresh_one(
         needs_consent_renewal,
     )
     from app.paths import apply_person, shared_categories_path
-    from app.runtime import active_workspace
+    from app.runtime import active_center
 
     warnings: list[str] = []
     if needs_consent_renewal():
         auth_url: str | None = None
         try:
             auth_url = get_authorization_url(
-                workspace=active_workspace(),
+                center=active_center(),
                 person_short=pack.short,
                 folder=pack.folder_name,
             )
@@ -403,7 +419,7 @@ def _bank_refresh_one(
             pack.folder,
             year=pack.year,
             person=pack.folder_name,
-            center=active_workspace(),
+            center=active_center(),
             categories_path=shared_categories_path(),
         )
         apply_person(pack)

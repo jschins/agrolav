@@ -15,8 +15,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 from urllib.parse import parse_qs, urlparse
 
-from shared.enable_banking import EnableBankingClient, EnableBankingError
-from shared.enable_banking.transactions import (
+from app.core.enable_banking import EnableBankingClient, EnableBankingError
+from app.core.enable_banking.transactions import (
     parse_iso_date,
     date_period_chunks,
     dedupe_transactions,
@@ -939,13 +939,13 @@ def _reject_non_bank_auth_url(url: str) -> None:
 
 def get_authorization_url(
     *,
-    workspace: str | None = None,
+    center: str | None = None,
     person_short: str | None = None,
     folder: str | None = None,
 ) -> str:
     """Start Enable Banking auth; returns the bank authorization URL (not the local callback)."""
     from app import consent_flow
-    from app.runtime import active_workspace
+    from app.runtime import active_center
 
     profile = load_profile()
     client = SingleDockerClient.from_profile(profile)
@@ -957,7 +957,7 @@ def get_authorization_url(
         raise EnableBankingError("Enable Banking did not return an authorization URL.")
     _reject_non_bank_auth_url(url)
 
-    ws = (workspace or active_workspace() or "").strip()
+    ws = (center or active_center() or "").strip()
     short = (person_short or str(profile.get("person") or "").strip() or "").strip()
     fold = (folder or "").strip() or short
     # Bind callback to whatever state Enable Banking put on the auth URL / response.
@@ -971,11 +971,11 @@ def get_authorization_url(
         state = str(auth.get("authorization_id") or "").strip()
     if ws and short and state:
         consent_flow.register_pending(
-            workspace=ws, short=short, folder=fold, state=state
+            center=ws, short=short, folder=fold, state=state
         )
     elif ws and short:
         consent_flow.register_pending(
-            workspace=ws, short=short, folder=fold, state=None
+            center=ws, short=short, folder=fold, state=None
         )
     return url
 

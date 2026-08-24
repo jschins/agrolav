@@ -7,6 +7,7 @@ export interface MatrixResponse {
   categories: string[];
   people: PersonInfo[];
   cells: Record<string, Record<string, string>>;
+  footers?: { balance: string; last_booked: string };
 }
 
 export interface RefreshPersonResult {

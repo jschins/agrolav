@@ -665,7 +665,8 @@ def build_category_totals(
     name_by_code = {
         code: name for name in general_names if (code := _category_code(name)) is not None
     }
-    totals: dict[str, int] = {name: 0 for name in general_names}
+    booking_names = [name for name in general_names if _category_code(name) is not None]
+    totals: dict[str, int] = {name: 0 for name in booking_names}
     mods_by_id = _modifications_by_id(transactions_payload)
 
     for transaction in transactions_payload.get("transactions", []):

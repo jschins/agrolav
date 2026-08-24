@@ -17,7 +17,7 @@ from app.yearpath import ensure_year_folder, has_person_layout, parse_year
 ACL_FILENAME = "upload_acl.json"
 USERS_DB_FILENAME = "users.db"
 UPLOAD_LOG_FILENAME = "upload.log"
-_SKIP_WORKSPACE_NAMES = frozenset(
+_SKIP_CENTER_NAMES = frozenset(
     {ACL_FILENAME, USERS_DB_FILENAME, UPLOAD_LOG_FILENAME, "categories.json"}
 )
 _log_lock = threading.Lock()
@@ -28,12 +28,21 @@ class UploadGrant:
     person: str
     token: str
     center: str
+    country: str = ""
     banks: tuple[str, ...] = ()
     bank: str = ""
     csv_format: str = ""
 
+    def person_rel(self) -> str:
+        from app.runtime import resolve_country_for_center
+
+        country = (self.country or resolve_country_for_center(self.center) or "").strip()
+        if country:
+            return f"{country}/{self.center}/{self.person}"
+        return f"{self.center}/{self.person}"
+
     def year_folder(self, year: str | None = None) -> str:
-        return f"{self.center}/{self.person}/{parse_year(year)}"
+        return f"{self.person_rel()}/{parse_year(year)}"
 
     def is_bank_grant(self) -> bool:
         return bool(self.banks)
@@ -121,27 +130,33 @@ def _password_hash_by_person_center() -> dict[tuple[str, str], str]:
     return user_store.upload_token_by_person_center()
 
 
-def discover_workspace_persons() -> list[tuple[str, str]]:
-    """``(center, person)`` for each person folder under a workspace center."""
+def discover_center_persons() -> list[tuple[str, str]]:
+    """``(center, person)`` for each person folder under ``country/center``."""
+    from app.runtime import list_country_folders
+
     root = data_root()
     if not root.is_dir():
         return []
     out: list[tuple[str, str]] = []
-    for center_dir in sorted(root.iterdir(), key=lambda p: p.name.lower()):
-        if not center_dir.is_dir() or center_dir.name.startswith("."):
+    for country in list_country_folders():
+        country_dir = root / country
+        if not country_dir.is_dir():
             continue
-        if center_dir.name in _SKIP_WORKSPACE_NAMES:
-            continue
-        for person_dir in sorted(center_dir.iterdir(), key=lambda p: p.name.lower()):
-            if not person_dir.is_dir() or person_dir.name.startswith("."):
+        for center_dir in sorted(country_dir.iterdir(), key=lambda p: p.name.lower()):
+            if not center_dir.is_dir() or center_dir.name.startswith("."):
                 continue
-            if has_person_layout(person_dir):
-                out.append((center_dir.name, person_dir.name))
+            if center_dir.name in _SKIP_CENTER_NAMES:
+                continue
+            for person_dir in sorted(center_dir.iterdir(), key=lambda p: p.name.lower()):
+                if not person_dir.is_dir() or person_dir.name.startswith("."):
+                    continue
+                if has_person_layout(person_dir):
+                    out.append((center_dir.name, person_dir.name))
     return out
 
 
-def country_workspace_map() -> dict[str, list[str]]:
-    """``countries`` from ``upload_acl.json``: country name → workspace folder names."""
+def country_center_map() -> dict[str, list[str]]:
+    """``countries`` from ``upload_acl.json``: country name → center folder names."""
     raw = load_acl_document().get("countries")
     if not isinstance(raw, dict):
         return {}
@@ -151,19 +166,19 @@ def country_workspace_map() -> dict[str, list[str]]:
         if not name:
             continue
         if isinstance(value, list):
-            workspaces = [str(item).strip() for item in value if str(item).strip()]
+            centers = [str(item).strip() for item in value if str(item).strip()]
         else:
-            workspaces = []
-        out[name] = workspaces
+            centers = []
+        out[name] = centers
     return out
 
 
-def workspaces_for_country(country: str) -> list[str] | None:
-    """Return workspace list for a known country, or ``None`` if ``country`` is not listed."""
+def centers_for_country(country: str) -> list[str] | None:
+    """Return center list for a known country, or ``None`` if ``country`` is not listed."""
     name = str(country or "").strip().lower()
     if not name:
         return None
-    mapping = country_workspace_map()
+    mapping = country_center_map()
     if name not in mapping:
         return None
     return list(mapping[name])
@@ -190,22 +205,25 @@ def hub_allowed_ips() -> frozenset[str]:
 
 
 def load_grants(*, force: bool = False) -> list[UploadGrant]:
-    """Build upload grants from workspace folders + user-store password hashes."""
+    """Build upload grants from center folders + user-store password hashes."""
     from app.core.bank_csv import discover_person_banks
 
     del force
     tokens = _password_hash_by_person_center()
     out: list[UploadGrant] = []
-    for center, person in discover_workspace_persons():
+    for center, person in discover_center_persons():
         token = tokens.get((person, center))
         if not token:
             continue
         banks = discover_person_banks(person, center)
+        from app.runtime import resolve_country_for_center
+
         out.append(
             UploadGrant(
                 person=person,
                 token=token,
                 center=center,
+                country=resolve_country_for_center(center) or "",
                 banks=banks,
             )
         )
@@ -220,7 +238,7 @@ def grant_for_upload(
     for_csv: bool = False,
     csv_content: bytes | None = None,
 ) -> UploadGrant:
-    """Resolve bank folder / csv format from the uploaded file (not existing workspace files)."""
+    """Resolve bank folder / csv format from the uploaded file (not existing center files)."""
     if not for_csv:
         return grant
     from app.core.bank_csv import (
@@ -261,7 +279,7 @@ def list_grant_folder_options(grant: UploadGrant, *, year: str | None = None) ->
     from app.core.bank_csv import bank_modalities, list_year_bank_folders, person_uses_bank_subfolders
 
     y = parse_year(year)
-    person_folder = resolve_under_data_root(f"{grant.center}/{grant.person}")
+    person_folder = resolve_under_data_root(grant.person_rel())
     year_path = person_folder / y
     existing: list[str] = []
     if person_uses_bank_subfolders(grant.person, grant.center) or grant.banks:
@@ -399,7 +417,7 @@ def list_grant_xlsx_files(grant: UploadGrant, *, year: str | None = None) -> lis
 def _process_excel_upload(grant: UploadGrant, *, year: str | None = None) -> dict[str, Any]:
     from app import store
     from app import user_store
-    from app import workspace_api
+    from app import center_api
     from app.core.excel_import import import_person_excel
     from app.paths import shared_categories_path
 
@@ -407,8 +425,8 @@ def _process_excel_upload(grant: UploadGrant, *, year: str | None = None) -> dic
     data_dir = resolve_under_data_root(grant.year_folder(y))
     info = import_person_excel(data_dir=data_dir, categories_path=shared_categories_path())
     user_store.set_user_updated_at(username=grant.person, date=info.get("last_date"))
-    with workspace_api._workspace_scope(grant.center) as ws:
-        inputs = workspace_api._ingest_person_data_files(ws, folder_names=[grant.person], year=y)
+    with center_api._center_scope(grant.center) as ws:
+        inputs = center_api._ingest_person_data_files(ws, folder_names=[grant.person], year=y)
     mut = store.mutate_and_recalculate(ws, inputs, source="central")
     return {
         "import": info,
@@ -420,7 +438,7 @@ def _process_excel_upload(grant: UploadGrant, *, year: str | None = None) -> dic
 def _process_bank_csv_upload(grant: UploadGrant, *, year: str | None = None) -> dict[str, Any]:
     from app import store
     from app import user_store
-    from app import workspace_api
+    from app import center_api
     from app.core.bank_csv import consolidate_person_year, import_bank_csv_dir, person_uses_bank_subfolders
     from app.paths import shared_categories_path
 
@@ -432,7 +450,7 @@ def _process_bank_csv_upload(grant: UploadGrant, *, year: str | None = None) -> 
     user_store.set_user_updated_at(username=grant.person, date=info.get("last_date"))
     consolidation: dict[str, Any] = {"consolidated": False}
     if person_uses_bank_subfolders(grant.person, grant.center):
-        person_folder = resolve_under_data_root(f"{grant.center}/{grant.person}")
+        person_folder = resolve_under_data_root(grant.person_rel())
         consolidation = consolidate_person_year(
             person_folder,
             year=y,
@@ -440,8 +458,8 @@ def _process_bank_csv_upload(grant: UploadGrant, *, year: str | None = None) -> 
             center=grant.center,
             categories_path=categories_path,
         )
-    with workspace_api._workspace_scope(grant.center) as ws:
-        inputs = workspace_api._ingest_person_data_files(ws, folder_names=[grant.person], year=y)
+    with center_api._center_scope(grant.center) as ws:
+        inputs = center_api._ingest_person_data_files(ws, folder_names=[grant.person], year=y)
     mut = store.mutate_and_recalculate(ws, inputs, source="central")
     return {
         "import": info,
@@ -486,7 +504,7 @@ def save_upload(
     from app.paths import shared_categories_path
     from app.yearpath import previous_year_name
 
-    person_folder = resolve_under_data_root(f"{grant.center}/{grant.person}")
+    person_folder = resolve_under_data_root(grant.person_rel())
     name_lower = safe_name.lower()
     is_xlsx = name_lower.endswith(".xlsx") or str(rel_path or "").lower().endswith(".xlsx")
     is_csv = name_lower.endswith(".csv") or str(rel_path or "").lower().endswith(".csv")
@@ -626,9 +644,12 @@ def save_upload(
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("JSON upload is not valid UTF-8 JSON") from exc
         try:
-            if rel == store.SHARED_CATEGORIES:
+            if rel == store.SHARED_CATEGORIES or rel.endswith("/categories.json"):
+                from app.runtime import set_active_center
+
+                set_active_center(grant.center, country=grant.country or None)
                 result = store.put_file(
-                    list(store.list_workspaces() or ["dkg"])[0],
+                    grant.center,
                     store.SHARED_CATEGORIES,
                     payload,
                     source="central",
@@ -636,7 +657,7 @@ def save_upload(
             else:
                 parts = rel.split("/")
                 if len(parts) < 2:
-                    raise ValueError("workspace JSON path must be workspace/…")
+                    raise ValueError("center JSON path must be center/…")
                 ws, rest = parts[0], "/".join(parts[1:])
                 result = store.put_file(ws, rest, payload, source="central")
             payload_out = {

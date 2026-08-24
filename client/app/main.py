@@ -1,4 +1,4 @@
-"""Thin BFF: frontend + proxy to hub domain APIs (no local workspace copies)."""
+"""Thin BFF: frontend + proxy to hub domain APIs (no local center copies)."""
 from __future__ import annotations
 
 import json
@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.yearpath import current_year
+from app.yearpath import current_year, parse_year
 
 
 _AUTH_PUBLIC_PREFIXES = (
@@ -83,7 +83,7 @@ async def lifespan(_app: FastAPI):
         if not push.get("ok"):
             print(f"WARNING: hub end-session failed: {push.get('error')}")
         elif not push.get("skipped"):
-            print(f"hub end-session ok (workspace={push.get('workspace')})")
+            print(f"hub end-session ok (center={push.get('center')})")
 
 
 app = FastAPI(title="boekhouding-client", version="0.2", lifespan=lifespan)
@@ -164,17 +164,29 @@ def _valid_category_codes_from_categories_json(path: Path) -> list[int]:
     return sorted(codes)
 
 
-def _workspace_data_roots(workspace: str) -> list[Path]:
+def _center_data_roots(center: str) -> list[Path]:
     from app.runtime import project_root, server_root
 
-    ws = workspace.strip()
+    ws = center.strip()
     if not ws:
         return []
     roots = [
-        server_root() / "workspaces" / ws,         # normal dev layout
-        project_root().parents[1] / "workspaces" / ws,  # extra safety in dev
-        server_root() / ws,                        # when client exe sits in workspaces/
+        server_root() / "workspaces" / ws,
+        project_root().parents[1] / "workspaces" / ws,
+        server_root() / ws,
     ]
+    try:
+        from app.centrale_sync import load_config
+
+        country = (load_config().country or "").strip()
+    except Exception:  # noqa: BLE001
+        country = ""
+    if country:
+        roots = [
+            server_root() / "workspaces" / country / ws,
+            project_root().parents[1] / "workspaces" / country / ws,
+            *roots,
+        ]
     seen: set[str] = set()
     unique: list[Path] = []
     for root in roots:
@@ -186,19 +198,42 @@ def _workspace_data_roots(workspace: str) -> list[Path]:
     return unique
 
 
+def _safe_bank_folder(bank: str | None) -> str | None:
+    """Bank subfolder name, or None for the consolidated year file."""
+    raw = str(bank or "").strip()
+    if not raw or raw.lower() == "consolidated":
+        return None
+    if raw != Path(raw).name or raw in {".", ".."}:
+        return None
+    return raw
+
+
 def _local_transactions_payload(
     *,
-    workspace: str,
+    center: str,
     short: str,
     category_name: str,
     folder: str,
+    year: str | None = None,
+    bank: str | None = None,
 ) -> dict[str, Any] | None:
     category_code = _category_code_from_name(category_name)
     if category_code is None:
         return None
 
-    for root in _workspace_data_roots(workspace):
-        categorized_path = root / folder / current_year() / "categorized_transactions.json"
+    try:
+        year_name = parse_year(year)
+    except ValueError:
+        year_name = current_year()
+    bank_folder = _safe_bank_folder(bank)
+
+    for root in _center_data_roots(center):
+        year_path = root / folder / year_name
+        categorized_path = (
+            year_path / bank_folder / "categorized_transactions.json"
+            if bank_folder
+            else year_path / "categorized_transactions.json"
+        )
         if not categorized_path.is_file():
             continue
         try:
@@ -287,7 +322,7 @@ def api_login(body: LoginRequest, request: Request, response: Response) -> dict[
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     session = {
         **profile,
-        "selected_workspace": cfg.workspace if is_regional_admin() else "",
+        "selected_center": cfg.center if is_regional_admin() else "",
     }
     response.set_cookie(value=encode_session(session), **cookie_kwargs())
     try:
@@ -347,7 +382,7 @@ def health() -> dict[str, Any]:
         "auth_required": False,
         "hub": {
             "url": cfg.url,
-            "workspace": cfg.workspace,
+            "center": cfg.center,
             "enabled": cfg.enabled,
             "port": cfg.port,
             "access": cfg.access,
@@ -357,62 +392,62 @@ def health() -> dict[str, Any]:
     }
 
 
-@app.get("/api/workspaces")
-def api_workspaces() -> dict[str, Any]:
-    from app.centrale_sync import list_hub_workspaces, load_config
+@app.get("/api/centers")
+def api_centers() -> dict[str, Any]:
+    from app.centrale_sync import list_hub_centers, load_config
 
     cfg = load_config()
     return {
-        "workspaces": list_hub_workspaces(),
-        "workspace": cfg.workspace,
+        "centers": list_hub_centers(),
+        "center": cfg.center,
         "access": cfg.access,
     }
 
 
-class WorkspaceRequest(BaseModel):
-    workspace: str
+class CenterRequest(BaseModel):
+    center: str
 
 
-@app.post("/api/workspace")
-def api_set_workspace(body: WorkspaceRequest, request: Request, response: Response) -> dict[str, Any]:
+@app.post("/api/center")
+def api_set_center(body: CenterRequest, request: Request, response: Response) -> dict[str, Any]:
     from app.auth import cookie_kwargs, encode_session
-    from app.centrale_sync import list_hub_workspaces, load_config, switch_workspace
+    from app.centrale_sync import list_hub_centers, load_config, switch_center
     from app.runtime import is_regional_admin
 
     cfg = load_config()
     if not is_regional_admin():
         raise HTTPException(
             status_code=400,
-            detail="workspace switch requires access=regional_admin",
+            detail="center switch requires access=regional_admin",
         )
-    names = list_hub_workspaces()
-    if body.workspace not in names and names:
-        raise HTTPException(status_code=404, detail=f"Unknown workspace: {body.workspace!r}")
-    result = switch_workspace(body.workspace)
+    names = list_hub_centers()
+    if body.center not in names and names:
+        raise HTTPException(status_code=404, detail=f"Unknown center: {body.center!r}")
+    result = switch_center(body.center)
     if not result.get("ok"):
         raise HTTPException(status_code=502, detail=result.get("error") or "switch failed")
     session = getattr(request.state, "session", None)
     if isinstance(session, dict) and session.get("username"):
-        updated = {**session, "selected_workspace": body.workspace}
+        updated = {**session, "selected_center": body.center}
         response.set_cookie(value=encode_session(updated), **cookie_kwargs())
         request.state.session = updated
     return {
         "ok": True,
-        "workspace": body.workspace,
+        "center": body.center,
         "people": result.get("people") or [],
     }
 
 
 @app.get("/api/centrale/status")
 def api_centrale_status(request: Request) -> dict[str, Any]:
-    from app.centrale_sync import list_hub_workspaces, load_config, poll_central_events, sync_status
+    from app.centrale_sync import list_hub_centers, load_config, poll_central_events, sync_status
     from app.runtime import is_regional_admin
 
     poll_central_events()
     status = sync_status()
     cfg = load_config()
     if is_regional_admin():
-        status["workspaces"] = list_hub_workspaces()
+        status["centers"] = list_hub_centers()
     try:
         from app.centrale_sync import refresh_capabilities
 
@@ -645,12 +680,14 @@ def api_transactions(
                 if str(person.get("short") or "").strip().lower() == short.strip().lower():
                     folder = str(person.get("folder") or "").strip()
                     break
-        if folder and not (personal and bank and bank.lower() != "consolidated"):
+        if folder:
             local = _local_transactions_payload(
-                workspace=cfg.workspace,
+                center=cfg.center,
                 short=short,
                 category_name=category_name,
                 folder=folder,
+                year=year,
+                bank=bank,
             )
             if local is not None:
                 return local
@@ -827,7 +864,7 @@ def run() -> None:
     else:
         print(
             f"boekhouding-client {arrow} hub {cfg.url} "
-            f"(access={cfg.access}, workspace={cfg.workspace}, person={cfg.person or '*'}, port={port})"
+            f"(access={cfg.access}, center={cfg.center}, person={cfg.person or '*'}, port={port})"
         )
 
     if is_frozen() and not auth_on:

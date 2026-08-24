@@ -2,7 +2,7 @@
 
 Always-on hub for `workspaces/` (sibling of this folder). See [`../README.md`](../README.md).
 
-**Workspace folders** (`dkg`, `jl`, …) are created on disk by an admin — the hub never initializes them. The hub only creates **person packs** (and year folders) inside an existing workspace.
+**Center folders** (`dkg`, `jl`, …) are created on disk by an admin — the hub never initializes them. The hub only creates **person packs** (and year folders) inside an existing center.
 
 ## Listen / client `SERVER_URL`
 
@@ -60,4 +60,4 @@ uv run python scripts/build_onefile.py
 
 ## Add person
 
-Open `http://127.0.0.1:8200/add-person?workspace=<ws>` (or from the client **Add person** button, which uses the client's `SERVER_URL`).
+Open `http://127.0.0.1:8200/add-person?center=<center>` (or from the client **Add person** button, which uses the client's `SERVER_URL`).

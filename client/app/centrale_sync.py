@@ -1,4 +1,4 @@
-"""Hub client for the thin BFF — no local workspace file copies."""
+"""Hub client for the thin BFF — no local center file copies."""
 from __future__ import annotations
 
 import json
@@ -13,11 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from shared.user_access import ACCESS_LOCAL, ACCESS_PERSONAL, ACCESS_REGIONAL_ADMIN, parse_workspaces
+from shared.user_access import ACCESS_LOCAL, ACCESS_PERSONAL, ACCESS_REGIONAL_ADMIN, parse_centers
 
 from app.runtime import (
     is_regional_admin,
-    selected_workspace,
+    selected_center,
     set_runtime,
 )
 
@@ -41,17 +41,18 @@ _cached_has_secrets: bool = False
 @dataclass(frozen=True)
 class HubConfig:
     url: str
-    workspace: str  # currently selected target (from access / switcher)
-    author: str  # session label: workspace for local/personal; regional/country name otherwise
+    center: str  # currently selected center (from access / switcher)
+    author: str  # session label: center for local/personal; country username otherwise
     person: str  # empty unless access=personal
     access: str  # personal | local | regional_admin
     api_key: str
     enabled: bool
     port: int
-    workspaces: tuple[str, ...] = ()  # locked targets for local/personal; allow-list; empty = all
+    centers: tuple[str, ...] = ()  # centers in this country / allow-list
     username: str = ""
     title: str = ""
     auth_required: bool = False
+    country: str = ""
 
 
 def load_base_settings(*, force_reload: bool = False) -> dict[str, Any]:
@@ -103,94 +104,99 @@ def _build_hub_config(
     enabled: bool,
     port: int,
     access: str,
-    workspace_key: str,
+    center_key: str,
     person_key: str,
     selected: str | None,
     username: str = "",
     title: str = "",
     auth_required: bool = False,
     apply_process_runtime: bool = True,
-    workspaces_allowlist: list[str] | None = None,
+    centers_allowlist: list[str] | None = None,
+    country: str = "",
 ) -> HubConfig:
     access = _coerce_access(access)
     title = str(title or "").strip()
+    country = str(country or "").strip()
     parsed_ws = (
-        [str(w).strip() for w in workspaces_allowlist if str(w).strip()]
-        if workspaces_allowlist is not None
-        else parse_workspaces(workspace_key)
+        [str(w).strip() for w in centers_allowlist if str(w).strip()]
+        if centers_allowlist is not None
+        else parse_centers(center_key)
     )
 
     if access == ACCESS_PERSONAL:
         if not person_key:
             raise ValueError("personal login requires a non-empty person")
-        if not parsed_ws and workspace_key:
-            parsed_ws = parse_workspaces(workspace_key)
+        if not parsed_ws and center_key:
+            parsed_ws = parse_centers(center_key)
         if not parsed_ws:
-            raise ValueError("personal login requires a workspace")
+            raise ValueError("personal login requires a center")
         person = person_key
         author = username or person_key
-        workspaces = (parsed_ws[0],)
-        workspace = parsed_ws[0]
+        centers = (parsed_ws[0],)
+        center = parsed_ws[0]
     elif access == ACCESS_LOCAL:
         if not parsed_ws:
-            raise ValueError("local login requires a workspace")
+            raise ValueError("local login requires a center")
         person = ""
         author = username or parsed_ws[0]
-        workspaces = (parsed_ws[0],)
-        workspace = parsed_ws[0]
+        centers = (parsed_ws[0],)
+        center = parsed_ws[0]
     elif access == ACCESS_REGIONAL_ADMIN:
         person = ""
         author = username or "regional_admin"
         if parsed_ws:
-            workspaces = tuple(parsed_ws)
+            centers = tuple(parsed_ws)
             preferred = (selected or "").strip()
-            workspace = preferred if preferred in workspaces else workspaces[0]
+            center = preferred if preferred in centers else centers[0]
         else:
-            # DB workspace NULL/empty → every existing hub folder.
-            all_ws = _fetch_hub_workspace_names(url, api_key=api_key)
-            workspaces = tuple(all_ws)
+            # Empty center + country → every center folder in that country.
+            all_ws = _fetch_hub_center_names(url, api_key=api_key, country=country)
+            centers = tuple(all_ws)
             preferred = (selected or "").strip()
-            if preferred and preferred in workspaces:
-                workspace = preferred
-            elif workspaces:
-                workspace = workspaces[0]
+            if preferred and preferred in centers:
+                center = preferred
+            elif centers:
+                center = centers[0]
             else:
-                workspace = preferred or "dkg"
+                center = preferred or ""
 
     if apply_process_runtime:
         set_runtime(
-            workspace=workspace,
-            allowed_workspaces=list(workspaces),
+            center=center,
+            allowed_centers=list(centers),
             access=access,
             username=username or None,
             title=title or None,
+            country=country or None,
         )
     else:
         from app.runtime import bind_request_runtime
 
         bind_request_runtime(
             access=access,
-            allowed_workspaces=list(workspaces),
-            workspace=workspace,
+            allowed_centers=list(centers),
+            center=center,
             username=username or None,
             title=title or None,
-            workspace_key=workspace_key,
+            center_key=center_key,
             person_key=person_key,
+            country=country or None,
         )
 
     return HubConfig(
         url=url,
-        workspace=workspace,
+        center=center,
         author=author,
         person=person,
         access=access,
         api_key=api_key,
         enabled=enabled,
         port=port,
-        workspaces=workspaces,
+        centers=centers,
         username=username,
         title=title,
         auth_required=auth_required,
+        country=country,
     )
 
 
@@ -207,10 +213,11 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
     from app.runtime import (
         access_mode,
         current_username,
-        request_allowed_workspaces,
+        request_allowed_centers,
         request_person_key,
-        request_workspace_key,
-        selected_workspace,
+        request_center_key,
+        request_country,
+        selected_center,
     )
 
     # Request already bound a profile (middleware).
@@ -221,61 +228,74 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
             enabled=enabled,
             port=port,
             access=access_mode(),
-            workspace_key=request_workspace_key() or "",
+            center_key=request_center_key() or "",
             person_key=request_person_key() or "",
-            selected=selected_workspace(),
+            selected=selected_center(),
             username=current_username() or "",
             auth_required=True,
             apply_process_runtime=False,
-            workspaces_allowlist=request_allowed_workspaces(),
+            centers_allowlist=request_allowed_centers(),
+            country=request_country() or "",
         )
 
-    # Auth on but no session: bootstrap for lifespan / health (no person scope).
+    # Auth on but no session: bootstrap for lifespan / health (no all-countries view).
     if auth_on:
-        bootstrap_ws = os.environ.get("CLIENT_BOOTSTRAP_WORKSPACE", "").strip()
+        bootstrap_country = os.environ.get("CLIENT_COUNTRY", "").strip()
+        bootstrap_ws = (
+            os.environ.get("CLIENT_BOOTSTRAP_CENTER", "").strip()
+            or os.environ.get("CLIENT_BOOTSTRAP_WORKSPACE", "").strip()
+        )
         if not bootstrap_ws:
-            bootstrap_ws = _first_hub_workspace(url, api_key=api_key) or "dkg"
+            bootstrap_ws = (
+                _first_hub_center(url, api_key=api_key, country=bootstrap_country) or ""
+            )
         return _build_hub_config(
             url=url,
             api_key=api_key,
             enabled=enabled,
             port=port,
             access=ACCESS_REGIONAL_ADMIN,
-            workspace_key="",
+            center_key=bootstrap_ws,
             person_key="",
             selected=bootstrap_ws,
             username="",
             auth_required=True,
             apply_process_runtime=True,
+            country=bootstrap_country,
         )
 
     if _file_profile_cache is not None and not force_reload:
-        if selected_workspace() and selected_workspace() != _file_profile_cache.workspace:
-            ws = selected_workspace() or _file_profile_cache.workspace
+        if selected_center() and selected_center() != _file_profile_cache.center:
+            ws = selected_center() or _file_profile_cache.center
             _file_profile_cache = HubConfig(
                 url=_file_profile_cache.url,
-                workspace=ws,
+                center=ws,
                 author=_file_profile_cache.author,
                 person=_file_profile_cache.person,
                 access=_file_profile_cache.access,
                 api_key=_file_profile_cache.api_key,
                 enabled=_file_profile_cache.enabled,
                 port=_file_profile_cache.port,
-                workspaces=_file_profile_cache.workspaces,
+                centers=_file_profile_cache.centers,
                 username=_file_profile_cache.username,
                 title=_file_profile_cache.title,
                 auth_required=False,
+                country=_file_profile_cache.country,
             )
         return _file_profile_cache
 
-    # Auth off: identity from environment only (CLIENT_ACCESS / WORKSPACE / PERSON).
+    # Auth off: identity from environment only (CLIENT_ACCESS / CENTER / PERSON).
     access = _coerce_access(os.environ.get("CLIENT_ACCESS", "").strip() or ACCESS_LOCAL)
-    workspace_key = os.environ.get("CLIENT_WORKSPACE", "").strip()
+    center_key = (
+        os.environ.get("CLIENT_CENTER", "").strip()
+        or os.environ.get("CLIENT_WORKSPACE", "").strip()
+    )
     person_key = os.environ.get("CLIENT_PERSON", "").strip()
+    env_country = os.environ.get("CLIENT_COUNTRY", "").strip()
     default_port = (
         8300
         if access == ACCESS_REGIONAL_ADMIN
-        else (8302 if workspace_key == "jl" else 8301)
+        else (8302 if center_key == "jl" else 8301)
     )
     try:
         port = int(os.environ.get("PORT", "").strip() or str(default_port))
@@ -288,12 +308,13 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
         enabled=enabled,
         port=port,
         access=access,
-        workspace_key=workspace_key,
+        center_key=center_key,
         person_key=person_key,
-        selected=selected_workspace(),
+        selected=selected_center(),
         username="",
         auth_required=False,
         apply_process_runtime=True,
+        country=env_country,
     )
     _file_profile_cache = cfg
     return cfg
@@ -305,29 +326,33 @@ def apply_session_profile(session: dict[str, Any]) -> HubConfig:
     access = _coerce_access(str(session.get("access") or "local"))
     person_key = str(session.get("person") or "").strip()
     selected = (
-        str(session.get("selected_workspace") or "").strip()
-        or str(session.get("workspace") or "").strip()
+        str(session.get("selected_center") or session.get("selected_workspace") or "").strip()
+        or str(session.get("center") or session.get("workspace") or "").strip()
         or None
     )
     username = str(session.get("username") or "").strip()
-    workspaces_raw = session.get("workspaces")
-    workspaces_allowlist: list[str] | None = None
-    if isinstance(workspaces_raw, list):
-        workspaces_allowlist = [str(w).strip() for w in workspaces_raw if str(w).strip()]
-    workspace_key = ",".join(workspaces_allowlist) if workspaces_allowlist else ""
+    centers_raw = session.get("centers")
+    if not isinstance(centers_raw, list):
+        centers_raw = session.get("workspaces")
+    centers_allowlist: list[str] | None = None
+    if isinstance(centers_raw, list):
+        centers_allowlist = [str(w).strip() for w in centers_raw if str(w).strip()]
+    center_key = ",".join(centers_allowlist) if centers_allowlist else ""
+    country = str(session.get("country") or "").strip()
     return _build_hub_config(
         url=str(base["url"]),
         api_key=str(base["api_key"]),
         enabled=bool(base["enabled"]),
         port=int(base["port"]),
         access=access,
-        workspace_key=workspace_key,
+        center_key=center_key,
         person_key=person_key,
         selected=selected,
         username=username,
         auth_required=True,
         apply_process_runtime=False,
-        workspaces_allowlist=workspaces_allowlist,
+        centers_allowlist=centers_allowlist,
+        country=country,
     )
 
 
@@ -345,11 +370,14 @@ def _hub_get_json(url: str, path: str, *, api_key: str = "", timeout: float = 5.
     return data if isinstance(data, dict) else {}
 
 
-def _fetch_hub_workspace_names(url: str, *, api_key: str = "") -> list[str]:
-    """All workspace folder names from hub ``/api/status`` (existing dirs)."""
+def _fetch_hub_center_names(url: str, *, api_key: str = "", country: str = "") -> list[str]:
+    """Center folder names from hub ``/api/status?country=`` (never all countries)."""
     try:
-        data = _hub_get_json(url, "/api/status", api_key=api_key)
-        names = data.get("workspaces") or []
+        suffix = "/api/status"
+        if country:
+            suffix = f"/api/status?country={urllib.parse.quote(country)}"
+        data = _hub_get_json(url, suffix, api_key=api_key)
+        names = data.get("centers") or data.get("workspaces") or []
         if isinstance(names, list) and names:
             return [str(n).strip() for n in names if str(n).strip()]
     except Exception:  # noqa: BLE001
@@ -357,9 +385,9 @@ def _fetch_hub_workspace_names(url: str, *, api_key: str = "") -> list[str]:
     return []
 
 
-def _first_hub_workspace(url: str, *, api_key: str = "") -> str | None:
-    """Best-effort first workspace name from hub status (regional bootstrap)."""
-    names = _fetch_hub_workspace_names(url, api_key=api_key)
+def _first_hub_center(url: str, *, api_key: str = "", country: str = "") -> str | None:
+    """Best-effort first center name from hub status for one country."""
+    names = _fetch_hub_center_names(url, api_key=api_key, country=country)
     return names[0] if names else None
 
 
@@ -518,22 +546,22 @@ def hub_request(
 _request = hub_request
 
 
-def workspace_path(suffix: str = "") -> str:
+def center_path(suffix: str = "") -> str:
     cfg = load_config()
-    base = f"/api/local/{urllib.parse.quote(cfg.workspace)}"
+    base = f"/api/local/{urllib.parse.quote(cfg.center)}"
     return f"{base}{suffix}" if suffix.startswith("/") or not suffix else f"{base}/{suffix}"
 
 
 def hub_get(suffix: str, *, timeout: float = 60.0) -> dict[str, Any]:
-    return hub_request("GET", workspace_path(suffix), timeout=timeout)
+    return hub_request("GET", center_path(suffix), timeout=timeout)
 
 
 def hub_post(suffix: str, body: dict[str, Any] | None = None, *, timeout: float = 120.0) -> dict[str, Any]:
-    return hub_request("POST", workspace_path(suffix), body=body, timeout=timeout)
+    return hub_request("POST", center_path(suffix), body=body, timeout=timeout)
 
 
 def hub_put(suffix: str, body: dict[str, Any], *, timeout: float = 120.0) -> dict[str, Any]:
-    return hub_request("PUT", workspace_path(suffix), body=body, timeout=timeout)
+    return hub_request("PUT", center_path(suffix), body=body, timeout=timeout)
 
 
 def refresh_capabilities() -> dict[str, Any]:
@@ -570,7 +598,8 @@ def sync_status() -> dict[str, Any]:
         notes = _active_notifications_unlocked()
     return {
         "enabled": cfg.enabled,
-        "workspace": cfg.workspace,
+        "center": cfg.center,
+        "country": cfg.country,
         "author": cfg.author,
         "person": cfg.person,
         "access": cfg.access,
@@ -582,10 +611,10 @@ def sync_status() -> dict[str, Any]:
         "last_event_id": _last_event_id,
         "notifications": notes,
         "port": cfg.port,
-        "workspaces": (
-            list(cfg.workspaces)
-            if cfg.workspaces
-            else (list_hub_workspaces() if is_regional_admin() else [cfg.workspace])
+        "centers": (
+            list(cfg.centers)
+            if cfg.centers
+            else (list_hub_centers() if is_regional_admin() else [cfg.center])
         ),
         "data_epoch": _data_epoch,
         "has_secrets": _cached_has_secrets,
@@ -647,18 +676,18 @@ def _queue_notification(display_path: str) -> None:
         )
 
 
-def list_hub_workspaces() -> list[str]:
+def list_hub_centers() -> list[str]:
     cfg = load_config()
-    if cfg.workspaces:
-        return list(cfg.workspaces)
+    if cfg.centers:
+        return list(cfg.centers)
     if is_regional_admin():
         if not cfg.enabled:
-            return [cfg.workspace] if cfg.workspace else []
-        names = _fetch_hub_workspace_names(cfg.url, api_key=cfg.api_key)
+            return [cfg.center] if cfg.center else []
+        names = _fetch_hub_center_names(cfg.url, api_key=cfg.api_key, country=cfg.country)
         if names:
             return names
-        return [cfg.workspace] if cfg.workspace else []
-    return [cfg.workspace] if cfg.workspace else []
+        return [cfg.center] if cfg.center else []
+    return [cfg.center] if cfg.center else []
 
 
 def poll_central_events() -> dict[str, Any]:
@@ -673,13 +702,13 @@ def poll_central_events() -> dict[str, Any]:
             "since_id": _last_event_id,
         }
         if not is_regional_admin():
-            params["workspace"] = cfg.workspace
+            params["center"] = cfg.center
         q = urllib.parse.urlencode(params)
         data = hub_request("GET", f"/api/events?{q}", timeout=10.0)
         applied_any = False
         for ev in data.get("events") or []:
-            # UI chip: workspace author only (not every affected file path).
-            author = str(ev.get("workspace") or "").strip()
+            # UI chip: center author only (not every affected file path).
+            author = str(ev.get("center") or "").strip()
             if author and author not in ("_shared", "_merged"):
                 _queue_notification(author)
             applied_any = True
@@ -698,33 +727,34 @@ def poll_central_events() -> dict[str, Any]:
         return {"ok": False, "error": _last_error}
 
 
-def switch_workspace(workspace: str) -> dict[str, Any]:
+def switch_center(center: str) -> dict[str, Any]:
     global _last_error, _last_event_id, _data_epoch
     cfg = load_config()
-    ws = workspace.strip()
+    ws = center.strip()
     if not is_regional_admin():
-        return {"ok": False, "error": "Workspace switch requires a multi-workspace login"}
-    allow = list(cfg.workspaces)
+        return {"ok": False, "error": "Center switch requires a multi-center login"}
+    allow = list(cfg.centers)
     if allow and ws not in allow:
-        return {"ok": False, "error": f"Workspace {ws!r} not allowed"}
+        return {"ok": False, "error": f"Center {ws!r} not allowed"}
     if not allow:
-        names = list_hub_workspaces()
+        names = list_hub_centers()
         if names and ws not in names:
-            return {"ok": False, "error": f"Workspace {ws!r} not allowed"}
+            return {"ok": False, "error": f"Center {ws!r} not allowed"}
     from app.runtime import current_username
 
     if cfg.auth_required and current_username():
         set_runtime(
-            workspace=ws,
-            allowed_workspaces=allow,
+            center=ws,
+            allowed_centers=allow,
             access=cfg.access,
             username=cfg.username,
-            workspace_key=cfg.workspace if cfg.access in (ACCESS_LOCAL, ACCESS_PERSONAL) else "",
+            center_key=cfg.center if cfg.access in (ACCESS_LOCAL, ACCESS_PERSONAL) else "",
             person_key=cfg.person,
+            country=cfg.country,
             request_scoped=True,
         )
     else:
-        set_runtime(workspace=ws, allowed_workspaces=allow, access=cfg.access)
+        set_runtime(center=ws, allowed_centers=allow, access=cfg.access, country=cfg.country)
         load_config(force_reload=True)
     with _state_lock:
         _pending_notifications.clear()
@@ -732,16 +762,16 @@ def switch_workspace(workspace: str) -> dict[str, Any]:
         caps = refresh_capabilities()
         events = hub_request(
             "GET",
-            f"/api/events?{urllib.parse.urlencode({'viewer': _events_viewer(), 'since_id': 0, 'workspace': ws})}",
+            f"/api/events?{urllib.parse.urlencode({'viewer': _events_viewer(), 'since_id': 0, 'center': ws})}",
             timeout=10.0,
         )
         _last_event_id = int(events.get("latest_id") or 0)
         _data_epoch += 1
         _last_error = None
-        return {"ok": True, "workspace": ws, "people": caps.get("people") or []}
+        return {"ok": True, "center": ws, "people": caps.get("people") or []}
     except Exception as exc:  # noqa: BLE001
         _last_error = str(exc)
-        return {"ok": False, "error": _last_error, "workspace": ws}
+        return {"ok": False, "error": _last_error, "center": ws}
 
 
 def _session_body(*, session: dict[str, Any] | None = None, client_ip: str | None = None) -> dict[str, Any]:
@@ -802,7 +832,7 @@ def browser_session_start(request: Any, session: dict[str, Any]) -> None:
     body = _session_body(session=session, client_ip=ip)
     hub_request(
         "POST",
-        f"/api/local/{urllib.parse.quote(cfg.workspace)}/session/start",
+        f"/api/local/{urllib.parse.quote(cfg.center)}/session/start",
         body=body,
         timeout=10.0,
     )
@@ -824,7 +854,7 @@ def browser_session_end(request: Any, session: dict[str, Any]) -> None:
     try:
         hub_request(
             "POST",
-            f"/api/local/{urllib.parse.quote(cfg.workspace)}/session/end",
+            f"/api/local/{urllib.parse.quote(cfg.center)}/session/end",
             body=body,
             timeout=10.0,
         )
@@ -856,7 +886,7 @@ def maybe_browser_session_heartbeat(request: Any, session: dict[str, Any]) -> No
         body = _session_body(session=session, client_ip=ip)
         hub_request(
             "POST",
-            f"/api/local/{urllib.parse.quote(cfg.workspace)}/session/heartbeat",
+            f"/api/local/{urllib.parse.quote(cfg.center)}/session/heartbeat",
             body=body,
             timeout=10.0,
         )
@@ -874,7 +904,7 @@ def start_session_and_pull() -> dict[str, Any]:
     if not cfg.enabled:
         _hub_session_active = False
         return {"ok": False, "error": "hub sync disabled — unset CENTRALE_SYNC or set it to 1"}
-    ws = cfg.workspace
+    ws = cfg.center
     try:
         hub_request("GET", "/api/health", timeout=10.0)
         if not auth_enabled():
@@ -886,7 +916,7 @@ def start_session_and_pull() -> dict[str, Any]:
         caps = refresh_capabilities()
         events = hub_request(
             "GET",
-            f"/api/events?{urllib.parse.urlencode({'viewer': _events_viewer(), 'workspace': ws, 'since_id': 0})}",
+            f"/api/events?{urllib.parse.urlencode({'viewer': _events_viewer(), 'center': ws, 'since_id': 0})}",
             timeout=10.0,
         )
         _last_event_id = int(events.get("latest_id") or 0)
@@ -894,13 +924,13 @@ def start_session_and_pull() -> dict[str, Any]:
         _last_error = None
         return {
             "ok": True,
-            "workspace": ws,
+            "center": ws,
             "people": [p.get("short") for p in (caps.get("people") or [])],
         }
     except Exception as exc:  # noqa: BLE001
         _last_error = str(exc)
         _hub_session_active = False
-        return {"ok": False, "error": _last_error, "workspace": ws}
+        return {"ok": False, "error": _last_error, "center": ws}
 
 
 def end_session_and_push() -> dict[str, Any]:
@@ -913,7 +943,7 @@ def end_session_and_push() -> dict[str, Any]:
     if not cfg.enabled:
         _hub_session_active = False
         return {"ok": True, "skipped": True, "reason": "sync disabled"}
-    ws = cfg.workspace
+    ws = cfg.center
     try:
         if not auth_enabled():
             hub_request(
@@ -922,10 +952,10 @@ def end_session_and_push() -> dict[str, Any]:
                 body=_session_body(),
             )
         _last_error = None
-        result: dict[str, Any] = {"ok": True, "workspace": ws}
+        result: dict[str, Any] = {"ok": True, "center": ws}
     except Exception as exc:  # noqa: BLE001
         _last_error = str(exc)
-        result = {"ok": False, "error": _last_error, "workspace": ws}
+        result = {"ok": False, "error": _last_error, "center": ws}
     _hub_session_active = False
     return result
 
@@ -953,7 +983,7 @@ def _heartbeat_session() -> None:
     cfg = load_config()
     if not cfg.enabled:
         return
-    ws = cfg.workspace
+    ws = cfg.center
     hub_request(
         "POST",
         f"/api/local/{urllib.parse.quote(ws)}/session/heartbeat",

@@ -23,16 +23,19 @@ def main() -> None:
         user_store.init_user_store()
         print(user_store.users_db_path())
         for user in user_store.list_users():
-            ws = user.get("workspace") or ""
+            ws = user.get("center") or ""
             person = user.get("person") or ""
             access = user.get("access") or ""
-            allow = user.get("workspaces") or []
+            allow = user.get("centers") or []
             fmt = user.get("format") or ""
             extra = f" access={access}"
+            country = user.get("country") or ""
+            if country:
+                extra += f" country={country}"
             if allow:
-                extra += f" workspaces={','.join(allow)}"
+                extra += f" centers={','.join(allow)}"
             elif ws:
-                extra += f" workspace={ws!r}"
+                extra += f" center={ws!r}"
             if person:
                 extra += f" person={person}"
             if fmt:

@@ -83,11 +83,11 @@ html.refresh-busy body::before {
   flex: 0 1 auto;
 }
 
-.workspace-switcher {
+.center-switcher {
   position: relative;
 }
 
-.workspace-switcher-trigger {
+.center-switcher-trigger {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -102,20 +102,20 @@ html.refresh-busy body::before {
   border-radius: 4px;
 }
 
-.actions-menu .workspace-switcher-trigger {
+.actions-menu .center-switcher-trigger {
   min-width: 11rem;
 }
 
-.workspace-switcher-chevron {
+.center-switcher-chevron {
   line-height: 1;
   opacity: 0.75;
 }
 
-.workspace-switcher-label {
+.center-switcher-label {
   font-weight: 600;
 }
 
-.workspace-switcher-menu {
+.center-switcher-menu {
   position: absolute;
   top: calc(100% + 2px);
   left: 0;
@@ -131,11 +131,11 @@ html.refresh-busy body::before {
   overflow: hidden;
 }
 
-.actions-menu .workspace-switcher-menu {
+.actions-menu .center-switcher-menu {
   min-width: 11rem;
 }
 
-.workspace-switcher-menu button {
+.center-switcher-menu button {
   display: block;
   width: 100%;
   text-align: left;
@@ -147,18 +147,18 @@ html.refresh-busy body::before {
   cursor: pointer;
 }
 
-.workspace-switcher-menu button:hover,
-.workspace-switcher-menu button.is-selected,
-.workspace-switcher-menu a:hover {
+.center-switcher-menu button:hover,
+.center-switcher-menu button.is-selected,
+.center-switcher-menu a:hover {
   background: #c1f4ff;
 }
 
-.workspace-switcher-menu button:disabled {
+.center-switcher-menu button:disabled {
   opacity: 0.55;
   cursor: default;
 }
 
-.workspace-switcher-link {
+.center-switcher-link {
   display: block;
   width: 100%;
   text-align: left;
@@ -169,7 +169,7 @@ html.refresh-busy body::before {
   text-decoration: none;
 }
 
-.workspace-switcher-busy {
+.center-switcher-busy {
   color: #666;
   font-size: 0.75rem;
 }

@@ -209,7 +209,7 @@ def _session_label_host(request: Request, body: SessionPayload) -> str:
 
 
 def _client_session_label(
-    request: Request, _workspace: str, body: SessionPayload
+    request: Request, _center: str, body: SessionPayload
 ) -> str:
     import socket
 
@@ -250,61 +250,64 @@ def health() -> dict[str, Any]:
 
 
 @app.get("/api/status")
-def api_status(_: None = Depends(require_api_key)) -> dict[str, Any]:
-    return store.get_status()
+def api_status(
+    country: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    return store.get_status(country=country)
 
 
 @app.get("/api/events")
 def api_events(
     since_id: int = Query(default=0),
     viewer: str = Query(default="central"),
-    workspace: str | None = Query(default=None),
+    center: str | None = Query(default=None),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        return store.list_events(since_id=since_id, viewer=viewer, workspace=workspace)
+        return store.list_events(since_id=since_id, viewer=viewer, center=center)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{workspace}/session/start")
+@app.post("/api/local/{center}/session/start")
 def api_local_session_start(
-    workspace: str,
+    center: str,
     request: Request,
     body: SessionPayload | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        label = _client_session_label(request, workspace, body or SessionPayload())
+        label = _client_session_label(request, center, body or SessionPayload())
         return store.local_session_start(label)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{workspace}/session/end")
+@app.post("/api/local/{center}/session/end")
 def api_local_session_end(
-    workspace: str,
+    center: str,
     request: Request,
     body: SessionPayload | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        label = _client_session_label(request, workspace, body or SessionPayload())
+        label = _client_session_label(request, center, body or SessionPayload())
         return store.local_session_end(label)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{workspace}/session/heartbeat")
+@app.post("/api/local/{center}/session/heartbeat")
 def api_local_session_heartbeat(
-    workspace: str,
+    center: str,
     request: Request,
     body: SessionPayload | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     """Refresh last-seen so force-killed clients drop after TTL."""
     try:
-        label = _client_session_label(request, workspace, body or SessionPayload())
+        label = _client_session_label(request, center, body or SessionPayload())
         return store.local_session_start(label)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -325,23 +328,23 @@ def api_sessions_clear(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/api/local/{workspace}/files")
-def api_get_files(workspace: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
+@app.get("/api/local/{center}/files")
+def api_get_files(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
     try:
-        return store.read_workspace_files(workspace)
+        return store.read_center_files(center)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.put("/api/local/{workspace}/files")
+@app.put("/api/local/{center}/files")
 def api_put_files(
-    workspace: str,
+    center: str,
     body: FilesPayload,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        return store.write_workspace_files(
-            workspace,
+        return store.write_center_files(
+            center,
             {"categories": body.categories, "people": body.people},
             source=body.source,
         )
@@ -351,27 +354,27 @@ def api_put_files(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@app.get("/api/local/{workspace}/file")
+@app.get("/api/local/{center}/file")
 def api_get_file(
-    workspace: str,
+    center: str,
     path: str = Query(...),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        return store.read_file(workspace, path)
+        return store.read_file(center, path)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.put("/api/local/{workspace}/file")
+@app.put("/api/local/{center}/file")
 def api_put_file(
-    workspace: str,
+    center: str,
     body: FilePutPayload,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
         return store.put_file(
-            workspace,
+            center,
             body.path,
             body.content,
             source=body.source,
@@ -383,13 +386,13 @@ def api_put_file(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{workspace}/recalculate")
-def api_recalculate_workspace(
-    workspace: str,
+@app.post("/api/local/{center}/recalculate")
+def api_recalculate_center(
+    center: str,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        return store.mutate_and_recalculate(workspace, [], source="central")
+        return store.mutate_and_recalculate(center, [], source="central")
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -440,38 +443,38 @@ class BootstrapFetchRequest(BaseModel):
     date_to: str | None = None
 
 
-@app.get("/api/local/{workspace}/capabilities")
-def api_capabilities(workspace: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
-    from app import workspace_api
+@app.get("/api/local/{center}/capabilities")
+def api_capabilities(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    from app import center_api
 
     try:
-        return workspace_api.capabilities(workspace)
+        return center_api.capabilities(center)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.get("/api/local/{workspace}/people")
-def api_people(workspace: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
-    from app import workspace_api
+@app.get("/api/local/{center}/people")
+def api_people(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    from app import center_api
 
     try:
-        return workspace_api.people(workspace)
+        return center_api.people(center)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.get("/api/local/{workspace}/years")
-def api_years(workspace: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
-    from app.runtime import data_root
+@app.get("/api/local/{center}/years")
+def api_years(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
     from app.yearpath import default_upload_year, list_year_names
 
-    ws_root = (data_root() / workspace).resolve()
-    if not ws_root.is_dir():
-        raise HTTPException(status_code=404, detail=f"Workspace {workspace!r} not found")
+    try:
+        ws_root = store.require_center_dir(center)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     existing_years: set[str] = set()
     for child in ws_root.iterdir():
         if child.is_dir() and not child.name.startswith("."):
@@ -487,72 +490,72 @@ def api_years(workspace: str, _: None = Depends(require_api_key)) -> dict[str, A
     }
 
 
-@app.get("/api/local/{workspace}/people/{short}/years")
+@app.get("/api/local/{center}/people/{short}/years")
 def api_person_years(
-    workspace: str,
+    center: str,
     short: str,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app.runtime import data_root
     from app.yearpath import list_year_names
 
-    ws_root = (data_root() / workspace).resolve()
-    if not ws_root.is_dir():
-        raise HTTPException(status_code=404, detail=f"Workspace {workspace!r} not found")
+    try:
+        ws_root = store.require_center_dir(center)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     person_folder = (ws_root / short).resolve()
     if not person_folder.is_dir():
         raise HTTPException(status_code=404, detail=f"Person {short!r} not found")
     return {"person": short, "years": list_year_names(person_folder)}
 
 
-@app.get("/api/local/{workspace}/matrix")
+@app.get("/api/local/{center}/matrix")
 def api_matrix(
-    workspace: str,
+    center: str,
     year: str | None = Query(default=None),
     bank: str | None = Query(default=None),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     try:
-        return workspace_api.matrix(workspace, year=year, bank=bank)
+        return center_api.matrix(center, year=year, bank=bank)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.get("/api/local/{workspace}/people/{short}/banks")
+@app.get("/api/local/{center}/people/{short}/banks")
 def api_person_banks(
-    workspace: str,
+    center: str,
     short: str,
     year: str | None = Query(default=None),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     try:
-        return workspace_api.person_banks(workspace, short, year=year)
+        return center_api.person_banks(center, short, year=year)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.get("/api/local/{workspace}/transactions/{short}/{category_name}")
+@app.get("/api/local/{center}/transactions/{short}/{category_name}")
 def api_transactions(
-    workspace: str,
+    center: str,
     short: str,
     category_name: str,
     year: str | None = Query(default=None),
     bank: str | None = Query(default=None),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     try:
-        return workspace_api.transactions(
-            workspace, short, category_name, year=year, bank=bank
+        return center_api.transactions(
+            center, short, category_name, year=year, bank=bank
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -562,18 +565,18 @@ def api_transactions(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.put("/api/local/{workspace}/transactions/{short}/modification")
+@app.put("/api/local/{center}/transactions/{short}/modification")
 def api_modification(
-    workspace: str,
+    center: str,
     short: str,
     body: ModificationRequest,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     try:
-        return workspace_api.record_modification(
-            workspace, short, body.transaction, source=body.source
+        return center_api.record_modification(
+            center, short, body.transaction, source=body.source
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -583,31 +586,31 @@ def api_modification(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.get("/api/local/{workspace}/settings")
-def api_settings(workspace: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
-    from app import workspace_api
+@app.get("/api/local/{center}/settings")
+def api_settings(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    from app import center_api
 
     try:
-        return workspace_api.settings(workspace)
+        return center_api.settings(center)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.put("/api/local/{workspace}/settings/{group}/{category_name}")
+@app.put("/api/local/{center}/settings/{group}/{category_name}")
 def api_update_settings(
-    workspace: str,
+    center: str,
     group: str,
     category_name: str,
     body: SettingsTermsRequest,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     try:
-        return workspace_api.update_settings(
-            workspace, group, category_name, body.terms, source=body.source
+        return center_api.update_settings(
+            center, group, category_name, body.terms, source=body.source
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -617,17 +620,17 @@ def api_update_settings(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{workspace}/settings/add-term")
+@app.post("/api/local/{center}/settings/add-term")
 def api_add_term(
-    workspace: str,
+    center: str,
     body: AddTermRequest,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     try:
-        return workspace_api.add_term(
-            workspace,
+        return center_api.add_term(
+            center,
             category_name=body.category_name,
             term=body.term,
             general=body.general,
@@ -642,18 +645,18 @@ def api_add_term(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{workspace}/refresh")
+@app.post("/api/local/{center}/refresh")
 def api_refresh(
-    workspace: str,
+    center: str,
     body: RefreshRequest | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     req = body or RefreshRequest()
     try:
-        return workspace_api.refresh(
-            workspace,
+        return center_api.refresh(
+            center,
             date_from=req.date_from,
             date_to=req.date_to,
         )
@@ -667,19 +670,19 @@ def api_refresh(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{workspace}/refresh/{short}")
+@app.post("/api/local/{center}/refresh/{short}")
 def api_refresh_person(
-    workspace: str,
+    center: str,
     short: str,
     body: PersonRefreshRequest | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     req = body or PersonRefreshRequest()
     try:
-        return workspace_api.refresh_person(
-            workspace,
+        return center_api.refresh_person(
+            center,
             short,
             date_from=req.date_from,
             date_to=req.date_to,
@@ -727,7 +730,7 @@ def consent_callback(
     from app.core.single_client import EnableBankingError, complete_authorization
     from app.paths import CALC_LOCK, bind_person
     from app.people import get_person
-    from app.runtime import set_active_workspace
+    from app.runtime import set_active_center
     from app.settings import init_app
 
     if error:
@@ -783,18 +786,18 @@ def consent_callback(
             status_code=400,
         )
 
-    ws = str(pending.get("workspace") or "")
+    ws = str(pending.get("center") or "")
     short = str(pending.get("short") or "")
     folder = str(pending.get("folder") or short)
     raw_code = str(code).strip()
     try:
         with CALC_LOCK:
-            set_active_workspace(ws)
+            set_active_center(ws)
             init_app()
             pack = get_person(short)
             with bind_person(pack):
                 complete_authorization(raw_code)
-            consent_flow.mark_ready(workspace=ws, short=short, folder=folder)
+            consent_flow.mark_ready(center=ws, short=short, folder=folder)
     except (EnableBankingError, KeyError, FileNotFoundError, ValueError) as exc:
         return HTMLResponse(
             content=(
@@ -822,7 +825,7 @@ def consent_callback(
             "<!doctype html><html><head><meta charset='utf-8'>"
             "<title>Bank consent received</title></head><body>"
             f"<h1>Bank consent received — {short}</h1>"
-            f"<p>Updated consent for {folder} in workspace {ws}.</p>"
+            f"<p>Updated consent for {folder} in center {ws}.</p>"
             f"<p>Return to Boekhouding and use <strong>fetch for {short}</strong> "
             "(optional new year overwrite). You can close this tab.</p>"
             "<script>window.close();</script>"
@@ -831,19 +834,19 @@ def consent_callback(
     )
 
 
-@app.get("/api/local/{workspace}/consent-ready")
+@app.get("/api/local/{center}/consent-ready")
 def api_consent_ready(
-    workspace: str,
+    center: str,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app import consent_flow
 
-    return {"ready": consent_flow.list_ready(workspace)}
+    return {"ready": consent_flow.list_ready(center)}
 
 
-@app.post("/api/local/{workspace}/consent-ready/{short}/clear")
+@app.post("/api/local/{center}/consent-ready/{short}/clear")
 def api_consent_ready_clear(
-    workspace: str,
+    center: str,
     short: str,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
@@ -851,21 +854,21 @@ def api_consent_ready_clear(
 
     return {
         "ok": True,
-        "cleared": consent_flow.clear_ready(workspace=workspace, short=short),
+        "cleared": consent_flow.clear_ready(center=center, short=short),
     }
 
 
-@app.post("/api/local/{workspace}/people/create")
+@app.post("/api/local/{center}/people/create")
 def api_create_person(
-    workspace: str,
+    center: str,
     body: CreatePersonRequest,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     try:
-        return workspace_api.create_person(
-            workspace,
+        return center_api.create_person(
+            center,
             folder=body.folder,
             account_name=body.account_name,
             mode=body.mode,
@@ -884,19 +887,19 @@ def api_create_person(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{workspace}/people/{short}/pem")
+@app.post("/api/local/{center}/people/{short}/pem")
 async def api_upload_person_pem(
-    workspace: str,
+    center: str,
     short: str,
     file: UploadFile = File(...),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     raw = await file.read()
     try:
-        return workspace_api.upload_person_pem(
-            workspace,
+        return center_api.upload_person_pem(
+            center,
             short,
             filename=file.filename or "key.pem",
             content=raw,
@@ -909,19 +912,19 @@ async def api_upload_person_pem(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{workspace}/people/{short}/bootstrap-fetch")
+@app.post("/api/local/{center}/people/{short}/bootstrap-fetch")
 def api_bootstrap_person_fetch(
-    workspace: str,
+    center: str,
     short: str,
     body: BootstrapFetchRequest | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import workspace_api
+    from app import center_api
 
     req = body or BootstrapFetchRequest()
     try:
-        return workspace_api.bootstrap_person_fetch(
-            workspace,
+        return center_api.bootstrap_person_fetch(
+            center,
             short,
             date_from=req.date_from,
             date_to=req.date_to,
@@ -1050,7 +1053,7 @@ _ADMIN_HTML = """<!DOCTYPE html>
         : "(none)";
       statusEl.textContent =
         "Sessions:\\n" + sessionText +
-        "\\n\\nworkspaces: " + ((s.workspaces || []).join(", ") || "(none)");
+        "\\n\\ncenters: " + ((s.centers || []).join(", ") || "(none)");
       metaEl.textContent = "latest_event_id=" + (s.latest_event_id || 0);
     }
 
@@ -1064,7 +1067,7 @@ _ADMIN_HTML = """<!DOCTYPE html>
           const latest = events[events.length - 1];
           const files = (latest.affected_files && latest.affected_files.length)
             ? latest.affected_files
-            : [latest.display_path || (latest.workspace + "/" + latest.file_path)];
+            : [latest.display_path || (latest.center + "/" + latest.file_path)];
           replaceNotifications(files);
           for (const ev of events) sinceId = Math.max(sinceId, ev.id);
         }
@@ -1170,8 +1173,8 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
   <main>
     <h1>Add person</h1>
 
-    <label>Workspace
-      <select id="workspace"></select>
+    <label>Center
+      <select id="center"></select>
     </label>
     <label style="display:block;margin-top:0.5rem">Mode
       <select id="mode">
@@ -1299,15 +1302,15 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       document.getElementById("pemReference").style.display = excel ? "none" : "";
     }
 
-    async function loadWorkspaces() {
-      const sel = document.getElementById("workspace");
+    async function loadCenters() {
+      const sel = document.getElementById("center");
       sel.replaceChildren();
       let names = [];
       try {
         const s = await api("GET", "/api/status");
-        names = s.workspaces || [];
+        names = s.centers || [];
       } catch (_) {}
-      const preferred = (params.get("workspace") || "").trim();
+      const preferred = (params.get("center") || "").trim();
       if (preferred && !names.includes(preferred)) names = [preferred, ...names];
       if (!names.length) names = [preferred || "dkg"];
       for (const ws of names) {
@@ -1336,7 +1339,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
 
     document.getElementById("btnCreate").onclick = async () => {
       errEl.textContent = "";
-      const workspace = document.getElementById("workspace").value;
+      const center = document.getElementById("center").value;
       const modeValue = mode();
       const folder = document.getElementById("folder").value.trim();
       const body = {
@@ -1349,17 +1352,17 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         body.account_number = document.getElementById("accountNumber").value.trim();
       }
       try {
-        created = await api("POST", `/api/local/${encodeURIComponent(workspace)}/people/create`, body);
+        created = await api("POST", `/api/local/${encodeURIComponent(center)}/people/create`, body);
         if (modeValue === "excel") {
           document.getElementById("doneMsg").textContent =
-            `Excel person created: ${created.folder} (${created.workspace}), opening balance ${created.initial_balance}.`;
+            `Excel person created: ${created.folder} (${created.center}), opening balance ${created.initial_balance}.`;
           showLoginHint(created);
           document.getElementById("fetchOut").textContent = JSON.stringify(created, null, 2);
           showStep("step3");
           return;
         }
         document.getElementById("createdLabel").textContent =
-          `${created.folder} in ${created.workspace}`;
+          `${created.folder} in ${created.center}`;
         document.getElementById("ebLink").href = created.enable_banking_url || "https://enablebanking.com/cp/applications";
         document.getElementById("hintAppName").textContent =
           `boekh-${(created.folder || folder || "person").toLowerCase()}`;
@@ -1377,14 +1380,14 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       const fileInput = document.getElementById("pemFile");
       const file = fileInput.files && fileInput.files[0];
       if (!file) { errEl.textContent = "Choose a .pem file."; return; }
-      const workspace = created.workspace;
+      const center = created.center;
       const short = created.folder || created.person;
       try {
         const fd = new FormData();
         fd.append("file", file, file.name);
         const h = { "Accept": "application/json" };
         const up = await fetch(
-          `/api/local/${encodeURIComponent(workspace)}/people/${encodeURIComponent(short)}/pem`,
+          `/api/local/${encodeURIComponent(center)}/people/${encodeURIComponent(short)}/pem`,
           { method: "POST", headers: h, body: fd }
         );
         const upText = await up.text();
@@ -1408,7 +1411,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
 
     document.getElementById("mode").addEventListener("change", applyModeUi);
     applyModeUi();
-    loadWorkspaces().catch((e) => { errEl.textContent = String(e.message || e); });
+    loadCenters().catch((e) => { errEl.textContent = String(e.message || e); });
   </script>
 </body>
 </html>

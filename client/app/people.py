@@ -1,4 +1,4 @@
-"""Discover person packs under the active workspace (client BFF)."""
+"""Discover person packs under the active center (client BFF)."""
 from __future__ import annotations
 
 from pathlib import Path

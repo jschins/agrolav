@@ -148,8 +148,8 @@ export interface ConsentReadyPerson {
 
 export interface CentraleSyncStatus {
   enabled: boolean;
-  workspace: string;
-  /** Fixed identity for the session (does not follow workspace switcher). */
+  center: string;
+  /** Fixed identity for the session (does not follow center switcher). */
   author?: string;
   /** personal | local | regional_admin */
   access?: string;
@@ -163,7 +163,7 @@ export interface CentraleSyncStatus {
   last_event_id?: number;
   notifications?: SyncNotification[];
   port?: number;
-  workspaces?: string[];
+  centers?: string[];
   data_epoch?: number;
   has_secrets?: boolean;
   /** People whose bank consent just completed via hub callback. */
@@ -215,18 +215,18 @@ export function ackCentralWinsRefusal(id: number): Promise<{
   return sendJson("/api/centrale/refusals/ack", "POST", { id });
 }
 
-export function getWorkspaces(): Promise<{
-  workspaces: string[];
-  workspace: string;
+export function getCenters(): Promise<{
+  centers: string[];
+  center: string;
   access: string;
 }> {
-  return getJson("/api/workspaces");
+  return getJson("/api/centers");
 }
 
-export function setWorkspace(workspace: string): Promise<{
+export function setCenter(center: string): Promise<{
   ok: boolean;
-  workspace: string;
+  center: string;
   people: { short: string; folder: string }[];
 }> {
-  return sendJson("/api/workspace", "POST", { workspace });
+  return sendJson("/api/center", "POST", { center });
 }

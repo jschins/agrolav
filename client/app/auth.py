@@ -9,13 +9,13 @@ import os
 import time
 from typing import Any
 
-from shared.passwords import hash_password, verify_password
+from app.passwords import hash_password, verify_password
 from shared.user_access import (
     ACCESS_LOCAL,
     ACCESS_PERSONAL,
     ACCESS_REGIONAL_ADMIN,
     deduce_access,
-    parse_workspaces,
+    parse_centers,
 )
 
 COOKIE_NAME = "boekhouding_session"
@@ -77,26 +77,31 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
 
 def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
     person = str(user.get("person") or "").strip()
-    workspaces_raw = user.get("workspaces")
-    if isinstance(workspaces_raw, list):
-        workspaces = [str(w).strip() for w in workspaces_raw if str(w).strip()]
+    country = str(user.get("country") or "").strip()
+    center = str(user.get("center") or user.get("workspace") or "").strip()
+    centers_raw = user.get("centers")
+    if not isinstance(centers_raw, list):
+        centers_raw = user.get("workspaces")
+    if isinstance(centers_raw, list):
+        centers = [str(w).strip() for w in centers_raw if str(w).strip()]
     else:
-        workspaces = parse_workspaces(str(user.get("workspace") or ""))
-    access = deduce_access(person=person, workspaces=workspaces)
+        centers = parse_centers(center)
+    access = deduce_access(person=person, center=center, country=country)
     username = str(user.get("username") or "").strip()
 
     if access == ACCESS_PERSONAL:
-        workspace = workspaces[0] if workspaces else parse_workspaces(str(user.get("workspace") or ""))[0]
+        center = centers[0] if centers else (parse_centers(center)[0] if parse_centers(center) else "")
     elif access == ACCESS_LOCAL:
-        workspace = workspaces[0]
+        center = centers[0] if centers else center
     else:
-        workspace = workspaces[0] if workspaces else ""
+        center = centers[0] if centers else ""
 
     return {
         "username": username,
         "access": access,
-        "workspace": workspace,
-        "workspaces": workspaces,
+        "country": country,
+        "center": center,
+        "centers": centers,
         "person": person,
     }
 

@@ -60,11 +60,28 @@ class PersonPack:
 
 
 def shared_categories_path(root: Path | None = None) -> Path:
-    """Shared ``categories.json`` at the hub data root (all workspaces)."""
+    """``categories.json`` beside the centers (``data_root/<country>/``)."""
     if root is not None:
-        return (root / "categories.json").resolve()
-    from app.runtime import data_root
+        here = (root / "categories.json").resolve()
+        parent_cat = (root.parent / "categories.json").resolve()
+        if parent_cat.is_file() and not here.is_file():
+            return parent_cat
+        if here.is_file():
+            return here
+        return parent_cat if (root.parent / "categories.json").exists() else here
+    from app.runtime import active_country, app_root, country_root, data_root
 
+    country = active_country()
+    if country:
+        return (country_root() / "categories.json").resolve()
+    # Center folder is app_root(); catalog lives one level up.
+    center = app_root()
+    sibling = center / "categories.json"
+    if sibling.is_file():
+        return sibling.resolve()
+    parent_cat = center.parent / "categories.json"
+    if parent_cat.is_file():
+        return parent_cat.resolve()
     return (data_root() / "categories.json").resolve()
 
 
@@ -166,7 +183,7 @@ def bind_person(pack: PersonPack) -> Iterator[PersonPack]:
 
 
 def configure() -> list[PersonPack]:
-    """Discover person packs under app_root (empty workspace is allowed)."""
+    """Discover person packs under app_root (empty center is allowed)."""
     from app.people import list_people
 
     people = list_people()

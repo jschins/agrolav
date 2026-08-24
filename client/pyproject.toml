@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "boekhouding-client"
 version = "0.1"
-description = "Identical BFF + frontend for boekhouding hub (config selects workspaces)"
+description = "Identical BFF + frontend for boekhouding hub (config selects centers)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"

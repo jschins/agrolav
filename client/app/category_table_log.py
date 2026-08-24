@@ -9,7 +9,7 @@ from typing import Any
 
 _lock = threading.Lock()
 _LOG_NAME = "boekhouding.log"
-# Set True to write boekhouding.log under the workspace folder.
+# Set True to write boekhouding.log under the center folder.
 DEBUG = False
 
 
