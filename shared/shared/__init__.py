@@ -1,1 +1,1 @@
-﻿"""Shared libraries for the bankingApp ecosystem."""
+﻿"""Login access helpers shared by hub user store and client BFF."""

@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.yearpath import current_year
+from app.yearpath import current_year, parse_year
 
 
 _AUTH_PUBLIC_PREFIXES = (
@@ -186,19 +186,42 @@ def _workspace_data_roots(workspace: str) -> list[Path]:
     return unique
 
 
+def _safe_bank_folder(bank: str | None) -> str | None:
+    """Bank subfolder name, or None for the consolidated year file."""
+    raw = str(bank or "").strip()
+    if not raw or raw.lower() == "consolidated":
+        return None
+    if raw != Path(raw).name or raw in {".", ".."}:
+        return None
+    return raw
+
+
 def _local_transactions_payload(
     *,
     workspace: str,
     short: str,
     category_name: str,
     folder: str,
+    year: str | None = None,
+    bank: str | None = None,
 ) -> dict[str, Any] | None:
     category_code = _category_code_from_name(category_name)
     if category_code is None:
         return None
 
+    try:
+        year_name = parse_year(year)
+    except ValueError:
+        year_name = current_year()
+    bank_folder = _safe_bank_folder(bank)
+
     for root in _workspace_data_roots(workspace):
-        categorized_path = root / folder / current_year() / "categorized_transactions.json"
+        year_path = root / folder / year_name
+        categorized_path = (
+            year_path / bank_folder / "categorized_transactions.json"
+            if bank_folder
+            else year_path / "categorized_transactions.json"
+        )
         if not categorized_path.is_file():
             continue
         try:
@@ -645,12 +668,14 @@ def api_transactions(
                 if str(person.get("short") or "").strip().lower() == short.strip().lower():
                     folder = str(person.get("folder") or "").strip()
                     break
-        if folder and not (personal and bank and bank.lower() != "consolidated"):
+        if folder:
             local = _local_transactions_payload(
                 workspace=cfg.workspace,
                 short=short,
                 category_name=category_name,
                 folder=folder,
+                year=year,
+                bank=bank,
             )
             if local is not None:
                 return local

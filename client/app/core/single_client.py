@@ -1,7 +1,7 @@
 """Enable Banking client for the single-person workflow.
 
-Reads credentials from the configured profile path and private key file.
-Returns raw bank JSON to the caller.
+Bank fetch runs on the hub (`app.core.enable_banking`). This client copy is
+unused by the BFF; keep it only until leftover hub clones are removed.
 """
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 from urllib.parse import parse_qs, urlparse
 
-from shared.enable_banking import EnableBankingClient, EnableBankingError
-from shared.enable_banking.transactions import (
+from app.core.enable_banking import EnableBankingClient, EnableBankingError
+from app.core.enable_banking.transactions import (
     parse_iso_date,
     date_period_chunks,
     dedupe_transactions,

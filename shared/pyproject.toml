@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "banking-app-shared"
 version = "0.1"
-description = "Shared Enable Banking client and server client for the bankingApp ecosystem"
+description = "Login access helpers shared by boekhouding hub and client"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 
@@ -13,11 +13,7 @@ authors = [
   { name = "juleon", email = "j.m.schins@gmail.com" }
 ]
 
-dependencies = [
-  "requests>=2.31.0",
-  "PyJWT>=2.8.0",
-  "cryptography>=42.0.0",
-]
+dependencies = []
 
 [tool.setuptools.packages.find]
 where = ["."]

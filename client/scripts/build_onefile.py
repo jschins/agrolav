@@ -176,7 +176,7 @@ def main() -> int:
         "--hidden-import",
         "uvicorn.lifespan.on",
         "--hidden-import",
-        "shared.passwords",
+        "app.passwords",
         "--hidden-import",
         "shared.user_access",
         str(ENTRY),

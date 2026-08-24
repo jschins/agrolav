@@ -8,11 +8,11 @@ from pathlib import Path
 def _ensure_shared_package() -> None:
     """Use monorepo ``shared/`` when the venv snapshot is missing modules."""
     repo_shared = Path(__file__).resolve().parents[2] / "shared"
-    passwords = repo_shared / "shared" / "passwords.py"
-    if not passwords.is_file():
+    marker = repo_shared / "shared" / "user_access.py"
+    if not marker.is_file():
         return
     try:
-        import shared.passwords  # noqa: F401
+        import shared.user_access  # noqa: F401
         return
     except ModuleNotFoundError:
         pass

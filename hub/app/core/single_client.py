@@ -15,8 +15,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 from urllib.parse import parse_qs, urlparse
 
-from shared.enable_banking import EnableBankingClient, EnableBankingError
-from shared.enable_banking.transactions import (
+from app.core.enable_banking import EnableBankingClient, EnableBankingError
+from app.core.enable_banking.transactions import (
     parse_iso_date,
     date_period_chunks,
     dedupe_transactions,

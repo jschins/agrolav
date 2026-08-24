@@ -1,4 +1,4 @@
-"""Scrypt password hashing shared by hub user store and client login."""
+"""Scrypt password hashing for client login."""
 from __future__ import annotations
 
 import base64

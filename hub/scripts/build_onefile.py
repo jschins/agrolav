@@ -11,13 +11,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-PROJECT = Path(__file__).resolve().parents[1]  # server/hub
-SERVER = PROJECT.parent
-REPO = SERVER.parent
-SHARED_ROOT = REPO / "shared"  # contains the ``shared`` package
+PROJECT = Path(__file__).resolve().parents[1]  # hub/
+ROOT = PROJECT.parent
+SHARED_ROOT = ROOT / "shared"
 ENTRY = PROJECT / "entry.py"
 NAME = "server"
-DEPLOY = SERVER / "workspaces"
+DEPLOY = ROOT / "workspaces"
 STAGE_DIST = PROJECT / "build" / "dist"
 
 
@@ -114,7 +113,8 @@ def main() -> int:
         "--hidden-import=uvicorn.protocols.http",
         "--hidden-import=uvicorn.protocols.http.auto",
         "--hidden-import=uvicorn.lifespan.on",
-        "--hidden-import=shared.passwords",
+        "--hidden-import=app.core.enable_banking",
+        "--hidden-import=app.core.enable_banking.transactions",
         "--hidden-import=shared.user_access",
         str(ENTRY),
     ]

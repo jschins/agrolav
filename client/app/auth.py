@@ -9,7 +9,7 @@ import os
 import time
 from typing import Any
 
-from shared.passwords import hash_password, verify_password
+from app.passwords import hash_password, verify_password
 from shared.user_access import (
     ACCESS_LOCAL,
     ACCESS_PERSONAL,
