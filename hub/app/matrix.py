@@ -57,6 +57,20 @@ def load_general_file(people: list[PersonPack] | None = None) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def table_header_terms(people: list[PersonPack] | None = None) -> dict[str, str]:
+    """English key → display label from ``categories.json`` ``table_header_terms``."""
+    raw = load_general_file(people).get("table_header_terms")
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key, value in raw.items():
+        name = str(key).strip()
+        label = str(value).strip()
+        if name and label:
+            out[name] = label
+    return out
+
+
 def person_totals(pack: PersonPack) -> dict[str, str]:
     from app.core.categorize import load_category_totals, recategorize_transactions
 
@@ -159,6 +173,7 @@ def build_matrix(
         "people": columns,
         "cells": cells,
         "footers": {"balance": balance_name, "last_booked": date_name},
+        "table_header_terms": table_header_terms(packs),
     }
     ws = active_center()
     if ws:

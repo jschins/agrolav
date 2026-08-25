@@ -268,6 +268,16 @@ def _local_transactions_payload(
         columns = ["date", "amount", "type", "name", "description", "category"]
         categories_path = root.parent / "categories.json"
         valid_codes = _valid_category_codes_from_categories_json(categories_path)
+        header_terms: dict[str, str] = {}
+        try:
+            cats = json.loads(categories_path.read_text(encoding="utf-8"))
+            raw_terms = cats.get("table_header_terms") if isinstance(cats, dict) else None
+            if isinstance(raw_terms, dict):
+                header_terms = {
+                    str(k): str(v) for k, v in raw_terms.items() if str(k).strip() and str(v).strip()
+                }
+        except (OSError, json.JSONDecodeError, TypeError):
+            header_terms = {}
         return {
             "person": short,
             "folder": folder,
@@ -278,6 +288,7 @@ def _local_transactions_payload(
             "category_modified_ids": modified_ids,
             "keywords": [],
             "abbreviations": {},
+            "table_header_terms": header_terms,
             "valid_category_codes": valid_codes,
             "remainder_category": "18 Overige uitgaven",
         }

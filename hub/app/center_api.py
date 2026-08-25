@@ -144,6 +144,7 @@ def transactions(
             description_modified_ids, category_modified_ids = modification_style_ids(
                 payload
             )
+            header_terms = cat_data.get("table_header_terms") if isinstance(cat_data, dict) else {}
             return {
                 "center": ws,
                 "person": pack.short,
@@ -157,6 +158,7 @@ def transactions(
                 "abbreviations": cat_data.get("abbreviations", {})
                 if isinstance(cat_data, dict)
                 else {},
+                "table_header_terms": header_terms if isinstance(header_terms, dict) else {},
                 "valid_category_codes": sorted(category_code_set()),
                 "remainder_category": remainder_category_name(),
             }
@@ -211,7 +213,7 @@ def settings(center: str) -> dict[str, Any]:
             remainder_category_name,
             type_rules_payload,
         )
-        from app.matrix import category_names, load_general_file
+        from app.matrix import category_names, load_general_file, table_header_terms
         from app.paths import bind_person
         from app.settings import get_people
 
@@ -241,6 +243,7 @@ def settings(center: str) -> dict[str, Any]:
             "valid_category_codes": codes,
             "remainder_category": remainder,
             "typerules": typerules,
+            "table_header_terms": table_header_terms(people_list),
         }
 
 

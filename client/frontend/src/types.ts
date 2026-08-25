@@ -8,6 +8,7 @@ export interface MatrixResponse {
   people: PersonInfo[];
   cells: Record<string, Record<string, string>>;
   footers?: { balance: string; last_booked: string };
+  table_header_terms?: Record<string, string>;
 }
 
 export interface RefreshPersonResult {
@@ -43,6 +44,7 @@ export interface SettingsResponse {
   valid_category_codes: number[];
   remainder_category: string;
   typerules: TypeRule[];
+  table_header_terms?: Record<string, string>;
 }
 
 export type Transaction = Record<string, unknown>;
@@ -57,6 +59,7 @@ export interface TransactionsResponse {
   category_modified_ids: string[];
   keywords: string[];
   abbreviations: Record<string, string>;
+  table_header_terms?: Record<string, string>;
   valid_category_codes: number[];
   remainder_category: string;
 }

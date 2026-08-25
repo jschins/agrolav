@@ -24,7 +24,7 @@ DEFAULT_UPLOAD_TOKEN = (
     "scrypt$16384$8$1$DqM8xC0un6VYeM0i4FwKcQ$sUhw7V7Wfd4Rz0PB9RoWEHVIVcNpNId2GM5QIU-8_fQ"
 )
 
-_SCHEMA = """
+_TABLE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -36,8 +36,6 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_users_person_center
-    ON users(person COLLATE NOCASE, center COLLATE NOCASE);
 """
 
 
@@ -262,7 +260,9 @@ def _connect() -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.executescript(_SCHEMA)
+    # Table only: an existing users.db may still have ``workspace``. Creating
+    # idx_users_person_center here would fail before the rename migration.
+    conn.executescript(_TABLE_SCHEMA)
     _migrate_schema(conn)
     _import_users_csv(conn)
     _strip_timestamps_to_dates(conn)

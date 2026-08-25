@@ -750,15 +750,32 @@ function formatTermMatchHint(typerules: { type: string; category: string }[]): s
   return `${wildcards} ${priority}${rules}`;
 }
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  EUR: "€",
-  USD: "$",
-  GBP: "£",
+function tableHeaderTerm(
+  terms: Record<string, string> | undefined,
+  key: string,
+  fallback?: string
+): string {
+  const label = terms?.[key]?.trim();
+  if (label) return label;
+  return fallback ?? key;
+}
+
+const COLUMN_HEADER_KEYS: Record<string, string> = {
+  amount: "Amount",
+  type: "Type",
+  name: "Name",
+  iban: "IBAN",
+  description: "Description",
+  date: "Date",
+  category: "C",
 };
 
-function currencySymbol(code: unknown): string {
-  const c = String(code ?? "");
-  return CURRENCY_SYMBOLS[c] ?? (c ? `${c} ` : "€");
+function columnHeaderLabel(
+  column: string,
+  terms: Record<string, string> | undefined
+): string {
+  const key = COLUMN_HEADER_KEYS[column] ?? column;
+  return tableHeaderTerm(terms, key);
 }
 
 function abbreviate(map: Record<string, string>, type: unknown): string {
@@ -1621,12 +1638,12 @@ function MatrixTable({
   onPick: (short: string, category: string) => void;
 }) {
   const { categories, people, cells } = matrix;
-  const footers = matrixFooterNames(matrix);
+  const terms = matrix.table_header_terms;
   return (
     <table className="totals-table matrix-table">
       <thead>
         <tr>
-          <th className="cat">Category</th>
+          <th className="cat">{tableHeaderTerm(terms, "Category")}</th>
           {people.map((p) => (
             <th key={p.short} className="num">
               {p.short}
@@ -1646,15 +1663,13 @@ function MatrixTable({
               const isActive =
                 selection?.short === p.short && selection?.category === cat;
               const clickable = !isMatrixFooter(matrix, cat) && amount !== "";
-              const display =
-                amount === "" ? "" : cat === footers.last_booked ? amount : `€${amount}`;
               return (
                 <td
                   key={p.short}
                   className={`num${clickable ? " clickable" : ""}${isActive ? " active-cell" : ""}`}
                   onClick={clickable ? () => onPick(p.short, cat) : undefined}
                 >
-                  {display}
+                  {amount}
                 </td>
               );
             })}
@@ -1677,12 +1692,12 @@ function PersonColumnTable({
   onPick: (category: string) => void;
 }) {
   const { categories, cells } = matrix;
-  const footers = matrixFooterNames(matrix);
+  const terms = matrix.table_header_terms;
   return (
     <table className="totals-table">
       <thead>
         <tr>
-          <th className="cat">Category</th>
+          <th className="cat">{tableHeaderTerm(terms, "Category")}</th>
           <th className="num">{personShort}</th>
         </tr>
       </thead>
@@ -1696,14 +1711,12 @@ function PersonColumnTable({
             {(() => {
               const amount = cells[cat]?.[personShort] ?? "";
               const clickable = !isMatrixFooter(matrix, cat) && amount !== "";
-              const display =
-                amount === "" ? "" : cat === footers.last_booked ? amount : `€${amount}`;
               return (
                 <td
                   className={`num${clickable ? " clickable" : ""}`}
                   onClick={clickable ? () => onPick(cat) : undefined}
                 >
-                  {display}
+                  {amount}
                 </td>
               );
             })()}
@@ -1751,7 +1764,6 @@ function PTable({
       const negative = amount.trim().startsWith("-");
       return (
         <td key={column} className={negative ? "amount num neg" : "amount num"}>
-          {currencySymbol(t.currency)}
           {amount}
         </td>
       );
@@ -1834,7 +1846,7 @@ function PTable({
             <tr>
               {columns.map((c) => (
                 <th key={c} className={columnCellClass(c)}>
-                  {headerLabel(c)}
+                  {columnHeaderLabel(c, detail.table_header_terms)}
                 </th>
               ))}
             </tr>
@@ -1950,12 +1962,20 @@ function TermContextMenu({
           <table className="term-context-table">
             <thead>
               <tr>
-                <th className="term-context-cat-head">Category</th>
-                <th className="term-context-gp-head" title="General">
-                  G
+                <th className="term-context-cat-head">
+                  {tableHeaderTerm(settings.table_header_terms, "Category")}
                 </th>
-                <th className="term-context-gp-head" title="Personal">
-                  P
+                <th
+                  className="term-context-gp-head"
+                  title={tableHeaderTerm(settings.table_header_terms, "General")}
+                >
+                  {tableHeaderTerm(settings.table_header_terms, "G")}
+                </th>
+                <th
+                  className="term-context-gp-head"
+                  title={tableHeaderTerm(settings.table_header_terms, "Personal")}
+                >
+                  {tableHeaderTerm(settings.table_header_terms, "P")}
                 </th>
               </tr>
             </thead>
@@ -2103,7 +2123,9 @@ function TermsTables({
     <div className="terms-scroll">
       <div className="terms-panels">
         <section className="terms-panel terms-panel-general" aria-label="General terms">
-          <h2 className="terms-panel-label">General</h2>
+          <h2 className="terms-panel-label">
+            {tableHeaderTerm(settings.table_header_terms, "General")}
+          </h2>
           <TermsColumnTable
             columns={columns}
             columnWidths={columnWidths}
@@ -2271,20 +2293,6 @@ function columnColClass(column: string): string {
 function columnCellClass(column: string): string | undefined {
   if (column === "description") return "desc";
   return undefined;
-}
-
-const HEADER_LABELS: Record<string, string> = {
-  amount: "Amount",
-  type: "Type",
-  name: "Name",
-  iban: "IBAN",
-  description: "Description",
-  date: "Date",
-  category: "C",
-};
-
-function headerLabel(column: string): string {
-  return HEADER_LABELS[column] ?? column;
 }
 
 function ptableColumns(transactions: Transaction[]): string[] {

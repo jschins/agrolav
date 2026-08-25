@@ -593,6 +593,7 @@ th {
 
 .totals-table tr.banksaldo-row td {
   font-weight: 700;
+  background: #ffecbc;
 }
 
 .p-panel {
