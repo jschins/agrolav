@@ -62,13 +62,13 @@ order:
 | **114** | nederland | **23** | **datum** (matrix footer; not a booking category) |
 
 So the JSON row with `"category": 12` for anyone under `nederland/` becomes
-`cat_id_calculated = 104` in the fact table. The dimension projects 104 back
-to `"12 Vervoer"`.
+`cat_id_calculated = 104` in `transaction_nederland`. The dimension projects
+104 back to `"12 Vervoer"`.
 
 `saldo` and `datum` are appended on the same catalog so the matrix last rows
 use country labels. UK later renames those two labels (e.g. `balance` /
 `date`) without changing `category_id` or `local_code`. They never appear on
-`transaction.cat_id_*`; the cells are `account.balance` and
+`transaction_*.cat_id_*`; the cells are `account.balance` and
 `account.last_booked`.
 
 Hundred-blocks so a later insert in one catalog does not shift the others:
@@ -185,9 +185,9 @@ may repeat (Xavier’s BoS/Lloyds names equal the IBAN) or differ (Natwest
 
 Unique: `(person_id, iban)`. Seed `iban` / `account_name` / `balance` from
 `category_totals.json` `account_balances[]` (and Enable Banking profile if
-totals are empty). Set `last_booked` to `MAX(transaction.booked_on)` for
-that `account_id` after facts are loaded (JSON phase: max `date` in that
-account’s `categorized_transactions.json`).
+totals are empty). Set `last_booked` to `MAX(booked_on)` on that country’s
+`transaction_*` table for that `account_id` after facts are loaded (JSON
+phase: max `date` in that account’s `categorized_transactions.json`).
 
 A person-column matrix cell is the **sum** of `balance` and the **max** of
 `last_booked` across that person’s accounts (or the one account in a bank
@@ -230,10 +230,21 @@ Seed from current `bank modalities` (BoS is 5 as in the example):
 `file_format` `excel` is allowed for a later NL row; it is not in the seed
 until that bank has a folder and an excel processor.
 
-`transaction.bank_id` is NULL on the year-level consolidated file (merge of
+`transaction_*.bank_id` is NULL on the year-level consolidated file (merge of
 all bank folders). Per-bank JSON and uploads always set it.
 
-### `transaction`
+### `transaction_nederland` / `transaction_uk` / `transaction_stichtingen`
+
+One booking table per country folder. Same columns on all three. A Nederland
+row never lands in `transaction_uk`. Category ids on each table are checked
+against that country’s hundred-block (NL 100–199, UK 200–299, stichtingen
+300–399), so JSON `12` cannot become 104 on a UK or stichtingen row.
+
+| folder | table |
+|:-------|:------|
+| nederland | `transaction_nederland` |
+| uk | `transaction_uk` |
+| stichtingen | `transaction_stichtingen` |
 
 No `transaction_modification` table. User category edits live on the row.
 
@@ -269,13 +280,14 @@ COALESCE(t.cat_id_set, t.cat_id_calculated)
 ```
 
 JSON `modifications` that only change `description` write through to
-`transaction.description` (the stored description is the effective one).
+`transaction_*.description` (the stored description is the effective one).
 
 Unique `(person_id, year, bank_id, source_id)` with a filtered unique for
-`bank_id IS NULL`.
+`bank_id IS NULL`, per table.
 
 Checks: `cat_id_calculated` and `cat_id_set` (when not null) belong to the
-same country as `person_id`. `account.person_id = transaction.person_id`.
+same country as the table. `account.person_id` matches the booking row’s
+`person_id`. ETL inserts only people from that country into that table.
 
 `counterparty_iban` is the JSON `iban` field (payee / payer). It is not
 the person’s own account; that is `account_id` → `account.iban`.
@@ -283,7 +295,8 @@ the person’s own account; that is `account_id` → `account.iban`.
 ### `category_total`
 
 Snapshot of `category_totals.json` `categories` (name → amount string).
-Can also be a view over `transaction` using `COALESCE(cat_id_set, cat_id_calculated)`.
+Can also be a view over that country’s `transaction_*` table using
+`COALESCE(cat_id_set, cat_id_calculated)`.
 If stored:
 
 | column | type |
@@ -345,7 +358,7 @@ UI labels always go through `dim_category` on the **effective** category:
 
 ```sql
 SELECT c.label, t.amount, t.booked_on, a.iban, a.account_name
-FROM dbo.[transaction] t
+FROM dbo.transaction_nederland t
 JOIN dbo.person p ON p.person_id = t.person_id
 JOIN dbo.center n ON n.center_id = p.center_id
 JOIN dbo.account a ON a.account_id = t.account_id
@@ -357,10 +370,10 @@ WHERE n.folder = N'dkg'
 ```
 
 For a Nederland person this shows `"12 Vervoer"` wherever the effective id
-is 104. A UK or stichtingen person with local code 12 joins to the 200- or
-300-block, not to 104.
+is 104. Query `transaction_uk` or `transaction_stichtingen` for those
+countries; JSON `12` there is 204 or 304, not 104.
 
-Matrix last rows (not summed from `transaction` amounts):
+Matrix last rows (not summed from `transaction_*` amounts):
 
 ```sql
 -- per account (SQL); matrix person column = SUM(balance), MAX(last_booked)

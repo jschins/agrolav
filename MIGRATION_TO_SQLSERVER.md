@@ -149,7 +149,10 @@ Load `category_term` from the JSON arrays. Load `type_abbreviation`.
 Then load personal term overlays (`secret/personal_categories.json`) with
 `person_id` set.
 
-### 5. Load `transaction`
+### 5. Load `transaction_nederland` / `transaction_uk` / `transaction_stichtingen`
+
+Insert each JSON file into the table for that country folder. Do not use a
+single shared `transaction` table.
 
 For each `**/YYYY/categorized_transactions.json` and each
 `**/YYYY/<Bank>/categorized_transactions.json`:
@@ -200,8 +203,8 @@ JSON (nederland, unchanged):
 SQL:
 
 ```text
-transaction.cat_id_calculated = 104
-transaction.cat_id_set        = NULL   -- unless the user overrode it
+transaction_nederland.cat_id_calculated = 104
+transaction_nederland.cat_id_set        = NULL   -- unless the user overrode it
 dim_category: 104 → country = nederland, local_code = 12, label = '12 Vervoer'
 ```
 
@@ -237,10 +240,11 @@ Windows dev: the same driver from Microsoft.
    own `categories.json`, not a missing root file.
 2. Phase B: login list identical to SQLite; personal vs local vs
    country still derived from `person` + `center`.
-3. Phase C: anton’s `010305258369428750000000_0` has
-   `cat_id_calculated = 104`, `cat_id_set` NULL, and joins to
-   `"12 Vervoer"`; a UK or stichtingen row with JSON `12` joins to the 200-
-   or 300-block, not to 104. A person with several IBANs has
+3. Phase C: anton’s `010305258369428750000000_0` is in
+   `transaction_nederland` with `cat_id_calculated = 104`, `cat_id_set`
+   NULL, and joins to `"12 Vervoer"`; a UK or stichtingen row with JSON
+   `12` is in `transaction_uk` / `transaction_stichtingen` and joins to the
+   200- or 300-block, not to 104. A person with several IBANs has
    `number_accounts` equal to the count of `account` rows, all sharing
    `person_id`. Matrix last rows: `saldo` from `account.balance` (summed
    per person), `datum` from `MAX(account.last_booked)`.

@@ -1,0 +1,257 @@
+-- Phase C: country / categories / transactions replica.
+-- Does not drop dbo.app_user. Hub writes stay on JSON until cutover.
+-- Run via hub/scripts/load_phase_c.py (drops and reloads these tables).
+
+IF OBJECT_ID(N'dbo.account_balance_file', N'U') IS NOT NULL DROP TABLE dbo.account_balance_file;
+IF OBJECT_ID(N'dbo.account_balance', N'U') IS NOT NULL DROP TABLE dbo.account_balance;
+IF OBJECT_ID(N'dbo.category_total', N'U') IS NOT NULL DROP TABLE dbo.category_total;
+IF OBJECT_ID(N'dbo.[transaction]', N'U') IS NOT NULL DROP TABLE dbo.[transaction];
+IF OBJECT_ID(N'dbo.transaction_nederland', N'U') IS NOT NULL DROP TABLE dbo.transaction_nederland;
+IF OBJECT_ID(N'dbo.transaction_uk', N'U') IS NOT NULL DROP TABLE dbo.transaction_uk;
+IF OBJECT_ID(N'dbo.transaction_stichtingen', N'U') IS NOT NULL DROP TABLE dbo.transaction_stichtingen;
+IF OBJECT_ID(N'dbo.category_term', N'U') IS NOT NULL DROP TABLE dbo.category_term;
+IF OBJECT_ID(N'dbo.type_abbreviation', N'U') IS NOT NULL DROP TABLE dbo.type_abbreviation;
+IF OBJECT_ID(N'dbo.account', N'U') IS NOT NULL DROP TABLE dbo.account;
+IF OBJECT_ID(N'dbo.person', N'U') IS NOT NULL DROP TABLE dbo.person;
+IF OBJECT_ID(N'dbo.center', N'U') IS NOT NULL DROP TABLE dbo.center;
+IF OBJECT_ID(N'dbo.dim_category', N'U') IS NOT NULL DROP TABLE dbo.dim_category;
+IF OBJECT_ID(N'dbo.bank', N'U') IS NOT NULL DROP TABLE dbo.bank;
+IF OBJECT_ID(N'dbo.country', N'U') IS NOT NULL DROP TABLE dbo.country;
+
+CREATE TABLE dbo.country (
+    country_id INT NOT NULL PRIMARY KEY,
+    folder NVARCHAR(32) NOT NULL,
+    currency_default CHAR(3) NOT NULL,
+    CONSTRAINT ux_country_folder UNIQUE (folder)
+);
+
+CREATE TABLE dbo.bank (
+    bank_id INT NOT NULL PRIMARY KEY,
+    bank_name_official NVARCHAR(64) NOT NULL,
+    bank_name_folder NVARCHAR(64) NOT NULL,
+    file_format NVARCHAR(64) NOT NULL,
+    CONSTRAINT ux_bank_folder UNIQUE (bank_name_folder)
+);
+
+CREATE TABLE dbo.dim_category (
+    category_id INT NOT NULL PRIMARY KEY,
+    country_id INT NOT NULL,
+    local_code INT NOT NULL,
+    label NVARCHAR(128) NOT NULL,
+    is_remainder BIT NOT NULL CONSTRAINT df_dim_category_remainder DEFAULT (0),
+    matrix_role NVARCHAR(32) NULL,
+    CONSTRAINT fk_dim_category_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
+    CONSTRAINT ux_dim_category_code UNIQUE (country_id, local_code),
+    CONSTRAINT ux_dim_category_label UNIQUE (country_id, label),
+    CONSTRAINT ck_dim_category_role CHECK (
+        matrix_role IS NULL OR matrix_role IN (N'balance', N'last_booked')
+    )
+);
+
+CREATE TABLE dbo.center (
+    center_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    country_id INT NOT NULL,
+    folder NVARCHAR(64) NOT NULL,
+    CONSTRAINT fk_center_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
+    CONSTRAINT ux_center_folder UNIQUE (country_id, folder)
+);
+
+CREATE TABLE dbo.person (
+    person_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    center_id INT NOT NULL,
+    folder NVARCHAR(128) NOT NULL,
+    number_accounts INT NOT NULL,
+    CONSTRAINT fk_person_center FOREIGN KEY (center_id) REFERENCES dbo.center (center_id),
+    CONSTRAINT ux_person_folder UNIQUE (center_id, folder)
+);
+
+CREATE TABLE dbo.account (
+    account_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    person_id INT NOT NULL,
+    iban NVARCHAR(64) NOT NULL,
+    account_name NVARCHAR(64) NOT NULL,
+    balance DECIMAL(18, 2) NOT NULL CONSTRAINT df_account_balance DEFAULT (0),
+    last_booked DATE NULL,
+    CONSTRAINT fk_account_person FOREIGN KEY (person_id) REFERENCES dbo.person (person_id),
+    CONSTRAINT ux_account_iban UNIQUE (person_id, iban)
+);
+
+CREATE TABLE dbo.category_term (
+    term_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    category_id INT NOT NULL,
+    person_id INT NULL,
+    term NVARCHAR(256) NOT NULL,
+    sort_order INT NOT NULL,
+    CONSTRAINT fk_category_term_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
+    CONSTRAINT fk_category_term_person FOREIGN KEY (person_id) REFERENCES dbo.person (person_id)
+);
+
+CREATE UNIQUE INDEX ux_category_term_catalog
+    ON dbo.category_term (category_id, term)
+    WHERE person_id IS NULL;
+
+CREATE UNIQUE INDEX ux_category_term_personal
+    ON dbo.category_term (category_id, person_id, term)
+    WHERE person_id IS NOT NULL;
+
+CREATE TABLE dbo.type_abbreviation (
+    country_id INT NOT NULL,
+    bank_type NVARCHAR(64) NOT NULL,
+    abbreviation NVARCHAR(16) NOT NULL,
+    CONSTRAINT pk_type_abbreviation PRIMARY KEY (country_id, bank_type),
+    CONSTRAINT fk_type_abbreviation_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id)
+);
+
+-- One booking table per country folder. Category ids must stay in that
+-- country's hundred-block (NL 100-199, UK 200-299, stichtingen 300-399).
+CREATE TABLE dbo.transaction_nederland (
+    transaction_id BIGINT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    person_id INT NOT NULL,
+    account_id INT NOT NULL,
+    year SMALLINT NOT NULL,
+    bank_id INT NULL,
+    source_id NVARCHAR(128) NOT NULL,
+    amount DECIMAL(18, 2) NOT NULL,
+    currency CHAR(3) NOT NULL,
+    bank_type NVARCHAR(64) NULL,
+    counterparty_name NVARCHAR(512) NULL,
+    counterparty_iban NVARCHAR(64) NULL,
+    description NVARCHAR(MAX) NULL,
+    booked_on DATE NOT NULL,
+    cat_id_calculated INT NOT NULL,
+    cat_id_set INT NULL,
+    CONSTRAINT fk_txn_nl_person FOREIGN KEY (person_id) REFERENCES dbo.person (person_id),
+    CONSTRAINT fk_txn_nl_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id),
+    CONSTRAINT fk_txn_nl_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
+    CONSTRAINT fk_txn_nl_cat_calc FOREIGN KEY (cat_id_calculated) REFERENCES dbo.dim_category (category_id),
+    CONSTRAINT fk_txn_nl_cat_set FOREIGN KEY (cat_id_set) REFERENCES dbo.dim_category (category_id),
+    CONSTRAINT ck_txn_nl_year CHECK (year >= 1990 AND year <= 2100),
+    CONSTRAINT ck_txn_nl_cat_calc CHECK (cat_id_calculated BETWEEN 100 AND 199),
+    CONSTRAINT ck_txn_nl_cat_set CHECK (cat_id_set IS NULL OR cat_id_set BETWEEN 100 AND 199)
+);
+
+CREATE UNIQUE INDEX ux_txn_nl_consolidated
+    ON dbo.transaction_nederland (person_id, year, source_id)
+    WHERE bank_id IS NULL;
+
+CREATE UNIQUE INDEX ux_txn_nl_bank
+    ON dbo.transaction_nederland (person_id, year, bank_id, source_id)
+    WHERE bank_id IS NOT NULL;
+
+CREATE TABLE dbo.transaction_uk (
+    transaction_id BIGINT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    person_id INT NOT NULL,
+    account_id INT NOT NULL,
+    year SMALLINT NOT NULL,
+    bank_id INT NULL,
+    source_id NVARCHAR(128) NOT NULL,
+    amount DECIMAL(18, 2) NOT NULL,
+    currency CHAR(3) NOT NULL,
+    bank_type NVARCHAR(64) NULL,
+    counterparty_name NVARCHAR(512) NULL,
+    counterparty_iban NVARCHAR(64) NULL,
+    description NVARCHAR(MAX) NULL,
+    booked_on DATE NOT NULL,
+    cat_id_calculated INT NOT NULL,
+    cat_id_set INT NULL,
+    CONSTRAINT fk_txn_uk_person FOREIGN KEY (person_id) REFERENCES dbo.person (person_id),
+    CONSTRAINT fk_txn_uk_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id),
+    CONSTRAINT fk_txn_uk_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
+    CONSTRAINT fk_txn_uk_cat_calc FOREIGN KEY (cat_id_calculated) REFERENCES dbo.dim_category (category_id),
+    CONSTRAINT fk_txn_uk_cat_set FOREIGN KEY (cat_id_set) REFERENCES dbo.dim_category (category_id),
+    CONSTRAINT ck_txn_uk_year CHECK (year >= 1990 AND year <= 2100),
+    CONSTRAINT ck_txn_uk_cat_calc CHECK (cat_id_calculated BETWEEN 200 AND 299),
+    CONSTRAINT ck_txn_uk_cat_set CHECK (cat_id_set IS NULL OR cat_id_set BETWEEN 200 AND 299)
+);
+
+CREATE UNIQUE INDEX ux_txn_uk_consolidated
+    ON dbo.transaction_uk (person_id, year, source_id)
+    WHERE bank_id IS NULL;
+
+CREATE UNIQUE INDEX ux_txn_uk_bank
+    ON dbo.transaction_uk (person_id, year, bank_id, source_id)
+    WHERE bank_id IS NOT NULL;
+
+CREATE TABLE dbo.transaction_stichtingen (
+    transaction_id BIGINT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    person_id INT NOT NULL,
+    account_id INT NOT NULL,
+    year SMALLINT NOT NULL,
+    bank_id INT NULL,
+    source_id NVARCHAR(128) NOT NULL,
+    amount DECIMAL(18, 2) NOT NULL,
+    currency CHAR(3) NOT NULL,
+    bank_type NVARCHAR(64) NULL,
+    counterparty_name NVARCHAR(512) NULL,
+    counterparty_iban NVARCHAR(64) NULL,
+    description NVARCHAR(MAX) NULL,
+    booked_on DATE NOT NULL,
+    cat_id_calculated INT NOT NULL,
+    cat_id_set INT NULL,
+    CONSTRAINT fk_txn_st_person FOREIGN KEY (person_id) REFERENCES dbo.person (person_id),
+    CONSTRAINT fk_txn_st_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id),
+    CONSTRAINT fk_txn_st_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
+    CONSTRAINT fk_txn_st_cat_calc FOREIGN KEY (cat_id_calculated) REFERENCES dbo.dim_category (category_id),
+    CONSTRAINT fk_txn_st_cat_set FOREIGN KEY (cat_id_set) REFERENCES dbo.dim_category (category_id),
+    CONSTRAINT ck_txn_st_year CHECK (year >= 1990 AND year <= 2100),
+    CONSTRAINT ck_txn_st_cat_calc CHECK (cat_id_calculated BETWEEN 300 AND 399),
+    CONSTRAINT ck_txn_st_cat_set CHECK (cat_id_set IS NULL OR cat_id_set BETWEEN 300 AND 399)
+);
+
+CREATE UNIQUE INDEX ux_txn_st_consolidated
+    ON dbo.transaction_stichtingen (person_id, year, source_id)
+    WHERE bank_id IS NULL;
+
+CREATE UNIQUE INDEX ux_txn_st_bank
+    ON dbo.transaction_stichtingen (person_id, year, bank_id, source_id)
+    WHERE bank_id IS NOT NULL;
+
+CREATE TABLE dbo.category_total (
+    category_total_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    person_id INT NOT NULL,
+    year SMALLINT NOT NULL,
+    bank_id INT NULL,
+    category_id INT NOT NULL,
+    amount DECIMAL(18, 2) NOT NULL,
+    CONSTRAINT fk_ct_person FOREIGN KEY (person_id) REFERENCES dbo.person (person_id),
+    CONSTRAINT fk_ct_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
+    CONSTRAINT fk_ct_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id)
+);
+
+CREATE UNIQUE INDEX ux_category_total_consolidated
+    ON dbo.category_total (person_id, year, category_id)
+    WHERE bank_id IS NULL;
+
+CREATE UNIQUE INDEX ux_category_total_bank
+    ON dbo.category_total (person_id, year, bank_id, category_id)
+    WHERE bank_id IS NOT NULL;
+
+CREATE TABLE dbo.account_balance (
+    account_balance_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    person_id INT NOT NULL,
+    year SMALLINT NOT NULL,
+    bank_id INT NULL,
+    account_id INT NOT NULL,
+    currency CHAR(3) NOT NULL,
+    balance DECIMAL(18, 2) NOT NULL,
+    uid UNIQUEIDENTIFIER NULL,
+    CONSTRAINT fk_ab_person FOREIGN KEY (person_id) REFERENCES dbo.person (person_id),
+    CONSTRAINT fk_ab_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
+    CONSTRAINT fk_ab_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id)
+);
+
+CREATE UNIQUE INDEX ux_account_balance_consolidated
+    ON dbo.account_balance (person_id, year, account_id)
+    WHERE bank_id IS NULL;
+
+CREATE UNIQUE INDEX ux_account_balance_bank
+    ON dbo.account_balance (person_id, year, bank_id, account_id)
+    WHERE bank_id IS NOT NULL;
+
+CREATE TABLE dbo.account_balance_file (
+    account_balance_file_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    account_balance_id INT NOT NULL,
+    file_name NVARCHAR(256) NOT NULL,
+    sort_order INT NOT NULL,
+    CONSTRAINT fk_abf_balance FOREIGN KEY (account_balance_id) REFERENCES dbo.account_balance (account_balance_id)
+);
