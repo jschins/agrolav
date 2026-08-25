@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import {
   ackCentralWinsRefusal,
@@ -605,7 +605,11 @@ function SyncNotifyShell({
     if (!isCountry) return;
     setSwitching(true);
     setCenter(ws)
-      .then(() => {
+      .then(() => getCentraleStatus())
+      .then((s) => {
+        setStatus(s);
+        const epoch = typeof s.data_epoch === "number" ? s.data_epoch : null;
+        if (epoch != null) dataEpochRef.current = epoch;
         onCenterChanged?.();
       })
       .catch(() => {})
@@ -814,6 +818,7 @@ export default function App() {
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const bumpCenterEpoch = useCallback(() => setWsEpoch((n) => n + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -868,7 +873,7 @@ export default function App() {
             }
           : undefined
       }
-      onCenterChanged={() => setWsEpoch((n) => n + 1)}
+      onCenterChanged={bumpCenterEpoch}
     >
       {(brandName, year, bankView) =>
         isTerms ? (
