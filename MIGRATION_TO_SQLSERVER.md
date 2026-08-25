@@ -28,35 +28,78 @@ JSON `category` values stay **8, 9, 12, 18**. Do not rewrite files to 104.
 
 ## Phase B — `users.db` → SQL Server
 
-SQLite table (`hub/app/user_store.py`):
+Login rows only. JSON under `workspaces/` stays the source of truth.
+Leave `upload_acl.json` as a file (bank modalities + IP allowlist). Phase C
+replaces **bank modalities** with `dbo.bank`; `hub_ips` / `upload.log` still
+stay files unless you later drop IP filtering.
+
+### Access (unchanged)
+
+Empty string = NULL.
+
+| `center` | `person` | access |
+|:---------|:---------|:-------|
+| NULL | NULL | country (scan `workspaces/{country}/`) |
+| set | NULL | center (that folder) |
+| set | set | personal |
+
+Password = username (unchanged).
+
+### 1. Create `dbo.app_user`
+
+Same fields as SQLite (`hub/app/user_store.py`):
 
 ```text
-users (id, username, title, center, person, format, created_at, updated_at, country)
+users (id, username, title, country, center, person, format, created_at, updated_at)
 ```
 
-Password = username (unchanged). `HUB_USERS_DB` can already point at another
-path; point it at SQL Server after the cutover.
+On SQL Server:
 
-On SQL Server (`dbo.app_user` in `DATABASE.md`):
+- `NVARCHAR` / `DATE`.
+- Optional `country_id` FK once `dbo.country` exists (phase C). For B you
+  can keep `country` as the folder (`nederland`, `uk`, `stichtingen`).
+- Keep `center` as the folder name (`dkg`, `gph`, …). Do not store a
+  selected switcher value here.
 
-- Same columns, `NVARCHAR` / `DATE`.
-- Add `country_id` (or resolve via `center.folder`).
-- Keep `center` as the center folder so `dkg,jl` still splits the same way.
+### 2. Driver and secret
 
-Practical bits:
+- Windows + Ubuntu: `ODBC Driver 18 for SQL Server`.
+- Hub: `uv add pyodbc`.
+- Connection string in env (`HUB_DATABASE_URL`), never in git.
+  Azure SQL and a local/VPS instance use the same driver.
 
-- Driver: `ODBC Driver 18 for SQL Server` + `pyodbc` (or `mssql+pyodbc` if
-  you introduce SQLAlchemy later). Azure SQL and a local/VPS instance use
-  the same driver.
-- Connection: env `HUB_DATABASE_URL` or `HUB_USERS_DB` equivalent; never
-  commit the string.
-- One-shot copy: dump SQLite → insert. `id` need not be preserved if
-  nothing else FKs it (nothing does today).
-- Hub: swap `sqlite3` in `user_store.py` only. JSON transactions stay on
-  disk.
+### 3. One-shot copy
 
-Leave `upload_acl.json` as a file. Tokens today are the shared scrypt
-string keyed by `(person, center)`, not a SQL column.
+Dump SQLite `users` → insert into `app_user`. `id` need not be preserved
+(nothing FKs it today). After copy, login list must match: same usernames,
+same NULL `center`/`person`, same `country` folders.
+
+Keep `users.csv` as a fallback import for a while, or stop importing it
+once SQL is the store (today SQLite re-imports CSV on startup).
+
+### 4. Hub cutover
+
+Swap **only** `sqlite3` in `user_store.py` (find / authenticate / list).
+Public shape stays `_public_user` → `deduce_access`. JSON transactions
+stay on disk. Upload tokens stay the shared scrypt string keyed by
+`(person, center)` from this table, not a new SQL column.
+
+`HUB_DATABASE_URL` in `hub/.env` (gitignored) is the SQL Server connection.
+`HUB_USERS_DB` remains a SQLite path only when that URL is unset.
+
+### 5. Check
+
+Check: `nederland` / `united_kingdom` / `stichtingen` country; `dkg` center;
+`juleon_schins` personal. Hub prints `user store ready: sqlserver:dbo.app_user`.
+
+Local SQL Server (this PC):
+
+1. `hub/.env` (gitignored) holds `HUB_DATABASE_URL` and `MSSQL_SA_PASSWORD`.
+2. `docker compose -f docker-compose.sqlserver.yml up -d`
+3. `cd hub && uv sync` (includes `pyodbc`) then `uv run hub`
+
+First connect creates database `agrolav`, table `dbo.app_user`, and copies
+rows from `workspaces/users.db` if the table is empty.
 
 ---
 
@@ -174,7 +217,7 @@ change the JSON schema (not required).
 | `secret/*.pem`, `consent.json` | Enable Banking credentials |
 | uploaded CSV / xlsx | import artefacts |
 | `downloaded_transactions.json` | optional later |
-| `upload_acl.json`, `upload.log` | IP policy |
+| `upload_acl.json`, `upload.log` | IP policy (`hub_ips`); bank modalities move to `dbo.bank` in C |
 
 ---
 

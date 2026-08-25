@@ -71,6 +71,25 @@ def table_header_terms(people: list[PersonPack] | None = None) -> dict[str, str]
     return out
 
 
+def _amount_for_category(totals: dict[str, str], catalog_name: str) -> str:
+    """Look up a totals cell by catalog label, or by the two-digit local code.
+
+    UK ``categories.json`` uses English labels; existing ``category_totals.json``
+    still has Dutch keys. Codes (08, 12, 18, …) are the join.
+    """
+    from app.core.categorize import _category_code
+
+    if catalog_name in totals:
+        return str(totals[catalog_name])
+    code = _category_code(catalog_name)
+    if code is None:
+        return "0.00"
+    for name, amount in totals.items():
+        if _category_code(name) == code:
+            return str(amount)
+    return "0.00"
+
+
 def person_totals(pack: PersonPack) -> dict[str, str]:
     from app.core.categorize import load_category_totals, recategorize_transactions
 
@@ -165,7 +184,7 @@ def build_matrix(
         view_pack = pack_for_bank_view(pack, bank, center=ws) if bank else pack
         totals = person_totals(view_pack)
         for name in booking:
-            cells[name][pack.short] = str(totals.get(name, "0.00"))
+            cells[name][pack.short] = _amount_for_category(totals, name)
         cells[balance_name][pack.short] = person_current_balance(view_pack) or ""
         cells[date_name][pack.short] = person_last_booked(view_pack) or ""
     payload: dict[str, Any] = {

@@ -553,7 +553,7 @@ def ensure_personal_login_user(*, center: str, person: str) -> dict[str, Any]:
         "password": user_store.password_for_username(public["username"]),
         "center": ws,
         "person": folder,
-        "users_db": str(user_store.users_db_path()),
+        "users_db": user_store.store_label(),
     }
 
 

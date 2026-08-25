@@ -1,0 +1,11 @@
+# Local SQL Server for Phase B (logins). See hub/.env.example.
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: agrolav-sql
+    env_file:
+      - hub/.env
+    environment:
+      ACCEPT_EULA: "Y"
+    ports:
+      - "1433:1433"

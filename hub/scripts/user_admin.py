@@ -21,7 +21,7 @@ def main() -> None:
 
     if args.cmd == "list":
         user_store.init_user_store()
-        print(user_store.users_db_path())
+        print(user_store.store_label())
         for user in user_store.list_users():
             ws = user.get("center") or ""
             person = user.get("person") or ""
