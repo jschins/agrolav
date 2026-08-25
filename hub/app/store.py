@@ -101,13 +101,18 @@ def _clean_center(center: str) -> str:
 
 def center_dir(center: str) -> Path:
     """Path to a center folder: ``data_root/<country>/<center>``."""
-    from app.runtime import active_country, resolve_country_for_center
+    from app.runtime import country_folder, request_country, resolve_country_for_center
 
     base = data_root()
     ws = _clean_center(center)
     if base.name.lower() == ws.lower():
         return base
-    country = active_country() or resolve_country_for_center(ws)
+    explicit = country_folder(request_country() or "")
+    if explicit:
+        candidate = base / explicit / ws
+        if candidate.is_dir():
+            return candidate
+    country = resolve_country_for_center(ws)
     if country:
         return base / country / ws
     return base / ws
@@ -122,7 +127,8 @@ def require_center_dir(center: str) -> Path:
     path = center_dir(center)
     if not path.is_dir():
         raise FileNotFoundError(
-            f"Center {center!r} does not exist under {data_root()}. "
+            f"Center {center!r} does not exist under {data_root()} "
+            f"(looked at {path}). "
             "Create the country/center folders on disk first; the hub does not initialize them."
         )
     return path
@@ -140,10 +146,10 @@ def list_centers(country: str | None = None) -> list[str]:
     Does not list country folders themselves. Without ``country`` (and without
     an active country) returns an empty list — there is no all-countries view.
     """
-    from app.runtime import active_country
+    from app.runtime import active_country, country_folder
 
     skip = frozenset({"upload_acl.json", "users.db", "upload.log", "categories.json"})
-    name = (country or active_country() or "").strip()
+    name = country_folder(country or active_country() or "")
     if not name:
         return []
     root = data_root() / name

@@ -5,11 +5,11 @@ import sys
 from contextvars import ContextVar
 from pathlib import Path
 
-from shared.user_access import ACCESS_LOCAL, ACCESS_PERSONAL, ACCESS_REGIONAL_ADMIN
+from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY
 
 _selected_center: str | None = None
 _allowed_centers: list[str] = []
-_access_mode: str = ACCESS_LOCAL
+_access_mode: str = ACCESS_CENTER
 
 # Per-request overrides (multi-user auth). Fall back to process globals when unset.
 _cv_selected_center: ContextVar[str | None] = ContextVar("selected_center", default=None)
@@ -172,9 +172,9 @@ def access_mode() -> str:
     return cv if cv is not None else _access_mode
 
 
-def is_regional_admin() -> bool:
+def is_country() -> bool:
     """True when this login may switch centers."""
-    return access_mode() == ACCESS_REGIONAL_ADMIN
+    return access_mode() == ACCESS_COUNTRY
 
 
 def selected_center() -> str | None:
@@ -189,7 +189,7 @@ def set_selected_center(center: str) -> None:
     ws = center.strip()
     mode = access_mode()
     allowed = allowed_centers()
-    if is_regional_admin():
+    if is_country():
         if _cv_access_mode.get() is not None:
             _cv_selected_center.set(ws)
         else:

@@ -151,7 +151,7 @@ export interface CentraleSyncStatus {
   center: string;
   /** Fixed identity for the session (does not follow center switcher). */
   author?: string;
-  /** personal | local | regional_admin */
+  /** personal | local | country */
   access?: string;
   /** Empty / omitted = all people; otherwise only this short is visible. */
   person?: string;

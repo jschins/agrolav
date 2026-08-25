@@ -591,9 +591,9 @@ function SyncNotifyShell({
   }, [onCenterChanged]);
 
   const access = (status?.access || "").trim().toLowerCase();
-  const isRegionalAdmin = access === "regional_admin";
-  // Multi-center login: switcher when access allows.
-  const centers = isRegionalAdmin
+  const isCountry = access === "country";
+  // Country login always shows the switcher, even for a single center.
+  const centers = isCountry
     ? status?.centers?.length
       ? status.centers
       : status?.center
@@ -602,7 +602,7 @@ function SyncNotifyShell({
     : [];
 
   function handleSelect(ws: string) {
-    if (!isRegionalAdmin) return;
+    if (!isCountry) return;
     setSwitching(true);
     setCenter(ws)
       .then(() => {
@@ -629,7 +629,7 @@ function SyncNotifyShell({
 
   const showBar =
     Boolean(status?.enabled) ||
-    isRegionalAdmin ||
+    isCountry ||
     headerActions.length > 0 ||
     Boolean(uploadUrl) ||
     Boolean(onLogout);
@@ -648,7 +648,7 @@ function SyncNotifyShell({
       {showBar && (
         <div className="centrale-status-bar">
           <div className="centrale-status-left">
-            {isRegionalAdmin ? (
+            {isCountry ? (
               <CenterSwitcher
                 center={status?.center || "…"}
                 centers={centers}
@@ -693,7 +693,7 @@ function SyncNotifyShell({
           </div>
         </div>
       )}
-      {refusal && !isRegionalAdmin && (
+      {refusal && !isCountry && (
         <div className="central-wins-overlay" role="alertdialog" aria-modal="true">
           <div className="central-wins-dialog">
             <p>{refusal.message}</p>

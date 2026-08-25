@@ -3,10 +3,25 @@ from __future__ import annotations
 
 import os
 import sys
+from contextvars import ContextVar, Token
 from pathlib import Path
 
 _active_center: str | None = None
 _active_country: str | None = None
+
+# Login / CSV names that are not the on-disk country folder.
+_COUNTRY_FOLDER_ALIASES = {
+    "united_kingdom": "uk",
+    "united kingdom": "uk",
+    "great_britain": "uk",
+    "great britain": "uk",
+    "gb": "uk",
+    "the_netherlands": "nederland",
+    "netherlands": "nederland",
+    "nl": "nederland",
+}
+
+_cv_request_country: ContextVar[str | None] = ContextVar("request_country", default=None)
 
 
 def is_frozen() -> bool:
@@ -42,6 +57,28 @@ def data_root() -> Path:
     return (server_root() / "workspaces").resolve()
 
 
+def country_folder(name: str | None) -> str:
+    """Map a login/CSV country name to the folder under ``workspaces/``."""
+    raw = str(name or "").strip()
+    if not raw:
+        return ""
+    key = raw.lower().replace("-", "_").replace(" ", "_")
+    return _COUNTRY_FOLDER_ALIASES.get(key, raw)
+
+
+def set_request_country(country: str | None) -> Token[str | None]:
+    folder = country_folder(country) or None
+    return _cv_request_country.set(folder)
+
+
+def reset_request_country(token: Token[str | None]) -> None:
+    _cv_request_country.reset(token)
+
+
+def request_country() -> str | None:
+    return _cv_request_country.get()
+
+
 def list_country_folders() -> list[str]:
     """First-level folders under data_root that hold centers (nederland, uk, …)."""
     from app.yearpath import has_person_layout
@@ -60,20 +97,26 @@ def list_country_folders() -> list[str]:
 
 
 def resolve_country_for_center(center: str) -> str | None:
-    """Country folder that contains ``center``, or the active country if already set."""
+    """Country folder that contains ``center``.
+
+    Prefers the request/active country when that folder actually holds the
+    center; otherwise searches every country under ``data_root``.
+    """
     name = (center or "").strip()
     if not name:
         return None
-    if _active_country:
-        candidate = data_root() / _active_country / name
+    preferred = request_country() or _active_country
+    if preferred:
+        preferred = country_folder(preferred)
+        candidate = data_root() / preferred / name
         if candidate.is_dir():
-            return _active_country
+            return preferred
     matches: list[str] = []
     for country in list_country_folders():
         if (data_root() / country / name).is_dir():
             matches.append(country)
-    if _active_country and _active_country in matches:
-        return _active_country
+    if preferred and preferred in matches:
+        return preferred
     return matches[0] if matches else None
 
 
@@ -81,7 +124,7 @@ def set_active_center(center: str | None, *, country: str | None = None) -> None
     """Bind calc ``app_root()`` to ``data_root/<country>/<center>`` (center)."""
     global _active_center, _active_country
     _active_center = (center or "").strip() or None
-    explicit = (country or "").strip() or None
+    explicit = country_folder(country) or None
     if explicit:
         _active_country = explicit
     elif _active_center:

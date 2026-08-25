@@ -11,9 +11,9 @@ from typing import Any
 
 from app.passwords import hash_password, verify_password
 from shared.user_access import (
-    ACCESS_LOCAL,
-    ACCESS_PERSONAL,
-    ACCESS_REGIONAL_ADMIN,
+    ACCESS_CENTER,
+    ACCESS_COUNTRY,
+    ACCESS_PERSON,
     deduce_access,
     parse_centers,
 )
@@ -79,21 +79,29 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
     person = str(user.get("person") or "").strip()
     country = str(user.get("country") or "").strip()
     center = str(user.get("center") or user.get("workspace") or "").strip()
+    username = str(user.get("username") or "").strip()
+    raw_access = str(user.get("access") or "").strip().lower()
+    if raw_access in (ACCESS_PERSON, ACCESS_CENTER, ACCESS_COUNTRY):
+        access = raw_access
+    else:
+        access = deduce_access(person=person, center=center, country=country)
+
     centers_raw = user.get("centers")
     if not isinstance(centers_raw, list):
         centers_raw = user.get("workspaces")
-    if isinstance(centers_raw, list):
+    if access == ACCESS_COUNTRY:
+        # Catalog is scanned from folders on the hub after login.
+        centers = []
+    elif isinstance(centers_raw, list):
         centers = [str(w).strip() for w in centers_raw if str(w).strip()]
     else:
         centers = parse_centers(center)
-    access = deduce_access(person=person, center=center, country=country)
-    username = str(user.get("username") or "").strip()
 
-    if access == ACCESS_PERSONAL:
+    if access == ACCESS_PERSON:
         center = centers[0] if centers else (parse_centers(center)[0] if parse_centers(center) else "")
-    elif access == ACCESS_LOCAL:
+    elif access == ACCESS_CENTER:
         center = centers[0] if centers else center
-    else:
+    elif not center:
         center = centers[0] if centers else ""
 
     return {

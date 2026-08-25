@@ -193,7 +193,7 @@ Windows dev: the same driver from Microsoft.
 1. Phase A: open a nederland, uk, and stichtingen person; each uses its
    own `categories.json`, not a missing root file.
 2. Phase B: login list identical to SQLite; personal vs local vs
-   regional_admin still derived from `person` + `center`.
+   country still derived from `person` + `center`.
 3. Phase C: anton’s `010305258369428750000000_0` has
    `cat_id_calculated = 104`, `cat_id_set` NULL, and joins to
    `"12 Vervoer"`; a UK or stichtingen row with JSON `12` joins to the 200-

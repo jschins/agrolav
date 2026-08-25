@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from shared.user_access import ACCESS_REGIONAL_ADMIN, enrich_user_record, parse_centers
+from shared.user_access import ACCESS_COUNTRY, deduce_access, enrich_user_record, parse_centers
 
 from app.runtime import data_root
 
@@ -132,12 +132,24 @@ def _row_to_user(row: sqlite3.Row) -> dict[str, Any]:
 
 def _public_user(user: dict[str, Any]) -> dict[str, Any]:
     rec = enrich_user_record(user)
-    if rec["access"] == ACCESS_REGIONAL_ADMIN and not rec["centers"] and rec["country"]:
-        from app.store import list_centers
+    from app.runtime import country_folder
+    from app.store import list_centers, list_countries
 
+    folder = country_folder(rec.get("country") or "")
+    if not folder:
+        guessed = country_folder(rec.get("username") or "")
+        known = {name.lower() for name in list_countries()}
+        if guessed and guessed.lower() in known:
+            folder = guessed
+    if folder:
+        rec["country"] = folder
+        rec["access"] = deduce_access(
+            person=rec["person"], center=rec["center"], country=folder
+        )
+    if rec["access"] == ACCESS_COUNTRY and rec["country"]:
+        # Scan folders. Do not write a selected folder into ``center``;
+        # that column is the users.db assignment (NULL for country logins).
         rec["centers"] = list_centers(rec["country"])
-        if rec["centers"] and not rec["center"]:
-            rec["center"] = rec["centers"][0]
     return rec
 
 

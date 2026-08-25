@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
-ACCESS_PERSONAL = "personal"
-ACCESS_LOCAL = "local"
-ACCESS_REGIONAL_ADMIN = "regional_admin"
+ACCESS_PERSON = "personal"
+ACCESS_CENTER = "local"
+ACCESS_COUNTRY = "country"
 
 
 def parse_centers(raw: str | None) -> list[str]:
@@ -19,25 +19,20 @@ def parse_centers(raw: str | None) -> list[str]:
 
 
 def deduce_access(*, person: str, center: str = "", country: str = "") -> str:
-    """Return ``personal``, ``local``, or ``regional_admin``.
+    """Access follows the users.db assignment fields (empty string = NULL).
 
-    - ``person`` set → personal (one person in one center)
-    - ``person`` empty, one center → local (whole center)
-    - ``person`` empty, several centers → regional_admin (switcher, still one country)
-    - ``person`` empty, center empty, ``country`` set → regional_admin (all
-      centers in that country)
-    - country empty and center empty → local (incomplete row; never all countries)
+    - person set → personal
+    - person empty, center set → local (that center)
+    - person empty, center empty, country set → country (all folders in that country)
+    - person empty, center empty, country empty → local (incomplete row)
     """
     if str(person or "").strip():
-        return ACCESS_PERSONAL
-    centers = parse_centers(center)
-    if len(centers) == 1:
-        return ACCESS_LOCAL
-    if len(centers) > 1:
-        return ACCESS_REGIONAL_ADMIN
+        return ACCESS_PERSON
+    if str(center or "").strip():
+        return ACCESS_CENTER
     if str(country or "").strip():
-        return ACCESS_REGIONAL_ADMIN
-    return ACCESS_LOCAL
+        return ACCESS_COUNTRY
+    return ACCESS_CENTER
 
 
 def enrich_user_record(user: dict[str, Any]) -> dict[str, Any]:

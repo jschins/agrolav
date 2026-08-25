@@ -8,7 +8,6 @@ from typing import Any, Iterator
 
 from app import store
 from app.paths import CALC_LOCK
-from app.runtime import set_active_center
 from app.yearpath import current_year, ensure_year_folder, has_person_layout, parse_year
 
 
@@ -16,7 +15,6 @@ def _clean_ws(center: str) -> str:
     ws = center.strip().replace("\\", "/").strip("/")
     if not ws or ".." in ws.split("/") or ws.startswith("/"):
         raise ValueError(f"Invalid center: {center!r}")
-    store.require_center_dir(ws)
     return ws
 
 
@@ -27,9 +25,12 @@ def _center_scope(center: str) -> Iterator[str]:
     Path globals and ``_active_center`` are process-wide; uvicorn runs sync
     routes in a threadpool, so concurrent client requests must not interleave.
     """
+    from app.runtime import request_country, set_active_center
+
     ws = _clean_ws(center)
     with CALC_LOCK:
-        set_active_center(ws)
+        set_active_center(ws, country=request_country())
+        store.require_center_dir(ws)
         from app.settings import init_app
 
         init_app()

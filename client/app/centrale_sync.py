@@ -13,10 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from shared.user_access import ACCESS_LOCAL, ACCESS_PERSONAL, ACCESS_REGIONAL_ADMIN, parse_centers
+from shared.user_access import ACCESS_CENTER, ACCESS_PERSON, ACCESS_COUNTRY, parse_centers
 
 from app.runtime import (
-    is_regional_admin,
+    is_country,
     selected_center,
     set_runtime,
 )
@@ -44,7 +44,7 @@ class HubConfig:
     center: str  # currently selected center (from access / switcher)
     author: str  # session label: center for local/personal; country username otherwise
     person: str  # empty unless access=personal
-    access: str  # personal | local | regional_admin
+    access: str  # personal | local | country
     api_key: str
     enabled: bool
     port: int
@@ -88,11 +88,11 @@ def load_base_settings(*, force_reload: bool = False) -> dict[str, Any]:
 
 
 def _coerce_access(raw: str | None) -> str:
-    mode = str(raw or ACCESS_LOCAL).strip().lower()
-    if mode not in (ACCESS_PERSONAL, ACCESS_LOCAL, ACCESS_REGIONAL_ADMIN):
+    mode = str(raw or ACCESS_CENTER).strip().lower()
+    if mode not in (ACCESS_PERSON, ACCESS_CENTER, ACCESS_COUNTRY):
         raise ValueError(
-            f"access must be one of {ACCESS_PERSONAL!r}, {ACCESS_LOCAL!r}, "
-            f"{ACCESS_REGIONAL_ADMIN!r}; got {raw!r}"
+            f"access must be one of {ACCESS_PERSON!r}, {ACCESS_CENTER!r}, "
+            f"{ACCESS_COUNTRY!r}; got {raw!r}"
         )
     return mode
 
@@ -123,7 +123,7 @@ def _build_hub_config(
         else parse_centers(center_key)
     )
 
-    if access == ACCESS_PERSONAL:
+    if access == ACCESS_PERSON:
         if not person_key:
             raise ValueError("personal login requires a non-empty person")
         if not parsed_ws and center_key:
@@ -134,31 +134,26 @@ def _build_hub_config(
         author = username or person_key
         centers = (parsed_ws[0],)
         center = parsed_ws[0]
-    elif access == ACCESS_LOCAL:
+    elif access == ACCESS_CENTER:
         if not parsed_ws:
             raise ValueError("local login requires a center")
         person = ""
         author = username or parsed_ws[0]
         centers = (parsed_ws[0],)
         center = parsed_ws[0]
-    elif access == ACCESS_REGIONAL_ADMIN:
+    elif access == ACCESS_COUNTRY:
         person = ""
-        author = username or "regional_admin"
-        if parsed_ws:
-            centers = tuple(parsed_ws)
-            preferred = (selected or "").strip()
-            center = preferred if preferred in centers else centers[0]
+        author = username or "country"
+        # Always scan country folders; do not use the users table as a catalog.
+        all_ws = _fetch_hub_center_names(url, api_key=api_key, country=country)
+        centers = tuple(all_ws)
+        preferred = (selected or center_key or "").strip()
+        if preferred and preferred in centers:
+            center = preferred
+        elif centers:
+            center = centers[0]
         else:
-            # Empty center + country → every center folder in that country.
-            all_ws = _fetch_hub_center_names(url, api_key=api_key, country=country)
-            centers = tuple(all_ws)
-            preferred = (selected or "").strip()
-            if preferred and preferred in centers:
-                center = preferred
-            elif centers:
-                center = centers[0]
-            else:
-                center = preferred or ""
+            center = preferred or ""
 
     if apply_process_runtime:
         set_runtime(
@@ -254,7 +249,7 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
             api_key=api_key,
             enabled=enabled,
             port=port,
-            access=ACCESS_REGIONAL_ADMIN,
+            access=ACCESS_COUNTRY,
             center_key=bootstrap_ws,
             person_key="",
             selected=bootstrap_ws,
@@ -285,7 +280,7 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
         return _file_profile_cache
 
     # Auth off: identity from environment only (CLIENT_ACCESS / CENTER / PERSON).
-    access = _coerce_access(os.environ.get("CLIENT_ACCESS", "").strip() or ACCESS_LOCAL)
+    access = _coerce_access(os.environ.get("CLIENT_ACCESS", "").strip() or ACCESS_CENTER)
     center_key = (
         os.environ.get("CLIENT_CENTER", "").strip()
         or os.environ.get("CLIENT_WORKSPACE", "").strip()
@@ -294,7 +289,7 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
     env_country = os.environ.get("CLIENT_COUNTRY", "").strip()
     default_port = (
         8300
-        if access == ACCESS_REGIONAL_ADMIN
+        if access == ACCESS_COUNTRY
         else (8302 if center_key == "jl" else 8301)
     )
     try:
@@ -503,11 +498,11 @@ def scope_consent_ready(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _events_viewer() -> str:
     # Hub protocol still uses viewer=central for unrestricted event fan-out.
-    return "central" if is_regional_admin() else "local"
+    return "central" if is_country() else "local"
 
 
 def _push_source() -> str:
-    return "central" if is_regional_admin() else "local"
+    return "central" if is_country() else "local"
 
 
 def hub_request(
@@ -528,6 +523,12 @@ def hub_request(
         headers["Content-Type"] = "application/json"
     if cfg.api_key:
         headers["Authorization"] = f"Bearer {cfg.api_key}"
+    if cfg.country and path.startswith("/api/local/"):
+        joiner = "&" if "?" in path else "?"
+        path = f"{path}{joiner}country={urllib.parse.quote(cfg.country)}"
+        url = f"{cfg.url}{path}"
+    if cfg.country:
+        headers["X-Agrolav-Country"] = cfg.country
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -614,11 +615,11 @@ def sync_status() -> dict[str, Any]:
         "centers": (
             list(cfg.centers)
             if cfg.centers
-            else (list_hub_centers() if is_regional_admin() else [cfg.center])
+            else (list_hub_centers() if is_country() else [cfg.center])
         ),
         "data_epoch": _data_epoch,
         "has_secrets": _cached_has_secrets,
-        "layout": "regional_admin" if is_regional_admin() else "local",
+        "layout": "country" if is_country() else "local",
         "consent_ready": scope_consent_ready(consent_ready),
     }
 
@@ -678,15 +679,15 @@ def _queue_notification(display_path: str) -> None:
 
 def list_hub_centers() -> list[str]:
     cfg = load_config()
-    if cfg.centers:
-        return list(cfg.centers)
-    if is_regional_admin():
+    if is_country():
         if not cfg.enabled:
             return [cfg.center] if cfg.center else []
         names = _fetch_hub_center_names(cfg.url, api_key=cfg.api_key, country=cfg.country)
         if names:
             return names
         return [cfg.center] if cfg.center else []
+    if cfg.centers:
+        return list(cfg.centers)
     return [cfg.center] if cfg.center else []
 
 
@@ -701,7 +702,7 @@ def poll_central_events() -> dict[str, Any]:
             "viewer": _events_viewer(),
             "since_id": _last_event_id,
         }
-        if not is_regional_admin():
+        if not is_country():
             params["center"] = cfg.center
         q = urllib.parse.urlencode(params)
         data = hub_request("GET", f"/api/events?{q}", timeout=10.0)
@@ -731,7 +732,7 @@ def switch_center(center: str) -> dict[str, Any]:
     global _last_error, _last_event_id, _data_epoch
     cfg = load_config()
     ws = center.strip()
-    if not is_regional_admin():
+    if not is_country():
         return {"ok": False, "error": "Center switch requires a multi-center login"}
     allow = list(cfg.centers)
     if allow and ws not in allow:
@@ -748,7 +749,7 @@ def switch_center(center: str) -> dict[str, Any]:
             allowed_centers=allow,
             access=cfg.access,
             username=cfg.username,
-            center_key=cfg.center if cfg.access in (ACCESS_LOCAL, ACCESS_PERSONAL) else "",
+            center_key=cfg.center if cfg.access in (ACCESS_CENTER, ACCESS_PERSON) else "",
             person_key=cfg.person,
             country=cfg.country,
             request_scoped=True,
@@ -908,24 +909,29 @@ def start_session_and_pull() -> dict[str, Any]:
     try:
         hub_request("GET", "/api/health", timeout=10.0)
         if not auth_enabled():
+            if not ws:
+                raise RuntimeError("hub session start needs a center (set CLIENT_CENTER)")
             hub_request(
                 "POST",
                 f"/api/local/{urllib.parse.quote(ws)}/session/start",
                 body=_session_body(),
             )
-        caps = refresh_capabilities()
-        events = hub_request(
-            "GET",
-            f"/api/events?{urllib.parse.urlencode({'viewer': _events_viewer(), 'center': ws, 'since_id': 0})}",
-            timeout=10.0,
-        )
-        _last_event_id = int(events.get("latest_id") or 0)
+        people: list[str] = []
+        if ws:
+            caps = refresh_capabilities()
+            people = [p.get("short") for p in (caps.get("people") or [])]
+            events = hub_request(
+                "GET",
+                f"/api/events?{urllib.parse.urlencode({'viewer': _events_viewer(), 'center': ws, 'since_id': 0})}",
+                timeout=10.0,
+            )
+            _last_event_id = int(events.get("latest_id") or 0)
         _hub_session_active = True
         _last_error = None
         return {
             "ok": True,
             "center": ws,
-            "people": [p.get("short") for p in (caps.get("people") or [])],
+            "people": people,
         }
     except Exception as exc:  # noqa: BLE001
         _last_error = str(exc)

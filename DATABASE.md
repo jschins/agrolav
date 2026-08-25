@@ -319,7 +319,7 @@ SQLite `users` (and later SQL Server) matches `users.csv`:
 | `format` | `secret` / `excel` / `multiple` / a bank csv id |
 
 Access: person set → personal; person empty and one center → local; person
-empty, center empty, country set → regional_admin for **that country only**.
+empty, center empty, country set → country for **that country only**.
 There is no login that spans all countries.
 
 ---

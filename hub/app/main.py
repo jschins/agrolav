@@ -28,6 +28,23 @@ async def _lifespan(_app: FastAPI):
 
 app = FastAPI(title="boekhouding-hub", version="0.1", lifespan=_lifespan)
 
+
+@app.middleware("http")
+async def bind_request_country(request: Request, call_next):  # type: ignore[no-untyped-def]
+    """Prefer ``?country=`` / ``X-Agrolav-Country`` so local routes find ``nederland/dkg``."""
+    from app.runtime import reset_request_country, set_request_country
+
+    raw = (
+        request.query_params.get("country")
+        or request.headers.get("x-agrolav-country")
+        or ""
+    ).strip()
+    token = set_request_country(raw or None)
+    try:
+        return await call_next(request)
+    finally:
+        reset_request_country(token)
+
 # Bank redirect hop must stay reachable even when hub_ips is set.
 _HUB_IP_EXEMPT_PREFIXES = (
     "/api/consent/callback",

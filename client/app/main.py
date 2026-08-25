@@ -319,7 +319,7 @@ def api_login(body: LoginRequest, request: Request, response: Response) -> dict[
         profile_from_user,
     )
     from app.centrale_sync import apply_session_profile, browser_session_start, sync_status
-    from app.runtime import is_regional_admin
+    from app.runtime import is_country
 
     if not auth_enabled():
         raise HTTPException(status_code=400, detail="auth is disabled on this client")
@@ -333,7 +333,7 @@ def api_login(body: LoginRequest, request: Request, response: Response) -> dict[
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     session = {
         **profile,
-        "selected_center": cfg.center if is_regional_admin() else "",
+        "selected_center": cfg.center if is_country() else "",
     }
     response.set_cookie(value=encode_session(session), **cookie_kwargs())
     try:
@@ -423,13 +423,13 @@ class CenterRequest(BaseModel):
 def api_set_center(body: CenterRequest, request: Request, response: Response) -> dict[str, Any]:
     from app.auth import cookie_kwargs, encode_session
     from app.centrale_sync import list_hub_centers, load_config, switch_center
-    from app.runtime import is_regional_admin
+    from app.runtime import is_country
 
     cfg = load_config()
-    if not is_regional_admin():
+    if not is_country():
         raise HTTPException(
             status_code=400,
-            detail="center switch requires access=regional_admin",
+            detail="center switch requires access=country",
         )
     names = list_hub_centers()
     if body.center not in names and names:
@@ -452,12 +452,12 @@ def api_set_center(body: CenterRequest, request: Request, response: Response) ->
 @app.get("/api/centrale/status")
 def api_centrale_status(request: Request) -> dict[str, Any]:
     from app.centrale_sync import list_hub_centers, load_config, poll_central_events, sync_status
-    from app.runtime import is_regional_admin
+    from app.runtime import is_country
 
     poll_central_events()
     status = sync_status()
     cfg = load_config()
-    if is_regional_admin():
+    if is_country():
         status["centers"] = list_hub_centers()
     try:
         from app.centrale_sync import refresh_capabilities
@@ -553,10 +553,10 @@ def api_years() -> dict[str, Any]:
 @app.get("/api/banks")
 def api_banks(year: str | None = Query(default=None)) -> dict[str, Any]:
     from app.centrale_sync import configured_person, hub_get, load_config
-    from shared.user_access import ACCESS_PERSONAL
+    from shared.user_access import ACCESS_PERSON
     import urllib.parse
 
-    if load_config().access != ACCESS_PERSONAL:
+    if load_config().access != ACCESS_PERSON:
         return {"folders": [], "multi_bank": False, "show_switcher": False}
     person = configured_person()
     if not person:
@@ -576,14 +576,14 @@ def api_matrix(
     bank: str | None = Query(default=None),
 ) -> dict[str, Any]:
     from app.centrale_sync import hub_get, load_config, scope_matrix
-    from shared.user_access import ACCESS_PERSONAL
+    from shared.user_access import ACCESS_PERSON
     import urllib.parse
 
     try:
         params: list[str] = []
         if year:
             params.append(f"year={urllib.parse.quote(year)}")
-        if bank and load_config().access == ACCESS_PERSONAL:
+        if bank and load_config().access == ACCESS_PERSON:
             params.append(f"bank={urllib.parse.quote(bank)}")
         suffix = "/matrix"
         if params:
@@ -672,13 +672,13 @@ def api_transactions(
     bank: str | None = Query(default=None),
 ) -> dict[str, Any]:
     from app.centrale_sync import hub_get, load_config, require_person
-    from shared.user_access import ACCESS_PERSONAL
+    from shared.user_access import ACCESS_PERSON
     import urllib.parse
 
     try:
         require_person(short)
         cfg = load_config()
-        personal = cfg.access == ACCESS_PERSONAL
+        personal = cfg.access == ACCESS_PERSON
         # Rafael-style local categorized JSON fallback: if present on disk, use it
         # for detail table rows (category click in overview), bypassing hub parser assumptions.
         people_payload = hub_get("/people")
