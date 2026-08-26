@@ -33,6 +33,29 @@ def _load_json_object(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _load_categorized_store() -> dict[str, Any]:
+    """Bookings for the bound person/year(/bank): SQL when configured, else JSON."""
+    from app.sql_replica import load_bound_transactions
+
+    rows = load_bound_transactions()
+    if rows is not None:
+        return {"transactions": [dict(item) for item in rows]}
+    return _migrate_categorized_store(_load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH))
+
+
+def _persist_categorized_store(data: dict[str, Any]) -> dict[str, Any]:
+    """Write JSON cache and UPDATE matching SQL rows."""
+    data = _migrate_categorized_store(data)
+    data.pop("modifications", None)
+    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, data)
+    from app.sql_replica import sync_bound_transactions
+
+    txs = data.get("transactions")
+    if isinstance(txs, list):
+        sync_bound_transactions(txs)
+    return data
+
+
 def _category_map(data: dict[str, Any]) -> dict[str, list[str]]:
     nested = data.get("categories")
     return nested if isinstance(nested, dict) else data
@@ -683,20 +706,32 @@ def _categorize_transactions(
     return categorized
 
 
-def _simplify_and_categorize(
-    raw_transactions: list[dict[str, Any]],
-    general: dict[str, list[str]],
-    personal: dict[str, list[str]],
-) -> list[dict[str, Any]]:
-    categorized: list[dict[str, Any]] = []
+def _simplify_uncategorized(raw_transactions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Distill bank JSON without running keyword matching."""
+    rows: list[dict[str, Any]] = []
     for transaction in raw_transactions:
         record = simplify_transaction(transaction)
-        code, hit = categorize_with_hit(transaction, general, personal)
-        record["category"] = code
-        record["hit"] = hit
-        record["modification"] = MOD_NONE
-        categorized.append(record)
-    return categorized
+        record["category"] = DEFAULT_CATEGORY
+        record["hit"] = None
+        record["modification"] = MOD_UNCALCULATED
+        rows.append(record)
+    return rows
+
+
+def finalize_imported_bookings(*, recategorize: bool = True) -> dict[str, str]:
+    """INSERT bound JSON bookings as uncategorized, then categorize them."""
+    from app.sql_replica import ensure_bound_accounts, ingest_bound_transactions
+
+    totals = _load_json_object(paths.CATEGORY_TOTALS_PATH)
+    accounts = totals.get("account_balances")
+    if isinstance(accounts, list) and accounts:
+        ensure_bound_accounts(accounts, default_format=None)
+    rows = _load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH).get("transactions") or []
+    if isinstance(rows, list):
+        ingest_bound_transactions(rows)
+    if recategorize:
+        return recategorize_transactions()
+    return {}
 
 
 def _amount_to_cents(value: Any) -> int:
@@ -773,17 +808,20 @@ def _write_category_totals(merged: dict[str, Any], general: dict[str, list[str]]
 
 def refresh_category_totals_balances() -> dict[str, str]:
     """Update balance fields in the category totals file from consent (no recategorization)."""
-    data = _load_json_object(paths.CATEGORY_TOTALS_PATH)
-    categories = data.get("categories")
-    if not isinstance(categories, dict):
-        general = _category_map(_read_json(paths.CATEGORIES_PATH))
-        merged = _load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH)
-        categories = build_category_totals(merged, list(general.keys()))
+    general = _category_map(_read_json(paths.CATEGORIES_PATH))
+    merged = _load_categorized_store()
+    categories = build_category_totals(merged, list(general.keys()))
     _write_json(paths.CATEGORY_TOTALS_PATH, _totals_payload_with_balances(categories))
     return {str(name): str(amount) for name, amount in categories.items()}
 
 
 def load_category_totals() -> dict[str, str]:
+    from app.sql_replica import load_bound_transactions
+
+    rows = load_bound_transactions()
+    if rows is not None:
+        general = _category_map(_read_json(paths.CATEGORIES_PATH))
+        return build_category_totals({"transactions": rows}, list(general.keys()))
     data = _load_json_object(paths.CATEGORY_TOTALS_PATH)
     categories = data.get("categories")
     if not isinstance(categories, dict):
@@ -839,7 +877,7 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
     """
     general = _category_map(_read_json(paths.CATEGORIES_PATH))
     personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
-    data = _migrate_categorized_store(_load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH))
+    data = _load_categorized_store()
 
     existing_tx = data.get("transactions")
     existing_tx = existing_tx if isinstance(existing_tx, list) else []
@@ -859,8 +897,7 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
     result["transactions"] = sorted(categorized, key=_tx_sort_key, reverse=True)
     result.pop("modifications", None)
 
-    result = _migrate_categorized_store(result)
-    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, result)
+    result = _persist_categorized_store(result)
     return _write_category_totals(result, general)
 
 
@@ -887,7 +924,7 @@ def ircft_add_term(
     name_by_code = _name_by_code(general)
     new_code = _category_code(category_name)
 
-    payload = _migrate_categorized_store(_load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH))
+    payload = _load_categorized_store()
     transactions = payload.get("transactions")
     if not isinstance(transactions, list) or new_code is None:
         return False
@@ -941,7 +978,7 @@ def ircft_add_term(
     if not changed:
         return False
     payload["transactions"] = next_rows
-    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, payload)
+    payload = _persist_categorized_store(payload)
     _write_category_totals(payload, general)
     return True
 
@@ -964,7 +1001,7 @@ def ircft_remove_term(
         return False
     expected = format_hit(normalized, personal=personal)
 
-    payload = _migrate_categorized_store(_load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH))
+    payload = _load_categorized_store()
     transactions = payload.get("transactions")
     if not isinstance(transactions, list):
         return False
@@ -1005,7 +1042,7 @@ def ircft_remove_term(
     if not changed:
         return False
     payload["transactions"] = next_rows
-    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, payload)
+    payload = _persist_categorized_store(payload)
     _write_category_totals(payload, general)
     return True
 
@@ -1058,7 +1095,7 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
         log("filter.abort", reason="category_name_has_no_numeric_prefix")
         return []
 
-    payload = _migrate_categorized_store(_load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH))
+    payload = _load_categorized_store()
     raw_list = payload.get("transactions")
     raw_count = len(raw_list) if isinstance(raw_list, list) else 0
 
@@ -1126,7 +1163,7 @@ def _public_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
 
 def modification_style_ids(payload: dict[str, Any] | None = None) -> tuple[list[str], list[str]]:
     """Return (description_modified_ids, category_modified_ids) from ``modification`` flags."""
-    data = payload if payload is not None else _load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH)
+    data = payload if payload is not None else _load_categorized_store()
     data = _migrate_categorized_store(
         {
             "transactions": [
@@ -1359,7 +1396,7 @@ def _source_transaction_by_id(
     transaction_id: str, payload: dict[str, Any] | None = None
 ) -> dict[str, Any] | None:
     """Return the stored transaction for ``id`` (values already effective)."""
-    data = payload if payload is not None else _load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH)
+    data = payload if payload is not None else _load_categorized_store()
     data = _migrate_categorized_store(data)
     for transaction in data.get("transactions", []):
         if isinstance(transaction, dict) and str(transaction.get("id", "")) == transaction_id:
@@ -1373,7 +1410,7 @@ def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
     ``transaction`` is the edited row from the UI.  M bits: 1 = category, 2 =
     description, 3 = both. Recalc will not replace a user-set category.
     """
-    data = _migrate_categorized_store(_load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH))
+    data = _load_categorized_store()
     if not data:
         data = {"transactions": []}
 
@@ -1413,9 +1450,7 @@ def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
     else:
         stored["modification"] = _modification_of(base)
 
-    data.pop("modifications", None)
-    data = _migrate_categorized_store(data)
-    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, data)
+    data = _persist_categorized_store(data)
     general = _category_map(_read_json(paths.CATEGORIES_PATH))
     _write_category_totals(data, general)
     return _public_transaction(_canonical_transaction(stored))
@@ -1428,29 +1463,25 @@ def record_category_change(transaction: dict[str, Any], category_name: str) -> d
         raise ValueError(f"Unknown category: {category_name!r}")
 
     transaction_id = str(transaction.get("id", ""))
-    data = _load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH)
-    effective = _source_transaction_by_id(transaction_id, data) or dict(transaction)
+    effective = _source_transaction_by_id(transaction_id) or dict(transaction)
     modified = dict(effective)
     modified["category"] = code
     return record_modification(modified)
 
 
 def process_transactions(raw_transactions: list[dict[str, Any]], new_year: bool) -> dict[str, str]:
-    """Distill raw bank JSON into ``categorized_transactions.json``.
+    """Persist new bank rows uncategorized, then categorize automatically.
 
-    When *new_year* is false, append any transaction whose ``id`` is not already
-    present and keep existing rows (including ``modification``). When *new_year*
-    is true, replace **this year's** file with only this fetch. New rows are
-    categorized with ``modification`` 0.
+    New rows are written with ``modification`` -1 and ``hit`` NULL, then
+    ``recategorize_transactions`` fills category/hit. Existing rows keep
+    their stored category and modification.
     """
-    general = _category_map(_read_json(paths.CATEGORIES_PATH))
-    personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
-    new_records = _simplify_and_categorize(raw_transactions, general, personal)
+    new_records = _simplify_uncategorized(raw_transactions)
 
     if new_year:
         merged = _merge_simplified({"transactions": []}, new_records)
     else:
-        existing = _migrate_categorized_store(_load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH))
+        existing = _load_categorized_store()
         if not isinstance(existing.get("transactions"), list):
             existing = {"transactions": []}
         merged = _merge_simplified(existing, new_records)
@@ -1459,4 +1490,7 @@ def process_transactions(raw_transactions: list[dict[str, Any]], new_year: bool)
     merged.pop("modifications", None)
     _write_json(paths.RAW_TRANSACTIONS_PATH, raw_transactions)
     _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, merged)
-    return _write_category_totals(merged, general)
+    from app.sql_replica import ingest_bound_transactions
+
+    ingest_bound_transactions(new_records)
+    return recategorize_transactions()

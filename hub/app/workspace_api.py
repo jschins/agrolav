@@ -123,7 +123,6 @@ def transactions(
         import app.paths as paths
         from app.core.bank_csv import pack_for_bank_view
         from app.core.categorize import (
-            _load_json_object,
             _read_json,
             category_code_set,
             modification_style_ids,
@@ -140,10 +139,7 @@ def transactions(
         with bind_person(pack):
             rows = load_transactions(category_name)
             cat_data = _read_json(paths.CATEGORIES_PATH)
-            payload = _load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH)
-            description_modified_ids, category_modified_ids = modification_style_ids(
-                payload
-            )
+            description_modified_ids, category_modified_ids = modification_style_ids()
             return {
                 "workspace": ws,
                 "person": pack.short,

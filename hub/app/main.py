@@ -473,6 +473,16 @@ class BootstrapFetchRequest(BaseModel):
     date_to: str | None = None
 
 
+class CreateCountryRequest(BaseModel):
+    name: str
+    currency: str = "EUR"
+
+
+class CreateCenterRequest(BaseModel):
+    name: str
+    country: str
+
+
 @app.get("/api/local/{center}/capabilities")
 def api_capabilities(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
     from app import center_api
@@ -888,6 +898,40 @@ def api_consent_ready_clear(
     }
 
 
+@app.post("/api/countries")
+def api_create_country(
+    body: CreateCountryRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.sql_layout import create_country
+
+    try:
+        return create_country(name=body.name, currency=body.currency)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/centers")
+def api_create_center(
+    body: CreateCenterRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.sql_layout import create_center
+
+    try:
+        return create_center(name=body.name, country=body.country)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as extra:
+        raise HTTPException(status_code=503, detail=str(extra)) from extra
+    except Exception as extra:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(extra)) from extra
+
+
 @app.post("/api/local/{center}/people/create")
 def api_create_person(
     center: str,
@@ -1037,6 +1081,8 @@ _ADMIN_HTML = """<!DOCTYPE html>
     <div class="notify-wrap" id="notify" aria-live="polite"></div>
     <div class="actions">
       <a class="action" href="/add-person">Add person</a>
+      <a class="action" href="/create-country">Create country</a>
+      <a class="action" href="/create-center">Create center</a>
       <a class="action" href="/upload">Upload data</a>
       <button class="action" id="btnClearSessions" type="button">Clear sessions</button>
       <button class="stop" id="btnStop" type="button">Stop hub</button>
@@ -1451,6 +1497,178 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
 @app.get("/add-person", response_class=HTMLResponse)
 def add_person_page() -> str:
     return _ADD_PERSON_HTML
+
+
+_CREATE_COUNTRY_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Create country — hub</title>
+  <style>
+    :root { font-family: Georgia, "Times New Roman", serif; color: #1a1a1a; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+           background: linear-gradient(160deg, #e8eef5 0%, #f7f4ef 55%, #dde6f0 100%); }
+    main { width: min(32rem, 94vw); padding: 2rem; }
+    h1 { font-size: 1.6rem; margin: 0 0 0.35rem; }
+    p.lead { margin: 0 0 1rem; color: #444; }
+    table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1rem; }
+    th, td { text-align: left; padding: 0.45rem 0.35rem; border-bottom: 1px solid #cbd5e1; }
+    th { width: 42%; color: #334155; font-weight: 600; }
+    input, select {
+      width: 100%; box-sizing: border-box; font: inherit; padding: 0.35rem 0.45rem;
+      border: 1px solid #94a3b8; border-radius: 4px; background: #fff;
+    }
+    button {
+      font: inherit; cursor: pointer; padding: 0.5rem 0.9rem; border-radius: 6px;
+      border: 1px solid #2a5a8c; background: #2a5a8c; color: #fff; font-weight: 700;
+    }
+    .err { color: #a33; margin-top: 0.75rem; white-space: pre-wrap; }
+    .ok { color: #166534; margin-top: 0.75rem; white-space: pre-wrap; font-weight: 700; }
+    .meta { font-size: 0.85rem; color: #666; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Create country</h1>
+    <p class="lead">Writes <code>dbo.country</code> and a workspace folder. Login password equals the name.</p>
+    <table>
+      <tr><th>name</th><td><input id="name" type="text" placeholder="e.g. belgie"/></td></tr>
+      <tr><th>default currency</th><td><input id="currency" type="text" value="EUR" maxlength="3"/></td></tr>
+    </table>
+    <button type="button" id="btnCreate">Create country</button>
+    <p id="err" class="err"></p>
+    <p id="ok" class="ok"></p>
+    <p class="meta"><a href="/">← Hub status</a></p>
+  </main>
+  <script>
+    async function api(method, path, body) {
+      const opts = { method, headers: { "Accept": "application/json", "Content-Type": "application/json" } };
+      if (body !== undefined) opts.body = JSON.stringify(body);
+      const r = await fetch(path, opts);
+      const text = await r.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch (_) { data = { detail: text }; }
+      if (!r.ok) throw new Error(data.detail || text || r.statusText);
+      return data;
+    }
+    document.getElementById("btnCreate").onclick = async () => {
+      const err = document.getElementById("err");
+      const ok = document.getElementById("ok");
+      err.textContent = ""; ok.textContent = "";
+      try {
+        const res = await api("POST", "/api/countries", {
+          name: document.getElementById("name").value,
+          currency: document.getElementById("currency").value,
+        });
+        ok.textContent = "Created " + res.name + " (" + res.currency + "). Login: " + res.login.username;
+      } catch (e) { err.textContent = String(e.message || e); }
+    };
+  </script>
+</body>
+</html>
+"""
+
+
+_CREATE_CENTER_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Create center — hub</title>
+  <style>
+    :root { font-family: Georgia, "Times New Roman", serif; color: #1a1a1a; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+           background: linear-gradient(160deg, #e8eef5 0%, #f7f4ef 55%, #dde6f0 100%); }
+    main { width: min(32rem, 94vw); padding: 2rem; }
+    h1 { font-size: 1.6rem; margin: 0 0 0.35rem; }
+    p.lead { margin: 0 0 1rem; color: #444; }
+    table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1rem; }
+    th, td { text-align: left; padding: 0.45rem 0.35rem; border-bottom: 1px solid #cbd5e1; }
+    th { width: 42%; color: #334155; font-weight: 600; }
+    input, select {
+      width: 100%; box-sizing: border-box; font: inherit; padding: 0.35rem 0.45rem;
+      border: 1px solid #94a3b8; border-radius: 4px; background: #fff;
+    }
+    button {
+      font: inherit; cursor: pointer; padding: 0.5rem 0.9rem; border-radius: 6px;
+      border: 1px solid #2a5a8c; background: #2a5a8c; color: #fff; font-weight: 700;
+    }
+    .err { color: #a33; margin-top: 0.75rem; white-space: pre-wrap; }
+    .ok { color: #166534; margin-top: 0.75rem; white-space: pre-wrap; font-weight: 700; }
+    .meta { font-size: 0.85rem; color: #666; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Create center</h1>
+    <p class="lead">Writes <code>dbo.center</code> under a country. Login password equals the name.</p>
+    <table>
+      <tr><th>country</th><td><select id="country"></select></td></tr>
+      <tr><th>name</th><td><input id="name" type="text" placeholder="e.g. antwerpen"/></td></tr>
+    </table>
+    <button type="button" id="btnCreate">Create center</button>
+    <p id="err" class="err"></p>
+    <p id="ok" class="ok"></p>
+    <p class="meta"><a href="/">← Hub status</a></p>
+  </main>
+  <script>
+    async function api(method, path, body) {
+      const opts = { method, headers: { "Accept": "application/json" } };
+      if (body !== undefined) {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      const r = await fetch(path, opts);
+      const text = await r.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch (_) { data = { detail: text }; }
+      if (!r.ok) throw new Error(data.detail || text || r.statusText);
+      return data;
+    }
+    async function loadCountries() {
+      const sel = document.getElementById("country");
+      sel.replaceChildren();
+      const s = await api("GET", "/api/status");
+      const names = s.countries || [];
+      for (const name of names) {
+        const opt = document.createElement("option");
+        opt.value = name; opt.textContent = name;
+        sel.appendChild(opt);
+      }
+      if (!names.length) {
+        const opt = document.createElement("option");
+        opt.value = ""; opt.textContent = "(no countries yet)";
+        sel.appendChild(opt);
+      }
+    }
+    document.getElementById("btnCreate").onclick = async () => {
+      const err = document.getElementById("err");
+      const ok = document.getElementById("ok");
+      err.textContent = ""; ok.textContent = "";
+      try {
+        const res = await api("POST", "/api/centers", {
+          name: document.getElementById("name").value,
+          country: document.getElementById("country").value,
+        });
+        ok.textContent = "Created " + res.name + " in " + res.country + ". Login: " + res.login.username;
+      } catch (e) { err.textContent = String(e.message || e); }
+    };
+    loadCountries().catch((e) => { document.getElementById("err").textContent = String(e.message || e); });
+  </script>
+</body>
+</html>
+"""
+
+
+@app.get("/create-country", response_class=HTMLResponse)
+def create_country_page() -> str:
+    return _CREATE_COUNTRY_HTML
+
+
+@app.get("/create-center", response_class=HTMLResponse)
+def create_center_page() -> str:
+    return _CREATE_CENTER_HTML
 
 
 _UPLOAD_HTML = """<!DOCTYPE html>

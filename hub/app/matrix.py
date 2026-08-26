@@ -130,12 +130,11 @@ def person_current_balance(pack: PersonPack) -> str | None:
 
 def person_last_booked(pack: PersonPack) -> str | None:
     """Latest transaction ``date`` as ``DD-MM-YYYY``, or None if none."""
-    from app.core.categorize import _load_json_object
+    from app.core.categorize import _load_categorized_store
     from app.user_store import latest_transaction_date
-    import app.paths as paths
 
     with bind_person(pack):
-        data = _load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH)
+        data = _load_categorized_store()
     txs = data.get("transactions") if isinstance(data, dict) else None
     if not isinstance(txs, list):
         return None
@@ -297,6 +296,17 @@ def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
             ld = str(item.get("last_date") or "").strip()
             if ld:
                 last_dates.append(ld)
+        from dataclasses import replace as _replace
+
+        from app.core.bank_csv import list_year_bank_folders, person_uses_bank_subfolders
+        from app.core.categorize import finalize_imported_bookings
+
+        year_path = pack.folder / pack.year
+        if person_uses_bank_subfolders(person, center):
+            for bank in list_year_bank_folders(year_path):
+                with bind_person(_replace(pack, data_dir=(year_path / bank).resolve())):
+                    finalize_imported_bookings()
+        finalize_imported_bookings()
         return {
             "short": pack.short,
             "folder": pack.folder_name,
@@ -319,6 +329,9 @@ def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
             "reason": "no xlsx or csv files",
         }
     info = import_person_excel(data_dir=pack.data_dir, categories_path=categories_path)
+    from app.core.categorize import finalize_imported_bookings
+
+    finalize_imported_bookings()
     return {
         "short": pack.short,
         "folder": pack.folder_name,
@@ -446,6 +459,21 @@ def _bank_refresh_one(
     fetched = fetch_transactions(date_from=date_from, date_to=date_to)
     accounts = enabled_bank_accounts()
     account_folders: list[str] = []
+    from app.sql_replica import ensure_bound_accounts
+
+    ensure_bound_accounts(
+        [
+            {
+                "iban": str(acc.get("iban") or "").strip(),
+                "account_name": str(acc.get("name") or acc.get("iban") or "account"),
+                "balance": acc.get("balance") or "0",
+                "format": "secret",
+            }
+            for acc in accounts
+            if isinstance(acc, dict)
+        ],
+        default_format="secret",
+    )
 
     if len(accounts) <= 1:
         process_transactions(fetched.transactions, new_year=bool(new_year))

@@ -426,6 +426,13 @@ def _process_excel_upload(grant: UploadGrant, *, year: str | None = None) -> dic
     info = import_person_excel(data_dir=data_dir, categories_path=shared_categories_path())
     user_store.set_user_updated_at(username=grant.person, date=info.get("last_date"))
     with center_api._center_scope(grant.center) as ws:
+        from app.core.categorize import finalize_imported_bookings
+        from app.paths import bind_person
+        from app.people import get_person
+
+        pack = get_person(grant.person, year=y)
+        with bind_person(pack):
+            finalize_imported_bookings()
         inputs = center_api._ingest_person_data_files(ws, folder_names=[grant.person], year=y)
     mut = store.mutate_and_recalculate(ws, inputs, source="central")
     return {
@@ -459,6 +466,18 @@ def _process_bank_csv_upload(grant: UploadGrant, *, year: str | None = None) -> 
             categories_path=categories_path,
         )
     with center_api._center_scope(grant.center) as ws:
+        from app.core.bank_csv import pack_for_bank_view
+        from app.core.categorize import finalize_imported_bookings
+        from app.paths import bind_person
+        from app.people import get_person
+
+        pack = get_person(grant.person, year=y)
+        view = pack_for_bank_view(pack, grant.effective_bank() or None, center=ws)
+        with bind_person(view):
+            finalize_imported_bookings()
+        if person_uses_bank_subfolders(grant.person, grant.center):
+            with bind_person(pack):
+                finalize_imported_bookings()
         inputs = center_api._ingest_person_data_files(ws, folder_names=[grant.person], year=y)
     mut = store.mutate_and_recalculate(ws, inputs, source="central")
     return {
