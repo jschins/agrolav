@@ -876,16 +876,18 @@ def verify(cursor) -> None:
         """
         SELECT t.category_id, t.modification, d.label
         FROM dbo.transaction_nederland t
+        JOIN dbo.person p ON p.person_id = t.person_id
         JOIN dbo.dim_category d ON d.category_id = t.category_id
-        WHERE t.source_id = N'010305251322603690000000_0'
+        WHERE p.folder = N'juleon_schins'
+          AND t.source_id = N'010305237711616590000000_0'
           AND t.bank_id IS NULL
         """
     )
-    if int(set_id) != 110 or int(set_mod) != 1 or str(set_label) != "19 Giften":
+    if int(set_id) != 107 or int(set_mod) != 1 or str(set_label) != "15 Buitengewone uitgaven":
         raise LoadError(
-            f"anton override failed: category_id={set_id} modification={set_mod} label={set_label!r}"
+            f"juleon override failed: category_id={set_id} modification={set_mod} label={set_label!r}"
         )
-    print("check anton modification: category_id 110 / modification 1 / 19 Giften")
+    print("check juleon modification: category_id 107 / modification 1 / 15 Buitengewone uitgaven")
 
     for folder, table in (("uk", "dbo.transaction_uk"), ("stichtingen", "dbo.transaction_stichtingen")):
         cursor.execute(
@@ -973,11 +975,11 @@ def main() -> None:
         seed_banks(cursor)
         by_code, by_label = seed_categories(cursor, root)
         load_tree(cursor, root, by_code=by_code, by_label=by_label)
-        verify(cursor)
         conn.commit()
     except Exception:
         conn.rollback()
         raise
+    verify(cursor)
     elapsed = (datetime.now() - started).total_seconds()
     print(f"phase C load complete in {elapsed:.1f}s (SQL replica; hub writes still JSON)")
 

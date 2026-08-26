@@ -49,13 +49,20 @@ the concept of "incremental Recalculation of Categories for Term (iRCfT) means t
 this is meant to speed up calculations
 does this make sense to you?
 
-+ when the user modifies a category, the line disappears immediately, and the view remains the same: no return to matrix view, no iRCfT, but only registration of M and C
-+ when the user modifies a description, the line modifies immediately & turns blue, and the view remains the same: no return to matrix view, no fRCfT, but only registration of M and description 
-+ when the user adds/modifies a term in T-view, the view remains the same, immediate iRCfT
-+ when the user adds a term in right-click pop-up, the line disappears immediately, view remains the same: DELAYED iRCfT
+
+1. when new data have been downloaded, automatically calculate the categories for only those data
+2. add a "recalculate from scratch" button on the top bar, to the right of the dropdown menus and to the left of the logout button
+when the user hits this button, the categories of all transactions for all countries are recalculated
+during the calculation, present a grey overlay screen with a message on top, like in the transaction-download case
 
 
+
+a final ingredient to give the user the idea of fast frontend response:
++ when the user modifies a category in Transactions-view, the frontend autonomously deletes the corresponding line and shows the updated table, whithout returning to Matrix-view, after which the backend starts iRCfT 
++ when the user modifies a description in Transactions-view, the frontend autonomously colors the line blue and shows the updated table, whithout returning to Matrix-view
++ when the user adds/modifies a term in Terms-view, the view remains the same, after which the backend starts iRCfT
++ when the user adds a term in right-click pop-up, the frontend autonomously deletes the corresponding line and shows the updated table, whithout returning to Matrix-view, after which the backend starts iRCfT
+
+does this make sense to you?
 
 NB rename folder agrolav -> expenses
-
-NB migrate categories.json tables

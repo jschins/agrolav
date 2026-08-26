@@ -538,8 +538,9 @@ def mutate_and_publish(
     input_paths: list[str],
     *,
     source: str = "central",
+    announce: bool = True,
 ) -> dict[str, Any]:
-    """Announce ingested files without recategorizing existing bookings."""
+    """Publish ingested files without recategorizing existing bookings."""
     from app.matrix import build_matrix
     from app.paths import CALC_LOCK
     from app.runtime import set_active_center
@@ -551,7 +552,7 @@ def mutate_and_publish(
         input_paths,
         recalc_all_centers=False,
     )
-    announced = announce_mutation(primary, expected, source=source)
+    announced = announce_mutation(primary, expected, source=source) if announce else []
     with CALC_LOCK:
         set_active_center(primary)
         init_app()

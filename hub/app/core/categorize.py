@@ -1092,6 +1092,7 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
 
 _HIDDEN_TABLE_COLUMNS = frozenset({"id", "currency", "modification", "hit"})
 _DESCRIPTION_COLUMN = "description"
+_CATEGORY_COLUMN = "category"
 _CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
 
 
@@ -1106,10 +1107,17 @@ def transaction_display_column_keys(transactions: list[dict[str, Any]]) -> list[
                 continue
             seen.add(key)
             keys.append(key)
+    return _category_before_description(keys)
+
+
+def _category_before_description(keys: list[str]) -> list[str]:
+    """Keep ``category`` (C) immediately before ``description``."""
+    rest = [key for key in keys if key not in {_CATEGORY_COLUMN, _DESCRIPTION_COLUMN}]
+    if _CATEGORY_COLUMN in keys:
+        rest.append(_CATEGORY_COLUMN)
     if _DESCRIPTION_COLUMN in keys:
-        keys.remove(_DESCRIPTION_COLUMN)
-        keys.append(_DESCRIPTION_COLUMN)
-    return keys
+        rest.append(_DESCRIPTION_COLUMN)
+    return rest
 
 
 def _public_transaction(transaction: dict[str, Any]) -> dict[str, Any]:

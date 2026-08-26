@@ -194,6 +194,7 @@ ssh agrolav@209.38.39.105 -p 4523
 
 # OPTIONEEL, want is toegevoegd aan .bashrc export PATH="$HOME/.local/bin:$PATH"
 #cd /opt/agrolav
+git checkout sqlserver
 git pull
 cd shared && uv sync && cd ../hub && uv sync && cd ../client && uv sync
 cd /opt/agrolav/client/frontend && npm ci && npm run build

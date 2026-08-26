@@ -281,7 +281,7 @@ def _local_transactions_payload(
             if "category" in mod and tid not in category_modified_ids:
                 category_modified_ids.append(tid)
 
-        columns = ["date", "amount", "type", "name", "description", "category"]
+        columns = ["date", "amount", "type", "name", "category", "description"]
         categories_path = root.parent / "categories.json"
         valid_codes = _valid_category_codes_from_categories_json(categories_path)
         header_terms: dict[str, str] = {}
