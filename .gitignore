@@ -26,3 +26,4 @@ workspaces/
 *.pem
 users.db
 upload.log
+*.md

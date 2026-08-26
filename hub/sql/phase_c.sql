@@ -118,16 +118,18 @@ CREATE TABLE dbo.transaction_nederland (
     counterparty_iban NVARCHAR(64) NULL,
     description NVARCHAR(MAX) NULL,
     booked_on DATE NOT NULL,
-    cat_id_calculated INT NOT NULL,
-    cat_id_set INT NULL,
+    category_id INT NULL,
+    modification SMALLINT NOT NULL CONSTRAINT df_txn_nl_mod DEFAULT (-1),
     CONSTRAINT fk_txn_nl_person FOREIGN KEY (person_id) REFERENCES dbo.person (person_id),
     CONSTRAINT fk_txn_nl_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id),
     CONSTRAINT fk_txn_nl_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
-    CONSTRAINT fk_txn_nl_cat_calc FOREIGN KEY (cat_id_calculated) REFERENCES dbo.dim_category (category_id),
-    CONSTRAINT fk_txn_nl_cat_set FOREIGN KEY (cat_id_set) REFERENCES dbo.dim_category (category_id),
+    CONSTRAINT fk_txn_nl_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
     CONSTRAINT ck_txn_nl_year CHECK (year >= 1990 AND year <= 2100),
-    CONSTRAINT ck_txn_nl_cat_calc CHECK (cat_id_calculated BETWEEN 100 AND 199),
-    CONSTRAINT ck_txn_nl_cat_set CHECK (cat_id_set IS NULL OR cat_id_set BETWEEN 100 AND 199)
+    CONSTRAINT ck_txn_nl_mod CHECK (modification IN (-1, 0, 1, 2, 3)),
+    CONSTRAINT ck_txn_nl_cat CHECK (
+        (modification = -1 AND category_id IS NULL)
+        OR (modification >= 0 AND category_id BETWEEN 100 AND 199)
+    )
 );
 
 CREATE UNIQUE INDEX ux_txn_nl_consolidated
@@ -152,16 +154,18 @@ CREATE TABLE dbo.transaction_uk (
     counterparty_iban NVARCHAR(64) NULL,
     description NVARCHAR(MAX) NULL,
     booked_on DATE NOT NULL,
-    cat_id_calculated INT NOT NULL,
-    cat_id_set INT NULL,
+    category_id INT NULL,
+    modification SMALLINT NOT NULL CONSTRAINT df_txn_uk_mod DEFAULT (-1),
     CONSTRAINT fk_txn_uk_person FOREIGN KEY (person_id) REFERENCES dbo.person (person_id),
     CONSTRAINT fk_txn_uk_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id),
     CONSTRAINT fk_txn_uk_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
-    CONSTRAINT fk_txn_uk_cat_calc FOREIGN KEY (cat_id_calculated) REFERENCES dbo.dim_category (category_id),
-    CONSTRAINT fk_txn_uk_cat_set FOREIGN KEY (cat_id_set) REFERENCES dbo.dim_category (category_id),
+    CONSTRAINT fk_txn_uk_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
     CONSTRAINT ck_txn_uk_year CHECK (year >= 1990 AND year <= 2100),
-    CONSTRAINT ck_txn_uk_cat_calc CHECK (cat_id_calculated BETWEEN 200 AND 299),
-    CONSTRAINT ck_txn_uk_cat_set CHECK (cat_id_set IS NULL OR cat_id_set BETWEEN 200 AND 299)
+    CONSTRAINT ck_txn_uk_mod CHECK (modification IN (-1, 0, 1, 2, 3)),
+    CONSTRAINT ck_txn_uk_cat CHECK (
+        (modification = -1 AND category_id IS NULL)
+        OR (modification >= 0 AND category_id BETWEEN 200 AND 299)
+    )
 );
 
 CREATE UNIQUE INDEX ux_txn_uk_consolidated
@@ -186,16 +190,18 @@ CREATE TABLE dbo.transaction_stichtingen (
     counterparty_iban NVARCHAR(64) NULL,
     description NVARCHAR(MAX) NULL,
     booked_on DATE NOT NULL,
-    cat_id_calculated INT NOT NULL,
-    cat_id_set INT NULL,
+    category_id INT NULL,
+    modification SMALLINT NOT NULL CONSTRAINT df_txn_st_mod DEFAULT (-1),
     CONSTRAINT fk_txn_st_person FOREIGN KEY (person_id) REFERENCES dbo.person (person_id),
     CONSTRAINT fk_txn_st_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id),
     CONSTRAINT fk_txn_st_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
-    CONSTRAINT fk_txn_st_cat_calc FOREIGN KEY (cat_id_calculated) REFERENCES dbo.dim_category (category_id),
-    CONSTRAINT fk_txn_st_cat_set FOREIGN KEY (cat_id_set) REFERENCES dbo.dim_category (category_id),
+    CONSTRAINT fk_txn_st_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
     CONSTRAINT ck_txn_st_year CHECK (year >= 1990 AND year <= 2100),
-    CONSTRAINT ck_txn_st_cat_calc CHECK (cat_id_calculated BETWEEN 300 AND 399),
-    CONSTRAINT ck_txn_st_cat_set CHECK (cat_id_set IS NULL OR cat_id_set BETWEEN 300 AND 399)
+    CONSTRAINT ck_txn_st_mod CHECK (modification IN (-1, 0, 1, 2, 3)),
+    CONSTRAINT ck_txn_st_cat CHECK (
+        (modification = -1 AND category_id IS NULL)
+        OR (modification >= 0 AND category_id BETWEEN 300 AND 399)
+    )
 );
 
 CREATE UNIQUE INDEX ux_txn_st_consolidated

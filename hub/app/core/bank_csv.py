@@ -348,8 +348,9 @@ def consolidate_person_year(
     if not subs:
         return {"consolidated": False, "reason": "no bank subfolders"}
 
+    from app.core.categorize import _migrate_categorized_store
+
     all_transactions: list[dict[str, Any]] = []
-    all_modifications: list[dict[str, Any]] = []
     all_accounts: list[dict[str, Any]] = []
     sources: list[str] = []
 
@@ -362,12 +363,10 @@ def consolidate_person_year(
             except (OSError, json.JSONDecodeError):
                 cat = {}
             if isinstance(cat, dict):
+                cat = _migrate_categorized_store(cat)
                 txs = cat.get("transactions")
                 if isinstance(txs, list):
                     all_transactions.extend(item for item in txs if isinstance(item, dict))
-                mods = cat.get("modifications")
-                if isinstance(mods, list):
-                    all_modifications.extend(item for item in mods if isinstance(item, dict))
         if tot_path.is_file():
             try:
                 totals = json.loads(tot_path.read_text(encoding="utf-8"))
@@ -384,10 +383,7 @@ def consolidate_person_year(
         "categories": build_category_totals(all_transactions, name_by_code),
         "account_balances": all_accounts,
     }
-    consolidated_cat = {
-        "transactions": all_transactions,
-        "modifications": all_modifications,
-    }
+    consolidated_cat = _migrate_categorized_store({"transactions": all_transactions})
 
     cat_out = year_path / "categorized_transactions.json"
     tot_out = year_path / "category_totals.json"

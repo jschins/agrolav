@@ -62,13 +62,13 @@ order:
 | **114** | nederland | **23** | **datum** (matrix footer; not a booking category) |
 
 So the JSON row with `"category": 12` for anyone under `nederland/` becomes
-`cat_id_calculated = 104` in `transaction_nederland`. The dimension projects
+`category_id = 104` in `transaction_nederland`. The dimension projects
 104 back to `"12 Vervoer"`.
 
 `saldo` and `datum` are appended on the same catalog so the matrix last rows
 use country labels. UK later renames those two labels (e.g. `balance` /
 `date`) without changing `category_id` or `local_code`. They never appear on
-`transaction_*.cat_id_*`; the cells are `account.balance` and
+`transaction_*.category_id`; the cells are `account.balance` and
 `account.last_booked`.
 
 Hundred-blocks so a later insert in one catalog does not shift the others:
@@ -88,16 +88,16 @@ nederland, and the matching remainder row in the 200- and 300-blocks.
 Do not use `IDENTITY` for `category_id`. Seed the table explicitly. JSON
 keeps local codes until ETL; only SQL stores `100+`.
 
-ETL join (for the **calculated** value):
+ETL join:
 
 ```text
-json.transactions[].category  +  person.country  →  cat_id_calculated
+json.transactions[].category  +  person.country  →  category_id
   WHERE dim_category.country     = person.country
     AND dim_category.local_code  = json.category
 ```
 
-A user override (JSON `modifications[].category`) maps the same way into
-`cat_id_set`. There is no overlay table.
+A user override overwrites that same `category_id` and sets `modification` to
+1 or 3. There is no overlay column.
 
 ---
 
@@ -246,7 +246,8 @@ against that country’s hundred-block (NL 100–199, UK 200–299, stichtingen
 | uk | `transaction_uk` |
 | stichtingen | `transaction_stichtingen` |
 
-No `transaction_modification` table. User category edits live on the row.
+No `transaction_modification` table. User category and description edits
+overwrite the row.
 
 | JSON key | column | type | example (anton, Vervoer) |
 |:---------|:-------|:-----|:-------------------------|
@@ -258,8 +259,8 @@ No `transaction_modification` table. User category edits live on the row.
 | `iban` | `counterparty_iban` | `NVARCHAR(64)` | other party; may be empty |
 | `description` | `description` | `NVARCHAR(MAX)` | |
 | `date` | `booked_on` | `DATE` | `2026-08-09` (JSON is `DD-MM-YYYY`) |
-| `category` (base row) | `cat_id_calculated` | `INT` FK | **104** (not 12) |
-| `modifications[].category` | `cat_id_set` | `INT` FK NULL | empty unless the user set a category |
+| `category` | `category_id` | `INT` FK NULL | **104** (not 12); NULL only while `modification` is -1 |
+| `modification` | `modification` | `SMALLINT` | -1 uncalculated; 0 none; 1 category; 2 description; 3 both |
 
 Plus:
 
@@ -271,23 +272,25 @@ Plus:
 | `year` | `SMALLINT` | 2026 |
 | `bank_id` | `INT` FK NULL | per-bank file vs consolidated |
 
-`cat_id_set` is NULL on load except when JSON `modifications` contains a
-`category` for that `id`. Recalc may refresh `cat_id_calculated`; it must
-not clear `cat_id_set`. Effective category:
+`modification` records what the user touched:
 
-```sql
-COALESCE(t.cat_id_set, t.cat_id_calculated)
-```
+| `modification` | meaning | table CSS |
+|---------------:|:--------|:----------|
+| -1 | not yet categorized (fresh download/upload) | — |
+| 0 | categorized; user has not edited | — |
+| 1 | user overwrote only `category_id` | category cell **bold** |
+| 2 | user overwrote only `description` | whole row blue |
+| 3 | user overwrote both | bold + blue |
 
-JSON `modifications` that only change `description` write through to
-`transaction_*.description` (the stored description is the effective one).
+Recalc writes `category_id` only when `modification` is -1, 0, or 2. After the
+first calculation, -1 becomes 0. Flags 1 and 3 keep the user's category.
 
 Unique `(person_id, year, bank_id, source_id)` with a filtered unique for
 `bank_id IS NULL`, per table.
 
-Checks: `cat_id_calculated` and `cat_id_set` (when not null) belong to the
-same country as the table. `account.person_id` matches the booking row’s
-`person_id`. ETL inserts only people from that country into that table.
+Checks: `category_id` (when not null) belongs to the same country as the
+table. `account.person_id` matches the booking row’s `person_id`. ETL inserts
+only people from that country into that table.
 
 `counterparty_iban` is the JSON `iban` field (payee / payer). It is not
 the person’s own account; that is `account_id` → `account.iban`.
@@ -296,7 +299,7 @@ the person’s own account; that is `account_id` → `account.iban`.
 
 Snapshot of `category_totals.json` `categories` (name → amount string).
 Can also be a view over that country’s `transaction_*` table using
-`COALESCE(cat_id_set, cat_id_calculated)`.
+`category_id`.
 If stored:
 
 | column | type |
@@ -363,7 +366,7 @@ JOIN dbo.person p ON p.person_id = t.person_id
 JOIN dbo.center n ON n.center_id = p.center_id
 JOIN dbo.account a ON a.account_id = t.account_id
 JOIN dbo.dim_category c
-  ON c.category_id = COALESCE(t.cat_id_set, t.cat_id_calculated)
+  ON c.category_id = t.category_id
 WHERE n.folder = N'dkg'
   AND p.folder = N'anton_schins'
   AND t.year = 2026;
@@ -387,3 +390,14 @@ SELECT local_code, label, matrix_role
 FROM dbo.dim_category
 WHERE country_id = @country_id AND matrix_role IS NOT NULL;
 ```
+
+
+
+## Connect like this:
+
+- Server name: 127.0.0.1,1433
+- Authentication: SQL Server Authentication
+- Login: sa
+- Password: Agrolav_Hub_2026!
+- Options → Connect to database: agrolav (or <default>, then expand Databases → agrolav)
+- Options → Encryption: Mandatory, and tick Trust server certificate

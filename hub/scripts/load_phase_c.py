@@ -596,9 +596,39 @@ def load_tree(
                                 local_int = int(local_code)
                             except (TypeError, ValueError) as exc:
                                 raise LoadError(f"{tx_path}: bad category on {source_id}") from exc
-                            cat_calc = _category_id_for_local_code(
-                                country_id, local_int, by_code, path=tx_path
-                            )
+                            description = str(raw.get("description") or "")
+                            cat_bit = False
+                            desc_bit = False
+                            mod = mods.get(source_id)
+                            if mod:
+                                if "description" in mod and mod.get("description") is not None:
+                                    description = str(mod.get("description") or "")
+                                    desc_bit = True
+                                if "category" in mod and mod.get("category") is not None:
+                                    try:
+                                        local_int = int(mod["category"])
+                                    except (TypeError, ValueError) as exc:
+                                        raise LoadError(
+                                            f"{tx_path}: bad modification category for {source_id}"
+                                        ) from exc
+                                    cat_bit = True
+                            if raw.get("modification") is not None:
+                                try:
+                                    modification = int(raw.get("modification"))
+                                except (TypeError, ValueError) as exc:
+                                    raise LoadError(f"{tx_path}: bad modification on {source_id}") from exc
+                            else:
+                                modification = 0
+                                if cat_bit:
+                                    modification |= 1
+                                if desc_bit:
+                                    modification |= 2
+                            if modification == -1:
+                                category_id = None
+                            else:
+                                category_id = _category_id_for_local_code(
+                                    country_id, local_int, by_code, path=tx_path
+                                )
                             account = resolve_account(
                                 accounts=accounts,
                                 tx=raw,
@@ -606,22 +636,6 @@ def load_tree(
                                 banks=BANKS,
                                 path=tx_path,
                             )
-                            description = str(raw.get("description") or "")
-                            cat_set = None
-                            mod = mods.get(source_id)
-                            if mod:
-                                if "description" in mod and mod.get("description") is not None:
-                                    description = str(mod.get("description") or "")
-                                if "category" in mod and mod.get("category") is not None:
-                                    try:
-                                        set_code = int(mod["category"])
-                                    except (TypeError, ValueError) as exc:
-                                        raise LoadError(
-                                            f"{tx_path}: bad modification category for {source_id}"
-                                        ) from exc
-                                    cat_set = _category_id_for_local_code(
-                                        country_id, set_code, by_code, path=tx_path
-                                    )
                             iban = str(raw.get("iban") or "").strip()
                             tx_rows[country_folder].append(
                                 (
@@ -637,8 +651,8 @@ def load_tree(
                                     iban[:64] or None,
                                     description or None,
                                     parse_booked_on(raw.get("date"), path=tx_path),
-                                    cat_calc,
-                                    cat_set,
+                                    category_id,
+                                    modification,
                                 )
                             )
 
@@ -710,7 +724,7 @@ def load_tree(
             INSERT INTO {table} (
                 person_id, account_id, year, bank_id, source_id, amount, currency,
                 bank_type, counterparty_name, counterparty_iban, description,
-                booked_on, cat_id_calculated, cat_id_set
+                booked_on, category_id, modification
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
     for folder, rows in tx_rows.items():
@@ -825,43 +839,45 @@ def verify(cursor) -> None:
     for row in cursor.fetchall():
         print(f"  {row[0]} {row[1]} {row[2]} {row[3]}")
 
-    calc, cat_set, label = one(
+    calc, modification, label = one(
         """
-        SELECT t.cat_id_calculated, t.cat_id_set, d.label
+        SELECT t.category_id, t.modification, d.label
         FROM dbo.transaction_nederland t
         JOIN dbo.person p ON p.person_id = t.person_id
-        JOIN dbo.dim_category d ON d.category_id = t.cat_id_calculated
+        JOIN dbo.dim_category d ON d.category_id = t.category_id
         WHERE p.folder = N'anton_schins'
           AND t.source_id = N'010305258369428750000000_0'
           AND t.bank_id IS NULL
         """
     )
-    if int(calc) != 104 or cat_set is not None or str(label) != "12 Vervoer":
+    if int(calc) != 104 or int(modification) != 0 or str(label) != "12 Vervoer":
         raise LoadError(
-            f"anton check failed: calculated={calc} set={cat_set} label={label!r} "
-            "(expected 104, NULL, '12 Vervoer')"
+            f"anton check failed: category_id={calc} modification={modification} label={label!r} "
+            "(expected 104, 0, '12 Vervoer')"
         )
-    print("check anton 010305258369428750000000_0: 104 / NULL / 12 Vervoer")
+    print("check anton 010305258369428750000000_0: 104 / modification 0 / 12 Vervoer")
 
-    set_id, set_label = one(
+    set_id, set_mod, set_label = one(
         """
-        SELECT t.cat_id_set, d.label
+        SELECT t.category_id, t.modification, d.label
         FROM dbo.transaction_nederland t
-        JOIN dbo.dim_category d ON d.category_id = t.cat_id_set
+        JOIN dbo.dim_category d ON d.category_id = t.category_id
         WHERE t.source_id = N'010305251322603690000000_0'
           AND t.bank_id IS NULL
         """
     )
-    if int(set_id) != 110 or str(set_label) != "19 Giften":
-        raise LoadError(f"anton override failed: set={set_id} label={set_label!r}")
-    print("check anton modification: cat_id_set 110 / 19 Giften")
+    if int(set_id) != 110 or int(set_mod) != 1 or str(set_label) != "19 Giften":
+        raise LoadError(
+            f"anton override failed: category_id={set_id} modification={set_mod} label={set_label!r}"
+        )
+    print("check anton modification: category_id 110 / modification 1 / 19 Giften")
 
     for folder, table in (("uk", "dbo.transaction_uk"), ("stichtingen", "dbo.transaction_stichtingen")):
         cursor.execute(
             f"""
-            SELECT TOP 1 t.cat_id_calculated
+            SELECT TOP 1 t.category_id
             FROM {table} t
-            JOIN dbo.dim_category d ON d.category_id = t.cat_id_calculated
+            JOIN dbo.dim_category d ON d.category_id = t.category_id
             WHERE d.local_code = 12
             """
         )

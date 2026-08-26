@@ -163,18 +163,18 @@ For each `**/YYYY/categorized_transactions.json` and each
 - Set `account_id` to this person’s account the row was booked on (bank
   folder, totals `files[]`, or Enable Banking account). Not the JSON `iban`
   field when that field is a counterparty.
-- `cat_id_calculated`: join JSON `transactions[].category` as in
-  `DATABASE.md` (JSON 12 + nederland → 104). Fail if the local code is
-  missing from that country’s dim.
-- `cat_id_set`: NULL, except when `modifications` has `category` for that
-  `id` (JSON 19 + nederland → 110). Description-only mods write through to
-  `description`.
+- `category_id`: join JSON `transactions[].category` as in `DATABASE.md`
+  (JSON 12 + nederland → 104). If a legacy `modifications[]` overlay has
+  `category`, that local code is the stored `category_id` instead.
+- `modification`: 0 when the row was only calculated; 1/2/3 from a legacy
+  overlay (category / description / both). Fresh uncategorized rows are -1.
 
 Year-level file = `bank_id` NULL (consolidated). A `{year}/BoS/` file sets
 `bank_id = 5`.
 
-Do not create a modifications table. After load, a UI category edit writes
-only `cat_id_set`. Recalc updates `cat_id_calculated` only.
+Do not create a modifications table. After load, a UI category or
+description edit overwrites the row and sets `modification` to 1, 2, or 3.
+Recalc updates `category_id` only when `modification` is -1, 0, or 2.
 
 ### 6. Load totals and balances
 
@@ -187,7 +187,7 @@ Until the hub write path is switched, treat SQL as read-only replica.
 
 ### 7. Cut over hub writes
 
-Last: category edits (`cat_id_set`), CSV import, and recalc persist to SQL.
+Last: category edits (`category_id` + `modification`), CSV import, and recalc persist to SQL.
 JSON can stay as export/backup. PEMs and CSVs never move.
 
 ---
@@ -203,8 +203,8 @@ JSON (nederland, unchanged):
 SQL:
 
 ```text
-transaction_nederland.cat_id_calculated = 104
-transaction_nederland.cat_id_set        = NULL   -- unless the user overrode it
+transaction_nederland.category_id  = 104
+transaction_nederland.modification = 0     -- 1 if the user overwrote the category
 dim_category: 104 → country = nederland, local_code = 12, label = '12 Vervoer'
 ```
 
@@ -241,8 +241,8 @@ Windows dev: the same driver from Microsoft.
 2. Phase B: login list identical to SQLite; personal vs local vs
    country still derived from `person` + `center`.
 3. Phase C: anton’s `010305258369428750000000_0` is in
-   `transaction_nederland` with `cat_id_calculated = 104`, `cat_id_set`
-   NULL, and joins to `"12 Vervoer"`; a UK or stichtingen row with JSON
+   `transaction_nederland` with `category_id = 104`, `modification = 0`,
+   and joins to `"12 Vervoer"`; a UK or stichtingen row with JSON
    `12` is in `transaction_uk` / `transaction_stichtingen` and joins to the
    200- or 300-block, not to 104. A person with several IBANs has
    `number_accounts` equal to the count of `account` rows, all sharing

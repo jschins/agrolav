@@ -305,7 +305,6 @@ def convert_csv_files(
 
     categorized = {
         "transactions": [_public_transaction(item) for item in transactions],
-        "modifications": [],
     }
     totals = {
         "categories": build_category_totals(transactions, name_by_code),

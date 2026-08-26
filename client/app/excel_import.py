@@ -394,7 +394,10 @@ def list_xlsx_files(folder: Path) -> list[Path]:
 
 
 def _public_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in transaction.items() if not str(key).startswith("_")}
+    record = {key: value for key, value in transaction.items() if not str(key).startswith("_")}
+    if "modification" not in record:
+        record["modification"] = 0 if record.get("category") is not None else -1
+    return record
 
 
 def _recorded_files(account: dict[str, Any] | None) -> list[str] | None:
@@ -485,7 +488,6 @@ def convert_excel_files(
 
     categorized = {
         "transactions": [_public_transaction(item) for item in transactions],
-        "modifications": [],
     }
     totals = {
         "categories": build_category_totals(transactions, name_by_code),

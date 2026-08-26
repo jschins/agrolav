@@ -258,12 +258,28 @@ def _local_transactions_payload(
                 tx["person"] = short
                 transactions.append(tx)
 
-        modifications = payload.get("modifications")
-        modified_ids: list[str] = []
-        if isinstance(modifications, list):
-            for mod in modifications:
-                if isinstance(mod, dict) and "id" in mod:
-                    modified_ids.append(str(mod["id"]))
+        description_modified_ids: list[str] = []
+        category_modified_ids: list[str] = []
+        for item in payload.get("transactions") or []:
+            if not isinstance(item, dict) or item.get("id") is None:
+                continue
+            try:
+                flag = int(item.get("modification", 0))
+            except (TypeError, ValueError):
+                flag = 0
+            tid = str(item["id"])
+            if flag in (2, 3):
+                description_modified_ids.append(tid)
+            if flag in (1, 3):
+                category_modified_ids.append(tid)
+        for mod in payload.get("modifications") or []:
+            if not isinstance(mod, dict) or "id" not in mod:
+                continue
+            tid = str(mod["id"])
+            if "description" in mod and tid not in description_modified_ids:
+                description_modified_ids.append(tid)
+            if "category" in mod and tid not in category_modified_ids:
+                category_modified_ids.append(tid)
 
         columns = ["date", "amount", "type", "name", "description", "category"]
         categories_path = root.parent / "categories.json"
@@ -284,8 +300,8 @@ def _local_transactions_payload(
             "category": category_name,
             "columns": columns,
             "transactions": transactions,
-            "description_modified_ids": modified_ids,
-            "category_modified_ids": modified_ids,
+            "description_modified_ids": description_modified_ids,
+            "category_modified_ids": category_modified_ids,
             "keywords": [],
             "abbreviations": {},
             "table_header_terms": header_terms,

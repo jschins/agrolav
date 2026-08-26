@@ -1,0 +1,59 @@
+incremental Recalculation of Categories for Term (iRCfT)
+
+1. transaction.modification
+
+in the transactions table, add a column "modification" INT=0 call its value M initialized at 0
+M=1:  the user modified only the category, the value of which is overwritten 
+M=2:  the user modified only the description, the value of which was overwritten at modification; this does not affect incremental Recalculation of Categories from Term (iRCfT)
+M=3:  the user modified both
+
+NB no iRCfT for M=odd
+M=odd category can only be overwritten when user modifies the category again
+
+CSS:
+M=1: category shows bold
+M=2: line turns blue
+M=3: both
+
+
+
+2. transaction.hit
+
+in the transaction table, add a column "hit" VARCHAR(64), whch registers the category-determining term, according to the priority rule
+
+2.1. P beats G
+2.2. && beats non-&&
+2.3. later beats earlier in categorical-alphabetical ordering
+
+
++ when the user modifies a category, the line disappears immediately, and the view remains the same: no return to matrix view, no iRCfT, but only registration of M and C
++ when the user modifies a description, the line modifies immediately & turns blue, and the view remains the same: no return to matrix view, no fRCfT, but only registration of M and description 
++ when the user adds/modifies a term in T-view, the view remains the same, immediate iRCfT
++ when the user adds a term in right-click pop-up, the line disappears immediately, view remains the same: DELAYED iRCfT
+
+
+iCRfT for all terms:
+i.e. for all transactions with even M-value
+1st round of calculation: all && P terms
+2nd round of calculation: all not-&& P terms
+3rd round of calculation: all && G terms, in categorical-alphabetical order
+4th round of calculation: all not-&& G terms, in categorical-alphabetical order
+
+when a hit is found, the term is written in the the column
+when an earlier-round hit term exists, continue
+
+3. add a recalculaton-from-scratch knob, which triggers an iRCfT for all terms
+an iRCfT for all terms always occurs when the client is first launched
+
+iRCfT for added term:
+discard all transactions for which
+3.1 M odd
+3.2 the hit term has priority over the newly added term
+
+iRCfT for deleted term:
+look for all hits with that term, and recalculate that transaction for lower priority occurrences
+
+
+NB rename folder agrolav -> expenses
+
+NB migrate categories.json tables

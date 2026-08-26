@@ -197,7 +197,7 @@ def ensure_year_folder(
         "categories": _zero_categories(categories_path, prev_totals),
         "account_balances": _opening_accounts(prev_totals),
     }
-    categorized = {"transactions": [], "modifications": []}
+    categorized = {"transactions": []}
 
     person_folder.mkdir(exist_ok=True)
     folder.mkdir(exist_ok=True)
