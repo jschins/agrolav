@@ -53,6 +53,40 @@ function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
   return category === footers.balance || category === footers.last_booked;
 }
 
+function categoryCodeFromName(name: string): number | null {
+  const match = String(name).match(/^(\d{2})/);
+  if (!match) return null;
+  return parseInt(match[1], 10);
+}
+
+function patchDetail(
+  detail: TransactionsResponse,
+  patch: {
+    removeId?: string;
+    update?: Transaction;
+    blueId?: string;
+    boldId?: string;
+  }
+): TransactionsResponse {
+  let transactions = detail.transactions;
+  if (patch.removeId) {
+    transactions = transactions.filter((row) => String(row.id) !== patch.removeId);
+  } else if (patch.update) {
+    const id = String(patch.update.id ?? "");
+    transactions = transactions.map((row) => (String(row.id) === id ? patch.update! : row));
+  }
+  const descriptionIds = new Set(detail.description_modified_ids ?? []);
+  const categoryIds = new Set(detail.category_modified_ids ?? []);
+  if (patch.blueId) descriptionIds.add(patch.blueId);
+  if (patch.boldId) categoryIds.add(patch.boldId);
+  return {
+    ...detail,
+    transactions,
+    description_modified_ids: [...descriptionIds],
+    category_modified_ids: [...categoryIds],
+  };
+}
+
 type HeaderAction = {
   id: string;
   label: string;
@@ -479,7 +513,7 @@ function SyncNotifyShell({
   termsView = false,
   onLogout,
 }: {
-  children: (brandName: string, activeYear: string, bankView: string) => ReactNode;
+  children: (brandName: string, activeYear: string, bankView: string, dataRev: number) => ReactNode;
   onCenterChanged?: () => void;
   termsView?: boolean;
   onLogout?: () => void;
@@ -497,6 +531,7 @@ function SyncNotifyShell({
   const [headerActions, setHeaderActions] = useState<HeaderAction[]>([]);
   const [scratchBusy, setScratchBusy] = useState(false);
   const [scratchError, setScratchError] = useState<string | null>(null);
+  const [dataRev, setDataRev] = useState(0);
   const dataEpochRef = useRef<number | null>(null);
 
   const brandName = brandTitle(status);
@@ -505,15 +540,12 @@ function SyncNotifyShell({
     getYears()
       .then((res) => {
         setYearOptions(res.years);
-        // Client dropdown shows existing years only; if default year does not
-        // exist yet, fall back to the latest existing year.
-        if (res.years.includes(res.default_year)) {
-          setActiveYear(res.default_year);
-        } else if (res.years.length > 0) {
-          setActiveYear(res.years[res.years.length - 1]);
-        } else {
-          setActiveYear(res.default_year);
-        }
+        setActiveYear((prev) => {
+          if (prev && res.years.includes(prev)) return prev;
+          if (res.years.includes(res.default_year)) return res.default_year;
+          if (res.years.length > 0) return res.years[res.years.length - 1];
+          return res.default_year;
+        });
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -565,7 +597,7 @@ function SyncNotifyShell({
               dataEpochRef.current = epoch;
             } else if (epoch > dataEpochRef.current) {
               dataEpochRef.current = epoch;
-              onCenterChanged?.();
+              setDataRev((n) => n + 1);
             }
           }
         })
@@ -741,7 +773,7 @@ function SyncNotifyShell({
           </div>
         </div>
       )}
-      {children(brandName, activeYear, bankView)}
+      {children(brandName, activeYear, bankView, dataRev)}
     </div>
     </HeaderActionsContext.Provider>
   );
@@ -908,11 +940,17 @@ export default function App() {
       }
       onCenterChanged={bumpCenterEpoch}
     >
-      {(brandName, year, bankView) =>
+      {(brandName, year, bankView, dataRev) =>
         isTerms ? (
           <TermsApp key={wsEpoch} />
         ) : (
-          <MainApp key={wsEpoch} brandName={brandName} year={year} bankView={bankView} />
+          <MainApp
+            key={wsEpoch}
+            brandName={brandName}
+            year={year}
+            bankView={bankView}
+            dataRev={dataRev}
+          />
         )
       }
     </SyncNotifyShell>
@@ -981,10 +1019,12 @@ function MainApp({
   brandName,
   year,
   bankView,
+  dataRev,
 }: {
   brandName: string;
   year: string;
   bankView: string;
+  dataRev: number;
 }) {
   const [matrix, setMatrix] = useState<MatrixResponse | null>(null);
   const [selection, setSelection] = useState<CellSelection | null>(null);
@@ -1006,10 +1046,12 @@ function MainApp({
     term: string;
     x: number;
     y: number;
+    transactionId: string;
   } | null>(null);
   const [termMenuSettings, setTermMenuSettings] = useState<SettingsResponse | null>(null);
   const selectionRef = useRef<CellSelection | null>(null);
   const dirtyRef = useRef(false);
+  const viewInitRef = useRef(false);
 
   useEffect(() => {
     getCentraleStatus()
@@ -1084,33 +1126,36 @@ function MainApp({
     return () => endRefreshBusy();
   }, []);
 
-  function markDirty() {
-    dirtyRef.current = true;
-  }
-
   function clearDirty() {
     dirtyRef.current = false;
   }
 
   const bankQuery = bankView !== "consolidated" ? bankView : undefined;
 
-  function loadDetail(short: string, category: string): Promise<void> {
-    setDetail(null);
+  function loadDetail(
+    short: string,
+    category: string,
+    { quiet = false }: { quiet?: boolean } = {}
+  ): Promise<void> {
+    if (!quiet) setDetail(null);
     return getTransactions(short, category, year, bankQuery)
       .then(setDetail)
       .catch((e: Error) => setError(e.message));
   }
 
-  function loadDisplay(sel: CellSelection | null): Promise<void> {
+  function loadDisplay(
+    sel: CellSelection | null,
+    { quiet = false }: { quiet?: boolean } = {}
+  ): Promise<void> {
     setError(null);
     return getMatrix(year, bankQuery)
       .then((payload) => {
         setMatrix(payload);
         if (!sel) {
-          setDetail(null);
+          if (!quiet) setDetail(null);
           return;
         }
-        return loadDetail(sel.short, sel.category);
+        return loadDetail(sel.short, sel.category, { quiet });
       })
       .catch((e: Error) => setError(e.message));
   }
@@ -1143,6 +1188,12 @@ function MainApp({
 
   useEffect(() => {
     window.name = "boekhouding-main";
+    if (!year) return;
+    if (!viewInitRef.current) {
+      viewInitRef.current = true;
+      void loadMatrixOnly();
+      return;
+    }
     setSelection(null);
     setDetail(null);
     setError(null);
@@ -1150,11 +1201,32 @@ function MainApp({
   }, [year, bankView]);
 
   useEffect(() => {
+    if (dataRev === 0) return;
+    const sel = selectionRef.current;
+    let cancelled = false;
+    getMatrix(year, bankQuery)
+      .then((payload) => {
+        if (cancelled) return;
+        setMatrix(payload);
+        if (!sel) return;
+        return getTransactions(sel.short, sel.category, year, bankQuery).then((next) => {
+          if (!cancelled) setDetail(next);
+        });
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataRev]);
+
+  useEffect(() => {
     const channel = new BroadcastChannel(CHANNEL);
     channel.onmessage = (e) => {
       if (e.data === "recalculated") {
         clearDirty();
-        void loadDisplay(selectionRef.current);
+        void loadDisplay(selectionRef.current, { quiet: true });
       }
     };
     const onFocus = () => {
@@ -1187,15 +1259,36 @@ function MainApp({
 
   function modifyTransaction(modified: Transaction) {
     if (!selection) return;
+    const id = String(modified.id ?? "");
+    const currentCode = categoryCodeFromName(selection.category);
+    const nextCode = Number(modified.category);
+    setDetail((prev) => {
+      if (!prev) return prev;
+      const existing = prev.transactions.find((row) => String(row.id) === id);
+      const categoryChanged =
+        existing != null && Number(existing.category) !== nextCode;
+      const descriptionChanged =
+        existing != null &&
+        String(existing.description ?? "") !== String(modified.description ?? "");
+      if (categoryChanged && currentCode != null && nextCode !== currentCode) {
+        return patchDetail(prev, { removeId: id });
+      }
+      if (descriptionChanged) {
+        return patchDetail(prev, { update: modified, blueId: id });
+      }
+      if (categoryChanged) {
+        return patchDetail(prev, { update: modified, boldId: id });
+      }
+      return prev;
+    });
     recordModification(selection.short, modified)
-      .then(() => {
-        markDirty();
-        return refreshMainView(selection);
+      .then((res) => {
+        if (res.matrix) setMatrix(res.matrix);
       })
       .catch((e: Error) => setError(e.message));
   }
 
-  function openTermMenu(e: MouseEvent, cellText: string) {
+  function openTermMenu(e: MouseEvent, cellText: string, transactionId: string) {
     e.preventDefault();
     e.stopPropagation();
     setError(null);
@@ -1204,7 +1297,7 @@ function MainApp({
     getSettings()
       .then((settings) => {
         setTermMenuSettings(settings);
-        setTermMenu({ term: word, x: e.clientX, y: e.clientY });
+        setTermMenu({ term: word, x: e.clientX, y: e.clientY, transactionId });
       })
       .catch((err: Error) => setError(err.message));
   }
@@ -1217,6 +1310,12 @@ function MainApp({
   function saveTermMenu(term: string, targetCategory: string, general: boolean) {
     const short = selectionRef.current?.short;
     if (!general && !short) return Promise.resolve();
+    const sel = selectionRef.current;
+    const rowId = termMenu?.transactionId;
+    closeTermMenu();
+    if (sel && rowId && targetCategory !== sel.category) {
+      setDetail((prev) => (prev ? patchDetail(prev, { removeId: rowId }) : prev));
+    }
     return addCategoryTerm({
       category_name: targetCategory,
       term,
@@ -1224,11 +1323,8 @@ function MainApp({
       person: general ? undefined : short,
     })
       .then((res) => {
-        closeTermMenu();
-        clearDirty();
         setMatrix(res.matrix);
-        const sel = selectionRef.current;
-        if (sel) return loadDetail(sel.short, sel.category);
+        if (sel) return loadDetail(sel.short, sel.category, { quiet: true });
       })
       .catch((err: Error) => setError(err.message));
   }
@@ -1616,6 +1712,16 @@ function TermsApp() {
   }, []);
 
   function updateTerms(group: string, category: string, terms: string[]) {
+    setSettings((prev) => {
+      if (!prev) return prev;
+      if (group === "general") {
+        return { ...prev, general: { ...prev.general, [category]: terms } };
+      }
+      const personGroup = { ...(prev.personal[group] ?? {}) };
+      if (terms.length) personGroup[category] = terms;
+      else delete personGroup[category];
+      return { ...prev, personal: { ...prev.personal, [group]: personGroup } };
+    });
     updateSettings(group, category, terms)
       .then((res) => {
         setSettings((prev) => {
@@ -1629,7 +1735,6 @@ function TermsApp() {
           else delete personGroup[category];
           return { ...prev, personal: { ...prev.personal, [group]: personGroup } };
         });
-        // Hub already applied iRCfT; refresh the main window immediately.
         channelRef.current?.postMessage("recalculated");
       })
       .catch((e: Error) => setError(e.message));
@@ -1650,7 +1755,8 @@ function TermsApp() {
         </div>
         <p className="win-hint">
           Term Window. Return to overview using <kbd>Ctrl</kbd>+<kbd>Tab</kbd> or{" "}
-          <kbd>Alt</kbd>+<kbd>M</kbd>. Edits save and recalculate immediately.{" "}
+          <kbd>Alt</kbd>+<kbd>M</kbd>. Edits save immediately; matching bookings
+          update in the background.{" "}
           {settings ? formatTermMatchHint(settings.typerules) : ""}
         </p>
       </aside>
@@ -1776,7 +1882,7 @@ function PTable({
   detail: TransactionsResponse;
   onModify: (transaction: Transaction) => void;
   onCategoryError?: (message: string | null) => void;
-  onTermContextMenu?: (e: MouseEvent, cellText: string) => void;
+  onTermContextMenu?: (e: MouseEvent, cellText: string, transactionId: string) => void;
 }) {
   const transactions = Array.isArray(detail.transactions) ? detail.transactions : [];
   const keywords = Array.isArray(detail.keywords) ? detail.keywords : [];
@@ -1816,7 +1922,7 @@ function PTable({
           key={column}
           className="name term-source"
           onContextMenu={
-            onTermContextMenu ? (e) => onTermContextMenu(e, text) : undefined
+            onTermContextMenu ? (e) => onTermContextMenu(e, text, String(t.id ?? "")) : undefined
           }
         >
           {safeHighlight(text)}
@@ -1830,7 +1936,7 @@ function PTable({
           key={column}
           className="desc term-source"
           onContextMenu={
-            onTermContextMenu ? (e) => onTermContextMenu(e, text) : undefined
+            onTermContextMenu ? (e) => onTermContextMenu(e, text, String(t.id ?? "")) : undefined
           }
         >
           <EditableField
@@ -1890,10 +1996,10 @@ function PTable({
             </tr>
           </thead>
           <tbody>
-            {transactions.map((t, i) => {
+            {transactions.map((t) => {
               const descModified = descriptionModified.has(String(t.id));
               return (
-                <tr key={i} className={descModified ? "modified" : undefined}>
+                <tr key={String(t.id)} className={descModified ? "modified" : undefined}>
                   {columns.map((c) => renderCell(t, c))}
                 </tr>
               );

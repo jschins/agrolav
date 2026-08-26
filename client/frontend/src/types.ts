@@ -78,3 +78,10 @@ export interface AddTermResponse {
   terms: string[];
   matrix: MatrixResponse;
 }
+
+export interface ModificationResponse {
+  person: string;
+  folder?: string;
+  transaction?: Transaction;
+  matrix?: MatrixResponse;
+}

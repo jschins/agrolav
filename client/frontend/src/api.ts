@@ -1,6 +1,7 @@
 import type {
   AddTermResponse,
   MatrixResponse,
+  ModificationResponse,
   RefreshResponse,
   SettingsResponse,
   TermsUpdateResponse,
@@ -134,7 +135,7 @@ export function addCategoryTerm(body: {
 export function recordModification(
   short: string,
   transaction: Transaction
-): Promise<unknown> {
+): Promise<ModificationResponse> {
   return sendJson(`/api/transactions/${encodeURIComponent(short)}/modification`, "PUT", {
     transaction,
   });

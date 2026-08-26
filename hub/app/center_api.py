@@ -191,7 +191,22 @@ def record_modification(
             skip_recalc=True,
             skip_event=True,
         )
-        result = store.mutate_and_recalculate(ws, [rel], source=source)
+        totals_rel = store.person_year_rel(
+            pack.folder_name, store.CATEGORY_TOTALS, year=pack.year
+        )
+        totals_path = store.resolve_file_path(ws, totals_rel)
+        inputs = [rel]
+        if totals_path.is_file():
+            store.put_file(
+                ws,
+                totals_rel,
+                json.loads(totals_path.read_text(encoding="utf-8")),
+                source=source,
+                skip_recalc=True,
+                skip_event=True,
+            )
+            inputs.append(totals_rel)
+        result = store.mutate_and_publish(ws, inputs, source=source, announce=False)
         modified_out = dict(modified) if isinstance(modified, dict) else modified
         if isinstance(modified_out, dict):
             modified_out["person"] = pack.short
