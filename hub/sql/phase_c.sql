@@ -1,7 +1,8 @@
 -- Phase C: country / categories / transactions.
--- Drops and reloads these tables, including dbo.app_user (re-seeded from the
--- workspace tree). Hub writes stay on JSON until cutover.
+-- Drops and recreates these tables inside database agrolav (does not DROP
+-- DATABASE). Hub writes stay on JSON until cutover.
 -- Run via hub/scripts/load_phase_c.py.
+-- To empty tables in SSMS without dropping the database: empty_agrolav.sql.
 
 IF OBJECT_ID(N'dbo.account_balance_file', N'U') IS NOT NULL DROP TABLE dbo.account_balance_file;
 IF OBJECT_ID(N'dbo.account_balance', N'U') IS NOT NULL DROP TABLE dbo.account_balance;
