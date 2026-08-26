@@ -534,7 +534,7 @@ def refresh(
         result = refresh_all(date_from=date_from, date_to=date_to)
         inputs = _ingest_person_data_files(ws)
 
-    mut = store.mutate_and_recalculate(ws, inputs, source="central")
+    mut = store.mutate_and_publish(ws, inputs, source="central")
     matrix_payload = mut.get("matrix") or result.get("matrix") or {}
     if isinstance(matrix_payload, dict):
         matrix_payload = {**matrix_payload, "center": ws}
@@ -576,7 +576,7 @@ def refresh_person(
         # Person-only fetch completed (or re-skipped); drop the post-callback prompt.
         consent_flow.clear_ready(center=ws, short=pack.short)
 
-    mut = store.mutate_and_recalculate(ws, inputs, source="central")
+    mut = store.mutate_and_publish(ws, inputs, source="central")
     matrix_payload = mut.get("matrix") or result.get("matrix") or {}
     if isinstance(matrix_payload, dict):
         matrix_payload = {**matrix_payload, "center": ws}

@@ -416,6 +416,19 @@ def api_recalculate_center(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/local/{center}/recalculate-from-scratch")
+def api_recalculate_from_scratch(
+    center: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    try:
+        return store.recalculate_from_scratch_all(center)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 class SettingsTermsRequest(BaseModel):
     terms: list[str] = Field(default_factory=list)
     source: str = "local"

@@ -70,6 +70,10 @@ export function recalculate(): Promise<MatrixResponse> {
   return sendJson("/api/recalculate", "POST", {});
 }
 
+export function recalculateFromScratch(): Promise<MatrixResponse> {
+  return sendJson("/api/recalculate-from-scratch", "POST", {});
+}
+
 export function refreshAll(body: {
   date_from?: string;
   date_to?: string;

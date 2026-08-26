@@ -626,6 +626,22 @@ def api_recalculate() -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+@app.post("/api/recalculate-from-scratch")
+def api_recalculate_from_scratch() -> dict[str, Any]:
+    from app.centrale_sync import hub_post, scope_matrix
+
+    try:
+        result = hub_post("/recalculate-from-scratch", {}, timeout=600.0)
+        matrix = result.get("matrix")
+        if isinstance(matrix, dict):
+            return scope_matrix(matrix)
+        if isinstance(result, dict):
+            return scope_matrix(result)
+        return result
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 @app.post("/api/refresh")
 def api_refresh(body: RefreshRequest | None = None) -> dict[str, Any]:
     from app.centrale_sync import configured_person, hub_post, scope_refresh

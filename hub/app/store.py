@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.runtime import data_root
-from app.yearpath import has_person_layout, is_year_name, parse_year
+from app.yearpath import has_person_layout, is_year_name, list_year_names, parse_year
 
 _lock = threading.Lock()
 # label -> last_seen monotonic time (force-kill never calls session/end)
@@ -235,6 +235,7 @@ def publish_derived_files(
     person_folders: list[str] | None = None,
     source: str = "central",
     skip_events: bool = True,
+    all_years: bool = False,
 ) -> None:
     """Re-publish categorized_transactions and category_totals for the store."""
     ws = _clean_center(center)
@@ -245,35 +246,36 @@ def publish_derived_files(
             continue
         if wanted is not None and child.name not in wanted:
             continue
-        year = parse_year(None)
-        totals_path = child / year / CATEGORY_TOTALS
-        if totals_path.is_file():
-            try:
-                content = json.loads(totals_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            put_file(
-                ws,
-                person_year_rel(child.name, CATEGORY_TOTALS, year=year),
-                content,
-                source=source,
-                skip_recalc=True,
-                skip_event=skip_events,
-            )
-        cat_path = child / year / CATEGORIZED
-        if cat_path.is_file():
-            try:
-                content = json.loads(cat_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            put_file(
-                ws,
-                person_year_rel(child.name, CATEGORIZED, year=year),
-                content,
-                source=source,
-                skip_recalc=True,
-                skip_event=skip_events,
-            )
+        years = list_year_names(child) if all_years else [parse_year(None)]
+        for year in years:
+            totals_path = child / year / CATEGORY_TOTALS
+            if totals_path.is_file():
+                try:
+                    content = json.loads(totals_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                put_file(
+                    ws,
+                    person_year_rel(child.name, CATEGORY_TOTALS, year=year),
+                    content,
+                    source=source,
+                    skip_recalc=True,
+                    skip_event=skip_events,
+                )
+            cat_path = child / year / CATEGORIZED
+            if cat_path.is_file():
+                try:
+                    content = json.loads(cat_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                put_file(
+                    ws,
+                    person_year_rel(child.name, CATEGORIZED, year=year),
+                    content,
+                    source=source,
+                    skip_recalc=True,
+                    skip_event=skip_events,
+                )
 
 
 def recalculate_center(
@@ -350,13 +352,16 @@ def ircft_center(
         return {"ok": True, "center": ws, "matrix": build_matrix(packs)}
 
 
-def derived_paths_for_center(center: str) -> list[str]:
+def derived_paths_for_center(center: str, *, all_years: bool = False) -> list[str]:
     """categorized_transactions + category_totals for every person in ``center``."""
     ws = _clean_center(center)
     paths: list[str] = []
+    root = center_dir(ws)
     for name in list_person_folders(ws):
-        paths.append(f"{ws}/{person_year_rel(name, CATEGORIZED)}")
-        paths.append(f"{ws}/{person_year_rel(name, CATEGORY_TOTALS)}")
+        years = list_year_names(root / name) if all_years else [parse_year(None)]
+        for year in years:
+            paths.append(f"{ws}/{person_year_rel(name, CATEGORIZED, year=year)}")
+            paths.append(f"{ws}/{person_year_rel(name, CATEGORY_TOTALS, year=year)}")
     return paths
 
 
@@ -525,6 +530,98 @@ def mutate_and_recalculate(
         "affected_files": announced,
         "matrix": matrix_payload,
         "recalculated": list(matrices.keys()),
+    }
+
+
+def mutate_and_publish(
+    center: str,
+    input_paths: list[str],
+    *,
+    source: str = "central",
+) -> dict[str, Any]:
+    """Announce ingested files without recategorizing existing bookings."""
+    from app.matrix import build_matrix
+    from app.paths import CALC_LOCK
+    from app.runtime import set_active_center
+    from app.settings import init_app
+
+    primary = _clean_center(center)
+    expected, _person_folders, _multi = _mutation_scope(
+        primary,
+        input_paths,
+        recalc_all_centers=False,
+    )
+    announced = announce_mutation(primary, expected, source=source)
+    with CALC_LOCK:
+        set_active_center(primary)
+        init_app()
+        matrix_payload = build_matrix()
+    if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
+        matrix_payload = {**matrix_payload, "center": primary}
+    return {
+        "ok": True,
+        "center": primary,
+        "affected_files": announced,
+        "matrix": matrix_payload,
+        "recalculated": [],
+    }
+
+
+def recalculate_from_scratch_all(center: str, *, source: str = "central") -> dict[str, Any]:
+    """Wipe hit/modification and recategorize every person in every country."""
+    from app.matrix import build_matrix, recalculate_all_from_scratch
+    from app.paths import CALC_LOCK
+    from app.runtime import (
+        active_country,
+        list_country_folders,
+        resolve_country_for_center,
+        reset_request_country,
+        set_active_center,
+        set_request_country,
+    )
+    from app.settings import init_app
+
+    primary = _clean_center(center)
+    primary_country = resolve_country_for_center(primary) or active_country()
+    announced: list[str] = []
+    done: list[str] = []
+    with CALC_LOCK:
+        for country in list_country_folders():
+            country_token = set_request_country(country)
+            try:
+                for ws in list_centers(country):
+                    set_active_center(ws, country=country)
+                    init_app()
+                    recalculate_all_from_scratch()
+                    publish_derived_files(
+                        ws,
+                        source=source,
+                        skip_events=True,
+                        all_years=True,
+                    )
+                    announced.extend(
+                        announce_mutation(
+                            ws,
+                            derived_paths_for_center(ws, all_years=True),
+                            source=source,
+                        )
+                    )
+                    done.append(f"{country}/{ws}")
+            finally:
+                reset_request_country(country_token)
+        set_active_center(primary, country=primary_country)
+        if primary_country:
+            set_request_country(primary_country)
+        init_app()
+        matrix_payload = build_matrix()
+    if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
+        matrix_payload = {**matrix_payload, "center": primary}
+    return {
+        "ok": True,
+        "center": primary,
+        "centers": done,
+        "affected_files": announced,
+        "matrix": matrix_payload,
     }
 
 

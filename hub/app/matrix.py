@@ -221,6 +221,43 @@ def recalculate_all(person_folders: list[str] | None = None) -> dict[str, Any]:
         return build_matrix(packs)
 
 
+def recalculate_pack_from_scratch(pack: PersonPack) -> None:
+    """Wipe hit/modification, then recategorize every year (and bank folder) for ``pack``."""
+    from dataclasses import replace
+
+    from app.core.bank_csv import list_year_bank_folders
+    from app.core.categorize import recategorize_transactions
+    from app.yearpath import list_year_names
+
+    for year in list_year_names(pack.folder):
+        year_path = pack.folder / year
+        targets = [year_path]
+        for bank in list_year_bank_folders(year_path):
+            targets.append(year_path / bank)
+        for data_dir in targets:
+            if not (data_dir / "categorized_transactions.json").is_file():
+                continue
+            year_pack = replace(pack, data_dir=data_dir.resolve(), year=year)
+            with bind_person(year_pack):
+                recategorize_transactions(from_scratch=True)
+
+
+def recalculate_all_from_scratch(person_folders: list[str] | None = None) -> dict[str, Any]:
+    """From-scratch recategorize of the bound center (every year folder)."""
+    from app.paths import CALC_LOCK
+
+    with CALC_LOCK:
+        packs = refresh_people()
+        if person_folders:
+            wanted = {Path(name).name for name in person_folders}
+            to_run = [p for p in packs if p.folder_name in wanted]
+        else:
+            to_run = packs
+        for pack in to_run:
+            recalculate_pack_from_scratch(pack)
+        return build_matrix(packs)
+
+
 def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
     from app.core.bank_csv import person_csv_banks, refresh_bank_csv_year
     from app.core.excel_import import import_person_excel, list_xlsx_files

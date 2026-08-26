@@ -15,6 +15,7 @@ import {
   login,
   logout,
   recalculate,
+  recalculateFromScratch,
   recordModification,
   refreshAll,
   refreshPerson,
@@ -178,7 +179,8 @@ function blockRefreshBusyEvent(e: Event): void {
   e.stopPropagation();
 }
 
-function beginRefreshBusy(): void {
+function beginRefreshBusy(message = "please wait... processing"): void {
+  document.documentElement.style.setProperty("--busy-message", JSON.stringify(message));
   document.documentElement.classList.add("refresh-busy");
   if (refreshBusyBlock) return;
   refreshBusyBlock = blockRefreshBusyEvent;
@@ -493,6 +495,8 @@ function SyncNotifyShell({
   const [uploadUrl, setUploadUrl] = useState<string>("");
   const [refusal, setRefusal] = useState<CentralWinsAlert | null>(null);
   const [headerActions, setHeaderActions] = useState<HeaderAction[]>([]);
+  const [scratchBusy, setScratchBusy] = useState(false);
+  const [scratchError, setScratchError] = useState<string | null>(null);
   const dataEpochRef = useRef<number | null>(null);
 
   const brandName = brandTitle(status);
@@ -631,6 +635,26 @@ function SyncNotifyShell({
       });
   }
 
+  function doRecalculateFromScratch() {
+    if (scratchBusy) return;
+    beginRefreshBusy("please wait... recalculating");
+    flushSync(() => {
+      setScratchBusy(true);
+      setScratchError(null);
+    });
+    afterPaint(() => {
+      recalculateFromScratch()
+        .then(() => {
+          onCenterChanged?.();
+        })
+        .catch((e: Error) => setScratchError(e.message))
+        .finally(() => {
+          setScratchBusy(false);
+          endRefreshBusy();
+        });
+    });
+  }
+
   const showBar =
     Boolean(status?.enabled) ||
     isCountry ||
@@ -680,12 +704,21 @@ function SyncNotifyShell({
               />
             ) : null}
             <ActionsMenu items={menuItems} />
+            <button
+              type="button"
+              className="logout-btn recalc-scratch-btn"
+              disabled={scratchBusy}
+              onClick={doRecalculateFromScratch}
+            >
+              {scratchBusy ? "Recalculating…" : "Recalculate from scratch"}
+            </button>
             {onLogout ? (
               <button type="button" className="logout-btn" onClick={onLogout}>
                 Log out
               </button>
             ) : null}
             {switching ? <span className="center-switcher-busy">switching…</span> : null}
+            {scratchError ? <span> · {scratchError}</span> : null}
             {status?.error ? <span> · sync error: {status.error}</span> : null}
           </div>
           <div className="sync-notify-row">

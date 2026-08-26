@@ -826,11 +826,16 @@ def _raw_simplified_by_id() -> dict[Any, dict[str, Any]]:
     return by_id
 
 
-def recategorize_transactions() -> dict[str, str]:
+def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
     """Re-categorize rows that the user has not locked with a category edit.
 
     ``modification`` 1 or 3 keeps ``category``.  -1 becomes 0 after the first
     calculation. Description stays on the row (already overwritten if M is 2/3).
+
+    ``from_scratch`` clears ``hit`` and sets ``modification`` to -1 first, so
+    every row is treated as uncalculated (user category/description locks
+    are dropped). The algorithm then fills ``category``, ``hit``, and sets
+    ``modification`` to 0.
     """
     general = _category_map(_read_json(paths.CATEGORIES_PATH))
     personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
@@ -843,6 +848,10 @@ def recategorize_transactions() -> dict[str, str]:
         for item in existing_tx
         if isinstance(item, dict) and item.get("id") is not None
     ]
+    if from_scratch:
+        for record in records:
+            record["hit"] = None
+            record["modification"] = MOD_UNCALCULATED
 
     categorized = _categorize_transactions(records, general, personal)
 
