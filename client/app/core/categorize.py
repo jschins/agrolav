@@ -9,7 +9,7 @@ from typing import Any
 import app.paths as paths
 
 DEFAULT_CATEGORY = 18
-CATEGORIZE_LOGIC_VERSION = "2026-07-09-typerules-highest-priority"
+CATEGORIZE_LOGIC_VERSION = "2026-08-26-ircft-personal-and-last-stick"
 _TERM_AND_SEP = " && "
 _ACCOUNT_INDEX_FIELD = "_account_index"
 
@@ -356,42 +356,90 @@ def _transaction_type_for_categorization(record: dict[str, Any]) -> str:
     return str(record.get("type") or "")
 
 
-def _keyword_match_rank(term: str, *, personal: bool) -> tuple[int, int, int]:
-    """Sort key for competing keyword hits when no typerule applies (higher wins).
-
-    1. ``&&`` terms (tier 2) beat single-phrase terms (tier 1).
-    2. Among single-phrase terms, longer string wins.
-    3. Within the same tier (and same length for single-phrase), personal beats general.
-    """
-    if _TERM_AND_SEP in term:
-        return (2, 0, 1 if personal else 0)
-    return (1, len(term), 1 if personal else 0)
+HIT_PERSONAL_PREFIX = "P:"
+HIT_GENERAL_PREFIX = "G:"
 
 
-def _best_keyword_category(
+def format_hit(term: str, *, personal: bool) -> str:
+    prefix = HIT_PERSONAL_PREFIX if personal else HIT_GENERAL_PREFIX
+    return f"{prefix}{term}"
+
+
+def parse_hit(hit: Any) -> tuple[bool, str] | None:
+    text = str(hit or "").strip()
+    if text.startswith(HIT_PERSONAL_PREFIX):
+        return True, text[len(HIT_PERSONAL_PREFIX) :]
+    if text.startswith(HIT_GENERAL_PREFIX):
+        return False, text[len(HIT_GENERAL_PREFIX) :]
+    return None
+
+
+def _priority_key(term: str, *, personal: bool, category_name: str) -> tuple:
+    """Higher wins: personal, then ``&&``, then category-alphabetical last-stick."""
+    return (
+        1 if personal else 0,
+        1 if _TERM_AND_SEP in term else 0,
+        category_name,
+        term,
+    )
+
+
+def _name_by_code(general: dict[str, list[str]]) -> dict[int, str]:
+    return {
+        code: name
+        for name in general
+        if (code := _category_code(name)) is not None
+    }
+
+
+def _existing_priority_key(
+    record: dict[str, Any], name_by_code: dict[int, str]
+) -> tuple | None:
+    parsed = parse_hit(record.get("hit"))
+    if parsed is None:
+        return None
+    personal, term = parsed
+    code = _as_category_code(record.get("category"))
+    category_name = name_by_code.get(code, "") if code is not None else ""
+    return _priority_key(term, personal=personal, category_name=category_name)
+
+
+def _best_keyword_hit(
     haystack: str,
     general: dict[str, list[str]],
     personal: dict[str, list[str]],
-) -> int | None:
-    best_rank = (-1, -1, -1)
-    best_code: int | None = None
-
+) -> tuple[int, str] | None:
+    best_key: tuple | None = None
+    best: tuple[int, str] | None = None
     for is_personal, group in ((False, general), (True, personal)):
         for name, fields in group.items():
             code = _category_code(name)
             if code is None:
                 continue
             for field in fields or []:
-                if not field:
+                term = str(field).lower().strip()
+                if not term or not _matches_word(term, haystack):
                     continue
-                term = str(field).lower()
-                if not _matches_word(term, haystack):
-                    continue
-                rank = _keyword_match_rank(term, personal=is_personal)
-                if rank > best_rank:
-                    best_rank = rank
-                    best_code = code
-    return best_code
+                key = _priority_key(term, personal=is_personal, category_name=name)
+                if best_key is None or key > best_key:
+                    best_key = key
+                    best = (code, format_hit(term, personal=is_personal))
+    return best
+
+
+def categorize_with_hit(
+    record: dict[str, Any],
+    general: dict[str, list[str]],
+    personal: dict[str, list[str]],
+) -> tuple[int, str | None]:
+    type_match = _category_from_type_rules(record)
+    if type_match is not None:
+        return type_match, None
+    haystack = _haystack_for_categorization(record)
+    keyword_match = _best_keyword_hit(haystack, general, personal)
+    if keyword_match is not None:
+        return keyword_match
+    return DEFAULT_CATEGORY, None
 
 
 def categorize(
@@ -399,16 +447,8 @@ def categorize(
     general: dict[str, list[str]],
     personal: dict[str, list[str]],
 ) -> int:
-    type_match = _category_from_type_rules(record)
-    if type_match is not None:
-        return type_match
-
-    haystack = _haystack_for_categorization(record)
-    keyword_match = _best_keyword_category(haystack, general, personal)
-    if keyword_match is not None:
-        return keyword_match
-
-    return DEFAULT_CATEGORY
+    code, _hit = categorize_with_hit(record, general, personal)
+    return code
 
 
 def _account_index(transaction: dict[str, Any]) -> int:
@@ -634,7 +674,9 @@ def _categorize_transactions(
             source = match_sources.get(record.get("id"), record)
         flag = _modification_of(updated)
         if not _user_set_category(flag):
-            updated["category"] = categorize(source, general, personal)
+            code, hit = categorize_with_hit(source, general, personal)
+            updated["category"] = code
+            updated["hit"] = hit
             if flag == MOD_UNCALCULATED:
                 updated["modification"] = MOD_NONE
         categorized.append(updated)
@@ -649,7 +691,9 @@ def _simplify_and_categorize(
     categorized: list[dict[str, Any]] = []
     for transaction in raw_transactions:
         record = simplify_transaction(transaction)
-        record["category"] = categorize(transaction, general, personal)
+        code, hit = categorize_with_hit(transaction, general, personal)
+        record["category"] = code
+        record["hit"] = hit
         record["modification"] = MOD_NONE
         categorized.append(record)
     return categorized
@@ -811,6 +855,184 @@ def recategorize_transactions() -> dict[str, str]:
     return _write_category_totals(result, general)
 
 
+def ircft_add_term(
+    term: str,
+    *,
+    personal: bool,
+    category_name: str,
+    general: dict[str, list[str]],
+    personal_map: dict[str, list[str]],
+) -> bool:
+    """Apply one newly added term without recategorizing every row.
+
+    Call after the term is already saved. Unlocked rows with no ``hit`` are
+    backfilled with a full categorize (the new term is already in the maps).
+    Rows that already have a hit are updated only when the new term matches
+    and outranks the stored hit.
+    """
+    normalized = _normalize_term(term)
+    if not normalized:
+        return False
+    new_key = _priority_key(normalized, personal=personal, category_name=category_name)
+    new_hit = format_hit(normalized, personal=personal)
+    name_by_code = _name_by_code(general)
+    new_code = _category_code(category_name)
+
+    payload = _migrate_categorized_store(_load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH))
+    transactions = payload.get("transactions")
+    if not isinstance(transactions, list) or new_code is None:
+        return False
+
+    changed = False
+    next_rows: list[dict[str, Any]] = []
+    for transaction in transactions:
+        if not isinstance(transaction, dict):
+            next_rows.append(transaction)
+            continue
+        canonical = _canonical_transaction(transaction)
+        flag = _modification_of(canonical)
+        if _user_set_category(flag):
+            next_rows.append(canonical)
+            continue
+        if _category_from_type_rules(canonical) is not None:
+            if canonical.get("hit") not in (None, ""):
+                canonical["hit"] = None
+                changed = True
+            next_rows.append(canonical)
+            continue
+
+        existing = parse_hit(canonical.get("hit"))
+        if existing is None:
+            code, hit = categorize_with_hit(canonical, general, personal_map)
+            if canonical.get("category") != code or canonical.get("hit") != hit:
+                canonical["category"] = code
+                canonical["hit"] = hit
+                changed = True
+            if flag == MOD_UNCALCULATED:
+                canonical["modification"] = MOD_NONE
+                changed = True
+            next_rows.append(canonical)
+            continue
+
+        haystack = _haystack_for_categorization(canonical)
+        if not _matches_word(normalized, haystack):
+            next_rows.append(canonical)
+            continue
+        existing_key = _existing_priority_key(canonical, name_by_code)
+        if existing_key is not None and existing_key >= new_key:
+            next_rows.append(canonical)
+            continue
+        canonical["category"] = new_code
+        canonical["hit"] = new_hit
+        if flag == MOD_UNCALCULATED:
+            canonical["modification"] = MOD_NONE
+        changed = True
+        next_rows.append(canonical)
+
+    if not changed:
+        return False
+    payload["transactions"] = next_rows
+    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, payload)
+    _write_category_totals(payload, general)
+    return True
+
+
+def ircft_remove_term(
+    term: str,
+    *,
+    personal: bool,
+    general: dict[str, list[str]],
+    personal_map: dict[str, list[str]],
+) -> bool:
+    """Undo rows whose ``hit`` is this term; full-categorize those rows.
+
+    Unlocked keyword rows with no ``hit`` (legacy JSON) are also fully
+    categorized, because the deleted term may have been their winner.
+    ``modification`` 1 or 3 keeps ``category`` and only clears a stale hit.
+    """
+    normalized = _normalize_term(term)
+    if not normalized:
+        return False
+    expected = format_hit(normalized, personal=personal)
+
+    payload = _migrate_categorized_store(_load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH))
+    transactions = payload.get("transactions")
+    if not isinstance(transactions, list):
+        return False
+
+    changed = False
+    next_rows: list[dict[str, Any]] = []
+    for transaction in transactions:
+        if not isinstance(transaction, dict):
+            next_rows.append(transaction)
+            continue
+        canonical = _canonical_transaction(transaction)
+        flag = _modification_of(canonical)
+        parsed = parse_hit(canonical.get("hit"))
+        stored = format_hit(parsed[1], personal=parsed[0]) if parsed else None
+        type_rule = _category_from_type_rules(canonical) is not None
+
+        if _user_set_category(flag) or type_rule:
+            if stored == expected:
+                canonical["hit"] = None
+                changed = True
+            next_rows.append(canonical)
+            continue
+
+        if stored != expected and parsed is not None:
+            next_rows.append(canonical)
+            continue
+
+        code, hit = categorize_with_hit(canonical, general, personal_map)
+        if canonical.get("category") != code or canonical.get("hit") != hit:
+            canonical["category"] = code
+            canonical["hit"] = hit
+            changed = True
+        if flag == MOD_UNCALCULATED:
+            canonical["modification"] = MOD_NONE
+            changed = True
+        next_rows.append(canonical)
+
+    if not changed:
+        return False
+    payload["transactions"] = next_rows
+    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, payload)
+    _write_category_totals(payload, general)
+    return True
+
+
+def term_list_diff(before: list[str], after: list[str]) -> tuple[list[str], list[str]]:
+    before_set = {_normalize_term(item) for item in before if _normalize_term(item)}
+    after_set = {_normalize_term(item) for item in after if _normalize_term(item)}
+    removed = [item for item in before_set - after_set]
+    added = [item for item in after_set - before_set]
+    return added, removed
+
+
+def apply_ircft_terms(
+    *,
+    added: list[str],
+    removed: list[str],
+    personal: bool,
+    category_name: str,
+) -> None:
+    """Run iRCfT for the currently bound person. Terms must already be saved."""
+    general = _category_map(_read_json(paths.CATEGORIES_PATH))
+    personal_map = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
+    for term in removed:
+        ircft_remove_term(
+            term, personal=personal, general=general, personal_map=personal_map
+        )
+    for term in added:
+        ircft_add_term(
+            term,
+            personal=personal,
+            category_name=category_name,
+            general=general,
+            personal_map=personal_map,
+        )
+
+
 def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
     """Return effective transactions for a category display name (e.g. ``09 Pension``)."""
     from app.category_table_log import log
@@ -859,7 +1081,7 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
     return transactions
 
 
-_HIDDEN_TABLE_COLUMNS = frozenset({"id", "currency", "modification"})
+_HIDDEN_TABLE_COLUMNS = frozenset({"id", "currency", "modification", "hit"})
 _DESCRIPTION_COLUMN = "description"
 _CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
 

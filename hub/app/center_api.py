@@ -256,12 +256,17 @@ def update_settings(
     *,
     source: str = "local",
 ) -> dict[str, Any]:
-    """Save terms, then announce + recalculate (lock released before long recalc)."""
+    """Save terms, then announce + iRCfT (lock released before the scan)."""
+    import app.paths as paths
+
+    from app.core.categorize import _category_map, _load_json_object, _read_json, term_list_diff
     from app.matrix import build_matrix, save_general_terms, save_personal_terms
     from app.people import get_person
+    from app.paths import bind_person
 
     with _center_scope(center) as ws:
         if group == "general":
+            old_terms = list(_category_map(_read_json(paths.CATEGORIES_PATH)).get(category_name, []) or [])
             cleaned = save_general_terms(category_name, terms)
             cats_path = store.merged_categories_path()
             content = json.loads(cats_path.read_text(encoding="utf-8"))
@@ -269,8 +274,16 @@ def update_settings(
             recalc_all = True
             pack_short = "general"
             pack_folder = None
+            personal = False
         else:
             pack = get_person(group)
+            with bind_person(pack):
+                old_terms = list(
+                    _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH)).get(
+                        category_name, []
+                    )
+                    or []
+                )
             cleaned = save_personal_terms(pack.short, category_name, terms)
             rel = store.person_secret_rel(pack.folder_name, store.PERSONAL_CATEGORIES)
             path = store.resolve_file_path(ws, rel)
@@ -281,7 +294,9 @@ def update_settings(
             recalc_all = False
             pack_short = pack.short
             pack_folder = pack.folder_name
+            personal = True
 
+    added, removed = term_list_diff(old_terms, cleaned)
     store.put_file(
         ws,
         rel,
@@ -290,12 +305,19 @@ def update_settings(
         skip_recalc=True,
         skip_event=True,
     )
-    result = store.mutate_and_recalculate(
-        ws,
-        [rel],
-        source=source,
-        recalc_all_centers=recalc_all,
-    )
+    if added or removed:
+        result = store.mutate_and_ircft(
+            ws,
+            [rel],
+            source=source,
+            recalc_all_centers=recalc_all,
+            added=added,
+            removed=removed,
+            personal=personal,
+            category_name=category_name,
+        )
+    else:
+        result = {"affected_files": [rel], "matrix": None}
     with _center_scope(ws):
         matrix = result.get("matrix") or {**build_matrix(), "center": ws}
     return {
@@ -319,7 +341,15 @@ def add_term(
     source: str = "local",
 ) -> dict[str, Any]:
     with _center_scope(center) as ws:
-        from app.core.categorize import append_category_term
+        import app.paths as paths
+
+        from app.core.categorize import (
+            _category_map,
+            _load_json_object,
+            _read_json,
+            append_category_term,
+            term_list_diff,
+        )
         from app.matrix import (
             build_matrix,
             load_general_file,
@@ -333,12 +363,19 @@ def add_term(
         if general:
             pack = people_list[0]
             with bind_person(pack):
+                old_terms = list(
+                    _category_map(_read_json(paths.CATEGORIES_PATH)).get(category_name, []) or []
+                )
                 terms = append_category_term(
                     category_name,
                     term,
                     group="general",
                     person=pack.short,
                 )
+                after_terms = list(
+                    _category_map(_read_json(paths.CATEGORIES_PATH)).get(category_name, []) or []
+                )
+            added, removed = term_list_diff(old_terms, after_terms)
             sync_general_categories(load_general_file([pack]), people_list)
             cats_path = store.merged_categories_path()
             content = json.loads(cats_path.read_text(encoding="utf-8"))
@@ -350,12 +387,19 @@ def add_term(
                 skip_recalc=True,
                 skip_event=True,
             )
-            result = store.mutate_and_recalculate(
-                ws,
-                [store.SHARED_CATEGORIES],
-                source=source,
-                recalc_all_centers=True,
-            )
+            if added or removed:
+                result = store.mutate_and_ircft(
+                    ws,
+                    [store.SHARED_CATEGORIES],
+                    source=source,
+                    recalc_all_centers=True,
+                    added=added,
+                    removed=removed,
+                    personal=False,
+                    category_name=category_name,
+                )
+            else:
+                result = {"affected_files": [store.SHARED_CATEGORIES], "matrix": None}
             return {
                 "center": ws,
                 "group": "general",
@@ -372,12 +416,25 @@ def add_term(
             raise ValueError("person is required when general=false")
         pack = get_person(short)
         with bind_person(pack):
+            old_terms = list(
+                _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH)).get(
+                    category_name, []
+                )
+                or []
+            )
             terms = append_category_term(
                 category_name,
                 term,
                 group=pack.short,
                 person=pack.short,
             )
+            after_terms = list(
+                _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH)).get(
+                    category_name, []
+                )
+                or []
+            )
+        added, removed = term_list_diff(old_terms, after_terms)
         rel = store.person_secret_rel(pack.folder_name, store.PERSONAL_CATEGORIES)
         path = store.resolve_file_path(ws, rel)
         content = json.loads(path.read_text(encoding="utf-8"))
@@ -389,7 +446,10 @@ def add_term(
             skip_recalc=True,
             skip_event=True,
         )
-        result = store.mutate_and_recalculate(ws, [rel], source=source)
+        if added or removed:
+            result = store.mutate_and_ircft(ws, [rel], source=source, added=added, removed=removed, personal=True, category_name=category_name)
+        else:
+            result = {"affected_files": [rel], "matrix": None}
         return {
             "center": ws,
             "group": pack.short,

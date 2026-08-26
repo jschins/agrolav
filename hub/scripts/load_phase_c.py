@@ -372,6 +372,20 @@ def _modifications_by_id(payload: dict[str, Any], *, path: Path) -> dict[str, di
     return out
 
 
+def _sql_hit(raw: dict[str, Any], *, path: Path, source_id: str) -> str | None:
+    value = raw.get("hit")
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if not (text.startswith("P:") or text.startswith("G:")):
+        return None
+    if len(text) > 64:
+        raise LoadError(f"{path}: hit exceeds 64 characters on {source_id}")
+    return text
+
+
 def apply_schema(cursor) -> None:
     sql = SCHEMA_PATH.read_text(encoding="utf-8")
     _exec_script(cursor, sql)
@@ -653,6 +667,7 @@ def load_tree(
                                     parse_booked_on(raw.get("date"), path=tx_path),
                                     category_id,
                                     modification,
+                                    _sql_hit(raw, path=tx_path, source_id=source_id),
                                 )
                             )
 
@@ -724,8 +739,8 @@ def load_tree(
             INSERT INTO {table} (
                 person_id, account_id, year, bank_id, source_id, amount, currency,
                 bank_type, counterparty_name, counterparty_iban, description,
-                booked_on, category_id, modification
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                booked_on, category_id, modification, hit
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
     for folder, rows in tx_rows.items():
         if not rows:

@@ -261,6 +261,7 @@ overwrite the row.
 | `date` | `booked_on` | `DATE` | `2026-08-09` (JSON is `DD-MM-YYYY`) |
 | `category` | `category_id` | `INT` FK NULL | **104** (not 12); NULL only while `modification` is -1 |
 | `modification` | `modification` | `SMALLINT` | -1 uncalculated; 0 none; 1 category; 2 description; 3 both |
+| `hit` | `hit` | `NVARCHAR(64)` NULL | `P:{term}` or `G:{term}` from iRCfT; NULL for typerules / remainder |
 
 Plus:
 
@@ -284,6 +285,10 @@ Plus:
 
 Recalc writes `category_id` only when `modification` is -1, 0, or 2. After the
 first calculation, -1 becomes 0. Flags 1 and 3 keep the user's category.
+
+`hit` is the keyword that won (`P:` personal or `G:` general). Typerules and
+remainder leave it NULL. Term add/delete uses iRCfT: only rows whose hit is
+outranked (add) or whose hit is the deleted term (delete) are rewritten.
 
 Unique `(person_id, year, bank_id, source_id)` with a filtered unique for
 `bank_id IS NULL`, per table.
@@ -392,12 +397,3 @@ WHERE country_id = @country_id AND matrix_role IS NOT NULL;
 ```
 
 
-
-## Connect like this:
-
-- Server name: 127.0.0.1,1433
-- Authentication: SQL Server Authentication
-- Login: sa
-- Password: Agrolav_Hub_2026!
-- Options → Connect to database: agrolav (or <default>, then expand Databases → agrolav)
-- Options → Encryption: Mandatory, and tick Trust server certificate

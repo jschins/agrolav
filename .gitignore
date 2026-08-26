@@ -26,4 +26,5 @@ workspaces/
 *.pem
 users.db
 upload.log
-*.md
+database_pw.md
+

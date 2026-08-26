@@ -168,6 +168,8 @@ For each `**/YYYY/categorized_transactions.json` and each
   `category`, that local code is the stored `category_id` instead.
 - `modification`: 0 when the row was only calculated; 1/2/3 from a legacy
   overlay (category / description / both). Fresh uncategorized rows are -1.
+- `hit`: `P:{term}` or `G:{term}` when a keyword won; NULL for typerules,
+  remainder, or JSON that has not been recategorized yet.
 
 Year-level file = `bank_id` NULL (consolidated). A `{year}/BoS/` file sets
 `bank_id = 5`.
@@ -205,6 +207,7 @@ SQL:
 ```text
 transaction_nederland.category_id  = 104
 transaction_nederland.modification = 0     -- 1 if the user overwrote the category
+transaction_nederland.hit          = 'G:total'  -- or 'P:…'; NULL if typerule/remainder
 dim_category: 104 → country = nederland, local_code = 12, label = '12 Vervoer'
 ```
 

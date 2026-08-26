@@ -229,6 +229,53 @@ def _path_triggers_recalc(rel_path: str) -> bool:
     return False
 
 
+def publish_derived_files(
+    center: str,
+    *,
+    person_folders: list[str] | None = None,
+    source: str = "central",
+    skip_events: bool = True,
+) -> None:
+    """Re-publish categorized_transactions and category_totals for the store."""
+    ws = _clean_center(center)
+    wanted = {Path(name).name for name in person_folders} if person_folders else None
+    root = center_dir(ws)
+    for child in root.iterdir():
+        if not child.is_dir() or not has_person_layout(child):
+            continue
+        if wanted is not None and child.name not in wanted:
+            continue
+        year = parse_year(None)
+        totals_path = child / year / CATEGORY_TOTALS
+        if totals_path.is_file():
+            try:
+                content = json.loads(totals_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            put_file(
+                ws,
+                person_year_rel(child.name, CATEGORY_TOTALS, year=year),
+                content,
+                source=source,
+                skip_recalc=True,
+                skip_event=skip_events,
+            )
+        cat_path = child / year / CATEGORIZED
+        if cat_path.is_file():
+            try:
+                content = json.loads(cat_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            put_file(
+                ws,
+                person_year_rel(child.name, CATEGORIZED, year=year),
+                content,
+                source=source,
+                skip_recalc=True,
+                skip_event=skip_events,
+            )
+
+
 def recalculate_center(
     center: str,
     *,
@@ -251,42 +298,56 @@ def recalculate_center(
         set_active_center(ws)
         init_app()
         matrix = recalculate_all(person_folders=list(wanted) if wanted else None)
-        root = center_dir(ws)
-        for child in root.iterdir():
-            if not child.is_dir() or not has_person_layout(child):
-                continue
-            if wanted is not None and child.name not in wanted:
-                continue
-            year = parse_year(None)
-            totals_path = child / year / CATEGORY_TOTALS
-            if totals_path.is_file():
-                try:
-                    content = json.loads(totals_path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    continue
-                put_file(
-                    ws,
-                    person_year_rel(child.name, CATEGORY_TOTALS, year=year),
-                    content,
-                    source="central",
-                    skip_recalc=True,
-                    skip_event=skip_events,
-                )
-            cat_path = child / year / CATEGORIZED
-            if cat_path.is_file():
-                try:
-                    content = json.loads(cat_path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    continue
-                put_file(
-                    ws,
-                    person_year_rel(child.name, CATEGORIZED, year=year),
-                    content,
-                    source="central",
-                    skip_recalc=True,
-                    skip_event=skip_events,
-                )
+        publish_derived_files(
+            ws,
+            person_folders=list(wanted) if wanted else None,
+            source="central",
+            skip_events=skip_events,
+        )
         return {"ok": True, "center": ws, "matrix": matrix}
+
+
+def ircft_center(
+    center: str,
+    *,
+    skip_events: bool = False,
+    person_folders: list[str] | None = None,
+    added: list[str],
+    removed: list[str],
+    personal: bool,
+    category_name: str,
+) -> dict[str, Any]:
+    """Apply iRCfT for one center; publish derived files; return the matrix."""
+    from app.core.categorize import apply_ircft_terms
+    from app.matrix import build_matrix
+    from app.paths import CALC_LOCK, bind_person
+    from app.runtime import set_active_center
+    from app.settings import init_app, refresh_people
+
+    ws = _clean_center(center)
+    wanted = {Path(name).name for name in person_folders} if person_folders else None
+    with CALC_LOCK:
+        set_active_center(ws)
+        init_app()
+        packs = refresh_people()
+        to_run = [pack for pack in packs if wanted is None or pack.folder_name in wanted]
+        for pack in to_run:
+            if not pack.categorized_path.is_file() and not pack.totals_path.is_file():
+                continue
+            with bind_person(pack):
+                apply_ircft_terms(
+                    added=added,
+                    removed=removed,
+                    personal=personal,
+                    category_name=category_name,
+                )
+        publish_derived_files(
+            ws,
+            person_folders=list(wanted) if wanted else None,
+            source="central",
+            skip_events=skip_events,
+        )
+        return {"ok": True, "center": ws, "matrix": build_matrix(packs)}
 
 
 def derived_paths_for_center(center: str) -> list[str]:
@@ -453,6 +514,61 @@ def mutate_and_recalculate(
                 ws,
                 skip_events=True,
                 person_folders=folders,
+            )
+    primary_result = matrices.get(primary) or {}
+    matrix_payload = primary_result.get("matrix")
+    if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
+        matrix_payload = {**matrix_payload, "center": primary}
+    return {
+        "ok": True,
+        "center": primary,
+        "affected_files": announced,
+        "matrix": matrix_payload,
+        "recalculated": list(matrices.keys()),
+    }
+
+
+def mutate_and_ircft(
+    center: str,
+    input_paths: list[str],
+    *,
+    source: str = "central",
+    recalc_all_centers: bool = False,
+    added: list[str],
+    removed: list[str],
+    personal: bool,
+    category_name: str,
+) -> dict[str, Any]:
+    """Announce expected files, iRCfT affected person(s)/center(s), return matrix."""
+    from app.paths import CALC_LOCK
+
+    primary = _clean_center(center)
+    expected, person_folders, multi = _mutation_scope(
+        primary,
+        input_paths,
+        recalc_all_centers=recalc_all_centers,
+    )
+    targets = list_centers() if multi else [primary]
+    if primary not in targets:
+        targets.insert(0, primary)
+
+    announced = announce_mutation(primary, expected, source=source)
+    matrices: dict[str, Any] = {}
+    with CALC_LOCK:
+        for ws in targets:
+            folders = person_folders if (person_folders and ws == primary) else (
+                None if person_folders is None else []
+            )
+            if folders == []:
+                continue
+            matrices[ws] = ircft_center(
+                ws,
+                skip_events=True,
+                person_folders=folders,
+                added=added,
+                removed=removed,
+                personal=personal,
+                category_name=category_name,
             )
     primary_result = matrices.get(primary) or {}
     matrix_payload = primary_result.get("matrix")

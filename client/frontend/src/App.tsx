@@ -741,9 +741,9 @@ function previousMonthRange(): { from: string; to: string } {
 function formatTermMatchHint(typerules: { type: string; category: string }[]): string {
   const priority =
     "Priority (highest first): (1) typerules beat all keywords; " +
-    "(2) && terms beat single-phrase terms — e.g. general && beats personal single-phrase; " +
-    "(3) among single-phrase terms, longer string wins; " +
-    "(4) within && or equal-length single-phrase, personal beats general.";
+    "(2) personal beats all general; " +
+    "(3) && terms beat single-phrase terms; " +
+    "(4) last-stick: later category name, then later term, wins.";
   const wildcards =
     "# matches zero or more letters or dots within one word (not across spaces). " +
     "Use && when both phrases must match (e.g. albert && heijn).";
@@ -1596,7 +1596,7 @@ function TermsApp() {
           else delete personGroup[category];
           return { ...prev, personal: { ...prev.personal, [group]: personGroup } };
         });
-        // Hub already recalculated; refresh the main window immediately.
+        // Hub already applied iRCfT; refresh the main window immediately.
         channelRef.current?.postMessage("recalculated");
       })
       .catch((e: Error) => setError(e.message));
