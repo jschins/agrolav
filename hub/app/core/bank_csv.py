@@ -264,20 +264,47 @@ def person_bank_folder_options(
     person: str,
     center: str,
 ) -> dict[str, Any]:
-    """Folder names for the personal bank switcher (+ metadata)."""
-    banks = person_csv_banks(person, center)
-    if not banks:
-        return {"folders": [], "multi_bank": False, "show_switcher": False}
+    """Account/bank names for the personal switcher (+ metadata)."""
+    from app import user_store
+
+    user = user_store.find_user(person)
+    n_accounts = user.get("number_of_accounts") if user else None
     multi = person_uses_bank_subfolders(person, center)
     year_path = person_folder / year
-    existing = list_year_bank_folders(year_path) if multi else []
-    seen: set[str] = set()
+    disk = list_year_bank_folders(year_path)
+    discovered = person_csv_banks(person, center)
+    disk_all = list(dict.fromkeys([*disk, *discovered]))
+
     folders: list[str] = []
-    for name in existing + banks:
+    seen: set[str] = set()
+    accounts = user_store.list_accounts_for_username(person)
+    if accounts:
+        for acc in accounts:
+            label = _switcher_label_for_account(acc, disk_all)
+            if label and label not in seen:
+                seen.add(label)
+                folders.append(label)
+    for name in disk_all:
         if name and name not in seen:
             seen.add(name)
             folders.append(name)
-    return {"folders": folders, "multi_bank": multi, "show_switcher": True}
+
+    show = (n_accounts is not None and int(n_accounts) > 1) or len(folders) > 1
+    if not show:
+        return {"folders": [], "multi_bank": False, "show_switcher": False}
+    return {"folders": folders, "multi_bank": True, "show_switcher": True}
+
+
+def _switcher_label_for_account(acc: dict[str, str], disk_folders: list[str]) -> str:
+    iban = (acc.get("iban") or "").replace(" ", "")
+    name = (acc.get("account_name") or "").strip()
+    for folder in disk_folders:
+        compact = folder.replace(" ", "")
+        if iban and iban in compact:
+            return folder
+        if name and name in folder:
+            return folder
+    return name or iban
 
 
 def pack_for_bank_view(
@@ -293,16 +320,15 @@ def pack_for_bank_view(
 
 
 def person_uses_bank_subfolders(person: str, center: str) -> bool:
-    """True when the person stores CSV under ``YYYY/<bank>/`` subfolders.
-
-    Prefers ``users.db.format``: ``multiple`` → True; a single bank format or
-    ``secret`` → False. Falls back to discovering multiple bank folders on disk.
-    """
+    """True when this pack has several accounts (dropdown / YYYY/<account>/)."""
     try:
         from app import user_store
 
         user = user_store.find_user(person)
         if user is not None:
+            n = user.get("number_of_accounts")
+            if n is not None:
+                return int(n) > 1
             fmt = str(user.get("format") or "").strip().lower()
             if fmt == user_store.FORMAT_MULTIPLE:
                 return True

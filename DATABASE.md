@@ -1,9 +1,7 @@
 # Database (proposed)
 
 JSON under `workspaces/` is the source of truth until SQL Server is loaded.
-The folder layout is already the grain of the future schema. **Stichtingen**
-is a country in the same sense as Nederland and UK (own `categories.json`,
-own `300`– category block), even though it is not a state:
+The folder layout is already the grain of the future schema:
 
 ```text
 workspaces/
@@ -22,9 +20,6 @@ workspaces/
     gph/
       xavier_bosch/
         …
-  stichtingen/
-    categories.json
-    …
   users.db                   # SQLite logins (see SQLSERVER.md)
   upload_acl.json            # IP / upload policy (stays a file)
 ```
@@ -77,13 +72,12 @@ Hundred-blocks so a later insert in one catalog does not shift the others:
 |:-------|-------------:|:--------------------|:-----------------|
 | nederland | 1 | 100– | EUR |
 | uk | 2 | 200– | GBP |
-| stichtingen | 3 | 300– | EUR |
 
-UK and stichtingen `categories.json` may still be Dutch copies. Change
-labels when those catalogs are written; do not change the ids.
+UK `categories.json` may still be a Dutch copy. Change labels when that
+catalog is written; do not change the ids.
 
 Remainder / unmatched (JSON `18`, hub `DEFAULT_CATEGORY`) is **109** for
-nederland, and the matching remainder row in the 200- and 300-blocks.
+nederland, and the matching remainder row in the 200-block.
 
 Do not use `IDENTITY` for `category_id`. Seed the table explicitly. JSON
 keeps local codes until ETL; only SQL stores `100+`.
@@ -107,7 +101,7 @@ A user override overwrites that same `category_id` and sets `modification` to
 
 | column | type | notes |
 |:-------|:-----|:------|
-| `country_id` | `INT` PK | 1 = nederland, 2 = uk, 3 = stichtingen |
+| `country_id` | `INT` PK | 1 = nederland, 2 = uk |
 | `folder` | `NVARCHAR(32)` unique | JSON folder name |
 | `currency_default` | `CHAR(3)` | `EUR` / `GBP` (accounts may still differ) |
 
@@ -121,7 +115,7 @@ Country-specific catalog. One row per (country, local code).
 | `country_id` | `INT` FK | |
 | `local_code` | `INT` NOT NULL | JSON `category` value (8, 9, 12, 18, …) |
 | `label` | `NVARCHAR(128)` NOT NULL | `"12 Vervoer"`; footers `"saldo"` / `"datum"` |
-| `is_remainder` | `BIT` | NL 109 / UK / stichtingen remainder |
+| `is_remainder` | `BIT` | NL 109 / UK remainder |
 | `matrix_role` | `NVARCHAR(32)` NULL | `NULL` for booking categories; `balance` (local 22) or `last_booked` (local 23) |
 
 Unique: `(country_id, local_code)`. Unique: `(country_id, label)`.
@@ -233,18 +227,17 @@ until that bank has a folder and an excel processor.
 `transaction_*.bank_id` is NULL on the year-level consolidated file (merge of
 all bank folders). Per-bank JSON and uploads always set it.
 
-### `transaction_nederland` / `transaction_uk` / `transaction_stichtingen`
+### `transaction_nederland` / `transaction_uk`
 
-One booking table per country folder. Same columns on all three. A Nederland
+One booking table per country folder. Same columns on both. A Nederland
 row never lands in `transaction_uk`. Category ids on each table are checked
-against that country’s hundred-block (NL 100–199, UK 200–299, stichtingen
-300–399), so JSON `12` cannot become 104 on a UK or stichtingen row.
+against that country’s hundred-block (NL 100–199, UK 200–299), so JSON
+`12` cannot become 104 on a UK row.
 
 | folder | table |
 |:-------|:------|
 | nederland | `transaction_nederland` |
 | uk | `transaction_uk` |
-| stichtingen | `transaction_stichtingen` |
 
 No `transaction_modification` table. User category and description edits
 overwrite the row.
@@ -334,7 +327,7 @@ SQLite `users` (and later SQL Server) matches `users.csv`:
 | column | notes |
 |:-------|:------|
 | `username` | login; password = username |
-| `country` | folder: `nederland`, `uk`, `stichtingen` |
+| `country` | folder: `nederland`, `uk` |
 | `center` | folder: `dkg`, `gph`, … |
 | `person` | person folder, or empty |
 | `format` | `secret` / `excel` / `multiple` / a bank csv id |
@@ -378,8 +371,7 @@ WHERE n.folder = N'dkg'
 ```
 
 For a Nederland person this shows `"12 Vervoer"` wherever the effective id
-is 104. Query `transaction_uk` or `transaction_stichtingen` for those
-countries; JSON `12` there is 204 or 304, not 104.
+is 104. Query `transaction_uk` for the UK; JSON `12` there is 204, not 104.
 
 Matrix last rows (not summed from `transaction_*` amounts):
 

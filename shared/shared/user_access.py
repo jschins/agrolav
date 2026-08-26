@@ -59,4 +59,5 @@ def enrich_user_record(user: dict[str, Any]) -> dict[str, Any]:
         "centers": centers,
         "person": person,
         "format": str(user.get("format") or "").strip(),
+        "number_of_accounts": user.get("number_of_accounts"),
     }

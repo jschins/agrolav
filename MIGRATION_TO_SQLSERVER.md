@@ -1,9 +1,7 @@
 # SQLite / JSON → SQL Server
 
 Do this in three phases. Folder layout is already country-first
-(`workspaces/nederland/…`, `workspaces/uk/…`, `workspaces/stichtingen/…`).
-Hub code and SQL Server are not. **Stichtingen** is a third country: own
-`categories.json`, own `300`– category ids. Category **labels and local
+(`workspaces/nederland/…`, `workspaces/uk/…`). Category **labels and local
 codes stay in JSON** until phase C; SQL then stores the `100+` surrogates
 from `DATABASE.md`.
 
@@ -13,10 +11,10 @@ from `DATABASE.md`.
 
 The hub binds **center** folders one level down from the country:
 
-- first-level folder = **country** (`nederland`, `uk`, `stichtingen`)
+- first-level folder = **country** (`nederland`, `uk`)
 - `categories.json` sits **next to the centers**
 - SQLite `users.center` + `users.country`. Country logins
-  (`nederland`, `united_kingdom`, `stichtingen`) have an empty center and
+  (`nederland`, `united_kingdom`) have an empty center and
   see every center **in that country** only — never all countries at once.
 
 Path: `{data_root}/{country}/{center}/{person}`. The HTTP API uses
@@ -57,7 +55,7 @@ On SQL Server:
 
 - `NVARCHAR` / `DATE`.
 - Optional `country_id` FK once `dbo.country` exists (phase C). For B you
-  can keep `country` as the folder (`nederland`, `uk`, `stichtingen`).
+  can keep `country` as the folder (`nederland`, `uk`).
 - Keep `center` as the folder name (`dkg`, `gph`, …). Do not store a
   selected switcher value here.
 
@@ -89,7 +87,7 @@ stay on disk. Upload tokens stay the shared scrypt string keyed by
 
 ### 5. Check
 
-Check: `nederland` / `united_kingdom` / `stichtingen` country; `dkg` center;
+Check: `nederland` / `united_kingdom` country; `dkg` center;
 `juleon_schins` personal. Hub prints `user store ready: sqlserver:dbo.app_user`.
 
 Local SQL Server (this PC):
@@ -111,7 +109,7 @@ table.
 ### 1. Seed `country`, `center`, `person`
 
 Walk the tree. `nederland/dkg/anton_schins` → country, center, person rows.
-Same for `uk/…` and `stichtingen/…`. Do not invent centers the disk does
+Same for `uk/…`. Do not invent centers the disk does
 not have.
 
 Set `person.number_accounts` from the number of distinct IBANs in that
@@ -140,16 +138,15 @@ For each country file, assign `category_id` in **file order**:
 - nederland: 100, 101, … (08 Naar kas = 100, …, 12 Vervoer = **104**,
   then **113 saldo** / **114 datum**)
 - uk: 200, 201, … (same local codes 22/23 for the two matrix footers)
-- stichtingen: 300, 301, …
 
 Store `local_code = int(label[:2])` so ETL can map JSON `12` → 104 for
-nederland only (200-block for uk, 300-block for stichtingen).
+nederland only (200-block for uk).
 
 Load `category_term` from the JSON arrays. Load `type_abbreviation`.
 Then load personal term overlays (`secret/personal_categories.json`) with
 `person_id` set.
 
-### 5. Load `transaction_nederland` / `transaction_uk` / `transaction_stichtingen`
+### 5. Load `transaction_nederland` / `transaction_uk`
 
 Insert each JSON file into the table for that country folder. Do not use a
 single shared `transaction` table.
@@ -239,15 +236,15 @@ Windows dev: the same driver from Microsoft.
 
 ## Check order
 
-1. Phase A: open a nederland, uk, and stichtingen person; each uses its
+1. Phase A: open a nederland and uk person; each uses its
    own `categories.json`, not a missing root file.
 2. Phase B: login list identical to SQLite; personal vs local vs
    country still derived from `person` + `center`.
 3. Phase C: anton’s `010305258369428750000000_0` is in
    `transaction_nederland` with `category_id = 104`, `modification = 0`,
-   and joins to `"12 Vervoer"`; a UK or stichtingen row with JSON
-   `12` is in `transaction_uk` / `transaction_stichtingen` and joins to the
-   200- or 300-block, not to 104. A person with several IBANs has
+   and joins to `"12 Vervoer"`; a UK row with JSON
+   `12` is in `transaction_uk` and joins to the
+   200-block, not to 104. A person with several IBANs has
    `number_accounts` equal to the count of `account` rows, all sharing
    `person_id`. Matrix last rows: `saldo` from `account.balance` (summed
    per person), `datum` from `MAX(account.last_booked)`.

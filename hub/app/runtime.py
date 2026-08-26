@@ -10,16 +10,33 @@ _active_center: str | None = None
 _active_country: str | None = None
 
 # Login / CSV names that are not the on-disk country folder.
-_COUNTRY_FOLDER_ALIASES = {
-    "united_kingdom": "uk",
-    "united kingdom": "uk",
-    "great_britain": "uk",
-    "great britain": "uk",
-    "gb": "uk",
-    "the_netherlands": "nederland",
-    "netherlands": "nederland",
-    "nl": "nederland",
-}
+_NL_KEYS = frozenset({"nederland", "netherlands", "the_netherlands", "nl"})
+_UK_KEYS = frozenset(
+    {"uk", "united_kingdom", "united kingdom", "great_britain", "great britain", "gb"}
+)
+
+
+def country_folder(name: str | None) -> str:
+    """Map a login/CSV country name to the folder under ``workspaces/``.
+
+    ``uk`` and ``united_kingdom`` are the same country: whichever directory
+    exists on disk wins, so the folder can be renamed either way.
+    """
+    raw = str(name or "").strip()
+    if not raw:
+        return ""
+    key = raw.lower().replace("-", "_").replace(" ", "_")
+    root = data_root()
+    if key in _UK_KEYS:
+        for candidate in ("united_kingdom", "uk"):
+            if (root / candidate).is_dir():
+                return candidate
+        return "united_kingdom"
+    if key in _NL_KEYS:
+        if (root / "nederland").is_dir():
+            return "nederland"
+        return "nederland"
+    return raw
 
 _cv_request_country: ContextVar[str | None] = ContextVar("request_country", default=None)
 
@@ -55,15 +72,6 @@ def data_root() -> Path:
             return sibling.resolve()
         return project_root()
     return (server_root() / "workspaces").resolve()
-
-
-def country_folder(name: str | None) -> str:
-    """Map a login/CSV country name to the folder under ``workspaces/``."""
-    raw = str(name or "").strip()
-    if not raw:
-        return ""
-    key = raw.lower().replace("-", "_").replace(" ", "_")
-    return _COUNTRY_FOLDER_ALIASES.get(key, raw)
 
 
 def set_request_country(country: str | None) -> Token[str | None]:

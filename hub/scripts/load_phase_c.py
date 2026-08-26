@@ -1,4 +1,4 @@
-"""Load workspaces JSON into SQL Server (Phase C replica). Hub writes stay on JSON."""
+"""Load workspaces JSON into SQL Server (Phase C). Hub writes stay on JSON."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,6 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
-from uuid import UUID
 
 HUB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HUB_ROOT))
@@ -20,24 +19,59 @@ from app.yearpath import is_year_name  # noqa: E402
 
 SCHEMA_PATH = HUB_ROOT / "sql" / "phase_c.sql"
 
-COUNTRIES: list[tuple[int, str, str]] = [
-    (1, "nederland", "EUR"),
-    (2, "uk", "GBP"),
-    (3, "stichtingen", "EUR"),
-]
-COUNTRY_FOLDERS = {folder: country_id for country_id, folder, _ in COUNTRIES}
+_NL_FOLDERS = frozenset({"nederland"})
+_UK_FOLDERS = frozenset({"uk", "united_kingdom"})
+_COUNTRY_CURRENCY = {1: "EUR", 2: "GBP"}
+
+COUNTRIES: list[tuple[int, str, str]] = []
+
+
+def _country_id_for_folder(folder: str) -> int | None:
+    if folder in _NL_FOLDERS:
+        return 1
+    if folder in _UK_FOLDERS:
+        return 2
+    return None
+
+
+def discover_countries(root: Path) -> list[tuple[int, str, str]]:
+    found: dict[int, str] = {}
+    unexpected: list[str] = []
+    for child in root.iterdir():
+        if not child.is_dir() or child.name.startswith(".") or child.name in IGNORE_DIRS:
+            continue
+        country_id = _country_id_for_folder(child.name)
+        if country_id is None:
+            unexpected.append(child.name)
+            continue
+        if country_id in found:
+            raise LoadError(
+                f"Two folders for country_id={country_id}: {found[country_id]!r} and {child.name!r}"
+            )
+        found[country_id] = child.name
+    if unexpected:
+        raise LoadError(f"Unexpected country folder(s) under {root}: {unexpected}")
+    missing = [cid for cid in (1, 2) if cid not in found]
+    if missing:
+        raise LoadError(
+            f"{root}: need folders nederland and uk (or united_kingdom); missing country_id={missing}"
+        )
+    return [(cid, found[cid], _COUNTRY_CURRENCY[cid]) for cid in sorted(found)]
 
 
 def transaction_table(folder: str) -> str:
-    if folder not in COUNTRY_FOLDERS:
-        raise LoadError(f"No transaction table for country folder {folder!r}")
-    return f"dbo.transaction_{folder}"
+    country_id = _country_id_for_folder(folder)
+    if country_id == 1:
+        return "dbo.transaction_nederland"
+    if country_id == 2:
+        return "dbo.transaction_uk"
+    raise LoadError(f"No transaction table for country folder {folder!r}")
 
 BANKS: list[tuple[int, str, str, str]] = [
-    (1, "NatWest", "Natwest", "csv"),
-    (2, "Royal Bank of Scotland", "RBS", "csv"),
-    (3, "Lloyds Bank", "LLOYDS", "csv"),
-    (5, "Bank of Scotland", "BoS", "csv"),
+    (1, "NatWest", "Natwest", "natwest-csv"),
+    (2, "Royal Bank of Scotland", "RBS", "rbs-csv"),
+    (3, "Lloyds Bank", "LLOYDS", "lloyds-csv"),
+    (5, "Bank of Scotland", "BoS", "bos-csv"),
 ]
 
 IGNORE_DIRS = frozenset(
@@ -125,16 +159,6 @@ def parse_booked_on(raw: Any, *, path: Path) -> date:
     raise LoadError(f"{path}: bad date {raw!r}")
 
 
-def parse_uuid(raw: Any) -> str | None:
-    text = str(raw or "").strip()
-    if not text:
-        return None
-    try:
-        return str(UUID(text))
-    except ValueError as exc:
-        raise LoadError(f"Invalid uid {raw!r}") from exc
-
-
 def _dirs(path: Path) -> list[Path]:
     if not path.is_dir():
         return []
@@ -177,7 +201,8 @@ def resolve_bank_folder(name: str, banks_by_folder: dict[str, int]) -> int:
 
 
 def processor_for_bank(folder: str, file_format: str) -> str:
-    return f"{folder}-{file_format}"
+    """``upload_acl.json`` bank modality (``bos-csv``, ``rbs-csv``, …)."""
+    return file_format
 
 
 def _connect():
@@ -208,17 +233,22 @@ def _profile_accounts(person_folder: Path) -> list[dict[str, Any]]:
 
 
 def _collect_account_snapshots(person_folder: Path) -> list[tuple[int, dict[str, Any]]]:
-    """(year, account_balances row) from every year-level totals file, latest year last."""
+    """(year, account_balances row) from year-level and bank-folder totals."""
     rows: list[tuple[int, dict[str, Any]]] = []
     for year_dir in _year_dirs(person_folder):
-        totals = _read_json_object(year_dir / "category_totals.json")
-        balances = totals.get("account_balances") or []
-        if not isinstance(balances, list):
-            continue
         year = int(year_dir.name)
-        for item in balances:
-            if isinstance(item, dict):
-                rows.append((year, item))
+        totals_paths = [year_dir / "category_totals.json"]
+        for child in year_dir.iterdir():
+            if child.is_dir() and not child.name.startswith("."):
+                totals_paths.append(child / "category_totals.json")
+        for totals_path in totals_paths:
+            totals = _read_json_object(totals_path)
+            balances = totals.get("account_balances") or []
+            if not isinstance(balances, list):
+                continue
+            for item in balances:
+                if isinstance(item, dict):
+                    rows.append((year, item))
     return rows
 
 
@@ -236,6 +266,7 @@ def _seed_accounts_from_disk(person_folder: Path) -> list[dict[str, Any]]:
             "account_name": str(item.get("name") or iban)[:64],
             "balance": parse_amount(item.get("balance") or "0", path=person_folder),
             "files": [str(name) for name in (item.get("files") or []) if str(name).strip()],
+            "format": _stated_format(item),
         }
     for acc in _profile_accounts(person_folder):
         iban = str(acc.get("iban") or "").strip()
@@ -248,6 +279,7 @@ def _seed_accounts_from_disk(person_folder: Path) -> list[dict[str, Any]]:
                 "account_name": str(acc.get("name") or iban)[:64],
                 "balance": parse_amount(acc.get("balance") or "0", path=person_folder),
                 "files": [],
+                "format": _stated_format(acc),
             }
     if not order:
         placeholder = f"UNKNOWN:{person_folder.parent.parent.name}/{person_folder.parent.name}/{person_folder.name}"
@@ -257,6 +289,7 @@ def _seed_accounts_from_disk(person_folder: Path) -> list[dict[str, Any]]:
                 "account_name": person_folder.name[:64],
                 "balance": Decimal("0"),
                 "files": [],
+                "format": None,
             }
         ]
     return [by_iban[iban] for iban in order]
@@ -313,6 +346,16 @@ def resolve_account(
         return accounts[0]
 
     if bank_folder:
+        sibling = path.parent / "category_totals.json"
+        totals = _read_json_object(sibling)
+        folder_ibans = [
+            str(item.get("iban") or "").strip()
+            for item in (totals.get("account_balances") or [])
+            if isinstance(item, dict) and str(item.get("iban") or "").strip()
+        ]
+        from_folder = [acc for acc in accounts if acc["iban"] in folder_ibans]
+        if len(from_folder) == 1:
+            return from_folder[0]
         matched = [
             acc
             for acc in accounts
@@ -320,8 +363,6 @@ def resolve_account(
         ]
         if len(matched) == 1:
             return matched[0]
-        if len(matched) > 1:
-            raise LoadError(f"{path}: several accounts match bank folder {bank_folder!r}")
 
     bank_type = str(tx.get("type") or "").strip()
     for _bank_id, _official, folder, file_format in banks:
@@ -393,7 +434,7 @@ def apply_schema(cursor) -> None:
 
 def seed_countries(cursor) -> None:
     cursor.executemany(
-        "INSERT INTO dbo.country (country_id, folder, currency_default) VALUES (?, ?, ?)",
+        "INSERT INTO dbo.country (country_id, name, currency_default) VALUES (?, ?, ?)",
         COUNTRIES,
     )
 
@@ -401,10 +442,10 @@ def seed_countries(cursor) -> None:
 def seed_banks(cursor) -> None:
     cursor.executemany(
         """
-        INSERT INTO dbo.bank (bank_id, bank_name_official, bank_name_folder, file_format)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO dbo.bank (bank_id, bank_name_official, file_format)
+        VALUES (?, ?, ?)
         """,
-        BANKS,
+        [(bank_id, official, fmt) for bank_id, official, _folder, fmt in BANKS],
     )
 
 
@@ -462,7 +503,7 @@ def seed_categories(cursor, root: Path) -> tuple[dict[tuple[int, int], int], dic
     if term_rows:
         cursor.executemany(
             """
-            INSERT INTO dbo.category_term (category_id, person_id, term, sort_order)
+            INSERT INTO dbo.category_term (category_id, app_user_id, term, sort_order)
             VALUES (?, NULL, ?, ?)
             """,
             term_rows,
@@ -480,37 +521,92 @@ def seed_categories(cursor, root: Path) -> tuple[dict[tuple[int, int], int], dic
 
 def _insert_center(cursor, country_id: int, folder: str) -> int:
     cursor.execute(
-        "INSERT INTO dbo.center (country_id, folder) OUTPUT INSERTED.center_id VALUES (?, ?)",
+        "INSERT INTO dbo.center (country_id, name) OUTPUT INSERTED.center_id VALUES (?, ?)",
         country_id,
         folder,
     )
     return int(cursor.fetchone()[0])
 
 
-def _insert_person(cursor, center_id: int, folder: str, number_accounts: int) -> int:
+def _insert_app_user(
+    cursor,
+    *,
+    username: str,
+    country_id: int,
+    center_id: int | None,
+    number_of_accounts: int | None,
+    title: str | None = None,
+) -> int:
+    today = date.today()
     cursor.execute(
         """
-        INSERT INTO dbo.person (center_id, folder, number_accounts)
-        OUTPUT INSERTED.person_id
-        VALUES (?, ?, ?)
+        INSERT INTO dbo.app_user
+            (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
+        OUTPUT INSERTED.id
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
+        username,
+        title,
+        country_id,
         center_id,
-        folder,
-        number_accounts,
+        number_of_accounts,
+        today,
+        today,
     )
     return int(cursor.fetchone()[0])
 
 
-def _insert_account(cursor, person_id: int, acc: dict[str, Any]) -> int:
+def _stated_format(item: dict[str, Any]) -> str | None:
+    text = str(item.get("format") or "").strip()
+    return text.lower().replace("_", "-") if text else None
+
+
+def _format_for_file(file_name: str, *, bank_id: int | None) -> str | None:
+    """Format for one totals ``files[]`` entry: bank modality, else excel by suffix."""
+    if bank_id is not None:
+        for bid, _official, _folder, file_format in BANKS:
+            if bid == bank_id:
+                return file_format
+    lower = file_name.lower()
+    best = ""
+    best_fmt: str | None = None
+    for _bid, _official, folder, file_format in BANKS:
+        if folder.lower() in lower and len(folder) > len(best):
+            best = folder
+            best_fmt = file_format
+    if best_fmt:
+        return best_fmt
+    if Path(file_name).suffix.lower() in {".xlsx", ".xls", ".xlsm"}:
+        return "excel"
+    return None
+
+
+def _account_format(person_folder: Path, acc: dict[str, Any]) -> str | None:
+    stated = str(acc.get("format") or "").strip()
+    if stated:
+        return stated
+    files = acc.get("files") or []
+    for name in files:
+        fmt = _format_for_file(str(name), bank_id=None)
+        if fmt:
+            return fmt
+    secret = person_folder / "secret"
+    if secret.is_dir() and any(secret.glob("*.pem")):
+        return "secret"
+    return None
+
+
+def _insert_account(cursor, app_user_id: int, acc: dict[str, Any], *, person_folder: Path) -> int:
     cursor.execute(
         """
-        INSERT INTO dbo.account (person_id, iban, account_name, balance)
+        INSERT INTO dbo.account (app_user_id, iban, account_name, format, balance)
         OUTPUT INSERTED.account_id
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        person_id,
+        app_user_id,
         acc["iban"],
         acc["account_name"],
+        _account_format(person_folder, acc),
         acc["balance"],
     )
     return int(cursor.fetchone()[0])
@@ -524,36 +620,51 @@ def load_tree(
     by_label: dict[tuple[int, str], int],
 ) -> None:
     banks_by_folder = {folder: bank_id for bank_id, _official, folder, _fmt in BANKS}
-    unexpected = [
-        child.name
-        for child in root.iterdir()
-        if child.is_dir()
-        and not child.name.startswith(".")
-        and child.name not in IGNORE_DIRS
-        and child.name not in COUNTRY_FOLDERS
-    ]
-    if unexpected:
-        raise LoadError(f"Unexpected country folder(s) under {root}: {unexpected}")
 
     tx_rows: dict[str, list[tuple[Any, ...]]] = {folder: [] for _id, folder, _cur in COUNTRIES}
     personal_terms: list[tuple[int, int, str, int]] = []
     total_rows: list[tuple[Any, ...]] = []
-    balance_specs: list[tuple[int, int, int | None, int, str, Decimal, str | None, list[str]]] = []
+    file_rows: dict[tuple[int, str], str | None] = {}
 
     for country_id, country_folder, _currency in COUNTRIES:
         country_dir = root / country_folder
         if not country_dir.is_dir():
             raise LoadError(f"Missing country folder {country_dir}")
+        _insert_app_user(
+            cursor,
+            username=country_folder,
+            country_id=country_id,
+            center_id=None,
+            number_of_accounts=None,
+        )
+        remainder_id = _category_id_for_local_code(
+            country_id, DEFAULT_CATEGORY, by_code, path=country_dir
+        )
         for center_dir in _dirs(country_dir):
             people_dirs = [child for child in _dirs(center_dir) if _has_person_layout(child)]
             if not people_dirs:
                 continue
             center_id = _insert_center(cursor, country_id, center_dir.name)
+            _insert_app_user(
+                cursor,
+                username=center_dir.name,
+                country_id=country_id,
+                center_id=center_id,
+                number_of_accounts=None,
+            )
             for person_dir in people_dirs:
                 accounts = _seed_accounts_from_disk(person_dir)
-                person_id = _insert_person(cursor, center_id, person_dir.name, len(accounts))
+                person_id = _insert_app_user(
+                    cursor,
+                    username=person_dir.name,
+                    country_id=country_id,
+                    center_id=center_id,
+                    number_of_accounts=len(accounts),
+                )
                 for acc in accounts:
-                    acc["account_id"] = _insert_account(cursor, person_id, acc)
+                    acc["account_id"] = _insert_account(
+                        cursor, person_id, acc, person_folder=person_dir
+                    )
                 accounts_by_iban = {acc["iban"]: acc for acc in accounts}
 
                 personal_path = person_dir / "secret" / "personal_categories.json"
@@ -605,44 +716,10 @@ def load_tree(
                             source_id = str(raw.get("id") or "").strip()
                             if not source_id:
                                 raise LoadError(f"{tx_path}: transaction missing id")
-                            local_code = raw.get("category")
-                            try:
-                                local_int = int(local_code)
-                            except (TypeError, ValueError) as exc:
-                                raise LoadError(f"{tx_path}: bad category on {source_id}") from exc
                             description = str(raw.get("description") or "")
-                            cat_bit = False
-                            desc_bit = False
-                            mod = mods.get(source_id)
-                            if mod:
-                                if "description" in mod and mod.get("description") is not None:
-                                    description = str(mod.get("description") or "")
-                                    desc_bit = True
-                                if "category" in mod and mod.get("category") is not None:
-                                    try:
-                                        local_int = int(mod["category"])
-                                    except (TypeError, ValueError) as exc:
-                                        raise LoadError(
-                                            f"{tx_path}: bad modification category for {source_id}"
-                                        ) from exc
-                                    cat_bit = True
-                            if raw.get("modification") is not None:
-                                try:
-                                    modification = int(raw.get("modification"))
-                                except (TypeError, ValueError) as exc:
-                                    raise LoadError(f"{tx_path}: bad modification on {source_id}") from exc
-                            else:
-                                modification = 0
-                                if cat_bit:
-                                    modification |= 1
-                                if desc_bit:
-                                    modification |= 2
-                            if modification == -1:
-                                category_id = None
-                            else:
-                                category_id = _category_id_for_local_code(
-                                    country_id, local_int, by_code, path=tx_path
-                                )
+                            overlay = mods.get(source_id)
+                            if overlay and overlay.get("description") is not None:
+                                description = str(overlay.get("description") or "")
                             account = resolve_account(
                                 accounts=accounts,
                                 tx=raw,
@@ -659,15 +736,14 @@ def load_tree(
                                     bank_id,
                                     source_id,
                                     parse_amount(raw.get("amount"), path=tx_path),
-                                    str(raw.get("currency") or "EUR")[:3],
                                     str(raw.get("type") or "")[:64] or None,
                                     str(raw.get("name") or "")[:512] or None,
                                     iban[:64] or None,
                                     description or None,
                                     parse_booked_on(raw.get("date"), path=tx_path),
-                                    category_id,
-                                    modification,
-                                    _sql_hit(raw, path=tx_path, source_id=source_id),
+                                    remainder_id,
+                                    -1,
+                                    None,
                                 )
                             )
 
@@ -703,25 +779,22 @@ def load_tree(
                             acc = accounts_by_iban.get(iban)
                             if acc is None:
                                 raise LoadError(f"{totals_path}: unknown IBAN {iban!r}")
-                            files = [str(name) for name in (item.get("files") or []) if str(name).strip()]
-                            balance_specs.append(
-                                (
-                                    person_id,
-                                    year,
-                                    bank_id,
-                                    int(acc["account_id"]),
-                                    str(item.get("currency") or "EUR")[:3],
-                                    parse_amount(item.get("balance") or "0", path=totals_path),
-                                    parse_uuid(item.get("uid")),
-                                    files,
-                                )
-                            )
+                            account_id = int(acc["account_id"])
+                            stated = _stated_format(item)
+                            for raw_name in item.get("files") or []:
+                                name = str(raw_name).strip()
+                                if not name:
+                                    continue
+                                fmt = stated or _format_for_file(name, bank_id=bank_id)
+                                key = (account_id, name)
+                                if key not in file_rows or (file_rows[key] is None and fmt is not None):
+                                    file_rows[key] = fmt
 
                 cursor.execute(
                     """
-                    UPDATE dbo.person
-                    SET number_accounts = (SELECT COUNT(*) FROM dbo.account WHERE person_id = ?)
-                    WHERE person_id = ?
+                    UPDATE dbo.app_user
+                    SET number_of_accounts = (SELECT COUNT(*) FROM dbo.account WHERE app_user_id = ?)
+                    WHERE id = ?
                     """,
                     person_id,
                     person_id,
@@ -730,17 +803,17 @@ def load_tree(
     if personal_terms:
         cursor.executemany(
             """
-            INSERT INTO dbo.category_term (category_id, person_id, term, sort_order)
+            INSERT INTO dbo.category_term (category_id, app_user_id, term, sort_order)
             VALUES (?, ?, ?, ?)
             """,
             personal_terms,
         )
     tx_insert = """
             INSERT INTO {table} (
-                person_id, account_id, year, bank_id, source_id, amount, currency,
+                app_user_id, account_id, year, bank_id, source_id, amount,
                 bank_type, counterparty_name, counterparty_iban, description,
                 booked_on, category_id, modification, hit
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
     for folder, rows in tx_rows.items():
         if not rows:
@@ -751,37 +824,19 @@ def load_tree(
     if total_rows:
         cursor.executemany(
             """
-            INSERT INTO dbo.category_total (person_id, year, bank_id, category_id, amount)
+            INSERT INTO dbo.category_total (app_user_id, year, bank_id, category_id, amount)
             VALUES (?, ?, ?, ?, ?)
             """,
             total_rows,
         )
-    for spec in balance_specs:
-        person_id, year, bank_id, account_id, currency, balance, uid, files = spec
-        cursor.execute(
+    if file_rows:
+        cursor.executemany(
             """
-            INSERT INTO dbo.account_balance
-                (person_id, year, bank_id, account_id, currency, balance, uid)
-            OUTPUT INSERTED.account_balance_id
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO dbo.account_balance_file (account_id, file_name, format)
+            VALUES (?, ?, ?)
             """,
-            person_id,
-            year,
-            bank_id,
-            account_id,
-            currency,
-            balance,
-            uid,
+            [(account_id, name, fmt) for (account_id, name), fmt in file_rows.items()],
         )
-        balance_id = int(cursor.fetchone()[0])
-        if files:
-            cursor.executemany(
-                """
-                INSERT INTO dbo.account_balance_file (account_balance_id, file_name, sort_order)
-                VALUES (?, ?, ?)
-                """,
-                [(balance_id, name, index) for index, name in enumerate(files)],
-            )
 
     booked_union = " UNION ALL ".join(
         f"SELECT account_id, booked_on FROM {transaction_table(folder)}"
@@ -797,18 +852,6 @@ def load_tree(
             FROM ({booked_union}) booked
             GROUP BY account_id
         ) x ON x.account_id = a.account_id
-        """
-    )
-    cursor.execute(
-        """
-        UPDATE a
-        SET balance = x.balance
-        FROM dbo.account a
-        INNER JOIN (
-            SELECT ab.account_id, ab.balance,
-                   ROW_NUMBER() OVER (PARTITION BY ab.account_id ORDER BY ab.year DESC) AS rn
-            FROM dbo.account_balance ab
-        ) x ON x.account_id = a.account_id AND x.rn = 1
         """
     )
 
@@ -829,7 +872,7 @@ def verify(cursor) -> None:
     print(f"categories: {cursor.fetchone()[0]}")
     cursor.execute("SELECT COUNT(*) FROM dbo.center")
     print(f"centers: {cursor.fetchone()[0]}")
-    cursor.execute("SELECT COUNT(*) FROM dbo.person")
+    cursor.execute("SELECT COUNT(*) FROM dbo.app_user WHERE number_of_accounts IS NOT NULL")
     print(f"people: {cursor.fetchone()[0]}")
     cursor.execute("SELECT COUNT(*) FROM dbo.account")
     print(f"accounts: {cursor.fetchone()[0]}")
@@ -843,7 +886,7 @@ def verify(cursor) -> None:
 
     cursor.execute(
         """
-        SELECT c.folder, d.category_id, d.local_code, d.label
+        SELECT c.name, d.category_id, d.local_code, d.label
         FROM dbo.dim_category d
         JOIN dbo.country c ON c.country_id = d.country_id
         WHERE d.local_code = 12
@@ -858,38 +901,54 @@ def verify(cursor) -> None:
         """
         SELECT t.category_id, t.modification, d.label
         FROM dbo.transaction_nederland t
-        JOIN dbo.person p ON p.person_id = t.person_id
+        JOIN dbo.app_user p ON p.id = t.app_user_id
         JOIN dbo.dim_category d ON d.category_id = t.category_id
-        WHERE p.folder = N'anton_schins'
+        WHERE p.username = N'anton_schins'
           AND t.source_id = N'010305258369428750000000_0'
           AND t.bank_id IS NULL
         """
     )
-    if int(calc) != 104 or int(modification) != 0 or str(label) != "12 Vervoer":
+    if int(calc) != 109 or int(modification) != -1 or not str(label).startswith("18 "):
         raise LoadError(
             f"anton check failed: category_id={calc} modification={modification} label={label!r} "
-            "(expected 104, 0, '12 Vervoer')"
+            "(expected remainder 109 / -1)"
         )
-    print("check anton 010305258369428750000000_0: 104 / modification 0 / 12 Vervoer")
+    print(f"check anton 010305258369428750000000_0: uncalculated ({calc} / -1 / {label})")
 
-    set_id, set_mod, set_label = one(
-        """
-        SELECT t.category_id, t.modification, d.label
-        FROM dbo.transaction_nederland t
-        JOIN dbo.person p ON p.person_id = t.person_id
-        JOIN dbo.dim_category d ON d.category_id = t.category_id
-        WHERE p.folder = N'juleon_schins'
-          AND t.source_id = N'010305237711616590000000_0'
-          AND t.bank_id IS NULL
-        """
-    )
-    if int(set_id) != 107 or int(set_mod) != 1 or str(set_label) != "15 Buitengewone uitgaven":
-        raise LoadError(
-            f"juleon override failed: category_id={set_id} modification={set_mod} label={set_label!r}"
+    for _id, folder, _cur in COUNTRIES:
+        table = transaction_table(folder)
+        cursor.execute(
+            """
+            SELECT d.category_id
+            FROM dbo.dim_category d
+            JOIN dbo.country c ON c.country_id = d.country_id
+            WHERE c.name = ? AND d.is_remainder = 1
+            """,
+            folder,
         )
-    print("check juleon modification: category_id 107 / modification 1 / 15 Buitengewone uitgaven")
+        remainder = cursor.fetchone()
+        if remainder is None:
+            raise LoadError(f"no remainder category for {folder}")
+        remainder_id = int(remainder[0])
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) FROM {table}
+            WHERE modification <> -1 OR category_id <> ? OR hit IS NOT NULL
+            """,
+            remainder_id,
+        )
+        leftover = int(cursor.fetchone()[0])
+        if leftover:
+            raise LoadError(
+                f"{table}: {leftover} row(s) not uncalculated "
+                f"(expected modification=-1, category_id={remainder_id}, hit NULL)"
+            )
+        print(f"check {folder}: all bookings uncalculated -> {remainder_id}")
 
-    for folder, table in (("uk", "dbo.transaction_uk"), ("stichtingen", "dbo.transaction_stichtingen")):
+    for _id, folder, _cur in COUNTRIES:
+        if folder == "nederland":
+            continue
+        table = transaction_table(folder)
         cursor.execute(
             f"""
             SELECT TOP 1 t.category_id
@@ -910,7 +969,7 @@ def verify(cursor) -> None:
                 SELECT d.category_id
                 FROM dbo.dim_category d
                 JOIN dbo.country c ON c.country_id = d.country_id
-                WHERE d.local_code = 12 AND c.folder = ?
+                WHERE d.local_code = 12 AND c.name = ?
                 """,
                 folder,
             )
@@ -923,10 +982,10 @@ def verify(cursor) -> None:
         """
         SELECT COUNT(*)
         FROM dbo.transaction_uk t
-        JOIN dbo.person p ON p.person_id = t.person_id
+        JOIN dbo.app_user p ON p.id = t.app_user_id
         JOIN dbo.center n ON n.center_id = p.center_id
         JOIN dbo.country c ON c.country_id = n.country_id
-        WHERE c.folder <> N'uk'
+        WHERE c.country_id <> 2
         """
     )
     if int(cursor.fetchone()[0]):
@@ -935,37 +994,51 @@ def verify(cursor) -> None:
 
     cursor.execute(
         """
-        SELECT p.folder, p.number_accounts, COUNT(a.account_id)
-        FROM dbo.person p
-        JOIN dbo.account a ON a.person_id = p.person_id
-        GROUP BY p.person_id, p.folder, p.number_accounts
-        HAVING p.number_accounts <> COUNT(a.account_id)
+        SELECT u.username, u.number_of_accounts, COUNT(a.account_id)
+        FROM dbo.app_user u
+        JOIN dbo.account a ON a.app_user_id = u.id
+        GROUP BY u.id, u.username, u.number_of_accounts
+        HAVING u.number_of_accounts <> COUNT(a.account_id)
         """
     )
     mismatches = cursor.fetchall()
     if mismatches:
-        raise LoadError(f"number_accounts mismatch: {mismatches}")
-    print("check number_accounts = COUNT(account)")
+        raise LoadError(f"number_of_accounts mismatch: {mismatches}")
+    print("check number_of_accounts = COUNT(account)")
 
-    for folder, expected in (("xavier_bosch", 4), ("SDOG", 5), ("anton_schins", 1)):
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM dbo.account a
+        JOIN dbo.app_user u ON u.id = a.app_user_id
+        WHERE u.number_of_accounts IS NULL
+        """
+    )
+    if int(cursor.fetchone()[0]):
+        raise LoadError("account rows point at a country/center login")
+    print("check accounts only on person logins")
+
+    for folder, expected in (("xavier_bosch", 4), ("anton_schins", 1)):
         count, distinct_people = one(
             """
-            SELECT COUNT(*), COUNT(DISTINCT a.person_id)
+            SELECT COUNT(*), COUNT(DISTINCT a.app_user_id)
             FROM dbo.account a
-            JOIN dbo.person p ON p.person_id = a.person_id
-            WHERE p.folder = ?
+            JOIN dbo.app_user p ON p.id = a.app_user_id
+            WHERE p.username = ?
             """,
             folder,
         )
         if int(count) != expected or int(distinct_people) != 1:
             raise LoadError(
-                f"{folder}: expected {expected} accounts on one person_id, got {count}/{distinct_people}"
+                f"{folder}: expected {expected} accounts on one app_user_id, got {count}/{distinct_people}"
             )
-        print(f"check {folder}: {count} accounts, one person_id")
+        print(f"check {folder}: {count} accounts, one app_user_id")
 
 
 def main() -> None:
+    global COUNTRIES
     root = data_root()
+    COUNTRIES = discover_countries(root)
     started = datetime.now()
     conn = _connect()
     cursor = conn.cursor()

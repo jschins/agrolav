@@ -41,22 +41,17 @@ CREATE TABLE IF NOT EXISTS users (
 );
 """
 
-_SQLSERVER_SCHEMA = """
-IF OBJECT_ID(N'dbo.app_user', N'U') IS NULL
-BEGIN
-    CREATE TABLE dbo.app_user (
-        id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
-        username NVARCHAR(128) COLLATE Latin1_General_CI_AI NOT NULL,
-        title NVARCHAR(256) NULL,
-        country NVARCHAR(32) NULL,
-        center NVARCHAR(64) NULL,
-        person NVARCHAR(128) NULL,
-        format NVARCHAR(64) NULL,
-        created_at DATE NOT NULL,
-        updated_at DATE NOT NULL
-    );
-    CREATE UNIQUE INDEX ux_app_user_username ON dbo.app_user (username);
-END
+_SQL_USER_SELECT = """
+SELECT
+    u.id,
+    u.username,
+    u.title,
+    u.number_of_accounts,
+    c.name AS country,
+    n.name AS center
+FROM dbo.app_user u
+INNER JOIN dbo.country c ON c.country_id = u.country_id
+LEFT JOIN dbo.center n ON n.center_id = u.center_id
 """
 
 
@@ -178,18 +173,29 @@ def _row_to_user(row: Any) -> dict[str, Any]:
     if center_raw is None:
         center_raw = _cell(row, "workspace")
     country_raw = _cell(row, "country")
-    person_raw = _cell(row, "person")
     title_raw = _cell(row, "title")
     format_raw = _cell(row, "format")
     ident = _cell(row, "id")
+    username = str(_cell(row, "username") or "")
+    person_raw = _cell(row, "person")
+    accounts_raw = _cell(row, "number_of_accounts")
+    if person_raw is not None and str(person_raw).strip():
+        person = str(person_raw).strip()
+    elif accounts_raw is not None:
+        person = username
+    else:
+        person = ""
     return {
         "id": int(ident) if ident is not None else 0,
-        "username": str(_cell(row, "username") or ""),
+        "username": username,
         "title": str(title_raw or ""),
         "country": str(country_raw or ""),
         "center": str(center_raw or ""),
-        "person": str(person_raw or ""),
+        "person": person,
         "format": str(format_raw or "").strip(),
+        "number_of_accounts": (
+            int(accounts_raw) if accounts_raw is not None else None
+        ),
     }
 
 
@@ -277,8 +283,6 @@ def _sql_connect():
             "and install ODBC Driver 18. Last error: "
             f"{last_err}"
         ) from last_err
-    conn.cursor().execute(_SQLSERVER_SCHEMA)
-    conn.commit()
     _SQL = conn
     _copy_sqlite_into_sqlserver_if_empty()
     return conn
@@ -287,6 +291,29 @@ def _sql_connect():
 def _sql_cursor_row(cursor, raw: Any) -> dict[str, Any]:
     cols = [item[0] for item in cursor.description]
     return dict(zip(cols, raw))
+
+
+def _sql_country_id(cursor, folder: str) -> int | None:
+    from app.runtime import country_folder
+
+    name = country_folder(folder) or (folder or "").strip()
+    if not name:
+        return None
+    cursor.execute("SELECT country_id FROM dbo.country WHERE name = ?", (name,))
+    row = cursor.fetchone()
+    return int(row[0]) if row else None
+
+
+def _sql_center_id(cursor, country_id: int, folder: str) -> int | None:
+    name = (folder or "").strip()
+    if not name:
+        return None
+    cursor.execute(
+        "SELECT center_id FROM dbo.center WHERE country_id = ? AND name = ?",
+        (country_id, name),
+    )
+    row = cursor.fetchone()
+    return int(row[0]) if row else None
 
 
 def _sqlite_open_readonly() -> sqlite3.Connection | None:
@@ -300,6 +327,9 @@ def _sqlite_open_readonly() -> sqlite3.Connection | None:
 
 def _copy_sqlite_into_sqlserver_if_empty() -> int:
     cursor = _SQL.cursor()
+    cursor.execute("SELECT OBJECT_ID(N'dbo.app_user', N'U')")
+    if cursor.fetchone()[0] is None:
+        return 0
     count = int(cursor.execute("SELECT COUNT(*) FROM dbo.app_user").fetchone()[0])
     if count:
         return 0
@@ -324,22 +354,27 @@ def _copy_sqlite_into_sqlserver_if_empty() -> int:
             country = str(row["country"] or "") if "country" in keys else ""
             person = str(row["person"] or "") if "person" in keys else ""
             title = str(row["title"] or "") if "title" in keys else ""
-            fmt = str(row["format"] or "").strip() if "format" in keys and row["format"] is not None else ""
             created = as_date_only(str(row["created_at"] or "")) or _utc_today()
             updated = as_date_only(str(row["updated_at"] or "")) or created
+            country_id = _sql_country_id(cursor, country or username)
+            if country_id is None:
+                continue
+            center_id = _sql_center_id(cursor, country_id, center) if center else None
+            if person and center_id is None:
+                continue
+            number_of_accounts = 0 if person else None
             cursor.execute(
                 """
                 INSERT INTO dbo.app_user
-                    (username, title, country, center, person, format, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     username,
                     _empty_to_null(title),
-                    _empty_to_null(country),
-                    _empty_to_null(center),
-                    _empty_to_null(person),
-                    _empty_to_null(fmt),
+                    country_id,
+                    center_id,
+                    number_of_accounts,
                     created,
                     updated,
                 ),
@@ -482,7 +517,13 @@ def init_user_store() -> str:
     """Open the user store (SQL Server or SQLite) and ensure schema exists."""
     with _LOCK:
         if _use_sqlserver():
-            _sql_connect()
+            conn = _sql_connect()
+            cursor = conn.cursor()
+            cursor.execute("SELECT OBJECT_ID(N'dbo.app_user', N'U')")
+            if cursor.fetchone()[0] is None:
+                raise RuntimeError(
+                    "dbo.app_user missing. Run `uv run python scripts/load_phase_c.py` from hub/."
+                )
         else:
             _sqlite_connect()
         return store_label()
@@ -497,7 +538,7 @@ def find_user(username: str) -> dict[str, Any] | None:
         if _use_sqlserver():
             cursor = _SQL.cursor()
             cursor.execute(
-                "SELECT * FROM dbo.app_user WHERE username = ?",
+                _SQL_USER_SELECT + " WHERE u.username = ?",
                 (needle,),
             )
             raw = cursor.fetchone()
@@ -530,7 +571,7 @@ def list_users() -> list[dict[str, Any]]:
         init_user_store()
         if _use_sqlserver():
             cursor = _SQL.cursor()
-            cursor.execute("SELECT * FROM dbo.app_user ORDER BY username")
+            cursor.execute(_SQL_USER_SELECT + " ORDER BY u.username")
             rows = [_sql_cursor_row(cursor, raw) for raw in cursor.fetchall()]
         else:
             rows = _SQLITE.execute(
@@ -560,25 +601,32 @@ def upsert_user(
         init_user_store()
         if _use_sqlserver():
             cursor = _SQL.cursor()
+            country_id = _sql_country_id(cursor, country_s or name)
+            if country_id is None:
+                raise ValueError(f"Unknown country {country_s or name!r}")
+            center_id = _sql_center_id(cursor, country_id, center_s or "") if center_s else None
+            if person_s and center_id is None:
+                raise ValueError(f"Unknown center {center_s!r} for country_id={country_id}")
+            number_of_accounts = 0 if person_s else None
             cursor.execute("SELECT id FROM dbo.app_user WHERE username = ?", (name,))
             row = cursor.fetchone()
             if row:
                 cursor.execute(
                     """
                     UPDATE dbo.app_user
-                    SET title = ?, country = ?, center = ?, person = ?
+                    SET title = ?, country_id = ?, center_id = ?
                     WHERE id = ?
                     """,
-                    (title_s, country_s, center_s, person_s, int(row[0])),
+                    (title_s, country_id, center_id, int(row[0])),
                 )
             else:
                 cursor.execute(
                     """
                     INSERT INTO dbo.app_user
-                        (username, title, country, center, person, format, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+                        (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (name, title_s, country_s, center_s, person_s, today, today),
+                    (name, title_s, country_id, center_id, number_of_accounts, today, today),
                 )
             _SQL.commit()
         else:
@@ -646,7 +694,10 @@ def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:
             row = cursor.fetchone()
             if not row:
                 return None
-            cursor.execute("UPDATE dbo.app_user SET format = ? WHERE id = ?", (fmt, int(row[0])))
+            cursor.execute(
+                "UPDATE dbo.account SET format = ? WHERE app_user_id = ?",
+                (fmt, int(row[0])),
+            )
             _SQL.commit()
         else:
             conn = _SQLITE
@@ -694,6 +745,30 @@ def set_user_updated_at(*, username: str, date: str | None) -> dict[str, Any] | 
     return _public_user(user) if user else None
 
 
+def list_accounts_for_username(username: str) -> list[dict[str, str]]:
+    """IBANs and names for a person pack (``number_of_accounts`` rows)."""
+    name = (username or "").strip()
+    if not name or not _use_sqlserver():
+        return []
+    with _LOCK:
+        init_user_store()
+        cursor = _SQL.cursor()
+        cursor.execute(
+            """
+            SELECT a.account_name, a.iban
+            FROM dbo.account a
+            JOIN dbo.app_user u ON u.id = a.app_user_id
+            WHERE u.username = ?
+            ORDER BY a.account_id
+            """,
+            (name,),
+        )
+        return [
+            {"account_name": str(row[0] or "").strip(), "iban": str(row[1] or "").strip()}
+            for row in cursor.fetchall()
+        ]
+
+
 def upload_token_by_person_center() -> dict[tuple[str, str], str]:
     """Map ``(person, center)`` → upload token for personal users."""
     with _LOCK:
@@ -702,10 +777,10 @@ def upload_token_by_person_center() -> dict[tuple[str, str], str]:
             cursor = _SQL.cursor()
             cursor.execute(
                 """
-                SELECT person, center
-                FROM dbo.app_user
-                WHERE person IS NOT NULL AND LTRIM(RTRIM(person)) <> N''
-                  AND center IS NOT NULL AND LTRIM(RTRIM(center)) <> N''
+                SELECT u.username, n.name
+                FROM dbo.app_user u
+                JOIN dbo.center n ON n.center_id = u.center_id
+                WHERE u.number_of_accounts IS NOT NULL
                 """
             )
             rows = cursor.fetchall()
