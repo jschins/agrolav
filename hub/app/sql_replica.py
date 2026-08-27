@@ -127,7 +127,7 @@ def _account_id_for_folder(cursor, person_id: int, folder: str) -> int | None:
     compact = folder.replace(" ", "")
     cursor.execute(
         "SELECT account_id, iban FROM dbo.account WHERE person_id = ?",
-        person_id,
+        (person_id,),
     )
     rows = [(int(account_id), str(iban or "").replace(" ", "")) for account_id, iban in cursor.fetchall()]
     for account_id, ib in rows:
@@ -260,50 +260,119 @@ def load_bound_transactions() -> list[dict[str, Any]] | None:
             WHERE {where_sql}
             ORDER BY t.booked_on DESC, t.source_id DESC
             """,
-            *where_params,
+            tuple(where_params),
         )
-        rows: list[dict[str, Any]] = []
-        for item in bound.cursor.fetchall():
-            (
-                source_id,
-                amount,
-                bank_type,
-                name,
-                iban,
-                description,
-                booked_on,
-                modification,
-                hit,
-                local_code,
-                currency,
-            ) = item
-            try:
-                flag = int(modification)
-            except (TypeError, ValueError):
-                flag = -1
-            rows.append(
-                {
-                    "id": str(source_id),
-                    "amount": _json_amount(amount),
-                    "currency": _json_text(currency) or "EUR",
-                    "type": _json_text(bank_type),
-                    "name": _json_text(name),
-                    "iban": _json_text(iban),
-                    "description": _json_text(description),
-                    "date": _json_date(booked_on),
-                    "category": int(local_code) if local_code is not None else 18,
-                    "modification": flag,
-                    "hit": None if hit in (None, "") else str(hit),
-                }
-            )
-        return rows
+        fetched = bound.cursor.fetchall()
     except Exception as exc:  # noqa: BLE001
-        try:
-            user_store._SQL.rollback()
-        except Exception:
-            pass
         print(f"sql replica: failed to load bookings: {exc}")
         return []
+    rows: list[dict[str, Any]] = []
+    for item in fetched:
+        (
+            source_id,
+            amount,
+            bank_type,
+            name,
+            iban,
+            description,
+            booked_on,
+            modification,
+            hit,
+            local_code,
+            currency,
+        ) = item
+        try:
+            flag = int(modification)
+        except (TypeError, ValueError):
+            flag = -1
+        rows.append(
+            {
+                "id": str(source_id),
+                "amount": _json_amount(amount),
+                "currency": _json_text(currency) or "EUR",
+                "type": _json_text(bank_type),
+                "name": _json_text(name),
+                "iban": _json_text(iban),
+                "description": _json_text(description),
+                "date": _json_date(booked_on),
+                "category": int(local_code) if local_code is not None else 18,
+                "modification": flag,
+                "hit": None if hit in (None, "") else str(hit),
+            }
+        )
+    return rows
+
+
+def load_bound_category_totals(general_names: list[str]) -> dict[str, str] | None:
+    """Per-category sums in SQL. ``None`` if SQL is unused for this bind."""
+    from app import user_store
+    from app.core.categorize import _amount_str, _category_code
+
+    if not user_store.database_url():
+        return None
+    try:
+        bound = _open_bound_scope()
+        if bound is None:
+            return None
+        where_sql, where_params = _bound_where(bound)
+        bound.cursor.execute(
+            f"""
+            SELECT COALESCE(d.local_code, 18), SUM(t.amount)
+            FROM {bound.table} t
+            LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
+            WHERE {where_sql}
+            GROUP BY COALESCE(d.local_code, 18)
+            """,
+            tuple(where_params),
+        )
+        by_code: dict[int, int] = {}
+        for local_code, amount in bound.cursor.fetchall():
+            try:
+                code = int(local_code)
+            except (TypeError, ValueError):
+                code = 18
+            try:
+                cents = round(float(amount or 0) * 100)
+            except (TypeError, ValueError):
+                cents = 0
+            by_code[code] = cents
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql replica: failed to load category totals: {exc}")
+        return {}
+    name_by_code = {
+        code: name for name in general_names if (code := _category_code(name)) is not None
+    }
+    booking_names = [name for name in general_names if _category_code(name) is not None]
+    totals: dict[str, int] = {name: 0 for name in booking_names}
+    for code, cents in by_code.items():
+        name = name_by_code.get(code, str(code))
+        totals[name] = totals.get(name, 0) + cents
+    return {name: _amount_str(cents) for name, cents in totals.items()}
+
+
+def load_bound_last_booked() -> str | None:
+    """Latest booking date as ``DD-MM-YYYY``, or ``None`` if SQL is unused."""
+    from app import user_store
+
+    if not user_store.database_url():
+        return None
+    try:
+        bound = _open_bound_scope()
+        if bound is None:
+            return None
+        where_sql, where_params = _bound_where(bound)
+        bound.cursor.execute(
+            f"SELECT MAX(t.booked_on) FROM {bound.table} t WHERE {where_sql}",
+            tuple(where_params),
+        )
+        row = bound.cursor.fetchone()
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql replica: failed to load last booked date: {exc}")
+        return None
+    if not row or row[0] is None:
+        return None
+    text = _json_date(row[0])
+    return text or None
 
 
 def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
@@ -387,10 +456,6 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
         bound.cursor.fast_executemany = False
         bound.conn.commit()
     except Exception as exc:  # noqa: BLE001
-        try:
-            user_store._SQL.rollback()
-        except Exception:
-            pass
         print(f"sql replica: failed to update bookings: {exc}")
 
 
@@ -497,10 +562,6 @@ def ensure_bound_accounts(
         bound.conn.commit()
         return out
     except Exception as exc:  # noqa: BLE001
-        try:
-            user_store._SQL.rollback()
-        except Exception:
-            pass
         print(f"sql replica: failed to ensure accounts: {exc}")
         return []
 
@@ -616,9 +677,5 @@ def ingest_bound_transactions(
         bound.conn.commit()
         return len(params)
     except Exception as exc:  # noqa: BLE001
-        try:
-            user_store._SQL.rollback()
-        except Exception:
-            pass
         print(f"sql replica: failed to insert bookings: {exc}")
         return 0

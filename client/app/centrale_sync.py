@@ -144,10 +144,15 @@ def _build_hub_config(
     elif access == ACCESS_COUNTRY:
         person = ""
         author = username or "country"
-        # Always scan country folders; do not use the users table as a catalog.
         all_ws = _fetch_hub_center_names(url, api_key=api_key, country=country)
+        if not all_ws:
+            all_ws = list(parsed_ws)
         centers = tuple(all_ws)
         preferred = (selected or center_key or "").strip()
+        country_key = country.lower()
+        user_key = (username or "").strip().lower()
+        if preferred.lower() in {country_key, user_key}:
+            preferred = ""
         if preferred and preferred in centers:
             center = preferred
         elif centers:

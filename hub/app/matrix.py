@@ -39,9 +39,15 @@ def general_categories_source(people: list[PersonPack] | None = None) -> Path:
 
 
 def load_general_file(people: list[PersonPack] | None = None) -> dict[str, Any]:
-    from app.paths import shared_categories_path
+    from app import user_store
     from app.runtime import active_center, active_country
     from app.sql_catalog import categories_payload, country_for_center
+
+    del people
+    if user_store.database_url():
+        country = active_country() or country_for_center(active_center() or "") or ""
+        return categories_payload(country)
+    from app.paths import shared_categories_path
 
     path = shared_categories_path()
     if path.is_file():
@@ -58,8 +64,12 @@ def category_names(people: list[PersonPack] | None = None) -> list[str]:
 
 def sync_general_categories(payload: dict[str, Any], people: list[PersonPack] | None = None) -> None:
     """Write the shared ``categories.json`` at the boekhouding deploy root."""
+    from app import user_store
     from app.paths import shared_categories_path
 
+    del people
+    if user_store.database_url():
+        return
     _write_json(shared_categories_path(), payload)
 
 
@@ -97,13 +107,19 @@ def _amount_for_category(totals: dict[str, str], catalog_name: str) -> str:
 
 
 def person_totals(pack: PersonPack) -> dict[str, str]:
+    from app import user_store
     from app.core.categorize import load_category_totals, recategorize_transactions
 
     with bind_person(pack):
-        totals = load_category_totals()
-        if not totals:
-            totals = recategorize_transactions()
-        return totals
+        try:
+            totals = load_category_totals()
+        except Exception:  # noqa: BLE001
+            totals = {}
+        if totals:
+            return totals
+        if user_store.database_url():
+            return {}
+        return recategorize_transactions()
 
 
 def person_current_balance(pack: PersonPack) -> str | None:
@@ -163,6 +179,12 @@ def person_current_balance(pack: PersonPack) -> str | None:
 
 def person_last_booked(pack: PersonPack) -> str | None:
     """Latest transaction ``date`` as ``DD-MM-YYYY``, or None if none."""
+    from app import user_store
+    from app.sql_replica import load_bound_last_booked
+
+    if user_store.database_url():
+        with bind_person(pack):
+            return load_bound_last_booked()
     from app.core.categorize import _load_categorized_store
     from app.user_store import latest_transaction_date
 
@@ -214,7 +236,10 @@ def build_matrix(
     ws = active_center() or ""
     for pack in packs:
         view_pack = pack_for_bank_view(pack, bank, center=ws) if bank else pack
-        totals = person_totals(view_pack)
+        try:
+            totals = person_totals(view_pack)
+        except Exception:  # noqa: BLE001
+            totals = {}
         for name in booking:
             cells[name][pack.short] = _amount_for_category(totals, name)
         cells[balance_name][pack.short] = person_current_balance(view_pack) or ""
@@ -383,7 +408,10 @@ def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
 def _narrow_totals_to_account(uid: str) -> None:
     """Keep only this account's balance row in the bound category_totals.json."""
     from app import paths as path_mod
+    from app import user_store
 
+    if user_store.database_url():
+        return
     path = path_mod.CATEGORY_TOTALS_PATH
     if not path.is_file():
         return
@@ -694,7 +722,7 @@ def save_general_terms(category_name: str, terms: list[str]) -> list[str]:
     from app.core.categorize import _cleaned_terms, _category_map
 
     packs = get_people()
-    original = _read_json(general_categories_source(packs))
+    original = load_general_file(packs)
     if not isinstance(original, dict):
         original = {}
     cleaned = _cleaned_terms(terms)

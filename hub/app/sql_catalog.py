@@ -4,9 +4,13 @@ Used when workspace folders are absent. Bookings stay in ``sql_replica``.
 """
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from app.yearpath import is_year_name
+
+_CAT_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_CAT_TTL_SEC = 3.0
 
 
 def _sql_ready() -> bool:
@@ -24,13 +28,29 @@ def _cursor():
     return user_store._sql_connect().cursor()
 
 
+def _sql_retry(fn):
+    """Run a SQL callable; reconnect once on a dead connection."""
+    from app import user_store
+
+    try:
+        return fn()
+    except Exception:
+        user_store.reset_sql_connection()
+        user_store.init_user_store()
+        return fn()
+
+
 def list_country_usernames() -> list[str]:
     if not _sql_ready():
         return []
-    try:
+
+    def _run() -> list[str]:
         cursor = _cursor()
         cursor.execute("SELECT username FROM dbo.country ORDER BY username")
         return [str(row[0]).strip() for row in cursor.fetchall() if str(row[0] or "").strip()]
+
+    try:
+        return _sql_retry(_run)
     except Exception:  # noqa: BLE001
         return []
 
@@ -39,7 +59,8 @@ def list_center_usernames(country: str) -> list[str]:
     name = (country or "").strip()
     if not name or not _sql_ready():
         return []
-    try:
+
+    def _run() -> list[str]:
         cursor = _cursor()
         cursor.execute(
             """
@@ -52,6 +73,9 @@ def list_center_usernames(country: str) -> list[str]:
             (name,),
         )
         return [str(row[0]).strip() for row in cursor.fetchall() if str(row[0] or "").strip()]
+
+    try:
+        return _sql_retry(_run)
     except Exception:  # noqa: BLE001
         return []
 
@@ -60,7 +84,8 @@ def country_for_center(center: str) -> str | None:
     name = (center or "").strip()
     if not name or not _sql_ready():
         return None
-    try:
+
+    def _run() -> str | None:
         cursor = _cursor()
         cursor.execute(
             """
@@ -74,31 +99,50 @@ def country_for_center(center: str) -> str | None:
         row = cursor.fetchone()
         if row and str(row[0] or "").strip():
             return str(row[0]).strip()
+        return None
+
+    try:
+        return _sql_retry(_run)
     except Exception:  # noqa: BLE001
         return None
-    return None
 
 
 def center_exists(center: str) -> bool:
     name = (center or "").strip()
     if not name or not _sql_ready():
         return False
-    try:
+
+    def _run() -> bool:
         cursor = _cursor()
         cursor.execute(
             "SELECT 1 FROM dbo.center WHERE username = ? COLLATE Latin1_General_CI_AI",
             (name,),
         )
         return cursor.fetchone() is not None
-    except Exception:  # noqa: BLE001
-        return False
+
+    return bool(_sql_retry(_run))
+
+
+def coerce_center(name: str) -> str:
+    """If ``name`` is a country username, return that country's first center."""
+    raw = (name or "").strip()
+    if not raw:
+        return raw
+    if center_exists(raw):
+        return raw
+    from app.runtime import country_folder
+
+    folder = country_folder(raw) or raw
+    centers = list_center_usernames(folder)
+    return centers[0] if centers else raw
 
 
 def people_in_center(center: str) -> list[str]:
     name = (center or "").strip()
     if not name or not _sql_ready():
         return []
-    try:
+
+    def _run() -> list[str]:
         cursor = _cursor()
         cursor.execute(
             """
@@ -111,6 +155,9 @@ def people_in_center(center: str) -> list[str]:
             (name,),
         )
         return [str(row[0]).strip() for row in cursor.fetchall() if str(row[0] or "").strip()]
+
+    try:
+        return _sql_retry(_run)
     except Exception:  # noqa: BLE001
         return []
 
@@ -119,7 +166,8 @@ def person_country_center(username: str) -> tuple[str, str] | None:
     name = (username or "").strip()
     if not name or not _sql_ready():
         return None
-    try:
+
+    def _run() -> tuple[str, str] | None:
         cursor = _cursor()
         cursor.execute(
             """
@@ -134,9 +182,12 @@ def person_country_center(username: str) -> tuple[str, str] | None:
         row = cursor.fetchone()
         if row and str(row[0] or "").strip() and str(row[1] or "").strip():
             return str(row[0]).strip(), str(row[1]).strip()
+        return None
+
+    try:
+        return _sql_retry(_run)
     except Exception:  # noqa: BLE001
         return None
-    return None
 
 
 def _years_from_table(cursor, table: str, where_sql: str, param: str) -> list[str]:
@@ -163,7 +214,8 @@ def years_for_person(username: str) -> list[str]:
     table = _transaction_table(country)
     if not table:
         return []
-    try:
+
+    def _run() -> list[str]:
         cursor = _cursor()
         cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
         if cursor.fetchone()[0] is None:
@@ -175,12 +227,18 @@ def years_for_person(username: str) -> list[str]:
             "WHERE p.username = ? COLLATE Latin1_General_CI_AI",
             name,
         )
+
+    try:
+        return _sql_retry(_run)
     except Exception:  # noqa: BLE001
         return []
 
 
 def years_for_center(center: str) -> list[str]:
     name = (center or "").strip()
+    if not name:
+        return []
+    name = coerce_center(name)
     country = country_for_center(name)
     if not country:
         return []
@@ -189,12 +247,13 @@ def years_for_center(center: str) -> list[str]:
     table = _transaction_table(country)
     if not table:
         return []
-    try:
+
+    def _run() -> list[str]:
         cursor = _cursor()
         cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
         if cursor.fetchone()[0] is None:
             return []
-        years = _years_from_table(
+        return _years_from_table(
             cursor,
             table,
             "JOIN dbo.person p ON p.id = t.person_id "
@@ -202,9 +261,59 @@ def years_for_center(center: str) -> list[str]:
             "WHERE n.username = ? COLLATE Latin1_General_CI_AI",
             name,
         )
-        return years
+
+    try:
+        return _sql_retry(_run)
     except Exception:  # noqa: BLE001
         return []
+
+
+def years_by_person_in_center(center: str) -> dict[str, list[str]]:
+    """Person username → booking years for everyone in this center."""
+    name = (center or "").strip()
+    if not name:
+        return {}
+    name = coerce_center(name)
+    country = country_for_center(name)
+    if not country:
+        return {}
+    from app.sql_replica import _transaction_table
+
+    table = _transaction_table(country)
+    if not table:
+        return {}
+
+    def _run() -> dict[str, list[str]]:
+        cursor = _cursor()
+        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+        if cursor.fetchone()[0] is None:
+            return {}
+        cursor.execute(
+            f"""
+            SELECT p.username, t.year
+            FROM {table} t
+            JOIN dbo.person p ON p.id = t.person_id
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.username = ? COLLATE Latin1_General_CI_AI
+            GROUP BY p.username, t.year
+            ORDER BY p.username, t.year
+            """,
+            (name,),
+        )
+        out: dict[str, list[str]] = {}
+        for username, year in cursor.fetchall():
+            person = str(username or "").strip()
+            text = str(int(year)) if year is not None else ""
+            if person and is_year_name(text):
+                years = out.setdefault(person, [])
+                if text not in years:
+                    years.append(text)
+        return out
+
+    try:
+        return _sql_retry(_run)
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def categories_payload(country: str) -> dict[str, Any]:
@@ -213,7 +322,12 @@ def categories_payload(country: str) -> dict[str, Any]:
     empty: dict[str, Any] = {"categories": {}, "table_header_terms": {}, "typerules": []}
     if not name or not _sql_ready():
         return empty
-    try:
+    now = time.monotonic()
+    hit = _CAT_CACHE.get(name)
+    if hit and now - hit[0] < _CAT_TTL_SEC:
+        return hit[1]
+
+    def _run() -> dict[str, Any]:
         cursor = _cursor()
         cursor.execute(
             """
@@ -296,5 +410,43 @@ def categories_payload(country: str) -> dict[str, Any]:
             "table_header_terms": headers,
             "typerules": typerules,
         }
+
+    try:
+        payload = _sql_retry(_run)
+        _CAT_CACHE[name] = (time.monotonic(), payload)
+        return payload
     except Exception:  # noqa: BLE001
         return empty
+
+
+def personal_categories_payload(username: str) -> dict[str, list[str]]:
+    """Category label → personal keyword terms for one person."""
+    name = (username or "").strip()
+    if not name or not _sql_ready():
+        return {}
+
+    def _run() -> dict[str, list[str]]:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            SELECT d.label, t.term
+            FROM dbo.category_term t
+            JOIN dbo.person p ON p.id = t.person_id
+            JOIN dbo.dim_category d ON d.category_id = t.category_id
+            WHERE p.username = ? COLLATE Latin1_General_CI_AI
+            ORDER BY d.local_code, t.sort_order, t.term_id
+            """,
+            (name,),
+        )
+        out: dict[str, list[str]] = {}
+        for label, term in cursor.fetchall():
+            key = str(label or "").strip()
+            text = str(term or "").strip()
+            if key and text:
+                out.setdefault(key, []).append(text)
+        return out
+
+    try:
+        return _sql_retry(_run)
+    except Exception:  # noqa: BLE001
+        return {}

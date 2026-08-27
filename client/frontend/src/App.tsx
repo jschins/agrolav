@@ -552,7 +552,9 @@ function SyncNotifyShell({
         const hub = (status?.centrale_url || "").replace(/\/$/, "");
         const token = (res.upload_token || "").trim();
         setUploadUrl(hub && token ? `${hub}/upload?t=${encodeURIComponent(token)}` : "");
-        setShowBankSwitcher(Boolean(res.show_switcher));
+        setShowBankSwitcher(
+          Boolean(res.show_switcher) || (res.folders || []).length > 1
+        );
         setBankOptions(res.folders || []);
         setBankView((prev) => {
           if (prev === "consolidated") return prev;

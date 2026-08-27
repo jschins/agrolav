@@ -1,5 +1,16 @@
 # Database (proposed)
 
+## backup
+
+```BACKUP DATABASE agrolav
+TO DISK = '/var/opt/mssql/backup/agrolav19.bak'
+WITH
+    INIT,
+    COMPRESSION,
+    CHECKSUM,
+    STATS = 10;
+```
+
 JSON under `workspaces/` is the source of truth until SQL Server is loaded.
 The folder layout is already the grain of the future schema:
 

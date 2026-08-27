@@ -17,7 +17,11 @@ from app.runtime import data_root
 USERS_DB_FILENAME = "users.db"
 _LOCK = threading.RLock()
 _SQLITE: sqlite3.Connection | None = None
-_SQL = None  # pyodbc connection
+_SQL = None  # last pyodbc connection (readiness flag; do not share across threads)
+_SQL_TLS = threading.local()
+_WORKING_URL: str | None = None
+_STORE_READY = False
+_SQLITE_COPY_DONE = False
 
 FORMAT_SECRET = "secret"
 FORMAT_MULTIPLE = "multiple"
@@ -90,18 +94,25 @@ UNION ALL
 
 
 def _load_dotenv() -> None:
-    path = Path(__file__).resolve().parents[1] / ".env"
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        raw = line.strip()
-        if not raw or raw.startswith("#") or "=" not in raw:
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parents[1] / ".env",
+        here.parents[2] / ".env" if len(here.parents) > 2 else None,
+    ]
+    seen: set[Path] = set()
+    for path in candidates:
+        if path is None or path in seen or not path.is_file():
             continue
-        key, _, val = raw.partition("=")
-        key = key.strip()
-        val = val.strip().strip('"').strip("'")
-        if key and key not in os.environ:
-            os.environ[key] = val
+        seen.add(path)
+        for line in path.read_text(encoding="utf-8").splitlines():
+            raw = line.strip()
+            if not raw or raw.startswith("#") or "=" not in raw:
+                continue
+            key, _, val = raw.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and not str(os.environ.get(key) or "").strip():
+                os.environ[key] = val
 
 
 _load_dotenv()
@@ -295,28 +306,46 @@ def _connect_urls(url: str) -> list[str]:
     return urls
 
 
-def _sql_connect():
-    global _SQL
-    if _SQL is not None:
-        return _SQL
+def _sql_url_with_mars(url: str) -> str:
+    """Allow more than one cursor on a connection (nested catalog queries)."""
+    if re.search(r"MARS_Connection\s*=", url, flags=re.I):
+        return url
+    return url.rstrip(";") + ";MARS_Connection=yes"
+
+
+def _open_sql_connection():
+    """Open a new autocommit connection (one per worker thread)."""
+    global _WORKING_URL
     pyodbc = _pyodbc()
+    if _WORKING_URL:
+        try:
+            return pyodbc.connect(
+                _sql_url_with_mars(_WORKING_URL), autocommit=True, timeout=8
+            )
+        except Exception:
+            _WORKING_URL = None
     url = database_url()
     db_name = _database_name(url)
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", db_name):
         raise ValueError(f"Invalid SQL Server database name: {db_name!r}")
     last_err: Exception | None = None
     conn = None
+    candidate = url
     for _attempt in range(24):
         for candidate in _connect_urls(url):
             try:
-                master = pyodbc.connect(_master_url(candidate), autocommit=True, timeout=8)
+                master = pyodbc.connect(
+                    _sql_url_with_mars(_master_url(candidate)), autocommit=True, timeout=8
+                )
                 try:
                     master.cursor().execute(
                         f"IF DB_ID(N'{db_name}') IS NULL CREATE DATABASE [{db_name}]"
                     )
                 finally:
                     master.close()
-                conn = pyodbc.connect(candidate, autocommit=False, timeout=8)
+                conn = pyodbc.connect(
+                    _sql_url_with_mars(candidate), autocommit=True, timeout=8
+                )
                 break
             except Exception as exc:  # noqa: BLE001
                 last_err = exc
@@ -331,9 +360,40 @@ def _sql_connect():
             "and install ODBC Driver 18. Last error: "
             f"{last_err}"
         ) from last_err
-    _SQL = conn
-    _copy_sqlite_into_sqlserver_if_empty()
+    _WORKING_URL = candidate
     return conn
+
+
+def _sql_connect():
+    """Return this thread's SQL Server connection."""
+    global _SQL, _SQLITE_COPY_DONE
+    conn = getattr(_SQL_TLS, "conn", None)
+    if conn is not None:
+        return conn
+    conn = _open_sql_connection()
+    _SQL_TLS.conn = conn
+    _SQL = conn
+    if not _SQLITE_COPY_DONE:
+        with _LOCK:
+            if not _SQLITE_COPY_DONE:
+                _copy_sqlite_into_sqlserver_if_empty()
+                _SQLITE_COPY_DONE = True
+    return conn
+
+
+def reset_sql_connection() -> None:
+    """Drop this thread's dead pyodbc connection so the next call reconnects."""
+    global _SQL
+    conn = getattr(_SQL_TLS, "conn", None)
+    _SQL_TLS.conn = None
+    if _SQL is conn:
+        _SQL = None
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _sql_cursor_row(cursor, raw: Any) -> dict[str, Any]:
@@ -412,7 +472,7 @@ def _sqlite_open_readonly() -> sqlite3.Connection | None:
 
 
 def _copy_sqlite_into_sqlserver_if_empty() -> int:
-    cursor = _SQL.cursor()
+    cursor = _sql_connect().cursor()
     cursor.execute("SELECT OBJECT_ID(N'dbo.person', N'U')")
     if cursor.fetchone()[0] is None:
         return 0
@@ -464,7 +524,7 @@ def _copy_sqlite_into_sqlserver_if_empty() -> int:
                 ),
             )
             inserted += 1
-        _SQL.commit()
+        _sql_connect().commit()
         print(f"copied {inserted} person(s) from SQLite into dbo.person")
         return inserted
     finally:
@@ -619,7 +679,12 @@ def _ensure_login_titles(cursor) -> None:
 
 def init_user_store() -> str:
     """Open the user store (SQL Server or SQLite) and ensure schema exists."""
+    global _STORE_READY
+    if _STORE_READY:
+        return store_label()
     with _LOCK:
+        if _STORE_READY:
+            return store_label()
         if _use_sqlserver():
             conn = _sql_connect()
             cursor = conn.cursor()
@@ -634,6 +699,7 @@ def init_user_store() -> str:
             conn.commit()
         else:
             _sqlite_connect()
+        _STORE_READY = True
         return store_label()
 
 
@@ -644,7 +710,7 @@ def find_user(username: str) -> dict[str, Any] | None:
     with _LOCK:
         init_user_store()
         if _use_sqlserver():
-            cursor = _SQL.cursor()
+            cursor = _sql_connect().cursor()
             row = None
             for sql in (
                 _SQL_PERSON_SELECT + " WHERE p.username = ? COLLATE Latin1_General_CI_AI",
@@ -683,7 +749,7 @@ def list_users() -> list[dict[str, Any]]:
     with _LOCK:
         init_user_store()
         if _use_sqlserver():
-            cursor = _SQL.cursor()
+            cursor = _sql_connect().cursor()
             cursor.execute(
                 "SELECT * FROM (" + _SQL_USER_SELECT + ") u ORDER BY u.username"
             )
@@ -715,7 +781,7 @@ def upsert_user(
     with _LOCK:
         init_user_store()
         if _use_sqlserver():
-            cursor = _SQL.cursor()
+            cursor = _sql_connect().cursor()
             if not person_s:
                 raise ValueError("SQL Server person login requires a person folder")
             country_id = _sql_country_id(cursor, country_s or name)
@@ -751,7 +817,7 @@ def upsert_user(
                     """,
                     (name, title_value, country_id, center_id, today, today),
                 )
-            _SQL.commit()
+            _sql_connect().commit()
         else:
             conn = _SQLITE
             row = conn.execute(
@@ -812,7 +878,7 @@ def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:
     with _LOCK:
         init_user_store()
         if _use_sqlserver():
-            cursor = _SQL.cursor()
+            cursor = _sql_connect().cursor()
             cursor.execute(
                 "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
                 (name,),
@@ -824,7 +890,7 @@ def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:
                 "UPDATE dbo.account SET format = ? WHERE person_id = ?",
                 (fmt, int(row[0])),
             )
-            _SQL.commit()
+            _sql_connect().commit()
         else:
             conn = _SQLITE
             row = conn.execute(
@@ -847,7 +913,7 @@ def set_user_updated_at(*, username: str, date: str | None) -> dict[str, Any] | 
     with _LOCK:
         init_user_store()
         if _use_sqlserver():
-            cursor = _SQL.cursor()
+            cursor = _sql_connect().cursor()
             cursor.execute(
                 "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
                 (name,),
@@ -859,7 +925,7 @@ def set_user_updated_at(*, username: str, date: str | None) -> dict[str, Any] | 
                 "UPDATE dbo.person SET updated_at = ? WHERE id = ?",
                 (iso, int(row[0])),
             )
-            _SQL.commit()
+            _sql_connect().commit()
         else:
             conn = _SQLITE
             row = conn.execute(
@@ -879,23 +945,22 @@ def list_accounts_for_username(username: str) -> list[dict[str, str]]:
     name = (username or "").strip()
     if not name or not _use_sqlserver():
         return []
-    with _LOCK:
-        init_user_store()
-        cursor = _SQL.cursor()
-        cursor.execute(
-            """
-            SELECT a.iban, a.balance
-            FROM dbo.account a
-            JOIN dbo.person u ON u.id = a.person_id
-            WHERE u.username = ? COLLATE Latin1_General_CI_AI
-            ORDER BY a.account_id
-            """,
-            (name,),
-        )
-        return [
-            {"iban": str(row[0] or "").strip(), "balance": str(row[1] if row[1] is not None else "0")}
-            for row in cursor.fetchall()
-        ]
+    init_user_store()
+    cursor = _sql_connect().cursor()
+    cursor.execute(
+        """
+        SELECT a.iban, a.balance
+        FROM dbo.account a
+        JOIN dbo.person u ON u.id = a.person_id
+        WHERE u.username = ? COLLATE Latin1_General_CI_AI
+        ORDER BY a.account_id
+        """,
+        (name,),
+    )
+    return [
+        {"iban": str(row[0] or "").strip(), "balance": str(row[1] if row[1] is not None else "0")}
+        for row in cursor.fetchall()
+    ]
 
 
 def upload_token_by_person_center() -> dict[tuple[str, str], str]:
@@ -903,7 +968,7 @@ def upload_token_by_person_center() -> dict[tuple[str, str], str]:
     with _LOCK:
         init_user_store()
         if _use_sqlserver():
-            cursor = _SQL.cursor()
+            cursor = _sql_connect().cursor()
             cursor.execute(
                 """
                 SELECT p.username, n.username

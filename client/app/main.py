@@ -1,18 +1,13 @@
 """Thin BFF: frontend + proxy to hub domain APIs (no local center copies)."""
 from __future__ import annotations
 
-import json
-import re
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
-
-from app.yearpath import current_year, parse_year
 
 
 _AUTH_PUBLIC_PREFIXES = (
@@ -148,179 +143,6 @@ def _source() -> str:
     from app.centrale_sync import _push_source
 
     return _push_source()
-
-
-def _category_code_from_name(category_name: str) -> int | None:
-    match = re.match(r"^\s*(\d{1,2})", str(category_name))
-    if not match:
-        return None
-    try:
-        return int(match.group(1))
-    except ValueError:
-        return None
-
-
-def _valid_category_codes_from_categories_json(path: Path) -> list[int]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    cats = payload.get("categories") if isinstance(payload, dict) else None
-    if not isinstance(cats, dict):
-        return []
-    codes: set[int] = set()
-    for name in cats.keys():
-        code = _category_code_from_name(str(name))
-        if code is not None:
-            codes.add(code)
-    return sorted(codes)
-
-
-def _center_data_roots(center: str) -> list[Path]:
-    from app.runtime import project_root, server_root
-
-    ws = center.strip()
-    if not ws:
-        return []
-    roots = [
-        server_root() / "workspaces" / ws,
-        project_root().parents[1] / "workspaces" / ws,
-        server_root() / ws,
-    ]
-    try:
-        from app.centrale_sync import load_config
-
-        country = (load_config().country or "").strip()
-    except Exception:  # noqa: BLE001
-        country = ""
-    if country:
-        roots = [
-            server_root() / "workspaces" / country / ws,
-            project_root().parents[1] / "workspaces" / country / ws,
-            *roots,
-        ]
-    seen: set[str] = set()
-    unique: list[Path] = []
-    for root in roots:
-        key = str(root.resolve()) if root.exists() else str(root)
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(root)
-    return unique
-
-
-def _safe_bank_folder(bank: str | None) -> str | None:
-    """Bank subfolder name, or None for the consolidated year file."""
-    raw = str(bank or "").strip()
-    if not raw or raw.lower() == "consolidated":
-        return None
-    if raw != Path(raw).name or raw in {".", ".."}:
-        return None
-    return raw
-
-
-def _local_transactions_payload(
-    *,
-    center: str,
-    short: str,
-    category_name: str,
-    folder: str,
-    year: str | None = None,
-    bank: str | None = None,
-) -> dict[str, Any] | None:
-    category_code = _category_code_from_name(category_name)
-    if category_code is None:
-        return None
-
-    try:
-        year_name = parse_year(year)
-    except ValueError:
-        year_name = current_year()
-    bank_folder = _safe_bank_folder(bank)
-
-    for root in _center_data_roots(center):
-        year_path = root / folder / year_name
-        categorized_path = (
-            year_path / bank_folder / "categorized_transactions.json"
-            if bank_folder
-            else year_path / "categorized_transactions.json"
-        )
-        if not categorized_path.is_file():
-            continue
-        try:
-            payload = json.loads(categorized_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if not isinstance(payload, dict):
-            continue
-        raw_transactions = payload.get("transactions")
-        transactions: list[dict[str, Any]] = []
-        if isinstance(raw_transactions, list):
-            for item in raw_transactions:
-                if not isinstance(item, dict):
-                    continue
-                try:
-                    code = int(float(str(item.get("category", "")).strip()))
-                except ValueError:
-                    continue
-                if code != category_code:
-                    continue
-                tx = dict(item)
-                tx["person"] = short
-                transactions.append(tx)
-
-        description_modified_ids: list[str] = []
-        category_modified_ids: list[str] = []
-        for item in payload.get("transactions") or []:
-            if not isinstance(item, dict) or item.get("id") is None:
-                continue
-            try:
-                flag = int(item.get("modification", 0))
-            except (TypeError, ValueError):
-                flag = 0
-            tid = str(item["id"])
-            if flag in (2, 3):
-                description_modified_ids.append(tid)
-            if flag in (1, 3):
-                category_modified_ids.append(tid)
-        for mod in payload.get("modifications") or []:
-            if not isinstance(mod, dict) or "id" not in mod:
-                continue
-            tid = str(mod["id"])
-            if "description" in mod and tid not in description_modified_ids:
-                description_modified_ids.append(tid)
-            if "category" in mod and tid not in category_modified_ids:
-                category_modified_ids.append(tid)
-
-        columns = ["date", "amount", "type", "name", "category", "description"]
-        categories_path = root.parent / "categories.json"
-        valid_codes = _valid_category_codes_from_categories_json(categories_path)
-        header_terms: dict[str, str] = {}
-        try:
-            cats = json.loads(categories_path.read_text(encoding="utf-8"))
-            raw_terms = cats.get("table_header_terms") if isinstance(cats, dict) else None
-            if isinstance(raw_terms, dict):
-                header_terms = {
-                    str(k): str(v) for k, v in raw_terms.items() if str(k).strip() and str(v).strip()
-                }
-        except (OSError, json.JSONDecodeError, TypeError):
-            header_terms = {}
-        return {
-            "person": short,
-            "folder": folder,
-            "category": category_name,
-            "columns": columns,
-            "transactions": transactions,
-            "description_modified_ids": description_modified_ids,
-            "category_modified_ids": category_modified_ids,
-            "keywords": [],
-            "abbreviations": {},
-            "table_header_terms": header_terms,
-            "valid_category_codes": valid_codes,
-            "remainder_category": "18 Overige uitgaven",
-        }
-    return None
 
 
 @app.get("/api/auth/me")
@@ -550,18 +372,27 @@ def api_years() -> dict[str, Any]:
     import urllib.parse
 
     try:
-        # Keep hub-provided default year hint.
-        root = hub_get("/years")
+        root: dict[str, Any] = {}
+        try:
+            got = hub_get("/years")
+            if isinstance(got, dict):
+                root = got
+        except Exception:
+            root = {}
         default_year = str(root.get("default_year") or "")
+        years: set[str] = {
+            str(v) for v in (root.get("years") or []) if str(v).strip()
+        }
 
-        # Aggregate years from persons this client can actually access.
-        people_payload = hub_get("/people")
+        try:
+            people_payload = hub_get("/people")
+        except Exception:
+            people_payload = {}
         people = scope_people(
             people_payload.get("people")
             if isinstance(people_payload, dict) and isinstance(people_payload.get("people"), list)
             else []
         )
-        years: set[str] = set()
         for person in people:
             if not isinstance(person, dict):
                 continue
@@ -574,8 +405,9 @@ def api_years() -> dict[str, Any]:
                 if isinstance(vals, list):
                     years.update(str(v) for v in vals if str(v).strip())
             except Exception:
-                # Ignore one broken person folder; keep remaining year options.
                 continue
+        if not years and default_year:
+            years.add(default_year)
         return {"years": sorted(years), "default_year": default_year}
     except Exception as exc:
         raise _hub_error(exc) from exc
@@ -726,29 +558,6 @@ def api_transactions(
         require_person(short)
         cfg = load_config()
         personal = cfg.access == ACCESS_PERSON
-        # Rafael-style local categorized JSON fallback: if present on disk, use it
-        # for detail table rows (category click in overview), bypassing hub parser assumptions.
-        people_payload = hub_get("/people")
-        people = people_payload.get("people") if isinstance(people_payload, dict) else []
-        folder = ""
-        if isinstance(people, list):
-            for person in people:
-                if not isinstance(person, dict):
-                    continue
-                if str(person.get("short") or "").strip().lower() == short.strip().lower():
-                    folder = str(person.get("folder") or "").strip()
-                    break
-        if folder:
-            local = _local_transactions_payload(
-                center=cfg.center,
-                short=short,
-                category_name=category_name,
-                folder=folder,
-                year=year,
-                bank=bank,
-            )
-            if local is not None:
-                return local
         params: list[str] = []
         if year:
             params.append(f"year={urllib.parse.quote(year)}")

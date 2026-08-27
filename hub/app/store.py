@@ -11,6 +11,22 @@ from typing import Any
 from app.runtime import data_root
 from app.yearpath import has_person_layout, is_year_name, list_year_names, parse_year
 
+
+def _use_sql() -> bool:
+    from app import user_store
+
+    return bool(user_store.database_url())
+
+
+def _workspace_json_blocked(path: Path) -> bool:
+    if not _use_sql():
+        return False
+    try:
+        path.resolve().relative_to(data_root().resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
 _lock = threading.Lock()
 # label -> last_seen monotonic time (force-kill never calls session/end)
 _local_sessions: dict[str, float] = {}
@@ -100,36 +116,37 @@ def _clean_center(center: str) -> str:
 
 
 def center_dir(center: str) -> Path:
-    """Path to a center folder: ``data_root/<country>/<center>``."""
+    """Virtual path ``data_root/<country>/<center>`` (folder need not exist)."""
     from app.runtime import country_folder, request_country, resolve_country_for_center
 
     base = data_root()
     ws = _clean_center(center)
     if base.name.lower() == ws.lower():
         return base
-    explicit = country_folder(request_country() or "")
-    if explicit:
-        candidate = base / explicit / ws
-        if candidate.is_dir():
-            return candidate
-    country = resolve_country_for_center(ws)
+    country = (
+        country_folder(request_country() or "")
+        or resolve_country_for_center(ws)
+        or ""
+    )
     if country:
         return base / country / ws
     return base / ws
 
 
 def require_center_dir(center: str) -> Path:
-    """Return the center folder, or raise if it is missing.
+    """Return the center path. With SQL configured, disk folders are optional."""
+    from app import user_store
 
-    Center directories are created outside the hub (by an admin on disk).
-    The hub only scaffolds person packs *inside* an existing center.
-    """
     path = center_dir(center)
-    if path.is_dir():
-        return path
-    from app.sql_catalog import center_exists
+    if user_store.database_url():
+        from app.sql_catalog import center_exists
 
-    if center_exists(center):
+        if center_exists(center):
+            return path
+        raise FileNotFoundError(
+            f"Center {center!r} is not in dbo.center (SQL Server)."
+        )
+    if path.is_dir():
         return path
     raise FileNotFoundError(
         f"Center {center!r} does not exist under {data_root()} "
@@ -179,6 +196,10 @@ def list_centers(country: str | None = None) -> list[str]:
 
 
 def list_person_folders(center: str) -> list[str]:
+    if _use_sql():
+        from app.sql_catalog import people_in_center
+
+        return people_in_center(center)
     root = center_dir(center)
     if not root.is_dir():
         return []
@@ -249,6 +270,8 @@ def publish_derived_files(
     all_years: bool = False,
 ) -> None:
     """Re-publish categorized_transactions and category_totals for the store."""
+    if _use_sql():
+        return
     ws = _clean_center(center)
     wanted = {Path(name).name for name in person_folders} if person_folders else None
     root = center_dir(ws)
@@ -931,6 +954,8 @@ def write_center_files(
 
 
 def _read_json_or_none(path: Path) -> Any | None:
+    if _workspace_json_blocked(path):
+        return None
     if not path.is_file():
         return None
     try:
@@ -940,6 +965,8 @@ def _read_json_or_none(path: Path) -> Any | None:
 
 
 def _write_json(path: Path, payload: Any) -> None:
+    if _workspace_json_blocked(path):
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 

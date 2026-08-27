@@ -110,31 +110,24 @@ def list_country_folders() -> list[str]:
 
 
 def resolve_country_for_center(center: str) -> str | None:
-    """Country folder that contains ``center``.
-
-    Prefers the request/active country when that folder actually holds the
-    center; otherwise searches every country under ``data_root``.
-    """
+    """Country for ``center``: SQL first, then request/active, then disk."""
     name = (center or "").strip()
     if not name:
         return None
-    preferred = request_country() or _active_country
-    if preferred:
-        preferred = country_folder(preferred)
-        candidate = data_root() / preferred / name
-        if candidate.is_dir():
-            return preferred
     from app.sql_catalog import country_for_center
 
     sql_country = country_for_center(name)
     if sql_country:
         return country_folder(sql_country) or sql_country
+    preferred = request_country() or _active_country
+    if preferred:
+        preferred = country_folder(preferred)
+        if preferred:
+            return preferred
     matches: list[str] = []
     for country in list_country_folders():
         if (data_root() / country / name).is_dir():
             matches.append(country)
-    if preferred and preferred in matches:
-        return preferred
     return matches[0] if matches else None
 
 

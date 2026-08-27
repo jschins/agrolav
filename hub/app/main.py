@@ -530,9 +530,11 @@ def api_years(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]
 
     default_y = default_upload_year()
     if user_store.database_url():
-        sql_years = years_for_center(center)
-        if sql_years:
-            return {"years": sql_years, "default_year": default_y}
+        from app.sql_catalog import coerce_center
+
+        sql_years = years_for_center(coerce_center(center))
+        years = sql_years or [default_y]
+        return {"years": years, "default_year": default_y}
     try:
         ws_root = store.require_center_dir(center)
     except FileNotFoundError as exc:
@@ -561,6 +563,10 @@ def api_person_years(
     sql_years = years_for_person(short)
     if sql_years:
         return {"person": short, "years": sql_years}
+    from app import user_store
+
+    if user_store.database_url():
+        return {"person": short, "years": []}
     try:
         ws_root = store.require_center_dir(center)
     except FileNotFoundError as exc:
@@ -586,6 +592,10 @@ def api_matrix(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"{type(exc).__name__}: {exc}"
+        ) from exc
 
 
 @app.get("/api/local/{center}/people/{short}/banks")
@@ -603,6 +613,10 @@ def api_person_banks(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"{type(exc).__name__}: {exc}"
+        ) from exc
 
 
 @app.get("/api/local/{center}/transactions/{short}/{category_name}")
@@ -626,6 +640,10 @@ def api_transactions(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"{type(exc).__name__}: {exc}"
+        ) from exc
 
 
 @app.put("/api/local/{center}/transactions/{short}/modification")
@@ -659,6 +677,10 @@ def api_settings(center: str, _: None = Depends(require_api_key)) -> dict[str, A
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"{type(exc).__name__}: {exc}"
+        ) from exc
 
 
 @app.put("/api/local/{center}/settings/{group}/{category_name}")

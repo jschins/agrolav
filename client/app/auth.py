@@ -89,10 +89,7 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
     centers_raw = user.get("centers")
     if not isinstance(centers_raw, list):
         centers_raw = user.get("workspaces")
-    if access == ACCESS_COUNTRY:
-        # Catalog is scanned from folders on the hub after login.
-        centers = []
-    elif isinstance(centers_raw, list):
+    if isinstance(centers_raw, list):
         centers = [str(w).strip() for w in centers_raw if str(w).strip()]
     else:
         centers = parse_centers(center)

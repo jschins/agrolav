@@ -29,7 +29,11 @@ def _center_scope(center: str) -> Iterator[str]:
 
     ws = _clean_ws(center)
     with CALC_LOCK:
-        set_active_center(ws, country=request_country())
+        from app.sql_catalog import coerce_center, country_for_center
+
+        ws = coerce_center(ws)
+        country = request_country() or country_for_center(ws)
+        set_active_center(ws, country=country)
         store.require_center_dir(ws)
         from app.settings import init_app
 
@@ -93,21 +97,35 @@ def matrix(center: str, *, year: str | None = None, bank: str | None = None) -> 
 
 def person_banks(center: str, short: str, *, year: str | None = None) -> dict[str, Any]:
     with _center_scope(center) as ws:
-        from app.core.bank_csv import person_bank_folder_options
+        from app.core.bank_csv import _optional_text, person_bank_folder_options
         from app.people import get_person
 
-        pack = get_person(short, year=year)
+        person_name = short.strip()
+        year_name = _optional_text(year) or current_year()
+        try:
+            pack = get_person(short, year=year_name)
+            person_name = pack.folder_name
+            year_name = pack.year
+            folder = pack.folder
+        except KeyError:
+            folder = store.center_dir(ws) / person_name
         opts = person_bank_folder_options(
-            pack.folder, pack.year, person=pack.folder_name, center=ws
+            folder, year_name, person=person_name, center=ws
         )
-        from app.upload_acl import grant_token_for_person
+        token = ""
+        try:
+            from app import user_store
 
-        token = grant_token_for_person(pack.folder_name, ws)
+            token = user_store.upload_token_by_person_center().get(
+                (person_name, ws), ""
+            ) or ""
+        except Exception:  # noqa: BLE001
+            token = ""
         return {
             "center": ws,
-            "person": pack.short,
-            "year": pack.year,
-            "upload_token": token or "",
+            "person": person_name,
+            "year": year_name,
+            "upload_token": token,
             **opts,
         }
 
@@ -121,7 +139,7 @@ def transactions(
     bank: str | None = None,
 ) -> dict[str, Any]:
     with _center_scope(center) as ws:
-        from app.core.bank_csv import pack_for_bank_view
+        from app.core.bank_csv import _optional_text, pack_for_bank_view
         from app.core.categorize import (
             _categories_file,
             category_code_set,
@@ -134,7 +152,7 @@ def transactions(
         from app.paths import bind_person
         from app.people import get_person
 
-        pack = get_person(short, year=year)
+        pack = get_person(short, year=_optional_text(year) or None)
         pack = pack_for_bank_view(pack, bank, center=ws)
         with bind_person(pack):
             rows = load_transactions(category_name)
@@ -235,7 +253,7 @@ def settings(center: str) -> dict[str, Any]:
     with _center_scope(center) as ws:
         from app.core.categorize import (
             _category_map,
-            _load_json_object,
+            _personal_category_map,
             category_code_set,
             remainder_category_name,
             type_rules_payload,
@@ -253,9 +271,7 @@ def settings(center: str) -> dict[str, Any]:
         remainder = ""
         for pack in people_list:
             with bind_person(pack):
-                personal[pack.short] = _category_map(
-                    _load_json_object(pack.personal_categories_path)
-                )
+                personal[pack.short] = _personal_category_map()
                 if not typerules:
                     typerules = type_rules_payload()
                 if not codes:
@@ -283,20 +299,24 @@ def update_settings(
     source: str = "local",
 ) -> dict[str, Any]:
     """Save terms, then announce + iRCfT (lock released before the scan)."""
-    import app.paths as paths
-
-    from app.core.categorize import _category_map, _load_json_object, _read_json, term_list_diff
+    from app import user_store
+    from app.core.categorize import (
+        _categories_file,
+        _category_map,
+        _personal_category_map,
+        term_list_diff,
+    )
     from app.matrix import build_matrix, save_general_terms, save_personal_terms
     from app.people import get_person
     from app.paths import bind_person
 
+    sql = bool(user_store.database_url())
     with _center_scope(center) as ws:
         if group == "general":
-            old_terms = list(_category_map(_read_json(paths.CATEGORIES_PATH)).get(category_name, []) or [])
+            old_terms = list(_category_map(_categories_file()).get(category_name, []) or [])
             cleaned = save_general_terms(category_name, terms)
-            cats_path = store.merged_categories_path()
-            content = json.loads(cats_path.read_text(encoding="utf-8"))
             rel = store.SHARED_CATEGORIES
+            content: Any = None if sql else _categories_file()
             recalc_all = True
             pack_short = "general"
             pack_folder = None
@@ -304,33 +324,31 @@ def update_settings(
         else:
             pack = get_person(group)
             with bind_person(pack):
-                old_terms = list(
-                    _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH)).get(
-                        category_name, []
-                    )
-                    or []
-                )
+                old_terms = list(_personal_category_map().get(category_name, []) or [])
             cleaned = save_personal_terms(pack.short, category_name, terms)
             rel = store.person_secret_rel(pack.folder_name, store.PERSONAL_CATEGORIES)
-            path = store.resolve_file_path(ws, rel)
-            if path.is_file():
-                content = json.loads(path.read_text(encoding="utf-8"))
-            else:
-                content = {}
+            content = None
+            if not sql:
+                path = store.resolve_file_path(ws, rel)
+                if path.is_file():
+                    content = json.loads(path.read_text(encoding="utf-8"))
+                else:
+                    content = {}
             recalc_all = False
             pack_short = pack.short
             pack_folder = pack.folder_name
             personal = True
 
     added, removed = term_list_diff(old_terms, cleaned)
-    store.put_file(
-        ws,
-        rel,
-        content,
-        source=source,
-        skip_recalc=True,
-        skip_event=True,
-    )
+    if content is not None:
+        store.put_file(
+            ws,
+            rel,
+            content,
+            source=source,
+            skip_recalc=True,
+            skip_event=True,
+        )
     if added or removed:
         result = store.mutate_and_ircft(
             ws,
@@ -367,12 +385,11 @@ def add_term(
     source: str = "local",
 ) -> dict[str, Any]:
     with _center_scope(center) as ws:
-        import app.paths as paths
-
+        from app import user_store
         from app.core.categorize import (
+            _categories_file,
             _category_map,
-            _load_json_object,
-            _read_json,
+            _personal_category_map,
             append_category_term,
             term_list_diff,
         )
@@ -385,12 +402,13 @@ def add_term(
         from app.people import get_person
         from app.settings import get_people
 
+        sql = bool(user_store.database_url())
         people_list = get_people()
         if general:
             pack = people_list[0]
             with bind_person(pack):
                 old_terms = list(
-                    _category_map(_read_json(paths.CATEGORIES_PATH)).get(category_name, []) or []
+                    _category_map(_categories_file()).get(category_name, []) or []
                 )
                 terms = append_category_term(
                     category_name,
@@ -399,20 +417,19 @@ def add_term(
                     person=pack.short,
                 )
                 after_terms = list(
-                    _category_map(_read_json(paths.CATEGORIES_PATH)).get(category_name, []) or []
+                    _category_map(_categories_file()).get(category_name, []) or []
                 )
             added, removed = term_list_diff(old_terms, after_terms)
             sync_general_categories(load_general_file([pack]), people_list)
-            cats_path = store.merged_categories_path()
-            content = json.loads(cats_path.read_text(encoding="utf-8"))
-            store.put_file(
-                ws,
-                store.SHARED_CATEGORIES,
-                content,
-                source=source,
-                skip_recalc=True,
-                skip_event=True,
-            )
+            if not sql:
+                store.put_file(
+                    ws,
+                    store.SHARED_CATEGORIES,
+                    _categories_file(),
+                    source=source,
+                    skip_recalc=True,
+                    skip_event=True,
+                )
             if added or removed:
                 result = store.mutate_and_ircft(
                     ws,
@@ -442,36 +459,27 @@ def add_term(
             raise ValueError("person is required when general=false")
         pack = get_person(short)
         with bind_person(pack):
-            old_terms = list(
-                _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH)).get(
-                    category_name, []
-                )
-                or []
-            )
+            old_terms = list(_personal_category_map().get(category_name, []) or [])
             terms = append_category_term(
                 category_name,
                 term,
                 group=pack.short,
                 person=pack.short,
             )
-            after_terms = list(
-                _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH)).get(
-                    category_name, []
-                )
-                or []
-            )
+            after_terms = list(_personal_category_map().get(category_name, []) or [])
         added, removed = term_list_diff(old_terms, after_terms)
         rel = store.person_secret_rel(pack.folder_name, store.PERSONAL_CATEGORIES)
-        path = store.resolve_file_path(ws, rel)
-        content = json.loads(path.read_text(encoding="utf-8"))
-        store.put_file(
-            ws,
-            rel,
-            content,
-            source=source,
-            skip_recalc=True,
-            skip_event=True,
-        )
+        if not sql:
+            path = store.resolve_file_path(ws, rel)
+            content = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+            store.put_file(
+                ws,
+                rel,
+                content,
+                source=source,
+                skip_recalc=True,
+                skip_event=True,
+            )
         if added or removed:
             result = store.mutate_and_ircft(ws, [rel], source=source, added=added, removed=removed, personal=True, category_name=category_name)
         else:
@@ -492,6 +500,10 @@ def _ingest_person_data_files(
     ws: str, *, folder_names: list[str] | None = None, year: str | None = None
 ) -> list[str]:
     """Load on-disk person year JSON into the store; return relative paths."""
+    from app import user_store
+
+    if user_store.database_url():
+        return []
     inputs: list[str] = []
     root = store.center_dir(ws)
     wanted = {name for name in folder_names} if folder_names is not None else None
@@ -530,8 +542,11 @@ def _ensure_people_year(
     Excel-only people get a new year folder only when an upload's first sheet
     entry lands in a year that does not exist yet — never during refresh/import.
     """
+    from app import user_store
     from app.paths import shared_categories_path
 
+    if user_store.database_url():
+        return
     y = parse_year(year)
     cats = shared_categories_path()
     root = store.center_dir(ws)

@@ -58,7 +58,19 @@ def csv_layout(fmt: str) -> str:
     raise ValueError(f"Not a bank CSV format: {fmt!r}")
 
 
+_DEFAULT_BANK_MODALITIES = {
+    "BoS": "bos-csv",
+    "LLOYDS": "lloyds-csv",
+    "RBS": "rbs-csv",
+    "Natwest": "natwest-csv",
+}
+
+
 def _acl_document() -> dict[str, Any]:
+    from app import user_store
+
+    if user_store.database_url():
+        return {}
     path = data_root() / "upload_acl.json"
     if not path.is_file():
         return {}
@@ -84,16 +96,14 @@ def tx_type_label(fmt: str) -> str:
 
 
 def bank_modalities() -> dict[str, str]:
-    """Subfolder name → csv format (from ``upload_acl.json`` ``bank modalities``)."""
+    """Subfolder name → csv format (ACL file, else the UK CSV banks)."""
     raw = _acl_document().get("bank modalities")
-    if not isinstance(raw, dict):
-        return {}
-    out: dict[str, str] = {}
-    for folder, fmt in raw.items():
-        name = str(folder or "").strip()
-        if not name:
-            continue
-        out[name] = normalize_upload_format(str(fmt or ""))
+    out: dict[str, str] = dict(_DEFAULT_BANK_MODALITIES)
+    if isinstance(raw, dict):
+        for folder, fmt in raw.items():
+            name = str(folder or "").strip()
+            if name:
+                out[name] = normalize_upload_format(str(fmt or ""))
     return out
 
 
@@ -107,18 +117,23 @@ def validate_bank_folder_name(name: str) -> str:
 
 
 def format_for_bank(bank: str) -> str:
-    """Normalized csv format for a bank subfolder name (incl. ``Natwest_private``)."""
+    """Normalized csv format for a bank subfolder name (incl. ``IBAN_BoS``)."""
     folder = validate_bank_folder_name(bank)
     modalities = bank_modalities()
-    if folder in modalities:
-        return modalities[folder]
+    candidates = [folder]
+    if folder.upper().startswith("IBAN_"):
+        candidates.append(folder[5:])
+    for cand in candidates:
+        if cand in modalities:
+            return modalities[cand]
     best_name = ""
     best_fmt = ""
-    for name, fmt in modalities.items():
-        if folder == name or folder.startswith(f"{name}_"):
-            if len(name) > len(best_name):
-                best_name = name
-                best_fmt = fmt
+    for cand in candidates:
+        for name, fmt in modalities.items():
+            if cand == name or cand.startswith(f"{name}_") or name.startswith(f"{cand}_"):
+                if len(name) > len(best_name):
+                    best_name = name
+                    best_fmt = fmt
     if best_fmt:
         return best_fmt
     known = ", ".join(sorted(modalities))
@@ -282,12 +297,24 @@ def person_bank_folder_options(
     return {"folders": folders, "multi_bank": True, "show_switcher": True}
 
 
+def _optional_text(value: Any) -> str:
+    """Query/path values as text; ignore leaked FastAPI ``Query()`` objects."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if type(value).__name__ in {"Query", "FieldInfo", "Param"}:
+        default = getattr(value, "default", None)
+        return "" if default in (None, Ellipsis) else str(default).strip()
+    return str(value).strip()
+
+
 def pack_for_bank_view(
     pack: PersonPack, bank: str | None, *, center: str
 ) -> PersonPack:
     """Bind ``YYYY/<iban>/`` so SQL replica can filter ``dbo.account``."""
     del center
-    view = (bank or "").strip()
+    view = _optional_text(bank)
     if not view or view.lower() == CONSOLIDATED_VIEW:
         return pack
     return replace(pack, data_dir=(pack.data_dir / view).resolve())
@@ -339,6 +366,10 @@ def consolidate_person_year(
     categories_path: Path,
 ) -> dict[str, Any]:
     """Merge per-bank subfolder JSON into ``YYYY/categorized_transactions.json`` + totals."""
+    from app import user_store
+
+    if user_store.database_url():
+        return {"consolidated": False, "reason": "sql"}
     year_path = person_folder / year
     if not person_uses_bank_subfolders(person, center):
         return {"consolidated": False, "reason": "single bank"}

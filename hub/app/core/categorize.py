@@ -14,29 +14,72 @@ _TERM_AND_SEP = " && "
 _ACCOUNT_INDEX_FIELD = "_account_index"
 
 
+def _use_sql() -> bool:
+    from app import user_store
+
+    return bool(user_store.database_url())
+
+
+def _under_data_root(path: Path) -> bool:
+    from app.runtime import data_root
+
+    try:
+        path.resolve().relative_to(data_root().resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
 def _read_json(path: Path) -> Any:
+    if _use_sql() and _under_data_root(path):
+        return {}
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _write_json(path: Path, payload: Any) -> None:
+    if _use_sql() and _under_data_root(path):
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
+    if _use_sql() and _under_data_root(path):
+        return {}
     if not path.exists():
         return {}
     try:
         data = _read_json(path)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError, FileNotFoundError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _sql_categories() -> dict[str, Any]:
+    from app.runtime import active_center, active_country
+    from app.sql_catalog import categories_payload, country_for_center
+
+    country = active_country() or country_for_center(active_center() or "") or ""
+    return categories_payload(country)
+
+
+def _personal_category_map() -> dict[str, list[str]]:
+    if _use_sql():
+        from app.sql_catalog import personal_categories_payload
+
+        name = str(paths.BOUND_PERSON or paths.PERSON_SHORT or "").strip()
+        return personal_categories_payload(name)
+    data = _load_json_object(paths.PERSONAL_CATEGORIES_PATH)
+    return _category_map(data)
 
 
 def _load_categorized_store() -> dict[str, Any]:
     """Bookings for the bound person/year(/bank): SQL when configured, else JSON."""
     from app.sql_replica import load_bound_transactions
 
+    if _use_sql():
+        rows = load_bound_transactions()
+        return {"transactions": [dict(item) for item in (rows or [])]}
     rows = load_bound_transactions()
     if rows is not None:
         return {"transactions": [dict(item) for item in rows]}
@@ -333,14 +376,17 @@ def _haystack_for_categorization(record: dict[str, Any]) -> str:
 
 
 def _categories_file() -> dict[str, Any]:
-    if paths.CATEGORIES_PATH.exists():
-        data = _read_json(paths.CATEGORIES_PATH)
-        return data if isinstance(data, dict) else {}
-    from app.runtime import active_center, active_country
-    from app.sql_catalog import categories_payload, country_for_center
-
-    country = active_country() or country_for_center(active_center() or "") or ""
-    return categories_payload(country)
+    if _use_sql():
+        return _sql_categories()
+    path = paths.CATEGORIES_PATH
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and data:
+                return data
+        except (OSError, json.JSONDecodeError, UnicodeError):
+            pass
+    return _sql_categories()
 
 
 def type_rules_payload() -> list[dict[str, str]]:
@@ -830,6 +876,16 @@ def refresh_category_totals_balances() -> dict[str, str]:
 def load_category_totals() -> dict[str, str]:
     from app.sql_replica import load_bound_transactions
 
+    if _use_sql():
+        from app.sql_replica import load_bound_category_totals
+
+        general = _category_map(_categories_file())
+        names = list(general.keys())
+        totals = load_bound_category_totals(names)
+        if totals is not None:
+            return totals
+        rows = load_bound_transactions() or []
+        return build_category_totals({"transactions": rows}, names)
     rows = load_bound_transactions()
     if rows is not None:
         general = _category_map(_categories_file())
@@ -842,6 +898,8 @@ def load_category_totals() -> dict[str, str]:
 
 
 def _load_raw_transactions() -> list[dict[str, Any]]:
+    if _use_sql():
+        return []
     if not paths.RAW_TRANSACTIONS_PATH.exists():
         return []
     try:
@@ -888,7 +946,7 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
     ``modification`` to 0.
     """
     general = _category_map(_categories_file())
-    personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
+    personal = _personal_category_map()
     data = _load_categorized_store()
 
     existing_tx = data.get("transactions")
@@ -1076,7 +1134,7 @@ def apply_ircft_terms(
 ) -> None:
     """Run iRCfT for the currently bound person. Terms must already be saved."""
     general = _category_map(_categories_file())
-    personal_map = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
+    personal_map = _personal_category_map()
     for term in removed:
         ircft_remove_term(
             term, personal=personal, general=general, personal_map=personal_map
@@ -1212,7 +1270,7 @@ def format_transaction_amount(transaction: dict[str, Any]) -> str:
 def terms_for_category(category_name: str) -> list[str]:
     """General + personal keyword terms for a category display name."""
     general = _category_map(_categories_file())
-    personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
+    personal = _personal_category_map()
     return [*general.get(category_name, []), *personal.get(category_name, [])]
 
 
@@ -1232,13 +1290,16 @@ def _cleaned_terms(terms: list[str]) -> list[str]:
 
 
 def _save_general_category_terms(category_name: str, terms: list[str]) -> None:
-    data = _read_json(paths.CATEGORIES_PATH)
+    data = _categories_file()
     categories = data.setdefault("categories", {})
     categories[category_name] = _cleaned_terms(terms)
-    _write_json(paths.CATEGORIES_PATH, data)
+    if not _use_sql():
+        _write_json(paths.CATEGORIES_PATH, data)
 
 
 def _save_personal_category_terms(category_name: str, terms: list[str]) -> None:
+    if _use_sql():
+        return
     data = _load_json_object(paths.PERSONAL_CATEGORIES_PATH)
     cleaned = _cleaned_terms(terms)
     if cleaned:
@@ -1272,7 +1333,7 @@ def append_category_term(
             terms.append(cleaned)
         _save_general_category_terms(category_name, terms)
     elif group == person:
-        personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
+        personal = _personal_category_map()
         terms = list(personal.get(category_name, []))
         if cleaned not in _cleaned_terms(terms):
             terms.append(cleaned)
@@ -1290,7 +1351,7 @@ def add_category_term(category_name: str, term: str) -> list[str]:
     if cleaned_term in _cleaned_terms(terms_for_category(category_name)):
         return terms_for_category(category_name)
 
-    personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
+    personal = _personal_category_map()
     personal_terms = list(personal.get(category_name, []))
     personal_terms.append(cleaned_term)
     _save_personal_category_terms(category_name, personal_terms)
@@ -1300,7 +1361,7 @@ def add_category_term(category_name: str, term: str) -> list[str]:
 def remove_category_term(category_name: str, term: str) -> list[str]:
     """Remove a term from personal keywords, otherwise from general keywords."""
     needle = _normalize_term(term)
-    personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
+    personal = _personal_category_map()
     general = _category_map(_categories_file())
     personal_terms = list(personal.get(category_name, []))
     general_terms = list(general.get(category_name, []))
@@ -1321,7 +1382,7 @@ def remove_category_term(category_name: str, term: str) -> list[str]:
 def category_terms_table(extra_rows: int = 0) -> tuple[list[tuple[str, str]], list[list[str]]]:
     """Column (name, key) pairs and term rows for the keywords overview table."""
     general = _category_map(_categories_file())
-    personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
+    personal = _personal_category_map()
     category_names = list(general.keys())
     terms_by_category = {
         name: [*general.get(name, []), *personal.get(name, [])] for name in category_names
@@ -1388,9 +1449,7 @@ def remainder_category_name() -> str:
     for name in category_names():
         if _category_code(name) == DEFAULT_CATEGORY:
             return name
-    raise ValueError(
-        f"No category with code {DEFAULT_CATEGORY} found in {paths.CATEGORIES_PATH.name}"
-    )
+    return f"{DEFAULT_CATEGORY:02d} Unclassified expenses"
 
 
 def _validate_category_code(code: Any) -> int:
