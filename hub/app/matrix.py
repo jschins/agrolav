@@ -294,15 +294,22 @@ def recalculate_all(person_folders: list[str] | None = None) -> dict[str, Any]:
     from app.paths import CALC_LOCK
 
     with CALC_LOCK:
+        from app import user_store
+
         packs = refresh_people()
         if person_folders:
             wanted = {Path(name).name for name in person_folders}
             to_run = [p for p in packs if p.folder_name in wanted]
         else:
             to_run = packs
+        sql = bool(user_store.database_url())
         for pack in to_run:
             # Recategorize anyone with year data — not only Enable Banking (.pem) packs.
-            if not pack.categorized_path.is_file() and not pack.totals_path.is_file():
+            if (
+                not sql
+                and not pack.categorized_path.is_file()
+                and not pack.totals_path.is_file()
+            ):
                 continue
             with bind_person(pack):
                 recategorize_transactions()

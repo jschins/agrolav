@@ -366,9 +366,14 @@ def ircft_center(
         set_active_center(ws)
         init_app()
         packs = refresh_people()
+        sql = _use_sql()
         to_run = [pack for pack in packs if wanted is None or pack.folder_name in wanted]
         for pack in to_run:
-            if not pack.categorized_path.is_file() and not pack.totals_path.is_file():
+            if (
+                not sql
+                and not pack.categorized_path.is_file()
+                and not pack.totals_path.is_file()
+            ):
                 continue
             with bind_person(pack):
                 apply_ircft_terms(
