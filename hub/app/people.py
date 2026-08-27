@@ -25,8 +25,66 @@ _IGNORE_DIRS = frozenset(
 _MISSING = Path(".")
 
 
+def _sql_packs(*, center: str, country: str, year: str | None) -> list[PersonPack]:
+    from app.runtime import data_root
+    from app.sql_catalog import people_in_center, years_for_person
+    from app.yearpath import current_year, parse_year
+
+    root = data_root()
+    packs: list[PersonPack] = []
+    requested = parse_year(year) if year else None
+    for username in people_in_center(center):
+        years = years_for_person(username)
+        if requested:
+            if requested not in years:
+                continue
+            y = requested
+        elif years:
+            y = years[-1]
+        else:
+            y = current_year()
+        folder = root / country / center / username
+        secret = folder / "secret"
+        profile = secret / "profile.json"
+        private_key = _MISSING
+        profile_path = profile.resolve() if profile.is_file() else _MISSING
+        if secret.is_dir():
+            try:
+                private_key = _resolve_private_key(secret, profile if profile.is_file() else None)
+            except (OSError, FileNotFoundError, ValueError):
+                private_key = _MISSING
+        packs.append(
+            PersonPack(
+                short=username,
+                folder=folder,
+                folder_name=username,
+                data_dir=folder / y,
+                secret_dir=secret if secret.is_dir() else secret,
+                profile_path=profile_path,
+                private_key_path=private_key,
+                year=y,
+                country=country,
+                center=center,
+            )
+        )
+    packs.sort(key=lambda p: p.folder_name.lower())
+    return packs
+
+
 def list_people(root: Path | None = None, *, year: str | None = None) -> list[PersonPack]:
-    """Person packs with ``secret/`` and/or a ``YYYY/`` year folder. Identity is the folder name."""
+    """Person packs from SQL when configured, else ``secret/`` and/or ``YYYY/`` folders."""
+    from app import user_store
+    from app.runtime import active_center, active_country, country_folder
+    from app.sql_catalog import country_for_center
+
+    if user_store.database_url():
+        center = (root.name if root is not None else active_center()) or ""
+        country = country_folder(active_country() or "") or country_for_center(center) or ""
+        if center and country:
+            packs = _sql_packs(center=center, country=country, year=year)
+            if packs:
+                return packs
+
     base = root if root is not None else app_root()
     y = parse_year(year)
     require_year_folder = year is not None
@@ -69,6 +127,8 @@ def list_people(root: Path | None = None, *, year: str | None = None) -> list[Pe
                 profile_path=profile_path,
                 private_key_path=private_key,
                 year=y,
+                country=child.parent.parent.name,
+                center=child.parent.name,
             )
         )
     packs.sort(key=lambda p: p.folder_name.lower())

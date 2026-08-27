@@ -117,7 +117,7 @@ class _BoundScope:
     username: str
     person_id: int
     year: int
-    bank_key: int
+    bank_key: int | None
     account_id: int | None
     cursor: Any
     conn: Any
@@ -146,8 +146,9 @@ def _bound_where(bound: _BoundScope, alias: str = "t") -> tuple[str, list[Any]]:
         sql += f" AND {alias}.account_id = ?"
         params.append(bound.account_id)
         return sql, params
-    sql += f" AND COALESCE({alias}.bank_id, -1) = ?"
-    params.append(bound.bank_key)
+    if bound.bank_key is not None:
+        sql += f" AND {alias}.bank_id = ?"
+        params.append(bound.bank_key)
     return sql, params
 
 
@@ -157,10 +158,15 @@ def _open_bound_scope() -> _BoundScope | None:
 
     if not user_store.database_url():
         return None
-    layout = _layout(paths.DATA_DIR)
-    if layout is None:
-        return None
-    country_name, username, year, bank_folder = layout
+    country_name = str(paths.BOUND_COUNTRY or "").strip()
+    username = str(paths.BOUND_PERSON or "").strip()
+    year = paths.BOUND_YEAR
+    bank_folder = paths.BOUND_BANK
+    if not (country_name and username and year is not None):
+        layout = _layout(paths.DATA_DIR)
+        if layout is None:
+            return None
+        country_name, username, year, bank_folder = layout
     table = _transaction_table(country_name)
     if table is None:
         return None
@@ -174,9 +180,9 @@ def _open_bound_scope() -> _BoundScope | None:
     cursor.execute(
         """
         SELECT id FROM dbo.person
-        WHERE username = ?
+        WHERE username = ? COLLATE Latin1_General_CI_AI
         """,
-        username,
+        (username,),
     )
     row = cursor.fetchone()
     if row is None:
@@ -195,7 +201,7 @@ def _open_bound_scope() -> _BoundScope | None:
                 fmt = format_for_bank(bank_folder)
                 cursor.execute(
                     "SELECT bank_id FROM dbo.bank WHERE file_format = ?",
-                    fmt,
+                    (fmt,),
                 )
                 bank_row = cursor.fetchone()
                 if bank_row is None:
@@ -210,8 +216,8 @@ def _open_bound_scope() -> _BoundScope | None:
         table=table,
         username=username,
         person_id=person_id,
-        year=year,
-        bank_key=-1 if bank_id is None else bank_id,
+        year=int(year),
+        bank_key=bank_id,
         account_id=account_id,
         cursor=cursor,
         conn=conn,
@@ -248,8 +254,9 @@ def load_bound_transactions() -> list[dict[str, Any]] | None:
                 d.local_code,
                 c.currency_default
             FROM {bound.table} t
-            JOIN dbo.dim_category d ON d.category_id = t.category_id
-            JOIN dbo.country c ON c.country_id = d.country_id
+            JOIN dbo.person p ON p.id = t.person_id
+            JOIN dbo.country c ON c.country_id = p.country_id
+            LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
             WHERE {where_sql}
             ORDER BY t.booked_on DESC, t.source_id DESC
             """,
@@ -284,7 +291,7 @@ def load_bound_transactions() -> list[dict[str, Any]] | None:
                     "iban": _json_text(iban),
                     "description": _json_text(description),
                     "date": _json_date(booked_on),
-                    "category": int(local_code),
+                    "category": int(local_code) if local_code is not None else 18,
                     "modification": flag,
                     "hit": None if hit in (None, "") else str(hit),
                 }
@@ -331,12 +338,16 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
             print(f"sql replica: no remainder category for {bound.username!r}")
             return
 
-        extra = " AND account_id = ?" if bound.account_id is not None else ""
+        extra = ""
+        if bound.account_id is not None:
+            extra = " AND account_id = ?"
+        elif bound.bank_key is not None:
+            extra = " AND bank_id = ?"
         sql = f"""
             UPDATE {bound.table}
             SET category_id = ?, modification = ?, hit = ?, description = ?
             WHERE person_id = ? AND year = ? AND source_id = ?
-              AND COALESCE(bank_id, -1) = ?{extra}
+            {extra}
             """
         params: list[tuple[Any, ...]] = []
         for item in records:
@@ -363,10 +374,11 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
                     bound.person_id,
                     bound.year,
                     source_id,
-                    bound.bank_key,
                 )
             if bound.account_id is not None:
                 row = (*row, bound.account_id)
+            elif bound.bank_key is not None:
+                row = (*row, bound.bank_key)
             params.append(row)
         if not params:
             return

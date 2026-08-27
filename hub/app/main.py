@@ -525,19 +525,23 @@ def api_people(center: str, _: None = Depends(require_api_key)) -> dict[str, Any
 @app.get("/api/local/{center}/years")
 def api_years(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
     from app.yearpath import default_upload_year, list_year_names
+    from app import user_store
+    from app.sql_catalog import years_for_center
 
+    default_y = default_upload_year()
+    if user_store.database_url():
+        sql_years = years_for_center(center)
+        if sql_years:
+            return {"years": sql_years, "default_year": default_y}
     try:
         ws_root = store.require_center_dir(center)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     existing_years: set[str] = set()
-    for child in ws_root.iterdir():
-        if child.is_dir() and not child.name.startswith("."):
-            existing_years.update(list_year_names(child))
-    default_y = default_upload_year()
-    # Client frontend: existing years only (no synthetic "next year").
-    # Keep default_year as a separate hint; if missing from options, UI can still
-    # display it as selected text if needed.
+    if ws_root.is_dir():
+        for child in ws_root.iterdir():
+            if child.is_dir() and not child.name.startswith("."):
+                existing_years.update(list_year_names(child))
     year_options = sorted(existing_years)
     return {
         "years": year_options,
@@ -552,7 +556,11 @@ def api_person_years(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app.yearpath import list_year_names
+    from app.sql_catalog import years_for_person
 
+    sql_years = years_for_person(short)
+    if sql_years:
+        return {"person": short, "years": sql_years}
     try:
         ws_root = store.require_center_dir(center)
     except FileNotFoundError as exc:

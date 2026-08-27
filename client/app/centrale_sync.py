@@ -605,7 +605,7 @@ def _hub_user_title(username: str) -> str:
 
 
 def sidebar_title(*, username: str = "", access: str = "", center: str = "", country: str = "", fallback: str = "") -> str:
-    """Left-pane heading from ``dbo.center.title`` or ``dbo.country.title``."""
+    """Left-pane heading from the login row: person, center, or country title."""
     access_n = _coerce_access(access) if access else ""
     if access_n == ACCESS_COUNTRY:
         return (
@@ -613,11 +613,13 @@ def sidebar_title(*, username: str = "", access: str = "", center: str = "", cou
             or _hub_user_title(country)
             or str(fallback or "").strip()
         )
-    return (
-        _hub_user_title(center)
-        or _hub_user_title(username)
-        or str(fallback or "").strip()
-    )
+    if access_n == ACCESS_CENTER:
+        return (
+            _hub_user_title(center)
+            or _hub_user_title(username)
+            or str(fallback or "").strip()
+        )
+    return _hub_user_title(username) or str(fallback or "").strip()
 
 
 def sidebar_title_from_session(session: dict[str, Any]) -> str:

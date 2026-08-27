@@ -50,10 +50,13 @@ def parse_year(raw: str | None) -> str:
 
 
 def list_year_names(person_folder: Path) -> list[str]:
-    if not person_folder.is_dir():
-        return []
-    names = [child.name for child in person_folder.iterdir() if child.is_dir() and is_year_name(child.name)]
-    return sorted(names)
+    if person_folder.is_dir():
+        names = [child.name for child in person_folder.iterdir() if child.is_dir() and is_year_name(child.name)]
+        if names:
+            return sorted(names)
+    from app.sql_catalog import years_for_person
+
+    return years_for_person(person_folder.name)
 
 
 def year_dir(person_folder: Path, year: str | None = None) -> Path:

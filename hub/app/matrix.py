@@ -38,9 +38,21 @@ def general_categories_source(people: list[PersonPack] | None = None) -> Path:
     )
 
 
+def load_general_file(people: list[PersonPack] | None = None) -> dict[str, Any]:
+    from app.paths import shared_categories_path
+    from app.runtime import active_center, active_country
+    from app.sql_catalog import categories_payload, country_for_center
+
+    path = shared_categories_path()
+    if path.is_file():
+        data = _read_json(path)
+        return data if isinstance(data, dict) else {}
+    country = active_country() or country_for_center(active_center() or "") or ""
+    return categories_payload(country)
+
+
 def category_names(people: list[PersonPack] | None = None) -> list[str]:
-    path = general_categories_source(people)
-    general = _category_map(_read_json(path))
+    general = _category_map(load_general_file(people))
     return list(general.keys())
 
 
@@ -49,12 +61,6 @@ def sync_general_categories(payload: dict[str, Any], people: list[PersonPack] | 
     from app.paths import shared_categories_path
 
     _write_json(shared_categories_path(), payload)
-
-
-def load_general_file(people: list[PersonPack] | None = None) -> dict[str, Any]:
-    path = general_categories_source(people)
-    data = _read_json(path)
-    return data if isinstance(data, dict) else {}
 
 
 def table_header_terms(people: list[PersonPack] | None = None) -> dict[str, str]:

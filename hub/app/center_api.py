@@ -121,10 +121,9 @@ def transactions(
     bank: str | None = None,
 ) -> dict[str, Any]:
     with _center_scope(center) as ws:
-        import app.paths as paths
         from app.core.bank_csv import pack_for_bank_view
         from app.core.categorize import (
-            _read_json,
+            _categories_file,
             category_code_set,
             modification_style_ids,
             remainder_category_name,
@@ -139,7 +138,7 @@ def transactions(
         pack = pack_for_bank_view(pack, bank, center=ws)
         with bind_person(pack):
             rows = load_transactions(category_name)
-            cat_data = _read_json(paths.CATEGORIES_PATH)
+            cat_data = _categories_file()
             description_modified_ids, category_modified_ids = modification_style_ids()
             header_terms = cat_data.get("table_header_terms") if isinstance(cat_data, dict) else {}
             return {
@@ -176,6 +175,22 @@ def record_modification(
         pack = get_person(short)
         with bind_person(pack):
             modified = _record(transaction)
+        from app import user_store
+
+        if user_store.database_url():
+            from app.matrix import build_matrix
+
+            modified_out = dict(modified) if isinstance(modified, dict) else modified
+            if isinstance(modified_out, dict):
+                modified_out["person"] = pack.short
+            return {
+                "center": ws,
+                "person": pack.short,
+                "folder": pack.folder_name,
+                "transaction": modified_out,
+                "affected_files": [],
+                "matrix": build_matrix(year=pack.year),
+            }
         rel = store.person_year_rel(pack.folder_name, store.CATEGORIZED, year=pack.year)
         path = store.resolve_file_path(ws, rel)
         content = json.loads(path.read_text(encoding="utf-8"))

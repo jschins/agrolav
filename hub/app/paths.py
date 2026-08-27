@@ -9,13 +9,17 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from app.runtime import app_root
-from app.yearpath import current_year
+from app.yearpath import current_year, is_year_name
 
 # Serialize all person-path binds / recalculate (uvicorn runs sync routes in a threadpool).
 CALC_LOCK = threading.RLock()
 
 DATA_DIR: Path = Path(current_year())
 PERSON_SHORT: str = ""
+BOUND_COUNTRY: str = ""
+BOUND_PERSON: str = ""
+BOUND_YEAR: int | None = None
+BOUND_BANK: str | None = None
 PROFILE_PATH: Path = Path("profile.json")
 PRIVATE_KEY_PATH: Path = Path("key.pem")
 CONSENT_PATH: Path = Path("secret") / "consent.json"
@@ -36,6 +40,8 @@ class PersonPack:
     profile_path: Path
     private_key_path: Path
     year: str
+    country: str = ""
+    center: str = ""
 
     @property
     def consent_path(self) -> Path:
@@ -128,6 +134,26 @@ def _resolve_private_key(secret_dir: Path, profile_path: Path | None = None) -> 
     )
 
 
+def _set_bound_identity(pack: PersonPack) -> None:
+    global BOUND_COUNTRY, BOUND_PERSON, BOUND_YEAR, BOUND_BANK
+
+    country = str(pack.country or "").strip()
+    if not country:
+        try:
+            country = pack.folder.parent.parent.name
+        except Exception:
+            country = ""
+    BOUND_COUNTRY = country
+    BOUND_PERSON = pack.folder_name
+    try:
+        BOUND_YEAR = int(pack.year)
+    except (TypeError, ValueError):
+        BOUND_YEAR = None
+    BOUND_BANK = None
+    if not is_year_name(pack.data_dir.name) and is_year_name(pack.data_dir.parent.name):
+        BOUND_BANK = pack.data_dir.name
+
+
 def apply_person(pack: PersonPack) -> None:
     """Point module-level paths at one person pack (used by categorize/single_client)."""
     global DATA_DIR, PERSON_SHORT, PROFILE_PATH, PRIVATE_KEY_PATH, CONSENT_PATH
@@ -144,6 +170,7 @@ def apply_person(pack: PersonPack) -> None:
     CATEGORIZED_TRANSACTIONS_PATH = pack.categorized_path
     RAW_TRANSACTIONS_PATH = pack.data_dir / "downloaded_transactions.json"
     CATEGORY_TOTALS_PATH = pack.totals_path
+    _set_bound_identity(pack)
 
 
 @contextmanager
@@ -152,6 +179,7 @@ def bind_person(pack: PersonPack) -> Iterator[PersonPack]:
     global DATA_DIR, PERSON_SHORT, PROFILE_PATH, PRIVATE_KEY_PATH, CONSENT_PATH
     global CATEGORIES_PATH, PERSONAL_CATEGORIES_PATH, CATEGORIZED_TRANSACTIONS_PATH
     global RAW_TRANSACTIONS_PATH, CATEGORY_TOTALS_PATH
+    global BOUND_COUNTRY, BOUND_PERSON, BOUND_YEAR, BOUND_BANK
 
     with CALC_LOCK:
         snapshot = {
@@ -165,6 +193,10 @@ def bind_person(pack: PersonPack) -> Iterator[PersonPack]:
             "CATEGORIZED_TRANSACTIONS_PATH": CATEGORIZED_TRANSACTIONS_PATH,
             "RAW_TRANSACTIONS_PATH": RAW_TRANSACTIONS_PATH,
             "CATEGORY_TOTALS_PATH": CATEGORY_TOTALS_PATH,
+            "BOUND_COUNTRY": BOUND_COUNTRY,
+            "BOUND_PERSON": BOUND_PERSON,
+            "BOUND_YEAR": BOUND_YEAR,
+            "BOUND_BANK": BOUND_BANK,
         }
         apply_person(pack)
         try:
@@ -180,6 +212,10 @@ def bind_person(pack: PersonPack) -> Iterator[PersonPack]:
             CATEGORIZED_TRANSACTIONS_PATH = snapshot["CATEGORIZED_TRANSACTIONS_PATH"]
             RAW_TRANSACTIONS_PATH = snapshot["RAW_TRANSACTIONS_PATH"]
             CATEGORY_TOTALS_PATH = snapshot["CATEGORY_TOTALS_PATH"]
+            BOUND_COUNTRY = snapshot["BOUND_COUNTRY"]
+            BOUND_PERSON = snapshot["BOUND_PERSON"]
+            BOUND_YEAR = snapshot["BOUND_YEAR"]
+            BOUND_BANK = snapshot["BOUND_BANK"]
 
 
 def configure() -> list[PersonPack]:

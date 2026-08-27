@@ -125,19 +125,25 @@ def require_center_dir(center: str) -> Path:
     The hub only scaffolds person packs *inside* an existing center.
     """
     path = center_dir(center)
-    if not path.is_dir():
-        raise FileNotFoundError(
-            f"Center {center!r} does not exist under {data_root()} "
-            f"(looked at {path}). "
-            "Create the country/center folders on disk first; the hub does not initialize them."
-        )
-    return path
+    if path.is_dir():
+        return path
+    from app.sql_catalog import center_exists
+
+    if center_exists(center):
+        return path
+    raise FileNotFoundError(
+        f"Center {center!r} does not exist under {data_root()} "
+        f"(looked at {path}). "
+        "Create the country/center folders on disk first; the hub does not initialize them."
+    )
 
 
 def list_countries() -> list[str]:
     from app.runtime import list_country_folders
+    from app.sql_catalog import list_country_usernames
 
-    return list_country_folders()
+    names = list_country_usernames()
+    return names if names else list_country_folders()
 
 
 def list_centers(country: str | None = None) -> list[str]:
@@ -152,6 +158,11 @@ def list_centers(country: str | None = None) -> list[str]:
     name = country_folder(country or active_country() or "")
     if not name:
         return []
+    from app.sql_catalog import list_center_usernames
+
+    sql_names = list_center_usernames(name)
+    if sql_names:
+        return sql_names
     root = data_root() / name
     if not root.is_dir():
         return []

@@ -45,7 +45,7 @@ _SQL_PERSON_SELECT = """
 SELECT
     p.id,
     p.username COLLATE Latin1_General_CI_AI AS username,
-    n.title COLLATE Latin1_General_CI_AI AS title,
+    p.title AS title,
     p.number_of_accounts,
     c.username COLLATE Latin1_General_CI_AI AS country,
     n.username COLLATE Latin1_General_CI_AI AS center,
@@ -59,7 +59,7 @@ _SQL_CENTER_SELECT = """
 SELECT
     n.center_id AS id,
     n.username COLLATE Latin1_General_CI_AI AS username,
-    n.title COLLATE Latin1_General_CI_AI AS title,
+    n.title AS title,
     CAST(NULL AS INT) AS number_of_accounts,
     c.username COLLATE Latin1_General_CI_AI AS country,
     n.username COLLATE Latin1_General_CI_AI AS center,
@@ -72,7 +72,7 @@ _SQL_COUNTRY_SELECT = """
 SELECT
     c.country_id AS id,
     c.username COLLATE Latin1_General_CI_AI AS username,
-    c.title COLLATE Latin1_General_CI_AI AS title,
+    c.title AS title,
     CAST(NULL AS INT) AS number_of_accounts,
     c.username COLLATE Latin1_General_CI_AI AS country,
     CAST(NULL AS NVARCHAR(64)) COLLATE Latin1_General_CI_AI AS center,

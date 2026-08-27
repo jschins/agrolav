@@ -568,6 +568,7 @@ th {
   color: #0f172a;
   white-space: nowrap;
   line-height: 1.15;
+  text-transform: none;
 }
 
 .totals-table {

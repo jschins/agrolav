@@ -44,15 +44,17 @@ def _load_categorized_store() -> dict[str, Any]:
 
 
 def _persist_categorized_store(data: dict[str, Any]) -> dict[str, Any]:
-    """Write JSON cache and UPDATE matching SQL rows."""
+    """UPDATE matching SQL rows. Write JSON only when SQL is not configured."""
     data = _migrate_categorized_store(data)
     data.pop("modifications", None)
-    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, data)
+    from app import user_store
     from app.sql_replica import sync_bound_transactions
 
     txs = data.get("transactions")
     if isinstance(txs, list):
         sync_bound_transactions(txs)
+    if not user_store.database_url():
+        _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, data)
     return data
 
 
@@ -331,10 +333,14 @@ def _haystack_for_categorization(record: dict[str, Any]) -> str:
 
 
 def _categories_file() -> dict[str, Any]:
-    if not paths.CATEGORIES_PATH.exists():
-        return {}
-    data = _read_json(paths.CATEGORIES_PATH)
-    return data if isinstance(data, dict) else {}
+    if paths.CATEGORIES_PATH.exists():
+        data = _read_json(paths.CATEGORIES_PATH)
+        return data if isinstance(data, dict) else {}
+    from app.runtime import active_center, active_country
+    from app.sql_catalog import categories_payload, country_for_center
+
+    country = active_country() or country_for_center(active_center() or "") or ""
+    return categories_payload(country)
 
 
 def type_rules_payload() -> list[dict[str, str]]:
@@ -802,16 +808,22 @@ def _totals_payload_with_balances(categories: dict[str, str]) -> dict[str, Any]:
 
 def _write_category_totals(merged: dict[str, Any], general: dict[str, list[str]]) -> dict[str, str]:
     totals = build_category_totals(merged, list(general.keys()))
-    _write_json(paths.CATEGORY_TOTALS_PATH, _totals_payload_with_balances(totals))
+    from app import user_store
+
+    if not user_store.database_url():
+        _write_json(paths.CATEGORY_TOTALS_PATH, _totals_payload_with_balances(totals))
     return totals
 
 
 def refresh_category_totals_balances() -> dict[str, str]:
     """Update balance fields in the category totals file from consent (no recategorization)."""
-    general = _category_map(_read_json(paths.CATEGORIES_PATH))
+    general = _category_map(_categories_file())
     merged = _load_categorized_store()
     categories = build_category_totals(merged, list(general.keys()))
-    _write_json(paths.CATEGORY_TOTALS_PATH, _totals_payload_with_balances(categories))
+    from app import user_store
+
+    if not user_store.database_url():
+        _write_json(paths.CATEGORY_TOTALS_PATH, _totals_payload_with_balances(categories))
     return {str(name): str(amount) for name, amount in categories.items()}
 
 
@@ -820,7 +832,7 @@ def load_category_totals() -> dict[str, str]:
 
     rows = load_bound_transactions()
     if rows is not None:
-        general = _category_map(_read_json(paths.CATEGORIES_PATH))
+        general = _category_map(_categories_file())
         return build_category_totals({"transactions": rows}, list(general.keys()))
     data = _load_json_object(paths.CATEGORY_TOTALS_PATH)
     categories = data.get("categories")
@@ -875,7 +887,7 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
     are dropped). The algorithm then fills ``category``, ``hit``, and sets
     ``modification`` to 0.
     """
-    general = _category_map(_read_json(paths.CATEGORIES_PATH))
+    general = _category_map(_categories_file())
     personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
     data = _load_categorized_store()
 
@@ -1063,7 +1075,7 @@ def apply_ircft_terms(
     category_name: str,
 ) -> None:
     """Run iRCfT for the currently bound person. Terms must already be saved."""
-    general = _category_map(_read_json(paths.CATEGORIES_PATH))
+    general = _category_map(_categories_file())
     personal_map = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
     for term in removed:
         ircft_remove_term(
@@ -1199,7 +1211,7 @@ def format_transaction_amount(transaction: dict[str, Any]) -> str:
 
 def terms_for_category(category_name: str) -> list[str]:
     """General + personal keyword terms for a category display name."""
-    general = _category_map(_read_json(paths.CATEGORIES_PATH))
+    general = _category_map(_categories_file())
     personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
     return [*general.get(category_name, []), *personal.get(category_name, [])]
 
@@ -1254,7 +1266,7 @@ def append_category_term(
         raise ValueError(f"Cannot add terms to category {category_name!r}")
 
     if group == "general":
-        general = _category_map(_read_json(paths.CATEGORIES_PATH))
+        general = _category_map(_categories_file())
         terms = list(general.get(category_name, []))
         if cleaned not in _cleaned_terms(terms):
             terms.append(cleaned)
@@ -1289,7 +1301,7 @@ def remove_category_term(category_name: str, term: str) -> list[str]:
     """Remove a term from personal keywords, otherwise from general keywords."""
     needle = _normalize_term(term)
     personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
-    general = _category_map(_read_json(paths.CATEGORIES_PATH))
+    general = _category_map(_categories_file())
     personal_terms = list(personal.get(category_name, []))
     general_terms = list(general.get(category_name, []))
 
@@ -1308,7 +1320,7 @@ def remove_category_term(category_name: str, term: str) -> list[str]:
 
 def category_terms_table(extra_rows: int = 0) -> tuple[list[tuple[str, str]], list[list[str]]]:
     """Column (name, key) pairs and term rows for the keywords overview table."""
-    general = _category_map(_read_json(paths.CATEGORIES_PATH))
+    general = _category_map(_categories_file())
     personal = _category_map(_load_json_object(paths.PERSONAL_CATEGORIES_PATH))
     category_names = list(general.keys())
     terms_by_category = {
@@ -1451,7 +1463,7 @@ def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
         stored["modification"] = _modification_of(base)
 
     data = _persist_categorized_store(data)
-    general = _category_map(_read_json(paths.CATEGORIES_PATH))
+    general = _category_map(_categories_file())
     _write_category_totals(data, general)
     return _public_transaction(_canonical_transaction(stored))
 

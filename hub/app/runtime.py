@@ -90,6 +90,11 @@ def request_country() -> str | None:
 def list_country_folders() -> list[str]:
     """First-level folders under data_root that hold centers (nederland, uk, …)."""
     from app.yearpath import has_person_layout
+    from app.sql_catalog import list_country_usernames
+
+    sql_names = list_country_usernames()
+    if sql_names:
+        return sql_names
 
     root = data_root()
     if not root.is_dir():
@@ -119,6 +124,11 @@ def resolve_country_for_center(center: str) -> str | None:
         candidate = data_root() / preferred / name
         if candidate.is_dir():
             return preferred
+    from app.sql_catalog import country_for_center
+
+    sql_country = country_for_center(name)
+    if sql_country:
+        return country_folder(sql_country) or sql_country
     matches: list[str] = []
     for country in list_country_folders():
         if (data_root() / country / name).is_dir():
