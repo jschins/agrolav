@@ -1546,7 +1546,12 @@ def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
     else:
         stored["modification"] = _modification_of(base)
 
-    data = _persist_categorized_store(data)
+    if _use_sql():
+        from app.sql_replica import sync_bound_transactions
+
+        sync_bound_transactions([stored])
+    else:
+        data = _persist_categorized_store(data)
     general = _category_map(_categories_file())
     _write_category_totals(data, general)
     return _public_transaction(_canonical_transaction(stored))

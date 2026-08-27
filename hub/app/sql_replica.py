@@ -140,15 +140,27 @@ def _account_id_for_folder(cursor, person_id: int, folder: str) -> int | None:
 
 
 def _bound_where(bound: _BoundScope, alias: str = "t") -> tuple[str, list[Any]]:
+    """Person/year, plus bank vs consolidated.
+
+    Bookings exist as a ``bank_id IS NULL`` (consolidated) copy and optional
+    per-bank copies with the same ``source_id``. A view must not return both.
+    """
     sql = f"{alias}.person_id = ? AND {alias}.year = ?"
     params: list[Any] = [bound.person_id, bound.year]
     if bound.account_id is not None:
         sql += f" AND {alias}.account_id = ?"
         params.append(bound.account_id)
+        if bound.bank_key is not None:
+            sql += f" AND {alias}.bank_id = ?"
+            params.append(bound.bank_key)
+        else:
+            sql += f" AND {alias}.bank_id IS NOT NULL"
         return sql, params
     if bound.bank_key is not None:
         sql += f" AND {alias}.bank_id = ?"
         params.append(bound.bank_key)
+        return sql, params
+    sql += f" AND {alias}.bank_id IS NULL"
     return sql, params
 
 
@@ -415,6 +427,7 @@ def load_center_year_matrix(
             JOIN dbo.center n ON n.center_id = p.center_id
             LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
             WHERE n.username = ? COLLATE Latin1_General_CI_AI AND t.year = ?
+              AND t.bank_id IS NULL
             GROUP BY p.username, COALESCE(d.local_code, 18)
             """,
             (ws, int(year)),
@@ -451,6 +464,7 @@ def load_center_year_matrix(
             JOIN dbo.person p ON p.id = t.person_id
             JOIN dbo.center n ON n.center_id = p.center_id
             WHERE n.username = ? COLLATE Latin1_General_CI_AI AND t.year = ?
+              AND t.bank_id IS NULL
             GROUP BY p.username
             """,
             (ws, int(year)),
@@ -550,9 +564,9 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
 
         extra = ""
         if bound.account_id is not None:
-            extra = " AND account_id = ?"
+            extra = " AND ((account_id = ? AND bank_id IS NOT NULL) OR bank_id IS NULL)"
         elif bound.bank_key is not None:
-            extra = " AND bank_id = ?"
+            extra = " AND (bank_id = ? OR bank_id IS NULL)"
         sql = f"""
             UPDATE {bound.table}
             SET category_id = ?, modification = ?, hit = ?, description = ?
