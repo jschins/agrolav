@@ -766,13 +766,17 @@ def refresh_person(
 
 
 def save_general_terms(category_name: str, terms: list[str]) -> list[str]:
-    from app.core.categorize import _cleaned_terms, _category_map
+    from app import user_store
+    from app.core.categorize import _cleaned_terms, _category_map, _save_general_category_terms
 
+    cleaned = _cleaned_terms(terms)
+    if user_store.database_url():
+        _save_general_category_terms(category_name, cleaned)
+        return cleaned
     packs = get_people()
     original = load_general_file(packs)
     if not isinstance(original, dict):
         original = {}
-    cleaned = _cleaned_terms(terms)
     if isinstance(original.get("categories"), dict):
         original["categories"][category_name] = cleaned
     else:
