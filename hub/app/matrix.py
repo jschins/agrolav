@@ -320,11 +320,20 @@ def recalculate_pack_from_scratch(pack: PersonPack) -> None:
     """Wipe hit/modification, then recategorize every year (and bank folder) for ``pack``."""
     from dataclasses import replace
 
+    from app import user_store
     from app.core.bank_csv import list_year_bank_folders
     from app.core.categorize import recategorize_transactions
     from app.yearpath import list_year_names
 
-    for year in list_year_names(pack.folder):
+    years = list_year_names(pack.folder)
+    if user_store.database_url():
+        for year in years:
+            year_pack = replace(pack, data_dir=pack.folder / year, year=year)
+            with bind_person(year_pack):
+                recategorize_transactions(from_scratch=True)
+        return
+
+    for year in years:
         year_path = pack.folder / year
         targets = [year_path]
         for bank in list_year_bank_folders(year_path):
