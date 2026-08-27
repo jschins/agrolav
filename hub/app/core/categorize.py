@@ -1165,6 +1165,20 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
         log("filter.abort", reason="category_name_has_no_numeric_prefix")
         return []
 
+    if _use_sql():
+        from app.sql_replica import load_bound_transactions
+
+        rows = load_bound_transactions(category_code=code) or []
+        log(
+            "filter.done",
+            category_name=category_name,
+            parsed_code=code,
+            raw_transactions=len(rows),
+            matched=len(rows),
+            source="sql",
+        )
+        return [_public_transaction(_canonical_transaction(item)) for item in rows if isinstance(item, dict)]
+
     payload = _load_categorized_store()
     raw_list = payload.get("transactions")
     raw_count = len(raw_list) if isinstance(raw_list, list) else 0
@@ -1290,18 +1304,29 @@ def _cleaned_terms(terms: list[str]) -> list[str]:
 
 
 def _save_general_category_terms(category_name: str, terms: list[str]) -> None:
+    cleaned = _cleaned_terms(terms)
+    if _use_sql():
+        from app.sql_catalog import save_category_terms
+
+        save_category_terms(category_name, cleaned, person=None)
+        return
     data = _categories_file()
     categories = data.setdefault("categories", {})
-    categories[category_name] = _cleaned_terms(terms)
-    if not _use_sql():
-        _write_json(paths.CATEGORIES_PATH, data)
+    categories[category_name] = cleaned
+    _write_json(paths.CATEGORIES_PATH, data)
 
 
 def _save_personal_category_terms(category_name: str, terms: list[str]) -> None:
+    cleaned = _cleaned_terms(terms)
     if _use_sql():
+        from app.sql_catalog import save_category_terms
+
+        name = str(paths.BOUND_PERSON or paths.PERSON_SHORT or "").strip()
+        if not name:
+            raise ValueError("personal terms need a bound person")
+        save_category_terms(category_name, cleaned, person=name)
         return
     data = _load_json_object(paths.PERSONAL_CATEGORIES_PATH)
-    cleaned = _cleaned_terms(terms)
     if cleaned:
         data[category_name] = cleaned
     else:

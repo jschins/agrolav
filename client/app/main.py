@@ -383,6 +383,8 @@ def api_years() -> dict[str, Any]:
         years: set[str] = {
             str(v) for v in (root.get("years") or []) if str(v).strip()
         }
+        if years:
+            return {"years": sorted(years), "default_year": default_year}
 
         try:
             people_payload = hub_get("/people")

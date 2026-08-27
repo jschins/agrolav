@@ -224,11 +224,12 @@ def _open_bound_scope() -> _BoundScope | None:
     )
 
 
-def load_bound_transactions() -> list[dict[str, Any]] | None:
+def load_bound_transactions(*, category_code: int | None = None) -> list[dict[str, Any]] | None:
     """JSON-shaped bookings from SQL, or ``None`` to keep using JSON files.
 
     When SQL is configured and the booking table exists, this returns a list
     (possibly empty) and callers must not fall back to categorized JSON.
+    ``category_code`` limits rows to that ``dim_category.local_code``.
     """
     from app import user_store
 
@@ -239,6 +240,11 @@ def load_bound_transactions() -> list[dict[str, Any]] | None:
         if bound is None:
             return None
         where_sql, where_params = _bound_where(bound)
+        params: list[Any] = list(where_params)
+        extra = ""
+        if category_code is not None:
+            extra = " AND COALESCE(d.local_code, 18) = ?"
+            params.append(int(category_code))
         bound.cursor.execute(
             f"""
             SELECT
@@ -257,10 +263,10 @@ def load_bound_transactions() -> list[dict[str, Any]] | None:
             JOIN dbo.person p ON p.id = t.person_id
             JOIN dbo.country c ON c.country_id = p.country_id
             LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
-            WHERE {where_sql}
+            WHERE {where_sql}{extra}
             ORDER BY t.booked_on DESC, t.source_id DESC
             """,
-            tuple(where_params),
+            tuple(params),
         )
         fetched = bound.cursor.fetchall()
     except Exception as exc:  # noqa: BLE001
@@ -375,6 +381,141 @@ def load_bound_last_booked() -> str | None:
     return text or None
 
 
+def load_center_year_matrix(
+    *,
+    center: str,
+    country: str,
+    year: int,
+    general_names: list[str],
+) -> tuple[dict[str, dict[str, str]], dict[str, str], dict[str, str]] | None:
+    """Totals, last booked date, and IBAN balances for every person in a center/year.
+
+    One connection, three grouped queries. Does not download booking rows.
+    """
+    from app import user_store
+    from app.core.categorize import _amount_str, _category_code
+
+    if not user_store.database_url():
+        return None
+    table = _transaction_table(country)
+    if not table:
+        return None
+    ws = (center or "").strip()
+    try:
+        user_store.init_user_store()
+        cursor = user_store._sql_connect().cursor()
+        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+        if cursor.fetchone()[0] is None:
+            return None
+        cursor.execute(
+            f"""
+            SELECT p.username, COALESCE(d.local_code, 18), SUM(t.amount)
+            FROM {table} t
+            JOIN dbo.person p ON p.id = t.person_id
+            JOIN dbo.center n ON n.center_id = p.center_id
+            LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
+            WHERE n.username = ? COLLATE Latin1_General_CI_AI AND t.year = ?
+            GROUP BY p.username, COALESCE(d.local_code, 18)
+            """,
+            (ws, int(year)),
+        )
+        name_by_code = {
+            code: name for name in general_names if (code := _category_code(name)) is not None
+        }
+        booking_names = [name for name in general_names if _category_code(name) is not None]
+        totals_cents: dict[str, dict[str, int]] = {}
+        for username, local_code, amount in cursor.fetchall():
+            person = str(username or "").strip()
+            if not person:
+                continue
+            try:
+                code = int(local_code)
+            except (TypeError, ValueError):
+                code = 18
+            try:
+                cents = round(float(amount or 0) * 100)
+            except (TypeError, ValueError):
+                cents = 0
+            bucket = totals_cents.setdefault(person, {name: 0 for name in booking_names})
+            label = name_by_code.get(code, str(code))
+            bucket[label] = bucket.get(label, 0) + cents
+        totals = {
+            person: {name: _amount_str(cents) for name, cents in amounts.items()}
+            for person, amounts in totals_cents.items()
+        }
+
+        cursor.execute(
+            f"""
+            SELECT p.username, MAX(t.booked_on)
+            FROM {table} t
+            JOIN dbo.person p ON p.id = t.person_id
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.username = ? COLLATE Latin1_General_CI_AI AND t.year = ?
+            GROUP BY p.username
+            """,
+            (ws, int(year)),
+        )
+        last_booked = {
+            str(username or "").strip(): _json_date(booked)
+            for username, booked in cursor.fetchall()
+            if str(username or "").strip() and booked is not None
+        }
+
+        cursor.execute(
+            """
+            SELECT p.username, a.balance
+            FROM dbo.account a
+            JOIN dbo.person p ON p.id = a.person_id
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.username = ? COLLATE Latin1_General_CI_AI
+            ORDER BY a.account_id
+            """,
+            (ws,),
+        )
+        balance_cents: dict[str, int] = {}
+        found: set[str] = set()
+        for username, balance in cursor.fetchall():
+            person = str(username or "").strip()
+            if not person:
+                continue
+            text = str(balance or "").strip()
+            if not text:
+                continue
+            try:
+                balance_cents[person] = balance_cents.get(person, 0) + round(float(text) * 100)
+            except ValueError:
+                continue
+            found.add(person)
+        balances = {
+            person: f"{cents / 100:.2f}" for person, cents in balance_cents.items() if person in found
+        }
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql replica: failed to load center matrix: {exc}")
+        return None
+    return totals, last_booked, balances
+
+
+def _executemany_commit(conn, cursor, sql: str, params: list[tuple[Any, ...]]) -> None:
+    """Write rows without fast_executemany (breaks NVARCHAR(MAX) on Driver 18)."""
+    was = conn.autocommit
+    try:
+        conn.autocommit = False
+        cursor.fast_executemany = False
+        cursor.executemany(sql, params)
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            conn.autocommit = was
+        except Exception:
+            pass
+
+
 def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
     """UPDATE ``transaction_*`` for the person/year(/bank) bound in ``app.paths``."""
     from app import user_store
@@ -451,12 +592,10 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
             params.append(row)
         if not params:
             return
-        bound.cursor.fast_executemany = True
-        bound.cursor.executemany(sql, params)
-        bound.cursor.fast_executemany = False
-        bound.conn.commit()
+        _executemany_commit(bound.conn, bound.cursor, sql, params)
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to update bookings: {exc}")
+        raise
 
 
 def _remainder_id(cursor, person_id: int) -> int | None:

@@ -450,3 +450,101 @@ def personal_categories_payload(username: str) -> dict[str, list[str]]:
         return _sql_retry(_run)
     except Exception:  # noqa: BLE001
         return {}
+
+
+def clear_catalog_cache() -> None:
+    _CAT_CACHE.clear()
+
+
+def save_category_terms(
+    category_name: str,
+    terms: list[str],
+    *,
+    person: str | None = None,
+) -> None:
+    """Replace general (person_id NULL) or personal keyword rows in ``dbo.category_term``."""
+    label = (category_name or "").strip()
+    if not label or not _sql_ready():
+        return
+    cleaned = [str(item).strip().lower() for item in terms if str(item or "").strip()]
+    try:
+        code = int(label[:2])
+    except ValueError:
+        code = None
+    person_name = (person or "").strip() or None
+    country = ""
+    if person_name:
+        layout = person_country_center(person_name)
+        country = layout[0] if layout else ""
+    if not country:
+        from app.runtime import active_center, active_country
+
+        country = (active_country() or country_for_center(active_center() or "") or "").strip()
+    if not country:
+        raise ValueError(f"Cannot save terms for {label!r}: no country")
+
+    def _run() -> None:
+        from app import user_store
+
+        conn = user_store._sql_connect()
+        cursor = conn.cursor()
+        was = conn.autocommit
+        try:
+            conn.autocommit = False
+            cursor.execute(
+                """
+                SELECT d.category_id
+                FROM dbo.dim_category d
+                JOIN dbo.country c ON c.country_id = d.country_id
+                WHERE c.username = ? COLLATE Latin1_General_CI_AI
+                  AND (d.label = ? OR d.local_code = ?)
+                """,
+                (country, label, code),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise ValueError(f"Unknown category {label!r} for {country!r}")
+            category_id = int(row[0])
+            person_id: int | None = None
+            if person_name:
+                cursor.execute(
+                    "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+                    (person_name,),
+                )
+                prow = cursor.fetchone()
+                if prow is None:
+                    raise ValueError(f"Unknown person {person_name!r}")
+                person_id = int(prow[0])
+                cursor.execute(
+                    "DELETE FROM dbo.category_term WHERE category_id = ? AND person_id = ?",
+                    (category_id, person_id),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM dbo.category_term WHERE category_id = ? AND person_id IS NULL",
+                    (category_id,),
+                )
+            if cleaned:
+                cursor.fast_executemany = False
+                cursor.executemany(
+                    """
+                    INSERT INTO dbo.category_term (category_id, person_id, term, sort_order)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    [(category_id, person_id, term, index) for index, term in enumerate(cleaned)],
+                )
+            conn.commit()
+            _CAT_CACHE.clear()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                conn.autocommit = was
+            except Exception:
+                pass
+
+    _sql_retry(_run)

@@ -234,16 +234,47 @@ def build_matrix(
     columns = [{"short": p.short, "folder": p.folder_name} for p in packs]
     cells: dict[str, dict[str, str]] = {name: {} for name in category_list}
     ws = active_center() or ""
-    for pack in packs:
-        view_pack = pack_for_bank_view(pack, bank, center=ws) if bank else pack
-        try:
-            totals = person_totals(view_pack)
-        except Exception:  # noqa: BLE001
-            totals = {}
-        for name in booking:
-            cells[name][pack.short] = _amount_for_category(totals, name)
-        cells[balance_name][pack.short] = person_current_balance(view_pack) or ""
-        cells[date_name][pack.short] = person_last_booked(view_pack) or ""
+    sql_matrix = None
+    if not bank:
+        from app import user_store
+        from app.runtime import active_country
+        from app.sql_replica import load_center_year_matrix
+        from app.yearpath import parse_year
+
+        if user_store.database_url() and packs:
+            y = parse_year(year) if year else parse_year(packs[0].year)
+            country = active_country() or packs[0].country
+            try:
+                y_int = int(y)
+            except (TypeError, ValueError):
+                y_int = None
+            if y_int is not None and country:
+                sql_matrix = load_center_year_matrix(
+                    center=ws or packs[0].center,
+                    country=country,
+                    year=y_int,
+                    general_names=booking,
+                )
+    if sql_matrix is not None:
+        totals_map, dates, balances = sql_matrix
+        for pack in packs:
+            key = pack.folder_name or pack.short
+            totals = totals_map.get(key) or {}
+            for name in booking:
+                cells[name][pack.short] = _amount_for_category(totals, name)
+            cells[balance_name][pack.short] = balances.get(key) or ""
+            cells[date_name][pack.short] = dates.get(key) or ""
+    else:
+        for pack in packs:
+            view_pack = pack_for_bank_view(pack, bank, center=ws) if bank else pack
+            try:
+                totals = person_totals(view_pack)
+            except Exception:  # noqa: BLE001
+                totals = {}
+            for name in booking:
+                cells[name][pack.short] = _amount_for_category(totals, name)
+            cells[balance_name][pack.short] = person_current_balance(view_pack) or ""
+            cells[date_name][pack.short] = person_last_booked(view_pack) or ""
     payload: dict[str, Any] = {
         "categories": category_list,
         "people": columns,
