@@ -251,6 +251,7 @@ def record_modification(
 
 def settings(center: str) -> dict[str, Any]:
     with _center_scope(center) as ws:
+        from app import user_store
         from app.core.categorize import (
             _category_map,
             _personal_category_map,
@@ -262,6 +263,10 @@ def settings(center: str) -> dict[str, Any]:
         from app.paths import bind_person
         from app.settings import get_people
 
+        if user_store.database_url():
+            from app.sql_catalog import clear_catalog_cache
+
+            clear_catalog_cache()
         people_list = get_people()
         general_file = load_general_file(people_list)
         general = _category_map(general_file)

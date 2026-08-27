@@ -1675,9 +1675,27 @@ function TermsApp() {
 
   useEffect(() => {
     window.name = "boekhouding-terms";
-    getSettings()
-      .then(setSettings)
-      .catch((e: Error) => setError(e.message));
+    let cancelled = false;
+    function load() {
+      getSettings()
+        .then((data) => {
+          if (!cancelled) setSettings(data);
+        })
+        .catch((e: Error) => {
+          if (!cancelled) setError(e.message);
+        });
+    }
+    load();
+    function onShow() {
+      if (document.visibilityState === "visible") load();
+    }
+    window.addEventListener("focus", load);
+    document.addEventListener("visibilitychange", onShow);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", load);
+      document.removeEventListener("visibilitychange", onShow);
+    };
   }, []);
 
   useEffect(() => {

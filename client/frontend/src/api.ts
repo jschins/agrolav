@@ -10,7 +10,7 @@ import type {
 } from "./types";
 
 async function getJson<T>(url: string): Promise<T> {
-  const resp = await fetch(url, { credentials: "include" });
+  const resp = await fetch(url, { credentials: "include", cache: "no-store" });
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error(`${resp.status} ${resp.statusText}: ${text}`);
