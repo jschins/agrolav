@@ -1576,7 +1576,7 @@ _CREATE_COUNTRY_HTML = """<!DOCTYPE html>
 <body>
   <main>
     <h1>Create country</h1>
-    <p class="lead">Writes <code>dbo.country</code> and a workspace folder. Login password equals the username.</p>
+    <p class="lead">Writes <code>dbo.country</code>. Login password equals the username.</p>
     <table>
       <tr><th>name</th><td><input id="name" type="text" placeholder="e.g. belgie"/></td></tr>
       <tr><th>title</th><td><input id="title" type="text" placeholder="e.g. België"/></td></tr>

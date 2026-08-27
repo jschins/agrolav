@@ -154,7 +154,8 @@ def _bound_where(bound: _BoundScope, alias: str = "t") -> tuple[str, list[Any]]:
             sql += f" AND {alias}.bank_id = ?"
             params.append(bound.bank_key)
         else:
-            sql += f" AND {alias}.bank_id IS NOT NULL"
+            # Enable Banking / IBAN switcher: bookings are consolidated (bank_id NULL).
+            sql += f" AND {alias}.bank_id IS NULL"
         return sql, params
     if bound.bank_key is not None:
         sql += f" AND {alias}.bank_id = ?"
