@@ -264,57 +264,31 @@ def person_bank_folder_options(
     person: str,
     center: str,
 ) -> dict[str, Any]:
-    """Account/bank names for the personal switcher (+ metadata)."""
+    """IBANs from ``dbo.account`` for the personal account switcher."""
+    del person_folder, year, center
     from app import user_store
-
-    user = user_store.find_user(person)
-    n_accounts = user.get("number_of_accounts") if user else None
-    multi = person_uses_bank_subfolders(person, center)
-    year_path = person_folder / year
-    disk = list_year_bank_folders(year_path)
-    discovered = person_csv_banks(person, center)
-    disk_all = list(dict.fromkeys([*disk, *discovered]))
 
     folders: list[str] = []
     seen: set[str] = set()
-    accounts = user_store.list_accounts_for_username(person)
-    if accounts:
-        for acc in accounts:
-            label = _switcher_label_for_account(acc, disk_all)
-            if label and label not in seen:
-                seen.add(label)
-                folders.append(label)
-    for name in disk_all:
-        if name and name not in seen:
-            seen.add(name)
-            folders.append(name)
+    for acc in user_store.list_accounts_for_username(person):
+        iban = str(acc.get("iban") or "").strip()
+        if not iban or iban in seen:
+            continue
+        seen.add(iban)
+        folders.append(iban)
 
-    show = (n_accounts is not None and int(n_accounts) > 1) or len(folders) > 1
-    if not show:
+    if len(folders) <= 1:
         return {"folders": [], "multi_bank": False, "show_switcher": False}
     return {"folders": folders, "multi_bank": True, "show_switcher": True}
-
-
-def _switcher_label_for_account(acc: dict[str, str], disk_folders: list[str]) -> str:
-    iban = (acc.get("iban") or "").replace(" ", "")
-    name = (acc.get("account_name") or "").strip()
-    for folder in disk_folders:
-        compact = folder.replace(" ", "")
-        if iban and iban in compact:
-            return folder
-        if name and name in folder:
-            return folder
-    return name or iban
 
 
 def pack_for_bank_view(
     pack: PersonPack, bank: str | None, *, center: str
 ) -> PersonPack:
-    """Return a pack bound to ``YYYY/<bank>/`` or consolidated ``YYYY/``."""
+    """Bind ``YYYY/<iban>/`` so SQL replica can filter ``dbo.account``."""
+    del center
     view = (bank or "").strip()
     if not view or view.lower() == CONSOLIDATED_VIEW:
-        return pack
-    if not person_uses_bank_subfolders(pack.folder_name, center):
         return pack
     return replace(pack, data_dir=(pack.data_dir / view).resolve())
 

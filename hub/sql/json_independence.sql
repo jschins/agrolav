@@ -1,14 +1,13 @@
 -- Tables still needed after phase_c.sql to stop depending on workspace JSON.
 -- Does not DROP existing tables. Run against database agrolav in SSMS.
--- Private key PEM files stay on disk (not JSON, not SQL).
 --
 -- Already created by phase_c.sql (do not recreate here):
---   country, bank, dim_category, center, app_user, account,
---   category_term (general app_user_id NULL + personal app_user_id set),
+--   country, bank, dim_category, center, person, account,
+--   category_term (catalog person_id NULL + personal person_id set),
 --   type_abbreviation, transaction_nederland, transaction_uk,
 --   category_total, account_balance_file
 --
--- JSON these tables replace:
+-- JSON / files these tables replace:
 --   categories.json table_header_terms  -> dbo.table_header_term
 --   categories.json typerules           -> dbo.type_rule
 --   upload_acl.json bank modalities     -> dbo.bank_modality
@@ -16,6 +15,7 @@
 --   secret/profile.json + consent.json  -> dbo.enable_connection
 --                                         dbo.enable_account
 --                                         dbo.enable_redirect
+--   secret/*.pem                        -> dbo.private_key
 --   category_totals.json account uid    -> dbo.enable_account.uid
 
 USE agrolav
@@ -65,16 +65,16 @@ GO
 IF OBJECT_ID(N'dbo.enable_connection', N'U') IS NULL
 CREATE TABLE dbo.enable_connection (
     connection_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
-    app_user_id INT NOT NULL,
+    person_id INT NOT NULL,
     app_id NVARCHAR(128) NULL,
     aspsp NVARCHAR(64) NOT NULL,
     country_iso CHAR(2) NOT NULL,
     session_id NVARCHAR(256) NULL,
     valid_until DATETIME2 NULL,
     created_at DATETIME2 NULL,
-    CONSTRAINT fk_enable_connection_user FOREIGN KEY (app_user_id)
-        REFERENCES dbo.app_user (id),
-    CONSTRAINT ux_enable_connection UNIQUE (app_user_id, aspsp, country_iso)
+    CONSTRAINT fk_enable_connection_person FOREIGN KEY (person_id)
+        REFERENCES dbo.person (id),
+    CONSTRAINT ux_enable_connection UNIQUE (person_id, aspsp, country_iso)
 )
 GO
 
@@ -97,11 +97,24 @@ GO
 
 IF OBJECT_ID(N'dbo.enable_redirect', N'U') IS NULL
 CREATE TABLE dbo.enable_redirect (
-    app_user_id INT NOT NULL PRIMARY KEY,
+    person_id INT NOT NULL PRIMARY KEY,
     last_redirect_input NVARCHAR(MAX) NULL,
     last_redirect_code NVARCHAR(256) NULL,
     last_redirect_code_at DATETIME2 NULL,
-    CONSTRAINT fk_enable_redirect_user FOREIGN KEY (app_user_id)
-        REFERENCES dbo.app_user (id)
+    CONSTRAINT fk_enable_redirect_person FOREIGN KEY (person_id)
+        REFERENCES dbo.person (id)
+)
+GO
+
+-- One Enable Banking application key per person pack.
+-- app_id is the PEM filename stem (JWT kid).
+IF OBJECT_ID(N'dbo.private_key', N'U') IS NULL
+CREATE TABLE dbo.private_key (
+    person_id INT NOT NULL PRIMARY KEY,
+    app_id NVARCHAR(128) NOT NULL,
+    pem NVARCHAR(MAX) NOT NULL,
+    CONSTRAINT fk_private_key_person FOREIGN KEY (person_id)
+        REFERENCES dbo.person (id),
+    CONSTRAINT ux_private_key_app_id UNIQUE (app_id)
 )
 GO

@@ -434,7 +434,7 @@ def apply_schema(cursor) -> None:
 
 def seed_countries(cursor) -> None:
     cursor.executemany(
-        "INSERT INTO dbo.country (country_id, name, currency_default) VALUES (?, ?, ?)",
+        "INSERT INTO dbo.country (country_id, username, currency_default) VALUES (?, ?, ?)",
         COUNTRIES,
     )
 
@@ -503,7 +503,7 @@ def seed_categories(cursor, root: Path) -> tuple[dict[tuple[int, int], int], dic
     if term_rows:
         cursor.executemany(
             """
-            INSERT INTO dbo.category_term (category_id, app_user_id, term, sort_order)
+            INSERT INTO dbo.category_term (category_id, person_id, term, sort_order)
             VALUES (?, NULL, ?, ?)
             """,
             term_rows,
@@ -521,32 +521,32 @@ def seed_categories(cursor, root: Path) -> tuple[dict[tuple[int, int], int], dic
 
 def _insert_center(cursor, country_id: int, folder: str) -> int:
     cursor.execute(
-        "INSERT INTO dbo.center (country_id, name) OUTPUT INSERTED.center_id VALUES (?, ?)",
+        "INSERT INTO dbo.center (country_id, username) OUTPUT INSERTED.center_id VALUES (?, ?)",
         country_id,
         folder,
     )
     return int(cursor.fetchone()[0])
 
 
-def _insert_app_user(
+def _insert_person(
     cursor,
     *,
     username: str,
     country_id: int,
-    center_id: int | None,
-    number_of_accounts: int | None,
+    center_id: int,
+    number_of_accounts: int,
     title: str | None = None,
 ) -> int:
     today = date.today()
     cursor.execute(
         """
-        INSERT INTO dbo.app_user
+        INSERT INTO dbo.person
             (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
         OUTPUT INSERTED.id
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         username,
-        title,
+        (title or username).strip() or username,
         country_id,
         center_id,
         number_of_accounts,
@@ -596,14 +596,14 @@ def _account_format(person_folder: Path, acc: dict[str, Any]) -> str | None:
     return None
 
 
-def _insert_account(cursor, app_user_id: int, acc: dict[str, Any], *, person_folder: Path) -> int:
+def _insert_account(cursor, person_id: int, acc: dict[str, Any], *, person_folder: Path) -> int:
     cursor.execute(
         """
-        INSERT INTO dbo.account (app_user_id, iban, account_name, format, balance)
+        INSERT INTO dbo.account (person_id, iban, account_name, format, balance)
         OUTPUT INSERTED.account_id
         VALUES (?, ?, ?, ?, ?)
         """,
-        app_user_id,
+        person_id,
         acc["iban"],
         acc["account_name"],
         _account_format(person_folder, acc),
@@ -630,13 +630,6 @@ def load_tree(
         country_dir = root / country_folder
         if not country_dir.is_dir():
             raise LoadError(f"Missing country folder {country_dir}")
-        _insert_app_user(
-            cursor,
-            username=country_folder,
-            country_id=country_id,
-            center_id=None,
-            number_of_accounts=None,
-        )
         remainder_id = _category_id_for_local_code(
             country_id, DEFAULT_CATEGORY, by_code, path=country_dir
         )
@@ -645,16 +638,9 @@ def load_tree(
             if not people_dirs:
                 continue
             center_id = _insert_center(cursor, country_id, center_dir.name)
-            _insert_app_user(
-                cursor,
-                username=center_dir.name,
-                country_id=country_id,
-                center_id=center_id,
-                number_of_accounts=None,
-            )
             for person_dir in people_dirs:
                 accounts = _seed_accounts_from_disk(person_dir)
-                person_id = _insert_app_user(
+                person_id = _insert_person(
                     cursor,
                     username=person_dir.name,
                     country_id=country_id,
@@ -792,8 +778,8 @@ def load_tree(
 
                 cursor.execute(
                     """
-                    UPDATE dbo.app_user
-                    SET number_of_accounts = (SELECT COUNT(*) FROM dbo.account WHERE app_user_id = ?)
+                    UPDATE dbo.person
+                    SET number_of_accounts = (SELECT COUNT(*) FROM dbo.account WHERE person_id = ?)
                     WHERE id = ?
                     """,
                     person_id,
@@ -803,14 +789,14 @@ def load_tree(
     if personal_terms:
         cursor.executemany(
             """
-            INSERT INTO dbo.category_term (category_id, app_user_id, term, sort_order)
+            INSERT INTO dbo.category_term (category_id, person_id, term, sort_order)
             VALUES (?, ?, ?, ?)
             """,
             personal_terms,
         )
     tx_insert = """
             INSERT INTO {table} (
-                app_user_id, account_id, year, bank_id, source_id, amount,
+                person_id, account_id, year, bank_id, source_id, amount,
                 bank_type, counterparty_name, counterparty_iban, description,
                 booked_on, category_id, modification, hit
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -824,7 +810,7 @@ def load_tree(
     if total_rows:
         cursor.executemany(
             """
-            INSERT INTO dbo.category_total (app_user_id, year, bank_id, category_id, amount)
+            INSERT INTO dbo.category_total (person_id, year, bank_id, category_id, amount)
             VALUES (?, ?, ?, ?, ?)
             """,
             total_rows,
@@ -872,7 +858,7 @@ def verify(cursor) -> None:
     print(f"categories: {cursor.fetchone()[0]}")
     cursor.execute("SELECT COUNT(*) FROM dbo.center")
     print(f"centers: {cursor.fetchone()[0]}")
-    cursor.execute("SELECT COUNT(*) FROM dbo.app_user WHERE number_of_accounts IS NOT NULL")
+    cursor.execute("SELECT COUNT(*) FROM dbo.person")
     print(f"people: {cursor.fetchone()[0]}")
     cursor.execute("SELECT COUNT(*) FROM dbo.account")
     print(f"accounts: {cursor.fetchone()[0]}")
@@ -886,7 +872,7 @@ def verify(cursor) -> None:
 
     cursor.execute(
         """
-        SELECT c.name, d.category_id, d.local_code, d.label
+        SELECT c.username, d.category_id, d.local_code, d.label
         FROM dbo.dim_category d
         JOIN dbo.country c ON c.country_id = d.country_id
         WHERE d.local_code = 12
@@ -901,7 +887,7 @@ def verify(cursor) -> None:
         """
         SELECT t.category_id, t.modification, d.label
         FROM dbo.transaction_nederland t
-        JOIN dbo.app_user p ON p.id = t.app_user_id
+        JOIN dbo.person p ON p.id = t.person_id
         JOIN dbo.dim_category d ON d.category_id = t.category_id
         WHERE p.username = N'anton_schins'
           AND t.source_id = N'010305258369428750000000_0'
@@ -922,7 +908,7 @@ def verify(cursor) -> None:
             SELECT d.category_id
             FROM dbo.dim_category d
             JOIN dbo.country c ON c.country_id = d.country_id
-            WHERE c.name = ? AND d.is_remainder = 1
+            WHERE c.username = ? AND d.is_remainder = 1
             """,
             folder,
         )
@@ -969,7 +955,7 @@ def verify(cursor) -> None:
                 SELECT d.category_id
                 FROM dbo.dim_category d
                 JOIN dbo.country c ON c.country_id = d.country_id
-                WHERE d.local_code = 12 AND c.name = ?
+                WHERE d.local_code = 12 AND c.username = ?
                 """,
                 folder,
             )
@@ -982,7 +968,7 @@ def verify(cursor) -> None:
         """
         SELECT COUNT(*)
         FROM dbo.transaction_uk t
-        JOIN dbo.app_user p ON p.id = t.app_user_id
+        JOIN dbo.person p ON p.id = t.person_id
         JOIN dbo.center n ON n.center_id = p.center_id
         JOIN dbo.country c ON c.country_id = n.country_id
         WHERE c.country_id <> 2
@@ -995,8 +981,8 @@ def verify(cursor) -> None:
     cursor.execute(
         """
         SELECT u.username, u.number_of_accounts, COUNT(a.account_id)
-        FROM dbo.app_user u
-        JOIN dbo.account a ON a.app_user_id = u.id
+        FROM dbo.person u
+        JOIN dbo.account a ON a.person_id = u.id
         GROUP BY u.id, u.username, u.number_of_accounts
         HAVING u.number_of_accounts <> COUNT(a.account_id)
         """
@@ -1010,29 +996,29 @@ def verify(cursor) -> None:
         """
         SELECT COUNT(*)
         FROM dbo.account a
-        JOIN dbo.app_user u ON u.id = a.app_user_id
-        WHERE u.number_of_accounts IS NULL
+        LEFT JOIN dbo.person p ON p.id = a.person_id
+        WHERE p.id IS NULL
         """
     )
     if int(cursor.fetchone()[0]):
-        raise LoadError("account rows point at a country/center login")
-    print("check accounts only on person logins")
+        raise LoadError("account rows with no person")
+    print("check accounts only on person")
 
     for folder, expected in (("xavier_bosch", 4), ("anton_schins", 1)):
         count, distinct_people = one(
             """
-            SELECT COUNT(*), COUNT(DISTINCT a.app_user_id)
+            SELECT COUNT(*), COUNT(DISTINCT a.person_id)
             FROM dbo.account a
-            JOIN dbo.app_user p ON p.id = a.app_user_id
+            JOIN dbo.person p ON p.id = a.person_id
             WHERE p.username = ?
             """,
             folder,
         )
         if int(count) != expected or int(distinct_people) != 1:
             raise LoadError(
-                f"{folder}: expected {expected} accounts on one app_user_id, got {count}/{distinct_people}"
+                f"{folder}: expected {expected} accounts on one person_id, got {count}/{distinct_people}"
             )
-        print(f"check {folder}: {count} accounts, one app_user_id")
+        print(f"check {folder}: {count} accounts, one person_id")
 
 
 def main() -> None:

@@ -1,7 +1,7 @@
-"""Load ``personal_categories.json`` into ``dbo.category_term`` (app_user_id set).
+"""Load ``personal_categories.json`` into ``dbo.category_term`` (person_id set).
 
 Does not drop tables or reload general (catalog) terms. Run after
-``load_phase_c.py`` so ``dbo.app_user`` and ``dbo.dim_category`` exist.
+``load_phase_c.py`` so ``dbo.person`` and ``dbo.dim_category`` exist.
 
   cd hub
   uv run python scripts/load_personal_categories.py
@@ -132,19 +132,18 @@ def load_personal_terms(cursor, root: Path) -> int:
     cursor.execute(
         """
         SELECT id, username, country_id
-        FROM dbo.app_user
-        WHERE number_of_accounts IS NOT NULL
+        FROM dbo.person
         """
     )
     users: dict[str, tuple[int, int]] = {}
-    for app_user_id, username, country_id in cursor.fetchall():
-        users[str(username)] = (int(app_user_id), int(country_id))
+    for person_id, username, country_id in cursor.fetchall():
+        users[str(username)] = (int(person_id), int(country_id))
 
     rows: list[tuple[int, int, str, int]] = []
     skipped_people: list[str] = []
     skipped_labels: list[str] = []
 
-    cursor.execute("SELECT country_id, name FROM dbo.country")
+    cursor.execute("SELECT country_id, username FROM dbo.country")
     countries = [(int(cid), str(name)) for cid, name in cursor.fetchall()]
     for _country_id, country_name in countries:
         folder = country_folder(country_name) or country_name
@@ -163,7 +162,7 @@ def load_personal_terms(cursor, root: Path) -> int:
                 if found is None:
                     skipped_people.append(str(path))
                     continue
-                app_user_id, user_country_id = found
+                person_id, user_country_id = found
                 for label, terms in payload.items():
                     category_id = _category_id(
                         country_id=user_country_id,
@@ -183,15 +182,15 @@ def load_personal_terms(cursor, root: Path) -> int:
                             raise LoadError(
                                 f"{path}: term exceeds 256 characters: {text[:40]!r}…"
                             )
-                        rows.append((category_id, app_user_id, text, sort_order))
+                        rows.append((category_id, person_id, text, sort_order))
                         sort_order += 1
 
-    cursor.execute("DELETE FROM dbo.category_term WHERE app_user_id IS NOT NULL")
+    cursor.execute("DELETE FROM dbo.category_term WHERE person_id IS NOT NULL")
     if rows:
         cursor.fast_executemany = True
         cursor.executemany(
             """
-            INSERT INTO dbo.category_term (category_id, app_user_id, term, sort_order)
+            INSERT INTO dbo.category_term (category_id, person_id, term, sort_order)
             VALUES (?, ?, ?, ?)
             """,
             rows,
@@ -199,7 +198,7 @@ def load_personal_terms(cursor, root: Path) -> int:
         cursor.fast_executemany = False
 
     if skipped_people:
-        print(f"skipped (no app_user): {len(skipped_people)}")
+        print(f"skipped (no person): {len(skipped_people)}")
         for item in skipped_people:
             print(f"  {item}")
     if skipped_labels:
@@ -220,7 +219,7 @@ def main() -> None:
         conn.rollback()
         raise
     cursor.execute(
-        "SELECT COUNT(*) FROM dbo.category_term WHERE app_user_id IS NOT NULL"
+        "SELECT COUNT(*) FROM dbo.category_term WHERE person_id IS NOT NULL"
     )
     stored = int(cursor.fetchone()[0])
     print(f"personal category_term rows inserted: {count}")

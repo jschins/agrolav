@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -106,7 +105,7 @@ def _seed_dim_category(cursor, country_id: int, categories_path: Path) -> None:
     if term_rows:
         cursor.executemany(
             """
-            INSERT INTO dbo.category_term (category_id, app_user_id, term, sort_order)
+            INSERT INTO dbo.category_term (category_id, person_id, term, sort_order)
             VALUES (?, NULL, ?, ?)
             """,
             term_rows,
@@ -134,7 +133,7 @@ def _create_transaction_table(cursor, *, folder: str, country_id: int) -> str:
             f"""
             CREATE TABLE {table} (
                 transaction_id BIGINT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
-                app_user_id INT NOT NULL,
+                person_id INT NOT NULL,
                 account_id INT NOT NULL,
                 year SMALLINT NOT NULL,
                 bank_id INT NULL,
@@ -148,7 +147,7 @@ def _create_transaction_table(cursor, *, folder: str, country_id: int) -> str:
                 category_id INT NOT NULL,
                 modification SMALLINT NOT NULL CONSTRAINT df_txn_{tag}_mod DEFAULT (-1),
                 hit NVARCHAR(64) NULL,
-                CONSTRAINT fk_txn_{tag}_app_user FOREIGN KEY (app_user_id) REFERENCES dbo.app_user (id),
+                CONSTRAINT fk_txn_{tag}_person FOREIGN KEY (person_id) REFERENCES dbo.person (id),
                 CONSTRAINT fk_txn_{tag}_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id),
                 CONSTRAINT fk_txn_{tag}_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
                 CONSTRAINT fk_txn_{tag}_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
@@ -161,14 +160,14 @@ def _create_transaction_table(cursor, *, folder: str, country_id: int) -> str:
         cursor.execute(
             f"""
             CREATE UNIQUE INDEX ux_txn_{tag}_consolidated
-                ON {table} (app_user_id, year, source_id)
+                ON {table} (person_id, year, source_id)
                 WHERE bank_id IS NULL
             """
         )
         cursor.execute(
             f"""
             CREATE UNIQUE INDEX ux_txn_{tag}_bank
-                ON {table} (app_user_id, year, bank_id, source_id)
+                ON {table} (person_id, year, bank_id, source_id)
                 WHERE bank_id IS NOT NULL
             """
         )
@@ -176,7 +175,7 @@ def _create_transaction_table(cursor, *, folder: str, country_id: int) -> str:
 
 
 def create_country(*, name: str, currency: str) -> dict[str, Any]:
-    """Insert ``dbo.country`` and scaffold the workspace folder + country login."""
+    """Insert ``dbo.country`` and scaffold the workspace folder. Login is the username."""
     from app import user_store
 
     folder = _valid_name(name)
@@ -194,13 +193,18 @@ def create_country(*, name: str, currency: str) -> dict[str, Any]:
     cursor = conn.cursor()
     created_dir = False
     try:
-        cursor.execute("SELECT country_id FROM dbo.country WHERE name = ?", folder)
+        if user_store._sql_username_taken(cursor, folder):
+            raise ValueError(f"Username already used: {folder}")
+        cursor.execute(
+            "SELECT country_id FROM dbo.country WHERE username = ? COLLATE Latin1_General_CI_AI",
+            folder,
+        )
         if cursor.fetchone():
             raise ValueError(f"Country already exists: {folder}")
         cursor.execute("SELECT ISNULL(MAX(country_id), 0) + 1 FROM dbo.country")
         country_id = int(cursor.fetchone()[0])
         cursor.execute(
-            "INSERT INTO dbo.country (country_id, name, currency_default) VALUES (?, ?, ?)",
+            "INSERT INTO dbo.country (country_id, username, currency_default) VALUES (?, ?, ?)",
             country_id,
             folder,
             currency_s,
@@ -215,19 +219,6 @@ def create_country(*, name: str, currency: str) -> dict[str, Any]:
         else:
             categories_path.write_text("{}\n", encoding="utf-8")
         table = _create_transaction_table(cursor, folder=folder, country_id=country_id)
-        today = date.today()
-        cursor.execute(
-            """
-            INSERT INTO dbo.app_user
-                (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
-            VALUES (?, ?, ?, NULL, NULL, ?, ?)
-            """,
-            folder,
-            folder,
-            country_id,
-            today,
-            today,
-        )
         conn.commit()
     except Exception:
         try:
@@ -248,7 +239,7 @@ def create_country(*, name: str, currency: str) -> dict[str, Any]:
 
 
 def create_center(*, name: str, country: str) -> dict[str, Any]:
-    """Insert ``dbo.center`` under an existing country and scaffold the folder + login."""
+    """Insert ``dbo.center`` under an existing country and scaffold the folder. Login is the username."""
     from app import user_store
 
     folder = _valid_name(name)
@@ -271,40 +262,34 @@ def create_center(*, name: str, country: str) -> dict[str, Any]:
     cursor = conn.cursor()
     created_dir = False
     try:
-        cursor.execute("SELECT country_id FROM dbo.country WHERE name = ?", resolved)
+        if user_store._sql_username_taken(cursor, folder):
+            raise ValueError(f"Username already used: {folder}")
+        cursor.execute(
+            "SELECT country_id FROM dbo.country WHERE username = ? COLLATE Latin1_General_CI_AI",
+            resolved,
+        )
         row = cursor.fetchone()
         if row is None:
             raise ValueError(f"Unknown country: {resolved}")
         country_id = int(row[0])
         cursor.execute(
-            "SELECT center_id FROM dbo.center WHERE country_id = ? AND name = ?",
+            """
+            SELECT center_id FROM dbo.center
+            WHERE country_id = ? AND username = ? COLLATE Latin1_General_CI_AI
+            """,
             country_id,
             folder,
         )
         if cursor.fetchone():
             raise ValueError(f"Center already exists: {folder}")
         cursor.execute(
-            "INSERT INTO dbo.center (country_id, name) OUTPUT INSERTED.center_id VALUES (?, ?)",
+            "INSERT INTO dbo.center (country_id, username) OUTPUT INSERTED.center_id VALUES (?, ?)",
             country_id,
             folder,
         )
         center_id = int(cursor.fetchone()[0])
         dest.mkdir(parents=True, exist_ok=False)
         created_dir = True
-        today = date.today()
-        cursor.execute(
-            """
-            INSERT INTO dbo.app_user
-                (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
-            VALUES (?, ?, ?, ?, NULL, ?, ?)
-            """,
-            folder,
-            folder,
-            country_id,
-            center_id,
-            today,
-            today,
-        )
         conn.commit()
     except Exception:
         try:

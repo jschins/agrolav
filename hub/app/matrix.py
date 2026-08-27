@@ -101,18 +101,45 @@ def person_totals(pack: PersonPack) -> dict[str, str]:
 
 
 def person_current_balance(pack: PersonPack) -> str | None:
-    """Sum of ``account_balances`` in category_totals.json, or None if absent."""
+    """Sum of ``dbo.account.balance`` for this person (one IBAN when that view is selected)."""
+    from app import user_store
+
+    accounts = user_store.list_accounts_for_username(pack.folder_name)
+    if accounts:
+        view = pack.data_dir.name
+        if view != pack.year:
+            compact = view.replace(" ", "")
+            accounts = [
+                acc
+                for acc in accounts
+                if str(acc.get("iban") or "").replace(" ", "") == compact
+            ]
+        cents = 0
+        found = False
+        for acc in accounts:
+            text = str(acc.get("balance") or "").strip()
+            if not text:
+                continue
+            try:
+                cents += round(float(text) * 100)
+            except ValueError:
+                continue
+            found = True
+        if found:
+            return f"{cents / 100:.2f}"
+        return None
+
     from app.core.categorize import _load_json_object
     import app.paths as paths
 
     with bind_person(pack):
         data = _load_json_object(paths.CATEGORY_TOTALS_PATH)
-    accounts = data.get("account_balances")
-    if not isinstance(accounts, list) or not accounts:
+    json_accounts = data.get("account_balances")
+    if not isinstance(json_accounts, list) or not json_accounts:
         return None
     cents = 0
     found = False
-    for acc in accounts:
+    for acc in json_accounts:
         if not isinstance(acc, dict):
             continue
         text = str(acc.get("balance") or "").strip()

@@ -115,7 +115,7 @@ def _booked_on(value: Any) -> date | None:
 class _BoundScope:
     table: str
     username: str
-    app_user_id: int
+    person_id: int
     year: int
     bank_key: int
     account_id: int | None
@@ -123,31 +123,31 @@ class _BoundScope:
     conn: Any
 
 
-def _account_id_for_folder(cursor, app_user_id: int, folder: str) -> int | None:
+def _account_id_for_folder(cursor, person_id: int, folder: str) -> int | None:
     compact = folder.replace(" ", "")
     cursor.execute(
-        "SELECT account_id, iban, account_name FROM dbo.account WHERE app_user_id = ?",
-        app_user_id,
+        "SELECT account_id, iban FROM dbo.account WHERE person_id = ?",
+        person_id,
     )
-    for account_id, iban, name in cursor.fetchall():
-        ib = str(iban or "").replace(" ", "")
+    rows = [(int(account_id), str(iban or "").replace(" ", "")) for account_id, iban in cursor.fetchall()]
+    for account_id, ib in rows:
+        if ib and ib == compact:
+            return account_id
+    for account_id, ib in rows:
         if ib and ib in compact:
-            return int(account_id)
-        label = str(name or "").strip()
-        if label and label in folder:
-            return int(account_id)
+            return account_id
     return None
 
 
 def _bound_where(bound: _BoundScope, alias: str = "t") -> tuple[str, list[Any]]:
-    sql = (
-        f"{alias}.app_user_id = ? AND {alias}.year = ? "
-        f"AND COALESCE({alias}.bank_id, -1) = ?"
-    )
-    params: list[Any] = [bound.app_user_id, bound.year, bound.bank_key]
+    sql = f"{alias}.person_id = ? AND {alias}.year = ?"
+    params: list[Any] = [bound.person_id, bound.year]
     if bound.account_id is not None:
         sql += f" AND {alias}.account_id = ?"
         params.append(bound.account_id)
+        return sql, params
+    sql += f" AND COALESCE({alias}.bank_id, -1) = ?"
+    params.append(bound.bank_key)
     return sql, params
 
 
@@ -173,40 +173,43 @@ def _open_bound_scope() -> _BoundScope | None:
         return None
     cursor.execute(
         """
-        SELECT id FROM dbo.app_user
-        WHERE username = ? AND number_of_accounts IS NOT NULL
+        SELECT id FROM dbo.person
+        WHERE username = ?
         """,
         username,
     )
     row = cursor.fetchone()
     if row is None:
-        print(f"sql replica: no app_user {username!r}")
+        print(f"sql replica: no person {username!r}")
         return None
-    app_user_id = int(row[0])
+    person_id = int(row[0])
 
     bank_id: int | None = None
     account_id: int | None = None
     if bank_folder:
-        try:
-            from app.core.bank_csv import format_for_bank
+        account_id = _account_id_for_folder(cursor, person_id, bank_folder)
+        if account_id is None:
+            try:
+                from app.core.bank_csv import format_for_bank
 
-            fmt = format_for_bank(bank_folder)
-            cursor.execute(
-                "SELECT bank_id FROM dbo.bank WHERE file_format = ?",
-                fmt,
-            )
-            bank_row = cursor.fetchone()
-            if bank_row is None:
-                print(f"sql replica: no bank for folder {bank_folder!r} format {fmt!r}")
+                fmt = format_for_bank(bank_folder)
+                cursor.execute(
+                    "SELECT bank_id FROM dbo.bank WHERE file_format = ?",
+                    fmt,
+                )
+                bank_row = cursor.fetchone()
+                if bank_row is None:
+                    print(f"sql replica: no bank for folder {bank_folder!r} format {fmt!r}")
+                    return None
+                bank_id = int(bank_row[0])
+            except ValueError:
+                print(f"sql replica: no account for folder {bank_folder!r}")
                 return None
-            bank_id = int(bank_row[0])
-        except ValueError:
-            account_id = _account_id_for_folder(cursor, app_user_id, bank_folder)
 
     return _BoundScope(
         table=table,
         username=username,
-        app_user_id=app_user_id,
+        person_id=person_id,
         year=year,
         bank_key=-1 if bank_id is None else bank_id,
         account_id=account_id,
@@ -312,10 +315,10 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
             SELECT d.local_code, d.category_id, d.is_remainder
             FROM dbo.dim_category d
             JOIN dbo.country c ON c.country_id = d.country_id
-            JOIN dbo.app_user u ON u.country_id = c.country_id
+            JOIN dbo.person u ON u.country_id = c.country_id
             WHERE u.id = ?
             """,
-            bound.app_user_id,
+            bound.person_id,
         )
         by_code: dict[int, int] = {}
         remainder_id: int | None = None
@@ -332,7 +335,7 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
         sql = f"""
             UPDATE {bound.table}
             SET category_id = ?, modification = ?, hit = ?, description = ?
-            WHERE app_user_id = ? AND year = ? AND source_id = ?
+            WHERE person_id = ? AND year = ? AND source_id = ?
               AND COALESCE(bank_id, -1) = ?{extra}
             """
         params: list[tuple[Any, ...]] = []
@@ -357,7 +360,7 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
                     modification,
                     hit_s,
                     desc_s,
-                    bound.app_user_id,
+                    bound.person_id,
                     bound.year,
                     source_id,
                     bound.bank_key,
@@ -379,7 +382,7 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
         print(f"sql replica: failed to update bookings: {exc}")
 
 
-def _remainder_id(cursor, app_user_id: int) -> int | None:
+def _remainder_id(cursor, person_id: int) -> int | None:
     from app.core.categorize import DEFAULT_CATEGORY
 
     cursor.execute(
@@ -387,10 +390,10 @@ def _remainder_id(cursor, app_user_id: int) -> int | None:
         SELECT d.local_code, d.category_id, d.is_remainder
         FROM dbo.dim_category d
         JOIN dbo.country c ON c.country_id = d.country_id
-        JOIN dbo.app_user u ON u.country_id = c.country_id
+        JOIN dbo.person u ON u.country_id = c.country_id
         WHERE u.id = ?
         """,
-        app_user_id,
+        person_id,
     )
     by_code: dict[int, int] = {}
     remainder_id: int | None = None
@@ -401,16 +404,16 @@ def _remainder_id(cursor, app_user_id: int) -> int | None:
     return remainder_id or by_code.get(DEFAULT_CATEGORY)
 
 
-def _refresh_account_count(cursor, app_user_id: int) -> int:
+def _refresh_account_count(cursor, person_id: int) -> int:
     cursor.execute(
-        "SELECT COUNT(*) FROM dbo.account WHERE app_user_id = ?",
-        app_user_id,
+        "SELECT COUNT(*) FROM dbo.account WHERE person_id = ?",
+        person_id,
     )
     count = int(cursor.fetchone()[0])
     cursor.execute(
-        "UPDATE dbo.app_user SET number_of_accounts = ? WHERE id = ?",
+        "UPDATE dbo.person SET number_of_accounts = ? WHERE id = ?",
         count,
-        app_user_id,
+        person_id,
     )
     return count
 
@@ -444,20 +447,20 @@ def ensure_bound_accounts(
             bound.cursor.execute(
                 """
                 SELECT account_id FROM dbo.account
-                WHERE app_user_id = ? AND iban = ?
+                WHERE person_id = ? AND iban = ?
                 """,
-                bound.app_user_id,
+                bound.person_id,
                 iban,
             )
             row = bound.cursor.fetchone()
             if row is None:
                 bound.cursor.execute(
                     """
-                    INSERT INTO dbo.account (app_user_id, iban, account_name, format, balance)
+                    INSERT INTO dbo.account (person_id, iban, account_name, format, balance)
                     OUTPUT INSERTED.account_id
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    bound.app_user_id,
+                    bound.person_id,
                     iban,
                     name or iban,
                     fmt,
@@ -478,7 +481,7 @@ def ensure_bound_accounts(
                     account_id,
                 )
             out.append({"account_id": account_id, "iban": iban, "account_name": name or iban})
-        _refresh_account_count(bound.cursor, bound.app_user_id)
+        _refresh_account_count(bound.cursor, bound.person_id)
         bound.conn.commit()
         return out
     except Exception as exc:  # noqa: BLE001
@@ -493,7 +496,7 @@ def ensure_bound_accounts(
 def _resolve_account_id(
     cursor,
     *,
-    app_user_id: int,
+    person_id: int,
     source_id: str,
     account_id: int | None,
 ) -> int | None:
@@ -502,10 +505,10 @@ def _resolve_account_id(
     cursor.execute(
         """
         SELECT account_id FROM dbo.account
-        WHERE app_user_id = ?
+        WHERE person_id = ?
         ORDER BY account_id
         """,
-        app_user_id,
+        person_id,
     )
     ids = [int(row[0]) for row in cursor.fetchall()]
     if not ids:
@@ -534,7 +537,7 @@ def ingest_bound_transactions(
         bound = _open_bound_scope()
         if bound is None:
             return 0
-        remainder_id = _remainder_id(bound.cursor, bound.app_user_id)
+        remainder_id = _remainder_id(bound.cursor, bound.person_id)
         if remainder_id is None:
             print(f"sql replica: no remainder category for {bound.username!r}")
             return 0
@@ -548,7 +551,7 @@ def ingest_bound_transactions(
         existing = {str(row[0]) for row in bound.cursor.fetchall()}
         sql = f"""
             INSERT INTO {bound.table} (
-                app_user_id, account_id, year, bank_id, source_id, amount,
+                person_id, account_id, year, bank_id, source_id, amount,
                 bank_type, counterparty_name, counterparty_iban, description,
                 booked_on, category_id, modification, hit
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -566,7 +569,7 @@ def ingest_bound_transactions(
                 continue
             acc_id = account_id or bound.account_id or _resolve_account_id(
                 bound.cursor,
-                app_user_id=bound.app_user_id,
+                person_id=bound.person_id,
                 source_id=source_id,
                 account_id=None,
             )
@@ -576,7 +579,7 @@ def ingest_bound_transactions(
             iban = str(item.get("iban") or "").strip()[:64] or None
             params.append(
                 (
-                    bound.app_user_id,
+                    bound.person_id,
                     acc_id,
                     bound.year,
                     bank_id,

@@ -1531,7 +1531,7 @@ _CREATE_COUNTRY_HTML = """<!DOCTYPE html>
 <body>
   <main>
     <h1>Create country</h1>
-    <p class="lead">Writes <code>dbo.country</code> and a workspace folder. Login password equals the name.</p>
+    <p class="lead">Writes <code>dbo.country</code> and a workspace folder. Login password equals the username.</p>
     <table>
       <tr><th>name</th><td><input id="name" type="text" placeholder="e.g. belgie"/></td></tr>
       <tr><th>default currency</th><td><input id="currency" type="text" value="EUR" maxlength="3"/></td></tr>
@@ -1602,7 +1602,7 @@ _CREATE_CENTER_HTML = """<!DOCTYPE html>
 <body>
   <main>
     <h1>Create center</h1>
-    <p class="lead">Writes <code>dbo.center</code> under a country. Login password equals the name.</p>
+    <p class="lead">Writes <code>dbo.center</code> under a country. Login password equals the username.</p>
     <table>
       <tr><th>country</th><td><select id="country"></select></td></tr>
       <tr><th>name</th><td><input id="name" type="text" placeholder="e.g. antwerpen"/></td></tr>

@@ -1,4 +1,4 @@
-"""Login users: SQL Server ``dbo.app_user`` when ``HUB_DATABASE_URL`` is set, else SQLite."""
+"""Login users: SQL Server country / center / person when ``HUB_DATABASE_URL`` is set, else SQLite."""
 from __future__ import annotations
 
 import os
@@ -41,17 +41,51 @@ CREATE TABLE IF NOT EXISTS users (
 );
 """
 
-_SQL_USER_SELECT = """
+_SQL_PERSON_SELECT = """
 SELECT
-    u.id,
-    u.username,
-    u.title,
-    u.number_of_accounts,
-    c.name AS country,
-    n.name AS center
-FROM dbo.app_user u
-INNER JOIN dbo.country c ON c.country_id = u.country_id
-LEFT JOIN dbo.center n ON n.center_id = u.center_id
+    p.id,
+    p.username COLLATE Latin1_General_CI_AI AS username,
+    p.title,
+    p.number_of_accounts,
+    c.username COLLATE Latin1_General_CI_AI AS country,
+    n.username COLLATE Latin1_General_CI_AI AS center,
+    p.username COLLATE Latin1_General_CI_AI AS person
+FROM dbo.person p
+INNER JOIN dbo.country c ON c.country_id = p.country_id
+INNER JOIN dbo.center n ON n.center_id = p.center_id
+"""
+
+_SQL_CENTER_SELECT = """
+SELECT
+    n.center_id AS id,
+    n.username COLLATE Latin1_General_CI_AI AS username,
+    n.username COLLATE Latin1_General_CI_AI AS title,
+    CAST(NULL AS INT) AS number_of_accounts,
+    c.username COLLATE Latin1_General_CI_AI AS country,
+    n.username COLLATE Latin1_General_CI_AI AS center,
+    CAST(N'' AS NVARCHAR(128)) COLLATE Latin1_General_CI_AI AS person
+FROM dbo.center n
+INNER JOIN dbo.country c ON c.country_id = n.country_id
+"""
+
+_SQL_COUNTRY_SELECT = """
+SELECT
+    c.country_id AS id,
+    c.username COLLATE Latin1_General_CI_AI AS username,
+    c.username COLLATE Latin1_General_CI_AI AS title,
+    CAST(NULL AS INT) AS number_of_accounts,
+    c.username COLLATE Latin1_General_CI_AI AS country,
+    CAST(NULL AS NVARCHAR(64)) COLLATE Latin1_General_CI_AI AS center,
+    CAST(N'' AS NVARCHAR(128)) COLLATE Latin1_General_CI_AI AS person
+FROM dbo.country c
+"""
+
+_SQL_USER_SELECT = f"""
+{_SQL_PERSON_SELECT}
+UNION ALL
+{_SQL_CENTER_SELECT}
+UNION ALL
+{_SQL_COUNTRY_SELECT}
 """
 
 
@@ -90,7 +124,7 @@ def users_db_path() -> Path:
 
 def store_label() -> str:
     if _use_sqlserver():
-        return "sqlserver:dbo.app_user"
+        return "sqlserver:dbo.person"
     return str(users_db_path())
 
 
@@ -299,7 +333,10 @@ def _sql_country_id(cursor, folder: str) -> int | None:
     name = country_folder(folder) or (folder or "").strip()
     if not name:
         return None
-    cursor.execute("SELECT country_id FROM dbo.country WHERE name = ?", (name,))
+    cursor.execute(
+        "SELECT country_id FROM dbo.country WHERE username = ? COLLATE Latin1_General_CI_AI",
+        (name,),
+    )
     row = cursor.fetchone()
     return int(row[0]) if row else None
 
@@ -309,11 +346,46 @@ def _sql_center_id(cursor, country_id: int, folder: str) -> int | None:
     if not name:
         return None
     cursor.execute(
-        "SELECT center_id FROM dbo.center WHERE country_id = ? AND name = ?",
+        """
+        SELECT center_id FROM dbo.center
+        WHERE country_id = ? AND username = ? COLLATE Latin1_General_CI_AI
+        """,
         (country_id, name),
     )
     row = cursor.fetchone()
     return int(row[0]) if row else None
+
+
+def _sql_username_taken(cursor, username: str, *, except_person_id: int | None = None) -> bool:
+    name = (username or "").strip()
+    if not name:
+        return False
+    cursor.execute(
+        "SELECT 1 FROM dbo.country WHERE username = ? COLLATE Latin1_General_CI_AI",
+        (name,),
+    )
+    if cursor.fetchone():
+        return True
+    cursor.execute(
+        "SELECT 1 FROM dbo.center WHERE username = ? COLLATE Latin1_General_CI_AI",
+        (name,),
+    )
+    if cursor.fetchone():
+        return True
+    if except_person_id is None:
+        cursor.execute(
+            "SELECT 1 FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (name,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT 1 FROM dbo.person
+            WHERE username = ? COLLATE Latin1_General_CI_AI AND id <> ?
+            """,
+            (name, except_person_id),
+        )
+    return cursor.fetchone() is not None
 
 
 def _sqlite_open_readonly() -> sqlite3.Connection | None:
@@ -327,10 +399,10 @@ def _sqlite_open_readonly() -> sqlite3.Connection | None:
 
 def _copy_sqlite_into_sqlserver_if_empty() -> int:
     cursor = _SQL.cursor()
-    cursor.execute("SELECT OBJECT_ID(N'dbo.app_user', N'U')")
+    cursor.execute("SELECT OBJECT_ID(N'dbo.person', N'U')")
     if cursor.fetchone()[0] is None:
         return 0
-    count = int(cursor.execute("SELECT COUNT(*) FROM dbo.app_user").fetchone()[0])
+    count = int(cursor.execute("SELECT COUNT(*) FROM dbo.person").fetchone()[0])
     if count:
         return 0
     src = _sqlite_open_readonly()
@@ -360,28 +432,26 @@ def _copy_sqlite_into_sqlserver_if_empty() -> int:
             if country_id is None:
                 continue
             center_id = _sql_center_id(cursor, country_id, center) if center else None
-            if person and center_id is None:
+            if not person or center_id is None:
                 continue
-            number_of_accounts = 0 if person else None
             cursor.execute(
                 """
-                INSERT INTO dbo.app_user
+                INSERT INTO dbo.person
                     (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, 0, ?, ?)
                 """,
                 (
                     username,
-                    _empty_to_null(title),
+                    title.strip() or username,
                     country_id,
                     center_id,
-                    number_of_accounts,
                     created,
                     updated,
                 ),
             )
             inserted += 1
         _SQL.commit()
-        print(f"copied {inserted} login(s) from SQLite into dbo.app_user")
+        print(f"copied {inserted} person(s) from SQLite into dbo.person")
         return inserted
     finally:
         src.close()
@@ -519,10 +589,12 @@ def init_user_store() -> str:
         if _use_sqlserver():
             conn = _sql_connect()
             cursor = conn.cursor()
-            cursor.execute("SELECT OBJECT_ID(N'dbo.app_user', N'U')")
+            cursor.execute("SELECT OBJECT_ID(N'dbo.person', N'U')")
             if cursor.fetchone()[0] is None:
                 raise RuntimeError(
-                    "dbo.app_user missing. Run `uv run python scripts/load_phase_c.py` from hub/."
+                    "dbo.person missing. Stop the hub and run "
+                    "`uv run python scripts/migrate_person.py` from hub/ "
+                    "(fresh empty DB: load_phase_c.py)."
                 )
         else:
             _sqlite_connect()
@@ -537,12 +609,17 @@ def find_user(username: str) -> dict[str, Any] | None:
         init_user_store()
         if _use_sqlserver():
             cursor = _SQL.cursor()
-            cursor.execute(
-                _SQL_USER_SELECT + " WHERE u.username = ?",
-                (needle,),
-            )
-            raw = cursor.fetchone()
-            row = _sql_cursor_row(cursor, raw) if raw else None
+            row = None
+            for sql in (
+                _SQL_PERSON_SELECT + " WHERE p.username = ? COLLATE Latin1_General_CI_AI",
+                _SQL_CENTER_SELECT + " WHERE n.username = ? COLLATE Latin1_General_CI_AI",
+                _SQL_COUNTRY_SELECT + " WHERE c.username = ? COLLATE Latin1_General_CI_AI",
+            ):
+                cursor.execute(sql, (needle,))
+                raw = cursor.fetchone()
+                if raw:
+                    row = _sql_cursor_row(cursor, raw)
+                    break
         else:
             row = _SQLITE.execute(
                 "SELECT * FROM users WHERE username = ? COLLATE NOCASE",
@@ -571,7 +648,9 @@ def list_users() -> list[dict[str, Any]]:
         init_user_store()
         if _use_sqlserver():
             cursor = _SQL.cursor()
-            cursor.execute(_SQL_USER_SELECT + " ORDER BY u.username")
+            cursor.execute(
+                "SELECT * FROM (" + _SQL_USER_SELECT + ") u ORDER BY u.username"
+            )
             rows = [_sql_cursor_row(cursor, raw) for raw in cursor.fetchall()]
         else:
             rows = _SQLITE.execute(
@@ -601,32 +680,40 @@ def upsert_user(
         init_user_store()
         if _use_sqlserver():
             cursor = _SQL.cursor()
+            if not person_s:
+                raise ValueError("SQL Server person login requires a person folder")
             country_id = _sql_country_id(cursor, country_s or name)
             if country_id is None:
                 raise ValueError(f"Unknown country {country_s or name!r}")
             center_id = _sql_center_id(cursor, country_id, center_s or "") if center_s else None
-            if person_s and center_id is None:
+            if center_id is None:
                 raise ValueError(f"Unknown center {center_s!r} for country_id={country_id}")
-            number_of_accounts = 0 if person_s else None
-            cursor.execute("SELECT id FROM dbo.app_user WHERE username = ?", (name,))
+            cursor.execute(
+                "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+                (name,),
+            )
             row = cursor.fetchone()
-            if row:
+            person_id = int(row[0]) if row else None
+            if _sql_username_taken(cursor, name, except_person_id=person_id):
+                raise ValueError(f"Username already used: {name}")
+            title_value = (title_s or name)
+            if person_id is not None:
                 cursor.execute(
                     """
-                    UPDATE dbo.app_user
+                    UPDATE dbo.person
                     SET title = ?, country_id = ?, center_id = ?
                     WHERE id = ?
                     """,
-                    (title_s, country_id, center_id, int(row[0])),
+                    (title_value, country_id, center_id, person_id),
                 )
             else:
                 cursor.execute(
                     """
-                    INSERT INTO dbo.app_user
+                    INSERT INTO dbo.person
                         (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, 0, ?, ?)
                     """,
-                    (name, title_s, country_id, center_id, number_of_accounts, today, today),
+                    (name, title_value, country_id, center_id, today, today),
                 )
             _SQL.commit()
         else:
@@ -690,12 +777,15 @@ def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:
         init_user_store()
         if _use_sqlserver():
             cursor = _SQL.cursor()
-            cursor.execute("SELECT id FROM dbo.app_user WHERE username = ?", (name,))
+            cursor.execute(
+                "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+                (name,),
+            )
             row = cursor.fetchone()
             if not row:
                 return None
             cursor.execute(
-                "UPDATE dbo.account SET format = ? WHERE app_user_id = ?",
+                "UPDATE dbo.account SET format = ? WHERE person_id = ?",
                 (fmt, int(row[0])),
             )
             _SQL.commit()
@@ -722,12 +812,15 @@ def set_user_updated_at(*, username: str, date: str | None) -> dict[str, Any] | 
         init_user_store()
         if _use_sqlserver():
             cursor = _SQL.cursor()
-            cursor.execute("SELECT id FROM dbo.app_user WHERE username = ?", (name,))
+            cursor.execute(
+                "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+                (name,),
+            )
             row = cursor.fetchone()
             if not row:
                 return None
             cursor.execute(
-                "UPDATE dbo.app_user SET updated_at = ? WHERE id = ?",
+                "UPDATE dbo.person SET updated_at = ? WHERE id = ?",
                 (iso, int(row[0])),
             )
             _SQL.commit()
@@ -746,7 +839,7 @@ def set_user_updated_at(*, username: str, date: str | None) -> dict[str, Any] | 
 
 
 def list_accounts_for_username(username: str) -> list[dict[str, str]]:
-    """IBANs and names for a person pack (``number_of_accounts`` rows)."""
+    """IBANs (and balances) for a person pack."""
     name = (username or "").strip()
     if not name or not _use_sqlserver():
         return []
@@ -755,16 +848,16 @@ def list_accounts_for_username(username: str) -> list[dict[str, str]]:
         cursor = _SQL.cursor()
         cursor.execute(
             """
-            SELECT a.account_name, a.iban
+            SELECT a.iban, a.balance
             FROM dbo.account a
-            JOIN dbo.app_user u ON u.id = a.app_user_id
-            WHERE u.username = ?
+            JOIN dbo.person u ON u.id = a.person_id
+            WHERE u.username = ? COLLATE Latin1_General_CI_AI
             ORDER BY a.account_id
             """,
             (name,),
         )
         return [
-            {"account_name": str(row[0] or "").strip(), "iban": str(row[1] or "").strip()}
+            {"iban": str(row[0] or "").strip(), "balance": str(row[1] if row[1] is not None else "0")}
             for row in cursor.fetchall()
         ]
 
@@ -777,10 +870,9 @@ def upload_token_by_person_center() -> dict[tuple[str, str], str]:
             cursor = _SQL.cursor()
             cursor.execute(
                 """
-                SELECT u.username, n.name
-                FROM dbo.app_user u
-                JOIN dbo.center n ON n.center_id = u.center_id
-                WHERE u.number_of_accounts IS NOT NULL
+                SELECT p.username, n.username
+                FROM dbo.person p
+                JOIN dbo.center n ON n.center_id = p.center_id
                 """
             )
             rows = cursor.fetchall()

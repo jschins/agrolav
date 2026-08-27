@@ -2,8 +2,20 @@
 -- Drops and recreates these tables inside database agrolav (does not DROP
 -- DATABASE). Hub writes stay on JSON until cutover.
 -- Run via hub/scripts/load_phase_c.py.
+-- Live databases already loaded: run hub/sql/migrate_person.sql instead
+-- (load_phase_c.py would wipe bookings).
 -- To empty tables in SSMS without dropping the database: empty_agrolav.sql.
+--
+-- Logins:
+--   dbo.country.username  — country folder (password = username)
+--   dbo.center.username   — center folder, unique across all countries
+--   dbo.person.username   — person folder
+-- Usernames must not overlap the three tables (enforced in the hub, not SQL).
 
+IF OBJECT_ID(N'dbo.enable_account', N'U') IS NOT NULL DROP TABLE dbo.enable_account;
+IF OBJECT_ID(N'dbo.enable_redirect', N'U') IS NOT NULL DROP TABLE dbo.enable_redirect;
+IF OBJECT_ID(N'dbo.private_key', N'U') IS NOT NULL DROP TABLE dbo.private_key;
+IF OBJECT_ID(N'dbo.enable_connection', N'U') IS NOT NULL DROP TABLE dbo.enable_connection;
 IF OBJECT_ID(N'dbo.account_balance_file', N'U') IS NOT NULL DROP TABLE dbo.account_balance_file;
 IF OBJECT_ID(N'dbo.account_balance', N'U') IS NOT NULL DROP TABLE dbo.account_balance;
 IF OBJECT_ID(N'dbo.category_total', N'U') IS NOT NULL DROP TABLE dbo.category_total;
@@ -17,15 +29,19 @@ IF OBJECT_ID(N'dbo.account', N'U') IS NOT NULL DROP TABLE dbo.account;
 IF OBJECT_ID(N'dbo.app_user', N'U') IS NOT NULL DROP TABLE dbo.app_user;
 IF OBJECT_ID(N'dbo.person', N'U') IS NOT NULL DROP TABLE dbo.person;
 IF OBJECT_ID(N'dbo.center', N'U') IS NOT NULL DROP TABLE dbo.center;
+IF OBJECT_ID(N'dbo.type_rule', N'U') IS NOT NULL DROP TABLE dbo.type_rule;
+IF OBJECT_ID(N'dbo.table_header_term', N'U') IS NOT NULL DROP TABLE dbo.table_header_term;
+IF OBJECT_ID(N'dbo.bank_modality', N'U') IS NOT NULL DROP TABLE dbo.bank_modality;
+IF OBJECT_ID(N'dbo.hub_ip', N'U') IS NOT NULL DROP TABLE dbo.hub_ip;
 IF OBJECT_ID(N'dbo.dim_category', N'U') IS NOT NULL DROP TABLE dbo.dim_category;
 IF OBJECT_ID(N'dbo.bank', N'U') IS NOT NULL DROP TABLE dbo.bank;
 IF OBJECT_ID(N'dbo.country', N'U') IS NOT NULL DROP TABLE dbo.country;
 
 CREATE TABLE dbo.country (
     country_id INT NOT NULL PRIMARY KEY,
-    name NVARCHAR(32) NOT NULL,
+    username NVARCHAR(32) NOT NULL,
     currency_default CHAR(3) NOT NULL,
-    CONSTRAINT ux_country_name UNIQUE (name)
+    CONSTRAINT ux_country_username UNIQUE (username)
 );
 
 CREATE TABLE dbo.bank (
@@ -53,63 +69,57 @@ CREATE TABLE dbo.dim_category (
 CREATE TABLE dbo.center (
     center_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
     country_id INT NOT NULL,
-    name NVARCHAR(64) NOT NULL,
+    username NVARCHAR(64) NOT NULL,
     CONSTRAINT fk_center_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
-    CONSTRAINT ux_center_name UNIQUE (country_id, name)
+    CONSTRAINT ux_center_username UNIQUE (username)
 );
 
-
-CREATE TABLE dbo.app_user (
+CREATE TABLE dbo.person (
     id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
     username NVARCHAR(128) COLLATE Latin1_General_CI_AI NOT NULL,
-    title NVARCHAR(256) NULL,
+    title NVARCHAR(256) NOT NULL,
     country_id INT NOT NULL,
-    center_id INT NULL,
-    number_of_accounts INT NULL,
+    center_id INT NOT NULL,
+    number_of_accounts INT NOT NULL CONSTRAINT df_person_accounts DEFAULT (0),
     created_at DATE NOT NULL,
     updated_at DATE NOT NULL,
-    CONSTRAINT fk_app_user_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
-    CONSTRAINT fk_app_user_center FOREIGN KEY (center_id) REFERENCES dbo.center (center_id),
-    CONSTRAINT ck_app_user_pack CHECK (
-        number_of_accounts IS NULL
-        OR (center_id IS NOT NULL AND number_of_accounts >= 0)
-    )
+    CONSTRAINT fk_person_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
+    CONSTRAINT fk_person_center FOREIGN KEY (center_id) REFERENCES dbo.center (center_id),
+    CONSTRAINT ck_person_accounts CHECK (number_of_accounts >= 0)
 );
-CREATE UNIQUE INDEX ux_app_user_username ON dbo.app_user (username);
+CREATE UNIQUE INDEX ux_person_username ON dbo.person (username);
 
--- number_of_accounts NULL  → country login (center_id NULL) or center login (center_id set)
--- number_of_accounts NOT NULL → person pack (username is the person folder)
 -- format lives on dbo.account (bank csv / secret / excel), not on the login
 
 CREATE TABLE dbo.account (
     account_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
-    app_user_id INT NOT NULL,
+    person_id INT NOT NULL,
     iban NVARCHAR(64) NOT NULL,
     account_name NVARCHAR(64) NOT NULL,
     format NVARCHAR(64) NULL,
     balance DECIMAL(18, 2) NOT NULL CONSTRAINT df_account_balance DEFAULT (0),
     last_booked DATE NULL,
-    CONSTRAINT fk_account_app_user FOREIGN KEY (app_user_id) REFERENCES dbo.app_user (id),
-    CONSTRAINT ux_account_iban UNIQUE (app_user_id, iban)
+    CONSTRAINT fk_account_person FOREIGN KEY (person_id) REFERENCES dbo.person (id),
+    CONSTRAINT ux_account_iban UNIQUE (person_id, iban)
 );
 
 CREATE TABLE dbo.category_term (
     term_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
     category_id INT NOT NULL,
-    app_user_id INT NULL,
+    person_id INT NULL,
     term NVARCHAR(256) NOT NULL,
     sort_order INT NOT NULL,
     CONSTRAINT fk_category_term_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
-    CONSTRAINT fk_category_term_app_user FOREIGN KEY (app_user_id) REFERENCES dbo.app_user (id)
+    CONSTRAINT fk_category_term_person FOREIGN KEY (person_id) REFERENCES dbo.person (id)
 );
 
 CREATE UNIQUE INDEX ux_category_term_catalog
     ON dbo.category_term (category_id, term)
-    WHERE app_user_id IS NULL;
+    WHERE person_id IS NULL;
 
 CREATE UNIQUE INDEX ux_category_term_personal
-    ON dbo.category_term (category_id, app_user_id, term)
-    WHERE app_user_id IS NOT NULL;
+    ON dbo.category_term (category_id, person_id, term)
+    WHERE person_id IS NOT NULL;
 
 CREATE TABLE dbo.type_abbreviation (
     country_id INT NOT NULL,
@@ -123,7 +133,7 @@ CREATE TABLE dbo.type_abbreviation (
 -- country's hundred-block (NL 100-199, UK 200-299).
 CREATE TABLE dbo.transaction_nederland (
     transaction_id BIGINT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
-    app_user_id INT NOT NULL,
+    person_id INT NOT NULL,
     account_id INT NOT NULL,
     year SMALLINT NOT NULL,
     bank_id INT NULL,
@@ -137,7 +147,7 @@ CREATE TABLE dbo.transaction_nederland (
     category_id INT NOT NULL,
     modification SMALLINT NOT NULL CONSTRAINT df_txn_nl_mod DEFAULT (-1),
     hit NVARCHAR(64) NULL,
-    CONSTRAINT fk_txn_nl_app_user FOREIGN KEY (app_user_id) REFERENCES dbo.app_user (id),
+    CONSTRAINT fk_txn_nl_person FOREIGN KEY (person_id) REFERENCES dbo.person (id),
     CONSTRAINT fk_txn_nl_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id),
     CONSTRAINT fk_txn_nl_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
     CONSTRAINT fk_txn_nl_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
@@ -147,16 +157,16 @@ CREATE TABLE dbo.transaction_nederland (
 );
 
 CREATE UNIQUE INDEX ux_txn_nl_consolidated
-    ON dbo.transaction_nederland (app_user_id, year, source_id)
+    ON dbo.transaction_nederland (person_id, year, source_id)
     WHERE bank_id IS NULL;
 
 CREATE UNIQUE INDEX ux_txn_nl_bank
-    ON dbo.transaction_nederland (app_user_id, year, bank_id, source_id)
+    ON dbo.transaction_nederland (person_id, year, bank_id, source_id)
     WHERE bank_id IS NOT NULL;
 
 CREATE TABLE dbo.transaction_uk (
     transaction_id BIGINT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
-    app_user_id INT NOT NULL,
+    person_id INT NOT NULL,
     account_id INT NOT NULL,
     year SMALLINT NOT NULL,
     bank_id INT NULL,
@@ -170,7 +180,7 @@ CREATE TABLE dbo.transaction_uk (
     category_id INT NOT NULL,
     modification SMALLINT NOT NULL CONSTRAINT df_txn_uk_mod DEFAULT (-1),
     hit NVARCHAR(64) NULL,
-    CONSTRAINT fk_txn_uk_app_user FOREIGN KEY (app_user_id) REFERENCES dbo.app_user (id),
+    CONSTRAINT fk_txn_uk_person FOREIGN KEY (person_id) REFERENCES dbo.person (id),
     CONSTRAINT fk_txn_uk_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id),
     CONSTRAINT fk_txn_uk_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
     CONSTRAINT fk_txn_uk_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
@@ -180,32 +190,31 @@ CREATE TABLE dbo.transaction_uk (
 );
 
 CREATE UNIQUE INDEX ux_txn_uk_consolidated
-    ON dbo.transaction_uk (app_user_id, year, source_id)
+    ON dbo.transaction_uk (person_id, year, source_id)
     WHERE bank_id IS NULL;
 
 CREATE UNIQUE INDEX ux_txn_uk_bank
-    ON dbo.transaction_uk (app_user_id, year, bank_id, source_id)
+    ON dbo.transaction_uk (person_id, year, bank_id, source_id)
     WHERE bank_id IS NOT NULL;
-
 
 CREATE TABLE dbo.category_total (
     category_total_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
-    app_user_id INT NOT NULL,
+    person_id INT NOT NULL,
     year SMALLINT NOT NULL,
     bank_id INT NULL,
     category_id INT NOT NULL,
     amount DECIMAL(18, 2) NOT NULL,
-    CONSTRAINT fk_ct_app_user FOREIGN KEY (app_user_id) REFERENCES dbo.app_user (id),
+    CONSTRAINT fk_ct_person FOREIGN KEY (person_id) REFERENCES dbo.person (id),
     CONSTRAINT fk_ct_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
     CONSTRAINT fk_ct_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id)
 );
 
 CREATE UNIQUE INDEX ux_category_total_consolidated
-    ON dbo.category_total (app_user_id, year, category_id)
+    ON dbo.category_total (person_id, year, category_id)
     WHERE bank_id IS NULL;
 
 CREATE UNIQUE INDEX ux_category_total_bank
-    ON dbo.category_total (app_user_id, year, bank_id, category_id)
+    ON dbo.category_total (person_id, year, bank_id, category_id)
     WHERE bank_id IS NOT NULL;
 
 CREATE TABLE dbo.account_balance_file (
