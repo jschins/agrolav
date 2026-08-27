@@ -90,6 +90,18 @@ app = FastAPI(title="boekhouding-client", version="0.2", lifespan=lifespan)
 app.add_middleware(AuthMiddleware)
 
 
+class NoStoreHtmlMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):  # type: ignore[no-untyped-def]
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.endswith(".html"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+
+app.add_middleware(NoStoreHtmlMiddleware)
+
+
 class SettingsTermsRequest(BaseModel):
     terms: list[str] = Field(default_factory=list)
 
@@ -314,13 +326,16 @@ def _local_transactions_payload(
 @app.get("/api/auth/me")
 def api_auth_me(request: Request) -> dict[str, Any]:
     from app.auth import auth_enabled
+    from app.centrale_sync import sidebar_title_from_session
 
     session = getattr(request.state, "session", None) or {}
     username = str(session.get("username") or "").strip()
+    title = sidebar_title_from_session(session) if username else ""
     return {
         "auth_required": auth_enabled(),
         "authenticated": bool(username) if auth_enabled() else True,
         "username": username or None,
+        "title": title or None,
         "access": session.get("access") if username else None,
     }
 

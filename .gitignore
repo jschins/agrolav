@@ -27,3 +27,4 @@ users.db
 upload.log
 database_pw.md
 agrolav.bak
+legacy/**/*

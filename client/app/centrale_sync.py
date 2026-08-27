@@ -208,6 +208,7 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
     from app.runtime import (
         access_mode,
         current_username,
+        current_title,
         request_allowed_centers,
         request_person_key,
         request_center_key,
@@ -227,6 +228,7 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
             person_key=request_person_key() or "",
             selected=selected_center(),
             username=current_username() or "",
+            title=current_title() or "",
             auth_required=True,
             apply_process_runtime=False,
             centers_allowlist=request_allowed_centers(),
@@ -326,6 +328,7 @@ def apply_session_profile(session: dict[str, Any]) -> HubConfig:
         or None
     )
     username = str(session.get("username") or "").strip()
+    title = str(session.get("title") or "").strip()
     centers_raw = session.get("centers")
     if not isinstance(centers_raw, list):
         centers_raw = session.get("workspaces")
@@ -344,6 +347,7 @@ def apply_session_profile(session: dict[str, Any]) -> HubConfig:
         person_key=person_key,
         selected=selected,
         username=username,
+        title=title,
         auth_required=True,
         apply_process_runtime=False,
         centers_allowlist=centers_allowlist,
@@ -577,6 +581,65 @@ def refresh_capabilities() -> dict[str, Any]:
         raise
 
 
+def _hub_user_title(username: str) -> str:
+    """Live ``dbo.*.title`` for this login, not the stale session cookie."""
+    name = (username or "").strip()
+    if not name:
+        return ""
+    base = load_base_settings()
+    if not base.get("enabled"):
+        return ""
+    try:
+        q = urllib.parse.urlencode({"username": name})
+        data = _hub_get_json(
+            str(base["url"]),
+            f"/api/auth/user?{q}",
+            api_key=str(base["api_key"]),
+        )
+        user = data.get("user") if isinstance(data, dict) else None
+        if isinstance(user, dict):
+            return str(user.get("title") or "").strip()
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
+def sidebar_title(*, username: str = "", access: str = "", center: str = "", country: str = "", fallback: str = "") -> str:
+    """Left-pane heading from ``dbo.center.title`` or ``dbo.country.title``."""
+    access_n = _coerce_access(access) if access else ""
+    if access_n == ACCESS_COUNTRY:
+        return (
+            _hub_user_title(username)
+            or _hub_user_title(country)
+            or str(fallback or "").strip()
+        )
+    return (
+        _hub_user_title(center)
+        or _hub_user_title(username)
+        or str(fallback or "").strip()
+    )
+
+
+def sidebar_title_from_session(session: dict[str, Any]) -> str:
+    return sidebar_title(
+        username=str(session.get("username") or "").strip(),
+        access=str(session.get("access") or "").strip(),
+        center=str(session.get("center") or session.get("workspace") or "").strip(),
+        country=str(session.get("country") or "").strip(),
+        fallback=str(session.get("title") or "").strip(),
+    )
+
+
+def sidebar_title_from_config(cfg: HubConfig) -> str:
+    return sidebar_title(
+        username=cfg.username,
+        access=cfg.access,
+        center=cfg.center,
+        country=cfg.country,
+        fallback=cfg.title,
+    )
+
+
 def sync_status() -> dict[str, Any]:
     cfg = load_config()
     consent_ready: list[dict[str, Any]] = []
@@ -605,6 +668,7 @@ def sync_status() -> dict[str, Any]:
         "person": cfg.person,
         "access": cfg.access,
         "username": cfg.username,
+        "title": sidebar_title_from_config(cfg),
         "auth_required": cfg.auth_required,
         "centrale_url": cfg.url,
         "local_session_active": _hub_session_active,
@@ -749,6 +813,7 @@ def switch_center(center: str) -> dict[str, Any]:
             allowed_centers=allow,
             access=cfg.access,
             username=cfg.username,
+            title=cfg.title,
             center_key=cfg.center if cfg.access in (ACCESS_CENTER, ACCESS_PERSON) else "",
             person_key=cfg.person,
             country=cfg.country,

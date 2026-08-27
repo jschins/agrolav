@@ -40,6 +40,7 @@ IF OBJECT_ID(N'dbo.country', N'U') IS NOT NULL DROP TABLE dbo.country;
 CREATE TABLE dbo.country (
     country_id INT NOT NULL PRIMARY KEY,
     username NVARCHAR(32) NOT NULL,
+    title NVARCHAR(256) NOT NULL,
     currency_default CHAR(3) NOT NULL,
     CONSTRAINT ux_country_username UNIQUE (username)
 );
@@ -70,6 +71,7 @@ CREATE TABLE dbo.center (
     center_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
     country_id INT NOT NULL,
     username NVARCHAR(64) NOT NULL,
+    title NVARCHAR(256) NOT NULL,
     CONSTRAINT fk_center_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
     CONSTRAINT ux_center_username UNIQUE (username)
 );

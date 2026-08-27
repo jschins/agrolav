@@ -248,21 +248,6 @@ function afterPaint(fn: () => void): () => void {
 
 type CellSelection = { short: string; category: string };
 
-function brandTitle(status: CentraleSyncStatus | null): string {
-  const username = (status?.username || "").trim();
-  if (!username) return "Boekhouding";
-  if (username.includes("_")) {
-    const titled = username
-      .replace(/_/g, " ")
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(" ");
-    return `Boekhouding ${titled}`;
-  }
-  return `Boekhouding ${username.toUpperCase()}`;
-}
-
 function CenterSwitcher({
   center,
   centers,
@@ -512,11 +497,13 @@ function SyncNotifyShell({
   onCenterChanged,
   termsView = false,
   onLogout,
+  initialTitle = "",
 }: {
   children: (brandName: string, activeYear: string, bankView: string, dataRev: number) => ReactNode;
   onCenterChanged?: () => void;
   termsView?: boolean;
   onLogout?: () => void;
+  initialTitle?: string;
 }) {
   const [status, setStatus] = useState<CentraleSyncStatus | null>(null);
   const [notes, setNotes] = useState<SyncNotification[]>([]);
@@ -534,7 +521,7 @@ function SyncNotifyShell({
   const [dataRev, setDataRev] = useState(0);
   const dataEpochRef = useRef<number | null>(null);
 
-  const brandName = brandTitle(status);
+  const brandName = (status?.title || initialTitle || "").trim();
 
   useEffect(() => {
     getYears()
@@ -581,6 +568,7 @@ function SyncNotifyShell({
   }, [status?.access, activeYear, status?.center, status?.centrale_url]);
 
   useEffect(() => {
+    if (!brandName) return;
     document.title = termsView ? `${brandName} — Terms` : brandName;
   }, [brandName, termsView]);
 
@@ -883,6 +871,7 @@ export default function App() {
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [heading, setHeading] = useState("");
   const bumpCenterEpoch = useCallback(() => setWsEpoch((n) => n + 1), []);
 
   useEffect(() => {
@@ -892,6 +881,7 @@ export default function App() {
         if (cancelled) return;
         setAuthRequired(me.auth_required);
         setAuthenticated(me.authenticated);
+        setHeading((me.title || "").trim());
         setAuthChecked(true);
       })
       .catch(() => {
@@ -912,7 +902,8 @@ export default function App() {
   if (authRequired && !authenticated) {
     return (
       <LoginScreen
-        onSuccess={() => {
+        onSuccess={(title) => {
+          setHeading(title);
           setAuthenticated(true);
           setWsEpoch((n) => n + 1);
         }}
@@ -922,6 +913,7 @@ export default function App() {
 
   return (
     <SyncNotifyShell
+      initialTitle={heading}
       termsView={isTerms}
       onLogout={
         authRequired
@@ -957,7 +949,7 @@ export default function App() {
   );
 }
 
-function LoginScreen({ onSuccess }: { onSuccess: (username: string) => void }) {
+function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -968,9 +960,9 @@ function LoginScreen({ onSuccess }: { onSuccess: (username: string) => void }) {
     setBusy(true);
     setError(null);
     login(username.trim(), password)
-      .then(() => {
+      .then((status) => {
         clearStoredRefreshStatus();
-        onSuccess(username.trim());
+        onSuccess((status.title || "").trim());
       })
       .catch((err: Error) => {
         setError(err.message.includes("401") ? "Invalid username or password" : err.message);
@@ -981,7 +973,7 @@ function LoginScreen({ onSuccess }: { onSuccess: (username: string) => void }) {
   return (
     <div className="login-screen">
       <form className="login-card" onSubmit={submit}>
-        <h1 className="login-title">Boekhouding</h1>
+        <h1 className="login-title">Sign in</h1>
         <p className="login-muted">Sign in to continue</p>
         <label className="login-label">
           Username
@@ -1468,7 +1460,7 @@ function MainApp({
   return (
     <div className="app">
       <aside className="sidebar">
-        <h1 className="app-heading">{brandName}</h1>
+        {brandName ? <h1 className="app-heading">{brandName}</h1> : null}
 
         <div
           className={

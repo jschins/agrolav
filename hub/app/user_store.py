@@ -45,7 +45,7 @@ _SQL_PERSON_SELECT = """
 SELECT
     p.id,
     p.username COLLATE Latin1_General_CI_AI AS username,
-    p.title,
+    n.title COLLATE Latin1_General_CI_AI AS title,
     p.number_of_accounts,
     c.username COLLATE Latin1_General_CI_AI AS country,
     n.username COLLATE Latin1_General_CI_AI AS center,
@@ -59,7 +59,7 @@ _SQL_CENTER_SELECT = """
 SELECT
     n.center_id AS id,
     n.username COLLATE Latin1_General_CI_AI AS username,
-    n.username COLLATE Latin1_General_CI_AI AS title,
+    n.title COLLATE Latin1_General_CI_AI AS title,
     CAST(NULL AS INT) AS number_of_accounts,
     c.username COLLATE Latin1_General_CI_AI AS country,
     n.username COLLATE Latin1_General_CI_AI AS center,
@@ -72,7 +72,7 @@ _SQL_COUNTRY_SELECT = """
 SELECT
     c.country_id AS id,
     c.username COLLATE Latin1_General_CI_AI AS username,
-    c.username COLLATE Latin1_General_CI_AI AS title,
+    c.title COLLATE Latin1_General_CI_AI AS title,
     CAST(NULL AS INT) AS number_of_accounts,
     c.username COLLATE Latin1_General_CI_AI AS country,
     CAST(NULL AS NVARCHAR(64)) COLLATE Latin1_General_CI_AI AS center,
@@ -131,6 +131,20 @@ def store_label() -> str:
 def password_for_username(username: str) -> str:
     """Login password is identical to the username (temporary hard-coded rule)."""
     return str(username or "").strip()
+
+
+def display_title(username: str) -> str:
+    """Sidebar heading from a login username when no explicit title is stored."""
+    text = str(username or "").strip()
+    if not text:
+        return ""
+    if "_" in text or " " in text:
+        return " ".join(
+            word[:1].upper() + word[1:].lower()
+            for word in text.replace("_", " ").split()
+            if word
+        )
+    return text.upper()
 
 
 def is_single_bank_format(fmt: str | None) -> bool:
@@ -583,6 +597,26 @@ def _import_users_csv(conn: sqlite3.Connection) -> None:
                 )
 
 
+def _ensure_login_titles(cursor) -> None:
+    """Add country/center title if missing. Does not overwrite existing titles."""
+    for table in ("country", "center"):
+        cursor.execute(f"SELECT OBJECT_ID(N'dbo.{table}', N'U')")
+        if cursor.fetchone()[0] is None:
+            continue
+        cursor.execute(f"SELECT COL_LENGTH(N'dbo.{table}', N'username')")
+        if cursor.fetchone()[0] is None:
+            continue
+        cursor.execute(f"SELECT COL_LENGTH(N'dbo.{table}', N'title')")
+        if cursor.fetchone()[0] is None:
+            cursor.execute(f"ALTER TABLE dbo.{table} ADD title NVARCHAR(256) NULL")
+            cursor.execute(
+                f"UPDATE dbo.{table} SET title = username WHERE title IS NULL"
+            )
+            cursor.execute(
+                f"ALTER TABLE dbo.{table} ALTER COLUMN title NVARCHAR(256) NOT NULL"
+            )
+
+
 def init_user_store() -> str:
     """Open the user store (SQL Server or SQLite) and ensure schema exists."""
     with _LOCK:
@@ -596,6 +630,8 @@ def init_user_store() -> str:
                     "`uv run python scripts/migrate_person.py` from hub/ "
                     "(fresh empty DB: load_phase_c.py)."
                 )
+            _ensure_login_titles(cursor)
+            conn.commit()
         else:
             _sqlite_connect()
         return store_label()
@@ -696,7 +732,7 @@ def upsert_user(
             person_id = int(row[0]) if row else None
             if _sql_username_taken(cursor, name, except_person_id=person_id):
                 raise ValueError(f"Username already used: {name}")
-            title_value = (title_s or name)
+            title_value = title_s or display_title(name) or name
             if person_id is not None:
                 cursor.execute(
                     """

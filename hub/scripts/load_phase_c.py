@@ -433,9 +433,17 @@ def apply_schema(cursor) -> None:
 
 
 def seed_countries(cursor) -> None:
+    from app.user_store import display_title
+
     cursor.executemany(
-        "INSERT INTO dbo.country (country_id, username, currency_default) VALUES (?, ?, ?)",
-        COUNTRIES,
+        """
+        INSERT INTO dbo.country (country_id, username, title, currency_default)
+        VALUES (?, ?, ?, ?)
+        """,
+        [
+            (country_id, folder, display_title(folder), currency)
+            for country_id, folder, currency in COUNTRIES
+        ],
     )
 
 
@@ -520,10 +528,17 @@ def seed_categories(cursor, root: Path) -> tuple[dict[tuple[int, int], int], dic
 
 
 def _insert_center(cursor, country_id: int, folder: str) -> int:
+    from app.user_store import display_title
+
     cursor.execute(
-        "INSERT INTO dbo.center (country_id, username) OUTPUT INSERTED.center_id VALUES (?, ?)",
+        """
+        INSERT INTO dbo.center (country_id, username, title)
+        OUTPUT INSERTED.center_id
+        VALUES (?, ?, ?)
+        """,
         country_id,
         folder,
+        display_title(folder),
     )
     return int(cursor.fetchone()[0])
 
@@ -537,6 +552,8 @@ def _insert_person(
     number_of_accounts: int,
     title: str | None = None,
 ) -> int:
+    from app.user_store import display_title
+
     today = date.today()
     cursor.execute(
         """
@@ -546,7 +563,7 @@ def _insert_person(
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         username,
-        (title or username).strip() or username,
+        (title or display_title(username) or username).strip(),
         country_id,
         center_id,
         number_of_accounts,

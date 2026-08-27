@@ -163,6 +163,19 @@ def api_auth_login(
     return {"user": user}
 
 
+@app.get("/api/auth/user")
+def api_auth_user(
+    username: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import user_store
+
+    user = user_store.find_user(username)
+    if user is None:
+        raise HTTPException(status_code=404, detail="unknown user")
+    return {"user": user_store._public_user(user)}
+
+
 @app.get("/api/auth/users")
 def api_auth_users(_: None = Depends(require_api_key)) -> dict[str, Any]:
     from app import user_store
@@ -476,11 +489,13 @@ class BootstrapFetchRequest(BaseModel):
 class CreateCountryRequest(BaseModel):
     name: str
     currency: str = "EUR"
+    title: str = ""
 
 
 class CreateCenterRequest(BaseModel):
     name: str
     country: str
+    title: str = ""
 
 
 @app.get("/api/local/{center}/capabilities")
@@ -906,7 +921,7 @@ def api_create_country(
     from app.sql_layout import create_country
 
     try:
-        return create_country(name=body.name, currency=body.currency)
+        return create_country(name=body.name, currency=body.currency, title=body.title)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -923,7 +938,7 @@ def api_create_center(
     from app.sql_layout import create_center
 
     try:
-        return create_center(name=body.name, country=body.country)
+        return create_center(name=body.name, country=body.country, title=body.title)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as extra:
@@ -1534,6 +1549,7 @@ _CREATE_COUNTRY_HTML = """<!DOCTYPE html>
     <p class="lead">Writes <code>dbo.country</code> and a workspace folder. Login password equals the username.</p>
     <table>
       <tr><th>name</th><td><input id="name" type="text" placeholder="e.g. belgie"/></td></tr>
+      <tr><th>title</th><td><input id="title" type="text" placeholder="e.g. België"/></td></tr>
       <tr><th>default currency</th><td><input id="currency" type="text" value="EUR" maxlength="3"/></td></tr>
     </table>
     <button type="button" id="btnCreate">Create country</button>
@@ -1559,6 +1575,7 @@ _CREATE_COUNTRY_HTML = """<!DOCTYPE html>
       try {
         const res = await api("POST", "/api/countries", {
           name: document.getElementById("name").value,
+          title: document.getElementById("title").value,
           currency: document.getElementById("currency").value,
         });
         ok.textContent = "Created " + res.name + " (" + res.currency + "). Login: " + res.login.username;
@@ -1606,6 +1623,7 @@ _CREATE_CENTER_HTML = """<!DOCTYPE html>
     <table>
       <tr><th>country</th><td><select id="country"></select></td></tr>
       <tr><th>name</th><td><input id="name" type="text" placeholder="e.g. antwerpen"/></td></tr>
+      <tr><th>title</th><td><input id="title" type="text" placeholder="e.g. Antwerpen"/></td></tr>
     </table>
     <button type="button" id="btnCreate">Create center</button>
     <p id="err" class="err"></p>
@@ -1649,6 +1667,7 @@ _CREATE_CENTER_HTML = """<!DOCTYPE html>
       try {
         const res = await api("POST", "/api/centers", {
           name: document.getElementById("name").value,
+          title: document.getElementById("title").value,
           country: document.getElementById("country").value,
         });
         ok.textContent = "Created " + res.name + " in " + res.country + ". Login: " + res.login.username;

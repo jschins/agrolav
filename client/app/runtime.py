@@ -111,7 +111,7 @@ def set_runtime(
     if username is not None:
         _cv_username.set(username.strip() or None)
     if title is not None:
-        _cv_title.set(None)
+        _cv_title.set(title_s or None)
     if center_key is not None:
         _cv_center_key.set(None)
     if person_key is not None:

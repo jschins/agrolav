@@ -106,6 +106,7 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "username": username,
+        "title": str(user.get("title") or "").strip(),
         "access": access,
         "country": country,
         "center": center,

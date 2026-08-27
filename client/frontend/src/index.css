@@ -562,12 +562,12 @@ th {
 }
 
 .app-heading {
-  margin: 0;
-  font-size: clamp(0.72rem, 2.1vw, 1.1rem);
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.15rem, 2.8vw, 1.85rem);
   font-weight: 700;
   color: #0f172a;
   white-space: nowrap;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 
 .totals-table {

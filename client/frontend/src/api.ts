@@ -161,6 +161,7 @@ export interface CentraleSyncStatus {
   /** Empty / omitted = all people; otherwise only this short is visible. */
   person?: string;
   username?: string;
+  title?: string;
   auth_required?: boolean;
   centrale_url: string;
   local_session_active: boolean;
@@ -179,6 +180,7 @@ export interface AuthMeResponse {
   auth_required: boolean;
   authenticated: boolean;
   username: string | null;
+  title?: string | null;
   access?: string | null;
 }
 

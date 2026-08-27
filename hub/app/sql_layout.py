@@ -174,7 +174,7 @@ def _create_transaction_table(cursor, *, folder: str, country_id: int) -> str:
     return table
 
 
-def create_country(*, name: str, currency: str) -> dict[str, Any]:
+def create_country(*, name: str, currency: str, title: str = "") -> dict[str, Any]:
     """Insert ``dbo.country`` and scaffold the workspace folder. Login is the username."""
     from app import user_store
 
@@ -204,9 +204,13 @@ def create_country(*, name: str, currency: str) -> dict[str, Any]:
         cursor.execute("SELECT ISNULL(MAX(country_id), 0) + 1 FROM dbo.country")
         country_id = int(cursor.fetchone()[0])
         cursor.execute(
-            "INSERT INTO dbo.country (country_id, username, currency_default) VALUES (?, ?, ?)",
+            """
+            INSERT INTO dbo.country (country_id, username, title, currency_default)
+            VALUES (?, ?, ?, ?)
+            """,
             country_id,
             folder,
+            (title.strip() or user_store.display_title(folder) or folder),
             currency_s,
         )
         dest.mkdir(parents=True, exist_ok=False)
@@ -234,11 +238,12 @@ def create_country(*, name: str, currency: str) -> dict[str, Any]:
         "name": folder,
         "currency": currency_s,
         "transaction_table": table,
+        "title": (title.strip() or user_store.display_title(folder) or folder),
         "login": {"username": folder, "password": folder},
     }
 
 
-def create_center(*, name: str, country: str) -> dict[str, Any]:
+def create_center(*, name: str, country: str, title: str = "") -> dict[str, Any]:
     """Insert ``dbo.center`` under an existing country and scaffold the folder. Login is the username."""
     from app import user_store
 
@@ -283,9 +288,14 @@ def create_center(*, name: str, country: str) -> dict[str, Any]:
         if cursor.fetchone():
             raise ValueError(f"Center already exists: {folder}")
         cursor.execute(
-            "INSERT INTO dbo.center (country_id, username) OUTPUT INSERTED.center_id VALUES (?, ?)",
+            """
+            INSERT INTO dbo.center (country_id, username, title)
+            OUTPUT INSERTED.center_id
+            VALUES (?, ?, ?)
+            """,
             country_id,
             folder,
+            (title.strip() or user_store.display_title(folder) or folder),
         )
         center_id = int(cursor.fetchone()[0])
         dest.mkdir(parents=True, exist_ok=False)
@@ -305,5 +315,6 @@ def create_center(*, name: str, country: str) -> dict[str, Any]:
         "name": folder,
         "country": resolved,
         "country_id": country_id,
+        "title": (title.strip() or user_store.display_title(folder) or folder),
         "login": {"username": folder, "password": folder},
     }
