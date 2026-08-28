@@ -54,8 +54,8 @@ def _donor_categories() -> Path | None:
     return None
 
 
-def _seed_matrix_footers(cursor, country_id: int) -> None:
-    """Matrix saldo/datum rows: local codes 98 Balance and 99 Updated."""
+def _seed_system_categories(cursor, country_id: int) -> None:
+    """Balance, Updated, and unclassified 18 UFO (local codes 98, 99, 97)."""
     base = country_id * 100
     cursor.execute(
         """
@@ -83,6 +83,19 @@ def _seed_matrix_footers(cursor, country_id: int) -> None:
         0,
         "last_booked",
     )
+    cursor.execute(
+        """
+        INSERT INTO dbo.dim_category
+            (category_id, country_id, local_code, label, is_remainder, matrix_role)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        base + 2,
+        country_id,
+        97,
+        "18 UFO",
+        1,
+        None,
+    )
 
 
 def _seed_dim_category(cursor, country_id: int, categories_path: Path) -> None:
@@ -97,11 +110,10 @@ def _seed_dim_category(cursor, country_id: int, categories_path: Path) -> None:
     booking_index = 0
     for label, terms in categories.items():
         code = _local_code(str(label))
-        if code is None or code in (98, 99):
+        if code is None or code in (DEFAULT_CATEGORY, 97, 98, 99):
             continue
-        category_id = country_id * 100 + 2 + booking_index
+        category_id = country_id * 100 + 3 + booking_index
         booking_index += 1
-        is_remainder = 1 if code == DEFAULT_CATEGORY else 0
         cursor.execute(
             """
             INSERT INTO dbo.dim_category
@@ -112,7 +124,7 @@ def _seed_dim_category(cursor, country_id: int, categories_path: Path) -> None:
             country_id,
             code,
             str(label),
-            is_remainder,
+            0,
             None,
         )
         if isinstance(terms, list):
@@ -355,7 +367,7 @@ def create_country(*, name: str, currency: str, title: str = "") -> dict[str, An
             (title.strip() or user_store.display_title(username) or username),
             currency_s,
         )
-        _seed_matrix_footers(cursor, country_id)
+        _seed_system_categories(cursor, country_id)
         donor = _donor_categories()
         if donor is not None:
             _seed_dim_category(cursor, country_id, donor)

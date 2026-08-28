@@ -1,6 +1,7 @@
 """Thin BFF: frontend + proxy to hub domain APIs (no local center copies)."""
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -132,13 +133,34 @@ class LoginRequest(BaseModel):
     password: str
 
 
+def _unwrap_hub_detail(msg: str) -> str:
+    text = str(msg or "").strip()
+    for _ in range(8):
+        lowered = text.lower()
+        if lowered.startswith("hub ") and ": " in text:
+            text = text.split(": ", 1)[1].strip()
+            continue
+        if text.startswith("{"):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                break
+            detail = parsed.get("detail") if isinstance(parsed, dict) else None
+            if isinstance(detail, str) and detail.strip():
+                text = detail.strip()
+                continue
+        break
+    return text
+
+
 def _hub_error(exc: Exception) -> HTTPException:
-    msg = str(exc)
-    if msg.startswith("hub 403"):
+    msg = _unwrap_hub_detail(str(exc))
+    raw = str(exc)
+    if raw.startswith("hub 403"):
         return HTTPException(status_code=403, detail=msg)
-    if msg.startswith("hub 404"):
+    if raw.startswith("hub 404"):
         return HTTPException(status_code=404, detail=msg)
-    if msg.startswith("hub 400"):
+    if raw.startswith("hub 400"):
         return HTTPException(status_code=400, detail=msg)
     return HTTPException(status_code=502, detail=msg)
 

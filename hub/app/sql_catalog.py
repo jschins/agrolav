@@ -812,7 +812,7 @@ def _parse_catalog_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _next_booking_category_id(used: set[int], lo: int, hi: int) -> int:
-    for cid in range(lo + 2, hi + 1):
+    for cid in range(lo + 3, hi + 1):
         if cid not in used:
             return cid
     raise ValueError("No free category_id left in this country's range")

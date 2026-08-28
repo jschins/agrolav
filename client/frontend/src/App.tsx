@@ -700,16 +700,18 @@ function SyncNotifyShell({
       label: "⚙ Edit Terms (Alt+T)",
       onClick: () => openView("terms"),
     });
-    items.push({
-      id: "categories",
-      label: "edit categories",
-      onClick: () => openView("categories"),
-    });
+    if (access === "country" || access === "local") {
+      items.push({
+        id: "categories",
+        label: "edit categories",
+        onClick: () => openView("categories"),
+      });
+    }
     if (uploadUrl) {
       items.push({ id: "upload", label: "upload", href: uploadUrl });
     }
     return items;
-  }, [headerActions, uploadUrl]);
+  }, [headerActions, uploadUrl, access]);
 
   return (
     <HeaderActionsContext.Provider value={setHeaderActions}>
@@ -1822,6 +1824,32 @@ type CatalogDraft = {
   is_remainder: boolean;
 };
 
+function reviewSubmissionMessage(raw: string): string {
+  let text = String(raw || "").trim();
+  for (let i = 0; i < 8; i++) {
+    const jsonStart = text.indexOf("{");
+    if (jsonStart >= 0) {
+      try {
+        const parsed = JSON.parse(text.slice(jsonStart)) as { detail?: unknown };
+        if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+          text = parsed.detail.trim();
+          continue;
+        }
+      } catch {
+        /* keep text */
+      }
+    }
+    const hub = text.match(/^hub \d+:\s*(.*)$/i);
+    if (hub) {
+      text = hub[1].trim();
+      continue;
+    }
+    text = text.replace(/^\d{3}\s+[A-Za-z ]+:\s*/, "").trim();
+    break;
+  }
+  return `Please review your submission: ${text || raw}`;
+}
+
 function catalogToDraft(rows: CatalogCategory[]): CatalogDraft[] {
   return rows.map((row, index) => ({
     key: row.category_id != null ? `id-${row.category_id}` : `new-${index}`,
@@ -1951,7 +1979,7 @@ function CategoriesApp() {
         setSaved(true);
         channelRef.current?.postMessage("recalculated");
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => setError(reviewSubmissionMessage(e.message)))
       .finally(() => setBusy(false));
   }
 
@@ -1991,7 +2019,7 @@ function CategoriesApp() {
             disabled={busy || draft.length === 0}
             onClick={save}
           >
-            {busy ? "Saving…" : "Save"}
+            {busy ? "Submitting…" : "Submit"}
           </button>
         </div>
       </aside>
