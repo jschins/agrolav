@@ -100,3 +100,24 @@ export interface ModificationResponse {
   transaction?: Transaction;
   matrix?: MatrixResponse;
 }
+
+export interface TransactionSplitLine {
+  id?: string | null;
+  description: string;
+  amount: string;
+}
+
+export interface TransactionSplitResponse {
+  person: string;
+  folder?: string;
+  year?: string;
+  id: string;
+  original_amount: string;
+  description: string;
+  date?: string;
+  name?: string;
+  iban?: string;
+  type?: string;
+  category?: number;
+  lines: TransactionSplitLine[];
+}

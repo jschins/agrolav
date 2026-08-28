@@ -1,6 +1,6 @@
 # Database (proposed)
 
-## backup
+## write backup from existing database
 
 ```BACKUP DATABASE agrolav
 TO DISK = '/var/opt/mssql/backup/agrolav19.bak'
@@ -10,6 +10,18 @@ WITH
     CHECKSUM,
     STATS = 10;
 ```
+
+Note that the distination folder on disk (C:/SQLBackups) is determined by
+    volumes:
+      - "C:/SQLBackups:/var/opt/mssql/backup"
+in file
+C:\Coding\agrolav\docker-compose.sqlserver.yml
+
+
+
+## upload backup to overwrite existing database
+
+
 
 JSON under `workspaces/` is the source of truth until SQL Server is loaded.
 The folder layout is already the grain of the future schema:

@@ -217,6 +217,7 @@ def _create_transaction_table(cursor, *, country: str, country_id: int) -> str:
             year SMALLINT NOT NULL,
             bank_id INT NULL,
             source_id NVARCHAR(128) NOT NULL,
+            parent_source_id NVARCHAR(128) NULL,
             amount DECIMAL(18, 2) NOT NULL,
             bank_type NVARCHAR(64) NULL,
             counterparty_name NVARCHAR(512) NULL,

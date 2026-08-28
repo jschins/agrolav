@@ -528,6 +528,20 @@ class ModificationRequest(BaseModel):
     source: str = "local"
 
 
+class TransactionSplitLine(BaseModel):
+    id: str | None = None
+    description: str = ""
+    amount: str = "0.00"
+
+
+class TransactionSplitSave(BaseModel):
+    id: str
+    description: str = ""
+    lines: list[TransactionSplitLine] = Field(default_factory=list)
+    year: str | None = None
+    bank: str | None = None
+
+
 class RefreshRequest(BaseModel):
     date_from: str | None = None
     date_to: str | None = None
@@ -685,6 +699,59 @@ def api_person_banks(
         raise HTTPException(
             status_code=500, detail=f"{type(exc).__name__}: {exc}"
         ) from exc
+
+
+@app.get("/api/local/{center}/people/{short}/split")
+def api_transaction_split_get(
+    center: str,
+    short: str,
+    id: str,
+    year: str | None = Query(default=None),
+    bank: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import center_api
+
+    try:
+        return center_api.transaction_split(
+            center, short, source_id=id, year=year, bank=bank
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.put("/api/local/{center}/people/{short}/split")
+def api_transaction_split_save(
+    center: str,
+    short: str,
+    body: TransactionSplitSave,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import center_api
+
+    try:
+        return center_api.save_transaction_split(
+            center,
+            short,
+            source_id=body.id,
+            description=body.description,
+            lines=[
+                {"id": item.id, "description": item.description, "amount": item.amount}
+                for item in body.lines
+            ],
+            year=body.year,
+            bank=body.bank,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/api/local/{center}/transactions/{short}/{category_name}")

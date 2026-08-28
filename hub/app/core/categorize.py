@@ -1595,3 +1595,145 @@ def process_transactions(raw_transactions: list[dict[str, Any]], new_year: bool)
 
     ingest_bound_transactions(new_records)
     return recategorize_transactions()
+
+
+def load_transaction_split(source_id: str) -> dict[str, Any]:
+    """Load the original booking and its split lines for the bound person."""
+    from app.sql_replica import (
+        _root_source_id,
+        _split_payload,
+        load_bound_split,
+    )
+
+    if _use_sql():
+        return load_bound_split(source_id)
+    needle = str(source_id or "").strip()
+    if not needle:
+        raise ValueError("Transaction id is required")
+    data = _load_categorized_store()
+    rows = [item for item in (data.get("transactions") or []) if isinstance(item, dict)]
+    parent_id = _root_source_id(needle)
+    by_id = {str(item.get("id") or ""): item for item in rows}
+    parent = by_id.get(parent_id)
+    if parent is None:
+        raise ValueError(f"Transaction not found: {parent_id}")
+    prefix = f"{parent_id}~s"
+    children = [
+        item
+        for item in rows
+        if str(item.get("id") or "").startswith(prefix)
+        and _root_source_id(str(item.get("id") or "")) == parent_id
+    ]
+    children.sort(key=lambda item: str(item.get("id") or ""))
+    payload = _split_payload(parent_id=parent_id, parent=parent, children=children)
+    return payload
+
+
+def save_transaction_split(
+    source_id: str,
+    *,
+    description: str,
+    lines: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Persist split lines. Parent amount is computed so the group total is unchanged."""
+    from decimal import Decimal
+
+    from app.sql_replica import (
+        _json_amount,
+        _money,
+        _next_split_ids,
+        _root_source_id,
+        _SPLIT_CHILD,
+        save_bound_split,
+    )
+
+    if _use_sql():
+        return save_bound_split(source_id, description=description, lines=lines)
+
+    current = load_transaction_split(source_id)
+    parent_id = str(current["id"])
+    data = _load_categorized_store()
+    rows = [item for item in (data.get("transactions") or []) if isinstance(item, dict)]
+    parent = None
+    for item in rows:
+        if str(item.get("id") or "") == parent_id:
+            parent = item
+            break
+    if parent is None:
+        raise ValueError(f"Transaction not found: {parent_id}")
+
+    original = _money(current["original_amount"])
+    prefix = f"{parent_id}~s"
+    existing = [
+        str(item.get("id") or "")
+        for item in rows
+        if str(item.get("id") or "").startswith(prefix)
+        and _root_source_id(str(item.get("id") or "")) == parent_id
+    ]
+    used_n = set()
+    for sid in existing:
+        match = _SPLIT_CHILD.fullmatch(sid)
+        if match:
+            used_n.add(int(match.group(2)))
+
+    cleaned: list[dict[str, Any]] = []
+    need_new = 0
+    existing_set = set(existing)
+    for item in lines:
+        if not isinstance(item, dict):
+            continue
+        line_id = str(item.get("id") or "").strip()
+        if not line_id or line_id not in existing_set:
+            need_new += 1
+        cleaned.append(item)
+    fresh = _next_split_ids(parent_id, used_n, need_new)
+    fresh_i = 0
+    keep: set[str] = set()
+    child_rows: list[dict[str, Any]] = []
+    line_total = _money("0")
+    by_id = {str(item.get("id") or ""): item for item in rows}
+    for item in cleaned:
+        line_id = str(item.get("id") or "").strip()
+        if not line_id or line_id not in existing_set:
+            line_id = fresh[fresh_i]
+            fresh_i += 1
+        keep.add(line_id)
+        amount = _money(item.get("amount"))
+        line_total += amount
+        base = dict(by_id.get(line_id) or parent)
+        base["id"] = line_id
+        base["amount"] = _json_amount(amount)
+        base["description"] = str(item.get("description") or "")
+        base["modification"] = _with_mod_bits(
+            MOD_CATEGORY,
+            description=bool(str(item.get("description") or "").strip()),
+        )
+        child_rows.append(base)
+
+    remainder = (original - line_total).quantize(Decimal("0.01"))
+    parent["amount"] = _json_amount(remainder)
+    new_description = str(description or "")
+    if new_description != str(parent.get("description") or ""):
+        parent["description"] = new_description
+        parent["modification"] = _with_mod_bits(
+            _modification_of(parent),
+            description=True,
+        )
+
+    next_rows: list[dict[str, Any]] = []
+    for item in rows:
+        sid = str(item.get("id") or "")
+        if sid == parent_id:
+            next_rows.append(parent)
+            continue
+        if sid.startswith(prefix) and _root_source_id(sid) == parent_id:
+            continue
+        next_rows.append(item)
+    next_rows.extend(child_rows)
+    data["transactions"] = next_rows
+    data.pop("modifications", None)
+    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, data)
+    general = _category_map(_categories_file())
+    _write_category_totals(data, general)
+    return load_transaction_split(parent_id)
+

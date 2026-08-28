@@ -26,6 +26,8 @@ import {
   refreshAll,
   refreshPerson,
   saveCatalog,
+  getTransactionSplit,
+  saveTransactionSplit,
   setCenter,
   updateSettings,
   type CentralWinsAlert,
@@ -506,6 +508,7 @@ function SyncNotifyShell({
   termsView = false,
   categoriesView = false,
   ipView = false,
+  splitView = false,
   onLogout,
   initialTitle = "",
 }: {
@@ -514,6 +517,7 @@ function SyncNotifyShell({
   termsView?: boolean;
   categoriesView?: boolean;
   ipView?: boolean;
+  splitView?: boolean;
   onLogout?: () => void;
   initialTitle?: string;
 }) {
@@ -740,7 +744,7 @@ function SyncNotifyShell({
                 onSelect={handleSelect}
               />
             ) : null}
-            {!termsView && !categoriesView && !ipView && activeYear ? (
+            {!termsView && !categoriesView && !ipView && !splitView && activeYear ? (
               <YearSwitcher
                 year={activeYear}
                 years={yearOptions}
@@ -750,7 +754,7 @@ function SyncNotifyShell({
                 }}
               />
             ) : null}
-            {showBankSwitcher && !termsView && !categoriesView && !ipView ? (
+            {showBankSwitcher && !termsView && !categoriesView && !ipView && !splitView ? (
               <BankSwitcher
                 view={bankView}
                 folders={bankOptions}
@@ -915,6 +919,7 @@ export default function App() {
   const isCategories =
     new URLSearchParams(window.location.search).get("view") === "categories";
   const isIp = new URLSearchParams(window.location.search).get("view") === "ip";
+  const isSplit = new URLSearchParams(window.location.search).get("view") === "split";
   const [wsEpoch, setWsEpoch] = useState(0);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -965,6 +970,7 @@ export default function App() {
       termsView={isTerms}
       categoriesView={isCategories}
       ipView={isIp}
+      splitView={isSplit}
       onLogout={
         authRequired
           ? () => {
@@ -989,6 +995,8 @@ export default function App() {
           <CategoriesApp key={wsEpoch} />
         ) : isIp ? (
           <IpAccessApp key={wsEpoch} />
+        ) : isSplit ? (
+          <SplitApp key={wsEpoch} />
         ) : (
           <MainApp
             key={wsEpoch}
@@ -1705,6 +1713,8 @@ function MainApp({
           <PTable
             categoryName={selection.category}
             detail={detail}
+            year={year}
+            bank={bankQuery}
             onModify={modifyTransaction}
             onCategoryError={setError}
             onTermContextMenu={openTermMenu}
@@ -2394,15 +2404,248 @@ function PersonColumnTable({
   );
 }
 
+function centsFromInput(text: string): number {
+  const t = text.trim().replace(/\s/g, "").replace(",", ".");
+  if (!t || t === "+" || t === "-" || t === "." || t === "+." || t === "-.") return 0;
+  const n = Number(t);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100);
+}
+
+function formatCents(cents: number): string {
+  const sign = cents < 0 ? "-" : "";
+  return `${sign}${(Math.abs(cents) / 100).toFixed(2)}`;
+}
+
+function closeSplitPage() {
+  window.close();
+  window.setTimeout(() => {
+    if (!window.closed) {
+      window.location.assign(window.location.pathname);
+    }
+  }, 50);
+}
+
+function SplitApp() {
+  const params = new URLSearchParams(window.location.search);
+  const person = params.get("person") || "";
+  const sourceId = params.get("id") || "";
+  const year = params.get("year") || undefined;
+  const bank = params.get("bank") || undefined;
+
+  const [originalCents, setOriginalCents] = useState(0);
+  const [parentDesc, setParentDesc] = useState("");
+  const [heading, setHeading] = useState("");
+  const [lines, setLines] = useState<{ key: string; id: string | null; description: string; amountText: string }[]>(
+    []
+  );
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const nextKey = useRef(1);
+
+  useEffect(() => {
+    window.name = "boekhouding-split";
+    let cancelled = false;
+    if (!person || !sourceId) {
+      setError("Missing person or transaction.");
+      return;
+    }
+    getTransactionSplit(person, sourceId, year, bank)
+      .then((data) => {
+        if (cancelled) return;
+        setOriginalCents(centsFromInput(data.original_amount));
+        setParentDesc(data.description || "");
+        const who = [data.name, data.date].filter(Boolean).join(" · ");
+        setHeading(who);
+        setLines(
+          (data.lines || []).map((line, index) => ({
+            key: line.id ? `id-${line.id}` : `line-${index}`,
+            id: line.id || null,
+            description: line.description || "",
+            amountText: line.amount || "0.00",
+          }))
+        );
+        setLoaded(true);
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [person, sourceId, year, bank]);
+
+  useEffect(() => {
+    const channel = new BroadcastChannel(CHANNEL);
+    channelRef.current = channel;
+    return () => {
+      channelRef.current = null;
+      channel.close();
+    };
+  }, []);
+
+  const lineCents = lines.reduce((sum, line) => sum + centsFromInput(line.amountText), 0);
+  const parentCents = originalCents - lineCents;
+  const parentAmount = formatCents(parentCents);
+
+  function addLine() {
+    const key = `new-${nextKey.current}`;
+    nextKey.current += 1;
+    setLines((rows) => [...rows, { key, id: null, description: "", amountText: "0.00" }]);
+  }
+
+  function save() {
+    setError(null);
+    setBusy(true);
+    saveTransactionSplit(person, {
+      id: sourceId,
+      description: parentDesc,
+      lines: lines.map((line) => ({
+        id: line.id,
+        description: line.description,
+        amount: formatCents(centsFromInput(line.amountText)),
+      })),
+      year,
+      bank,
+    })
+      .then(() => {
+        channelRef.current?.postMessage("recalculated");
+        closeSplitPage();
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(false));
+  }
+
+  return (
+    <div className="app terms-app">
+      <aside className="sidebar">
+        <div className="winbar">
+          <div className="sidebar-field">
+            <span className="sidebar-field-legend" aria-hidden="true">
+              {"\u00a0"}
+            </span>
+            <button type="button" className="sidebar-knob" onClick={() => openView("main")}>
+              Matrix (Alt+M)
+            </button>
+          </div>
+        </div>
+        <p className="win-hint">
+          Split this booking into extra lines. The original amount is the remainder,
+          so the total always stays {formatCents(originalCents)}.
+        </p>
+        <div className="sidebar-field">
+          <span className="sidebar-field-legend" aria-hidden="true">
+            {"\u00a0"}
+          </span>
+          <button type="button" className="sidebar-knob" onClick={addLine} disabled={!loaded}>
+            Add line
+          </button>
+        </div>
+        <div className="sidebar-field">
+          <span className="sidebar-field-legend" aria-hidden="true">
+            {"\u00a0"}
+          </span>
+          <button type="button" className="sidebar-knob" disabled={busy || !loaded} onClick={save}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </aside>
+      <main className="content terms-content">
+        {error && <p className="error">{error}</p>}
+        {loaded ? (
+          <div className="terms-scroll">
+            {heading ? <p className="win-hint">{person} · {heading}</p> : null}
+            <table className="s-table catalog-table">
+              <thead>
+                <tr>
+                  <th>Amount</th>
+                  <th>Description</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className={parentAmount.trim().startsWith("-") ? "amount num neg" : "amount num"}>
+                    {parentAmount}
+                  </td>
+                  <td>
+                    <input
+                      className="catalog-label"
+                      value={parentDesc}
+                      onChange={(e) => setParentDesc(e.target.value)}
+                    />
+                  </td>
+                  <td />
+                </tr>
+                {lines.map((line) => {
+                  const shown = formatCents(centsFromInput(line.amountText));
+                  const negative = shown.trim().startsWith("-");
+                  return (
+                    <tr key={line.key}>
+                      <td>
+                        <input
+                          className={`split-amount${negative ? " neg" : ""}`}
+                          value={line.amountText}
+                          onChange={(e) =>
+                            setLines((rows) =>
+                              rows.map((row) =>
+                                row.key === line.key ? { ...row, amountText: e.target.value } : row
+                              )
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="catalog-label"
+                          value={line.description}
+                          onChange={(e) =>
+                            setLines((rows) =>
+                              rows.map((row) =>
+                                row.key === line.key ? { ...row, description: e.target.value } : row
+                              )
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="catalog-delete"
+                          onClick={() => setLines((rows) => rows.filter((row) => row.key !== line.key))}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p>Loading…</p>
+        )}
+      </main>
+    </div>
+  );
+}
+
 function PTable({
   categoryName,
   detail,
+  year,
+  bank,
   onModify,
   onCategoryError,
   onTermContextMenu,
 }: {
   categoryName: string;
   detail: TransactionsResponse;
+  year?: string;
+  bank?: string;
   onModify: (transaction: Transaction) => void;
   onCategoryError?: (message: string | null) => void;
   onTermContextMenu?: (e: MouseEvent, cellText: string, transactionId: string) => void;
@@ -2426,12 +2669,30 @@ function PTable({
     }
   }
 
+  function openSplit(e: MouseEvent, transaction: Transaction) {
+    e.preventDefault();
+    e.stopPropagation();
+    const id = String(transaction.id ?? "");
+    if (!id) return;
+    const params = new URLSearchParams();
+    params.set("view", "split");
+    params.set("person", detail.person);
+    params.set("id", id);
+    if (year) params.set("year", year);
+    if (bank && bank !== "consolidated") params.set("bank", bank);
+    window.open(`${window.location.pathname}?${params.toString()}`, "boekhouding-split")?.focus();
+  }
+
   function renderCell(t: Transaction, column: string) {
     if (column === "amount") {
       const amount = formatCell(t.amount);
       const negative = amount.trim().startsWith("-");
       return (
-        <td key={column} className={negative ? "amount num neg" : "amount num"}>
+        <td
+          key={column}
+          className={`${negative ? "amount num neg" : "amount num"} amount-source`}
+          onContextMenu={(e) => openSplit(e, t)}
+        >
           {amount}
         </td>
       );

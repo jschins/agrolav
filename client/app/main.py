@@ -117,6 +117,20 @@ class ModificationRequest(BaseModel):
     transaction: dict[str, Any]
 
 
+class TransactionSplitLine(BaseModel):
+    id: str | None = None
+    description: str = ""
+    amount: str = "0.00"
+
+
+class TransactionSplitSave(BaseModel):
+    id: str
+    description: str = ""
+    lines: list[TransactionSplitLine] = Field(default_factory=list)
+    year: str | None = None
+    bank: str | None = None
+
+
 class RefreshRequest(BaseModel):
     date_from: str | None = None
     date_to: str | None = None
@@ -630,6 +644,58 @@ def api_modification(short: str, body: ModificationRequest) -> dict[str, Any]:
         if isinstance(result, dict) and isinstance(result.get("matrix"), dict):
             result = {**result, "matrix": scope_matrix(result["matrix"])}
         return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.get("/api/split/{short}")
+def api_transaction_split_get(
+    short: str,
+    id: str,
+    year: str | None = Query(default=None),
+    bank: str | None = Query(default=None),
+) -> dict[str, Any]:
+    from app.centrale_sync import hub_get, require_person
+    import urllib.parse
+
+    try:
+        require_person(short)
+        params: list[str] = [f"id={urllib.parse.quote(id)}"]
+        if year:
+            params.append(f"year={urllib.parse.quote(year)}")
+        if bank:
+            params.append(f"bank={urllib.parse.quote(bank)}")
+        return hub_get(
+            f"/people/{urllib.parse.quote(short)}/split?{'&'.join(params)}"
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.put("/api/split/{short}")
+def api_transaction_split_save(short: str, body: TransactionSplitSave) -> dict[str, Any]:
+    from app.centrale_sync import hub_put, require_person
+    import urllib.parse
+
+    try:
+        require_person(short)
+        return hub_put(
+            f"/people/{urllib.parse.quote(short)}/split",
+            {
+                "id": body.id,
+                "description": body.description,
+                "lines": [
+                    {"id": item.id, "description": item.description, "amount": item.amount}
+                    for item in body.lines
+                ],
+                "year": body.year,
+                "bank": body.bank,
+            },
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:

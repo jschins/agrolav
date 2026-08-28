@@ -832,6 +832,24 @@ textarea.cell-edit {
   cursor: context-menu;
 }
 
+.amount-source {
+  cursor: context-menu;
+}
+
+.split-amount {
+  width: 7rem;
+  box-sizing: border-box;
+  font: inherit;
+  text-align: right;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+}
+
+.split-amount.neg {
+  color: #b91c1c;
+}
+
 .term-context-backdrop {
   position: fixed;
   inset: 0;

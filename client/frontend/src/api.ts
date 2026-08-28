@@ -8,6 +8,7 @@ import type {
   SettingsResponse,
   TermsUpdateResponse,
   Transaction,
+  TransactionSplitResponse,
   TransactionsResponse,
 } from "./types";
 
@@ -154,6 +155,32 @@ export function recordModification(
   return sendJson(`/api/transactions/${encodeURIComponent(short)}/modification`, "PUT", {
     transaction,
   });
+}
+
+export function getTransactionSplit(
+  short: string,
+  id: string,
+  year?: string,
+  bank?: string
+): Promise<TransactionSplitResponse> {
+  const params = new URLSearchParams();
+  params.set("id", id);
+  if (year) params.set("year", year);
+  if (bank) params.set("bank", bank);
+  return getJson(`/api/split/${encodeURIComponent(short)}?${params.toString()}`);
+}
+
+export function saveTransactionSplit(
+  short: string,
+  body: {
+    id: string;
+    description: string;
+    lines: { id?: string | null; description: string; amount: string }[];
+    year?: string;
+    bank?: string;
+  }
+): Promise<TransactionSplitResponse> {
+  return sendJson(`/api/split/${encodeURIComponent(short)}`, "PUT", body);
 }
 
 export interface SyncNotification {

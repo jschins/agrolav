@@ -17,6 +17,8 @@ from app.yearpath import is_year_name
 _IDENT = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _ENABLE_BANKING_ID = re.compile(r"^(\d+)_(\d+)$")
 _DATE_DMY = re.compile(r"^(\d{2})-(\d{2})-(\d{4})$")
+_SPLIT_CHILD = re.compile(r"^(.*)~s(\d+)$")
+_MONEY = Decimal("0.01")
 
 
 def _sql_ident(name: str) -> str | None:
@@ -848,3 +850,289 @@ def ingest_bound_transactions(
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to insert bookings: {exc}")
         return 0
+
+
+def _money(value: Any) -> Decimal:
+    amount = _decimal_amount(value)
+    if amount is None:
+        return Decimal("0.00")
+    return amount.quantize(_MONEY)
+
+
+def _root_source_id(source_id: str) -> str:
+    match = _SPLIT_CHILD.fullmatch(str(source_id or "").strip())
+    return match.group(1) if match else str(source_id or "").strip()
+
+
+def _has_parent_source_column(cursor, table: str) -> bool:
+    cursor.execute(f"SELECT COL_LENGTH(N'{table}', N'parent_source_id')")
+    row = cursor.fetchone()
+    return bool(row and row[0])
+
+
+def _next_split_ids(parent_id: str, used: set[int], count: int) -> list[str]:
+    n = 1
+    out: list[str] = []
+    while len(out) < count:
+        if n not in used:
+            child = f"{parent_id}~s{n}"
+            if len(child) > 128:
+                raise ValueError("Transaction id is too long to split")
+            used.add(n)
+            out.append(child)
+        n += 1
+    return out
+
+
+def _split_payload(
+    *,
+    parent_id: str,
+    parent: dict[str, Any],
+    children: list[dict[str, Any]],
+) -> dict[str, Any]:
+    total = _money(parent.get("amount"))
+    for child in children:
+        total += _money(child.get("amount"))
+    return {
+        "id": parent_id,
+        "original_amount": _json_amount(total),
+        "description": str(parent.get("description") or ""),
+        "date": str(parent.get("date") or ""),
+        "name": str(parent.get("name") or ""),
+        "iban": str(parent.get("iban") or ""),
+        "type": str(parent.get("type") or ""),
+        "category": parent.get("category"),
+        "lines": [
+            {
+                "id": str(child.get("id") or ""),
+                "description": str(child.get("description") or ""),
+                "amount": _json_amount(child.get("amount")),
+            }
+            for child in children
+        ],
+    }
+
+
+def load_bound_split(source_id: str) -> dict[str, Any]:
+    """Parent booking plus split lines. Conserved total is the group sum."""
+    needle = str(source_id or "").strip()
+    if not needle:
+        raise ValueError("Transaction id is required")
+    bound = _open_bound_scope()
+    if bound is None:
+        raise RuntimeError("SQL Server is not configured")
+    has_parent = _has_parent_source_column(bound.cursor, bound.table)
+    where_sql, where_params = _bound_where(bound)
+    bound.cursor.execute(
+        f"SELECT t.source_id{', t.parent_source_id' if has_parent else ''} "
+        f"FROM {bound.table} t WHERE {where_sql} AND t.source_id = ?",
+        tuple([*where_params, needle]),
+    )
+    found = bound.cursor.fetchone()
+    if found and has_parent and found[1]:
+        parent_id = str(found[1])
+    elif found:
+        parent_id = str(found[0])
+    else:
+        parent_id = _root_source_id(needle)
+    rows = load_bound_transactions() or []
+    by_id = {str(item.get("id") or ""): item for item in rows if isinstance(item, dict)}
+    parent = by_id.get(parent_id)
+    if parent is None:
+        raise ValueError(f"Transaction not found: {parent_id}")
+    children: list[dict[str, Any]] = []
+    prefix = f"{parent_id}~s"
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        sid = str(item.get("id") or "")
+        if sid.startswith(prefix) and _root_source_id(sid) == parent_id:
+            children.append(item)
+    children.sort(key=lambda item: str(item.get("id") or ""))
+    return _split_payload(parent_id=parent_id, parent=parent, children=children)
+
+
+def _mod_bits(current: int, *, category: bool = False, description: bool = False) -> int:
+    value = 0 if current < 0 else int(current)
+    if category:
+        value |= 1
+    if description:
+        value |= 2
+    return value
+
+
+def save_bound_split(
+    source_id: str,
+    *,
+    description: str,
+    lines: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Rewrite split lines. Parent amount is the remainder of the original total."""
+    current = load_bound_split(source_id)
+    parent_id = str(current["id"])
+    bound = _open_bound_scope()
+    if bound is None:
+        raise RuntimeError("SQL Server is not configured")
+    has_parent = _has_parent_source_column(bound.cursor, bound.table)
+    where_sql, where_params = _bound_where(bound)
+    bound.cursor.execute(
+        f"""
+        SELECT
+            t.account_id, t.bank_id, t.amount, t.bank_type, t.counterparty_name,
+            t.counterparty_iban, t.description, t.booked_on, t.category_id,
+            t.modification, t.hit
+        FROM {bound.table} t
+        WHERE {where_sql} AND t.source_id = ?
+        """,
+        tuple([*where_params, parent_id]),
+    )
+    parent_row = bound.cursor.fetchone()
+    if parent_row is None:
+        raise ValueError(f"Transaction not found: {parent_id}")
+    (
+        account_id,
+        bank_id,
+        _old_amount,
+        bank_type,
+        name,
+        iban,
+        old_description,
+        booked_on,
+        category_id,
+        modification,
+        hit,
+    ) = parent_row
+
+    original = _money(current["original_amount"])
+    cleaned_lines: list[tuple[str | None, str, Decimal]] = []
+    for item in lines:
+        if not isinstance(item, dict):
+            continue
+        line_id = str(item.get("id") or "").strip() or None
+        if line_id and _root_source_id(line_id) != parent_id:
+            line_id = None
+        cleaned_lines.append(
+            (
+                line_id,
+                str(item.get("description") or ""),
+                _money(item.get("amount")),
+            )
+        )
+    remainder = original - sum((amount for _i, _d, amount in cleaned_lines), Decimal("0.00"))
+    remainder = remainder.quantize(_MONEY)
+    new_description = str(description or "")
+    desc_changed = new_description != str(old_description or "")
+    try:
+        flag = int(modification)
+    except (TypeError, ValueError):
+        flag = 0
+    if desc_changed:
+        flag = _mod_bits(flag, description=True)
+
+    bare_where = where_sql.replace("t.", "")
+    bound.cursor.execute(
+        f"""
+        UPDATE {bound.table}
+        SET amount = ?, description = ?, modification = ?
+        WHERE {bare_where} AND source_id = ?
+        """,
+        (
+            remainder,
+            new_description or None,
+            flag,
+            *where_params,
+            parent_id,
+        ),
+    )
+
+    existing: dict[str, None] = {}
+    prefix = f"{parent_id}~s"
+    bound.cursor.execute(
+        f"SELECT t.source_id FROM {bound.table} t WHERE {where_sql}",
+        tuple(where_params),
+    )
+    for (sid,) in bound.cursor.fetchall():
+        text = str(sid or "")
+        if text.startswith(prefix) and _root_source_id(text) == parent_id:
+            existing[text] = None
+
+    used_n = set()
+    for sid in existing:
+        match = _SPLIT_CHILD.fullmatch(sid)
+        if match:
+            used_n.add(int(match.group(2)))
+
+    keep: set[str] = set()
+    need_new = sum(1 for line_id, _d, _a in cleaned_lines if not (line_id and line_id in existing))
+    fresh_ids = _next_split_ids(parent_id, used_n, need_new)
+    fresh_i = 0
+
+    insert_sql = f"""
+        INSERT INTO {bound.table} (
+            person_id, account_id, year, bank_id, source_id, amount,
+            bank_type, counterparty_name, counterparty_iban, description,
+            booked_on, category_id, modification, hit
+            {', parent_source_id' if has_parent else ''}
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            {', ?' if has_parent else ''})
+        """
+    update_sql = f"""
+        UPDATE {bound.table}
+        SET amount = ?, description = ?, modification = ?
+        WHERE {bare_where} AND source_id = ?
+        """
+
+    for line_id, line_desc, amount in cleaned_lines:
+        if line_id and line_id in existing:
+            child_id = line_id
+        else:
+            child_id = fresh_ids[fresh_i]
+            fresh_i += 1
+        keep.add(child_id)
+        child_flag = _mod_bits(1, description=bool(str(line_desc or "").strip()))
+        if child_id in existing:
+            bound.cursor.execute(
+                update_sql,
+                (
+                    amount,
+                    line_desc or None,
+                    child_flag,
+                    *where_params,
+                    child_id,
+                ),
+            )
+            continue
+        values: list[Any] = [
+            bound.person_id,
+            account_id,
+            bound.year,
+            bank_id,
+            child_id,
+            amount,
+            bank_type,
+            name,
+            iban,
+            line_desc or None,
+            booked_on,
+            category_id,
+            child_flag,
+            hit,
+        ]
+        if has_parent:
+            values.append(parent_id)
+        bound.cursor.execute(insert_sql, tuple(values))
+
+    for sid in list(existing):
+        if sid in keep:
+            continue
+        bound.cursor.execute(
+            f"""
+            DELETE FROM {bound.table}
+            WHERE {bare_where} AND source_id = ?
+            """,
+            (*where_params, sid),
+        )
+
+    bound.conn.commit()
+    return load_bound_split(parent_id)
+

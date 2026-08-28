@@ -253,6 +253,62 @@ def record_modification(
         }
 
 
+def transaction_split(
+    center: str,
+    short: str,
+    *,
+    source_id: str,
+    year: str | None = None,
+    bank: str | None = None,
+) -> dict[str, Any]:
+    with _center_scope(center) as ws:
+        from app.core.bank_csv import _optional_text, pack_for_bank_view
+        from app.core.categorize import load_transaction_split
+        from app.paths import bind_person
+        from app.people import get_person
+
+        pack = get_person(short, year=_optional_text(year) or None)
+        pack = pack_for_bank_view(pack, bank, center=ws)
+        with bind_person(pack):
+            payload = load_transaction_split(source_id)
+        return {
+            "center": ws,
+            "person": pack.short,
+            "folder": pack.folder_name,
+            "year": pack.year,
+            **payload,
+        }
+
+
+def save_transaction_split(
+    center: str,
+    short: str,
+    *,
+    source_id: str,
+    description: str,
+    lines: list[dict[str, Any]],
+    year: str | None = None,
+    bank: str | None = None,
+) -> dict[str, Any]:
+    with _center_scope(center) as ws:
+        from app.core.bank_csv import _optional_text, pack_for_bank_view
+        from app.core.categorize import save_transaction_split as _save
+        from app.paths import bind_person
+        from app.people import get_person
+
+        pack = get_person(short, year=_optional_text(year) or None)
+        pack = pack_for_bank_view(pack, bank, center=ws)
+        with bind_person(pack):
+            payload = _save(source_id, description=description, lines=lines)
+        return {
+            "center": ws,
+            "person": pack.short,
+            "folder": pack.folder_name,
+            "year": pack.year,
+            **payload,
+        }
+
+
 def settings(center: str) -> dict[str, Any]:
     with _center_scope(center) as ws:
         from app import user_store
