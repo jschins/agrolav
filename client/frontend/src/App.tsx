@@ -8,6 +8,7 @@ import {
   getCentraleNotifications,
   getCentraleStatus,
   getBanks,
+  getCatalog,
   getMatrix,
   getSettings,
   getTransactions,
@@ -19,6 +20,7 @@ import {
   recordModification,
   refreshAll,
   refreshPerson,
+  saveCatalog,
   setCenter,
   updateSettings,
   type CentralWinsAlert,
@@ -26,6 +28,7 @@ import {
   type SyncNotification,
 } from "./api";
 import type {
+  CatalogCategory,
   MatrixResponse,
   PersonInfo,
   RefreshPersonResult,
@@ -496,12 +499,14 @@ function SyncNotifyShell({
   children,
   onCenterChanged,
   termsView = false,
+  categoriesView = false,
   onLogout,
   initialTitle = "",
 }: {
   children: (brandName: string, activeYear: string, bankView: string, dataRev: number) => ReactNode;
   onCenterChanged?: () => void;
   termsView?: boolean;
+  categoriesView?: boolean;
   onLogout?: () => void;
   initialTitle?: string;
 }) {
@@ -571,8 +576,12 @@ function SyncNotifyShell({
 
   useEffect(() => {
     if (!brandName) return;
-    document.title = termsView ? `${brandName} — Terms` : brandName;
-  }, [brandName, termsView]);
+    document.title = termsView
+      ? `${brandName} — Terms`
+      : categoriesView
+        ? `${brandName} — Categories`
+        : brandName;
+  }, [brandName, termsView, categoriesView]);
 
   useEffect(() => {
     let cancelled = false;
@@ -686,6 +695,16 @@ function SyncNotifyShell({
 
   const menuItems = useMemo(() => {
     const items = [...headerActions];
+    items.push({
+      id: "terms",
+      label: "⚙ Edit Terms (Alt+T)",
+      onClick: () => openView("terms"),
+    });
+    items.push({
+      id: "categories",
+      label: "edit categories",
+      onClick: () => openView("categories"),
+    });
     if (uploadUrl) {
       items.push({ id: "upload", label: "upload", href: uploadUrl });
     }
@@ -705,7 +724,7 @@ function SyncNotifyShell({
                 onSelect={handleSelect}
               />
             ) : null}
-            {!termsView && activeYear ? (
+            {!termsView && !categoriesView && activeYear ? (
               <YearSwitcher
                 year={activeYear}
                 years={yearOptions}
@@ -715,7 +734,7 @@ function SyncNotifyShell({
                 }}
               />
             ) : null}
-            {showBankSwitcher && !termsView ? (
+            {showBankSwitcher && !termsView && !categoriesView ? (
               <BankSwitcher
                 view={bankView}
                 folders={bankOptions}
@@ -847,14 +866,19 @@ function abbreviate(map: Record<string, string>, type: unknown): string {
   return t;
 }
 
-function viewUrl(target: "main" | "terms"): string {
-  return target === "terms"
-    ? `${window.location.pathname}?view=terms`
-    : window.location.pathname;
+function viewUrl(target: "main" | "terms" | "categories"): string {
+  if (target === "terms") return `${window.location.pathname}?view=terms`;
+  if (target === "categories") return `${window.location.pathname}?view=categories`;
+  return window.location.pathname;
 }
 
-function openView(target: "main" | "terms") {
-  const name = target === "terms" ? "boekhouding-terms" : "boekhouding-main";
+function openView(target: "main" | "terms" | "categories") {
+  const name =
+    target === "terms"
+      ? "boekhouding-terms"
+      : target === "categories"
+        ? "boekhouding-categories"
+        : "boekhouding-main";
   window.open(viewUrl(target), name)?.focus();
 }
 
@@ -869,6 +893,8 @@ function isPlainAlt(e: KeyboardEvent): boolean {
 
 export default function App() {
   const isTerms = new URLSearchParams(window.location.search).get("view") === "terms";
+  const isCategories =
+    new URLSearchParams(window.location.search).get("view") === "categories";
   const [wsEpoch, setWsEpoch] = useState(0);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -917,6 +943,7 @@ export default function App() {
     <SyncNotifyShell
       initialTitle={heading}
       termsView={isTerms}
+      categoriesView={isCategories}
       onLogout={
         authRequired
           ? () => {
@@ -937,6 +964,8 @@ export default function App() {
       {(brandName, year, bankView, dataRev) =>
         isTerms ? (
           <TermsApp key={wsEpoch} />
+        ) : isCategories ? (
+          <CategoriesApp key={wsEpoch} />
         ) : (
           <MainApp
             key={wsEpoch}
@@ -1330,6 +1359,9 @@ function MainApp({
       if (key === "t") {
         e.preventDefault();
         openView("terms");
+      } else if (key === "c") {
+        e.preventDefault();
+        openView("categories");
       } else if (key === "m") {
         e.preventDefault();
         window.focus();
@@ -1440,11 +1472,6 @@ function MainApp({
         href: addPersonUrl,
       });
     }
-    items.push({
-      id: "terms",
-      label: "⚙ Edit Terms (Alt+T)",
-      onClick: () => openView("terms"),
-    });
     setHeaderActions(items);
     return () => setHeaderActions([]);
   }, [
@@ -1717,6 +1744,9 @@ function TermsApp() {
       } else if (key === "t") {
         e.preventDefault();
         window.focus();
+      } else if (key === "c") {
+        e.preventDefault();
+        openView("categories");
       }
     }
     window.addEventListener("keydown", onKey);
@@ -1776,6 +1806,251 @@ function TermsApp() {
         {error && <p className="error">{error}</p>}
         {settings ? (
           <TermsTables settings={settings} onUpdate={updateTerms} />
+        ) : (
+          <p>Loading…</p>
+        )}
+      </main>
+    </div>
+  );
+}
+
+type CatalogDraft = {
+  key: string;
+  category_id: number | null;
+  local_code: string;
+  label: string;
+  is_remainder: boolean;
+};
+
+function catalogToDraft(rows: CatalogCategory[]): CatalogDraft[] {
+  return rows.map((row, index) => ({
+    key: row.category_id != null ? `id-${row.category_id}` : `new-${index}`,
+    category_id: row.category_id ?? null,
+    local_code: String(row.local_code).padStart(2, "0"),
+    label: row.label,
+    is_remainder: Boolean(row.is_remainder),
+  }));
+}
+
+function CategoriesApp() {
+  const [draft, setDraft] = useState<CatalogDraft[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [country, setCountry] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const nextKey = useRef(1);
+
+  useEffect(() => {
+    window.name = "boekhouding-categories";
+    let cancelled = false;
+    getCatalog()
+      .then((data) => {
+        if (cancelled) return;
+        setCountry(data.country || "");
+        setDraft(catalogToDraft(data.categories || []));
+        setLoaded(true);
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const channel = new BroadcastChannel(CHANNEL);
+    channelRef.current = channel;
+    return () => {
+      channelRef.current = null;
+      channel.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!isPlainAlt(e)) return;
+      const key = e.key.toLowerCase();
+      if (key === "m") {
+        e.preventDefault();
+        openView("main");
+      } else if (key === "t") {
+        e.preventDefault();
+        openView("terms");
+      } else if (key === "c") {
+        e.preventDefault();
+        window.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function patchRow(key: string, patch: Partial<CatalogDraft>) {
+    setSaved(false);
+    setDraft((rows) =>
+      rows.map((row) => {
+        if (row.key !== key) {
+          if (patch.is_remainder) return { ...row, is_remainder: false };
+          return row;
+        }
+        return { ...row, ...patch };
+      })
+    );
+  }
+
+  function addRow() {
+    setSaved(false);
+    const key = `new-${nextKey.current++}`;
+    setDraft((rows) => {
+      const used = new Set(
+        rows.map((row) => Number.parseInt(row.local_code, 10)).filter((n) => n >= 1)
+      );
+      let code = 1;
+      while (used.has(code) && code < 97) code += 1;
+      return [
+        ...rows,
+        {
+          key,
+          category_id: null,
+          local_code: String(code).padStart(2, "0"),
+          label: "",
+          is_remainder: rows.length === 0,
+        },
+      ];
+    });
+  }
+
+  function removeRow(key: string) {
+    setSaved(false);
+    setDraft((rows) => {
+      const next = rows.filter((row) => row.key !== key);
+      if (next.length && !next.some((row) => row.is_remainder)) {
+        next[0] = { ...next[0], is_remainder: true };
+      }
+      return next;
+    });
+  }
+
+  function save() {
+    setError(null);
+    setBusy(true);
+    setSaved(false);
+    const payload: CatalogCategory[] = draft.map((row) => ({
+      category_id: row.category_id,
+      local_code: Number.parseInt(row.local_code, 10),
+      label: row.label.trim(),
+      is_remainder: row.is_remainder,
+    }));
+    saveCatalog(payload)
+      .then((data) => {
+        setCountry(data.country || country);
+        setDraft(catalogToDraft(data.categories || []));
+        setSaved(true);
+        channelRef.current?.postMessage("recalculated");
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(false));
+  }
+
+  return (
+    <div className="app terms-app">
+      <aside className="sidebar">
+        <div className="winbar">
+          <div className="sidebar-field">
+            <span className="sidebar-field-legend" aria-hidden="true">
+              {"\u00a0"}
+            </span>
+            <button type="button" className="sidebar-knob" onClick={() => openView("main")}>
+              Matrix (Alt+M)
+            </button>
+          </div>
+        </div>
+        <p className="win-hint">
+          Category window for {country || "this country"}. Changing a name keeps
+          existing bookings on that category. Deleting a category moves leftover
+          bookings to unclassified.
+        </p>
+        <div className="sidebar-field">
+          <span className="sidebar-field-legend" aria-hidden="true">
+            {"\u00a0"}
+          </span>
+          <button type="button" className="sidebar-knob" onClick={addRow}>
+            Add category
+          </button>
+        </div>
+        <div className="sidebar-field">
+          <span className="sidebar-field-legend" aria-hidden="true">
+            {"\u00a0"}
+          </span>
+          <button
+            type="button"
+            className="sidebar-knob"
+            disabled={busy || draft.length === 0}
+            onClick={save}
+          >
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </aside>
+      <main className="content terms-content">
+        {error && <p className="error">{error}</p>}
+        {saved && <p className="ok">Saved.</p>}
+        {loaded ? (
+          <div className="terms-scroll">
+            <table className="s-table catalog-table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Label</th>
+                  <th>Unclassified</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {draft.map((row) => (
+                  <tr key={row.key}>
+                    <td>
+                      <input
+                        className="catalog-code"
+                        inputMode="numeric"
+                        maxLength={2}
+                        value={row.local_code}
+                        onChange={(e) => patchRow(row.key, { local_code: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="catalog-label"
+                        value={row.label}
+                        onChange={(e) => patchRow(row.key, { label: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="radio"
+                        name="catalog-remainder"
+                        checked={row.is_remainder}
+                        onChange={() => patchRow(row.key, { is_remainder: true })}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="catalog-delete"
+                        disabled={draft.length === 1}
+                        onClick={() => removeRow(row.key)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p>Loading…</p>
         )}

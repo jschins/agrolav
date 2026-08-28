@@ -776,6 +776,44 @@ textarea.cell-edit {
   color: #b91c1c;
 }
 
+.ok {
+  color: #166534;
+  font-weight: 700;
+}
+
+.catalog-table {
+  width: max-content;
+  min-width: 36rem;
+}
+
+.catalog-table th,
+.catalog-table td {
+  vertical-align: middle;
+}
+
+.catalog-code {
+  width: 3.2rem;
+}
+
+.catalog-label {
+  width: 28rem;
+}
+
+.catalog-code,
+.catalog-label {
+  box-sizing: border-box;
+  font: inherit;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+}
+
+.catalog-delete {
+  font: inherit;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+}
+
 .editable.assign-term {
   cursor: pointer;
 }

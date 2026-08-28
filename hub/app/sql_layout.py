@@ -242,8 +242,16 @@ def _create_transaction_table(cursor, *, country: str, country_id: int) -> str:
 
 
 def _next_center_id(cursor) -> int:
-    cursor.execute("SELECT ISNULL(MAX(center_id), 0) + 1 FROM dbo.center")
-    return int(cursor.fetchone()[0])
+    cursor.execute("SELECT center_id FROM dbo.center")
+    used = {int(row[0]) for row in cursor.fetchall()}
+    candidate = 1
+    while candidate in used:
+        candidate += 1
+    return candidate
+
+
+def _reseed_center_id(cursor, center_id: int) -> None:
+    cursor.execute(f"DBCC CHECKIDENT (N'dbo.center', RESEED, {int(center_id)})")
 
 
 def _center_id_is_identity(cursor) -> bool:
@@ -257,7 +265,7 @@ def _center_id_is_identity(cursor) -> bool:
 def _insert_center_row(
     cursor, *, country_id: int, username: str, title: str
 ) -> int:
-    """Insert ``dbo.center`` with ``center_id = MAX(center_id) + 1``."""
+    """Insert ``dbo.center`` with the next unused ``center_id`` (1, 2, 3, …)."""
     center_id = _next_center_id(cursor)
     if _center_id_is_identity(cursor):
         cursor.execute("SET IDENTITY_INSERT dbo.center ON")
@@ -274,6 +282,7 @@ def _insert_center_row(
             )
         finally:
             cursor.execute("SET IDENTITY_INSERT dbo.center OFF")
+        _reseed_center_id(cursor, center_id)
     else:
         cursor.execute(
             """

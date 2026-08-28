@@ -455,6 +455,10 @@ class AddTermRequest(BaseModel):
     source: str = "local"
 
 
+class CatalogCategoriesRequest(BaseModel):
+    categories: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class ModificationRequest(BaseModel):
     transaction: dict[str, Any]
     source: str = "local"
@@ -681,6 +685,42 @@ def api_settings(center: str, _: None = Depends(require_api_key)) -> dict[str, A
         raise HTTPException(
             status_code=500, detail=f"{type(exc).__name__}: {exc}"
         ) from exc
+
+
+@app.get("/api/local/{center}/categories")
+def api_catalog(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    from app import center_api
+
+    try:
+        return center_api.catalog(center)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    except FileNotFoundError as err:
+        raise HTTPException(status_code=404, detail=str(err)) from err
+    except Exception as err:
+        raise HTTPException(
+            status_code=500, detail=f"{type(err).__name__}: {err}"
+        ) from err
+
+
+@app.put("/api/local/{center}/categories")
+def api_update_catalog(
+    center: str,
+    body: CatalogCategoriesRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import center_api
+
+    try:
+        return center_api.update_catalog(center, body.categories)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    except FileNotFoundError as err:
+        raise HTTPException(status_code=404, detail=str(err)) from err
+    except Exception as err:
+        raise HTTPException(
+            status_code=500, detail=f"{type(err).__name__}: {err}"
+        ) from err
 
 
 @app.put("/api/local/{center}/settings/{group}/{category_name}")

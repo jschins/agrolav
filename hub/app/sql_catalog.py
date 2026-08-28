@@ -548,3 +548,333 @@ def save_category_terms(
                 pass
 
     _sql_retry(_run)
+
+
+def _country_id_for(cursor, country: str) -> int | None:
+    cursor.execute(
+        """
+        SELECT country_id FROM dbo.country
+        WHERE username = ? COLLATE Latin1_General_CI_AI
+        """,
+        (country,),
+    )
+    row = cursor.fetchone()
+    return int(row[0]) if row else None
+
+
+def booking_categories_payload(country: str) -> dict[str, Any]:
+    """Booking rows in ``dbo.dim_category`` (excludes Balance / Updated footers)."""
+    name = (country or "").strip()
+    empty: dict[str, Any] = {
+        "country": name,
+        "country_id": None,
+        "remainder_id": None,
+        "categories": [],
+    }
+    if not name or not _sql_ready():
+        return empty
+
+    def _run() -> dict[str, Any]:
+        cursor = _cursor()
+        country_id = _country_id_for(cursor, name)
+        if country_id is None:
+            return empty
+        cursor.execute(
+            """
+            SELECT category_id, local_code, label, is_remainder, matrix_role
+            FROM dbo.dim_category
+            WHERE country_id = ?
+            ORDER BY local_code, label
+            """,
+            (country_id,),
+        )
+        rows: list[dict[str, Any]] = []
+        remainder_id: int | None = None
+        for category_id, local_code, label, is_remainder, role in cursor.fetchall():
+            if str(role or "").strip():
+                continue
+            cid = int(category_id)
+            remainder = bool(int(is_remainder or 0))
+            if remainder:
+                remainder_id = cid
+            rows.append(
+                {
+                    "category_id": cid,
+                    "local_code": int(local_code),
+                    "label": str(label or "").strip(),
+                    "is_remainder": remainder,
+                }
+            )
+        return {
+            "country": name,
+            "country_id": country_id,
+            "remainder_id": remainder_id,
+            "categories": rows,
+        }
+
+    try:
+        return _sql_retry(_run)
+    except Exception:  # noqa: BLE001
+        return empty
+
+
+def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Replace the country's booking catalog. Deleted ids remap to unclassified."""
+    name = (country or "").strip()
+    if not name or not _sql_ready():
+        raise ValueError("SQL Server is not configured")
+    parsed = _parse_catalog_items(items)
+
+    def _run() -> dict[str, Any]:
+        from app import user_store
+        from app.sql_replica import _transaction_table
+
+        conn = user_store._sql_connect()
+        cursor = conn.cursor()
+        was = conn.autocommit
+        try:
+            conn.autocommit = False
+            country_id = _country_id_for(cursor, name)
+            if country_id is None:
+                raise ValueError(f"Unknown country: {name}")
+            lo = country_id * 100
+            hi = lo + 99
+            cursor.execute(
+                """
+                SELECT category_id, local_code, label, is_remainder, matrix_role
+                FROM dbo.dim_category
+                WHERE country_id = ?
+                """,
+                (country_id,),
+            )
+            existing: dict[int, dict[str, Any]] = {}
+            footer_ids: set[int] = set()
+            for category_id, local_code, label, is_remainder, role in cursor.fetchall():
+                cid = int(category_id)
+                if str(role or "").strip():
+                    footer_ids.add(cid)
+                    continue
+                existing[cid] = {
+                    "local_code": int(local_code),
+                    "label": str(label or "").strip(),
+                    "is_remainder": bool(int(is_remainder or 0)),
+                }
+            used_ids = set(existing) | footer_ids
+            allocated: list[dict[str, Any]] = []
+            for item in parsed:
+                cid = item["category_id"]
+                if cid is None:
+                    cid = _next_booking_category_id(used_ids, lo, hi)
+                    used_ids.add(cid)
+                    item = {**item, "category_id": cid, "is_new": True}
+                else:
+                    if cid in footer_ids:
+                        raise ValueError(f"Cannot edit footer category_id {cid}")
+                    if cid not in existing:
+                        raise ValueError(f"Unknown category_id {cid}")
+                    item = {**item, "is_new": False}
+                allocated.append(item)
+            keep_ids = {int(item["category_id"]) for item in allocated}
+            deleted_ids = sorted(existing.keys() - keep_ids)
+            remainder_id = next(
+                int(item["category_id"]) for item in allocated if item["is_remainder"]
+            )
+            table = _transaction_table(name)
+            if table is None:
+                raise ValueError(f"Cannot derive transaction table for {name!r}")
+
+            remainder_item = next(item for item in allocated if item["is_remainder"])
+            if remainder_item["is_new"]:
+                _insert_dim_category(
+                    cursor,
+                    country_id,
+                    {
+                        **remainder_item,
+                        "local_code": -int(remainder_item["category_id"]),
+                        "label": f"__tmp__{int(remainder_item['category_id'])}",
+                    },
+                )
+
+            if deleted_ids:
+                _remap_category_fks(
+                    cursor,
+                    table=table,
+                    deleted_ids=deleted_ids,
+                    remainder_id=remainder_id,
+                )
+                _delete_dim_categories(cursor, deleted_ids)
+
+            for item in allocated:
+                if item["is_new"]:
+                    continue
+                cid = int(item["category_id"])
+                cursor.execute(
+                    """
+                    UPDATE dbo.dim_category
+                    SET local_code = ?, label = ?
+                    WHERE category_id = ?
+                    """,
+                    -cid,
+                    f"__tmp__{cid}",
+                    cid,
+                )
+            remainder_new_id = (
+                int(remainder_item["category_id"]) if remainder_item["is_new"] else None
+            )
+            for item in allocated:
+                if not item["is_new"]:
+                    continue
+                if remainder_new_id is not None and int(item["category_id"]) == remainder_new_id:
+                    continue
+                cid = int(item["category_id"])
+                _insert_dim_category(
+                    cursor,
+                    country_id,
+                    {
+                        **item,
+                        "local_code": -cid,
+                        "label": f"__tmp__{cid}",
+                    },
+                )
+            for item in allocated:
+                cid = int(item["category_id"])
+                cursor.execute(
+                    """
+                    UPDATE dbo.dim_category
+                    SET local_code = ?, label = ?, is_remainder = ?
+                    WHERE category_id = ?
+                    """,
+                    int(item["local_code"]),
+                    str(item["label"]),
+                    1 if item["is_remainder"] else 0,
+                    cid,
+                )
+            conn.commit()
+            _CAT_CACHE.clear()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                conn.autocommit = was
+            except Exception:
+                pass
+        return booking_categories_payload(name)
+
+    return _sql_retry(_run)
+
+
+def _parse_catalog_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not isinstance(items, list) or not items:
+        raise ValueError("At least one category is required")
+    parsed: list[dict[str, Any]] = []
+    codes: set[int] = set()
+    labels: set[str] = set()
+    remainders = 0
+    for raw in items:
+        if not isinstance(raw, dict):
+            raise ValueError("Each category must be an object")
+        cid_raw = raw.get("category_id")
+        cid = None if cid_raw in (None, "", 0) else int(cid_raw)
+        try:
+            code = int(raw.get("local_code"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Each category needs a numeric code") from exc
+        if code < 1 or code > 97:
+            raise ValueError(f"Category code must be 01–97, not {code}")
+        label = str(raw.get("label") or "").strip()
+        if not label:
+            raise ValueError("Each category needs a label")
+        if code in codes:
+            raise ValueError(f"Duplicate category code {code:02d}")
+        key = label.casefold()
+        if key in labels:
+            raise ValueError(f"Duplicate category label {label!r}")
+        codes.add(code)
+        labels.add(key)
+        remainder = bool(raw.get("is_remainder"))
+        if remainder:
+            remainders += 1
+        parsed.append(
+            {
+                "category_id": cid,
+                "local_code": code,
+                "label": label,
+                "is_remainder": remainder,
+            }
+        )
+    if remainders != 1:
+        raise ValueError("Mark exactly one category as unclassified")
+    return parsed
+
+
+def _next_booking_category_id(used: set[int], lo: int, hi: int) -> int:
+    for cid in range(lo + 2, hi + 1):
+        if cid not in used:
+            return cid
+    raise ValueError("No free category_id left in this country's range")
+
+
+def _sql_in(ids: list[int]) -> tuple[str, list[int]]:
+    placeholders = ", ".join("?" for _ in ids)
+    return placeholders, [int(i) for i in ids]
+
+
+def _remap_category_fks(
+    cursor,
+    *,
+    table: str,
+    deleted_ids: list[int],
+    remainder_id: int,
+) -> None:
+    placeholders, values = _sql_in(deleted_ids)
+    params = [remainder_id, *values]
+    cursor.execute(
+        f"UPDATE {table} SET category_id = ? WHERE category_id IN ({placeholders})",
+        params,
+    )
+    cursor.execute("SELECT OBJECT_ID(N'dbo.type_rule', N'U')")
+    if cursor.fetchone()[0]:
+        cursor.execute(
+            f"""
+            UPDATE dbo.type_rule SET category_id = ?
+            WHERE category_id IN ({placeholders})
+            """,
+            params,
+        )
+    cursor.execute(
+        f"DELETE FROM dbo.category_term WHERE category_id IN ({placeholders})",
+        values,
+    )
+    cursor.execute("SELECT OBJECT_ID(N'dbo.category_total', N'U')")
+    if cursor.fetchone()[0]:
+        cursor.execute(
+            f"DELETE FROM dbo.category_total WHERE category_id IN ({placeholders})",
+            values,
+        )
+
+
+def _insert_dim_category(cursor, country_id: int, item: dict[str, Any]) -> None:
+    cursor.execute(
+        """
+        INSERT INTO dbo.dim_category
+            (category_id, country_id, local_code, label, is_remainder, matrix_role)
+        VALUES (?, ?, ?, ?, ?, NULL)
+        """,
+        int(item["category_id"]),
+        country_id,
+        int(item["local_code"]),
+        str(item["label"]),
+        1 if item["is_remainder"] else 0,
+    )
+
+
+def _delete_dim_categories(cursor, deleted_ids: list[int]) -> None:
+    placeholders, values = _sql_in(deleted_ids)
+    cursor.execute(
+        f"DELETE FROM dbo.dim_category WHERE category_id IN ({placeholders})",
+        values,
+    )

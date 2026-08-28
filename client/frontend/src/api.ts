@@ -1,5 +1,7 @@
 import type {
   AddTermResponse,
+  CatalogCategory,
+  CatalogResponse,
   MatrixResponse,
   ModificationResponse,
   RefreshResponse,
@@ -105,6 +107,16 @@ export function getTransactions(
   const q = params.toString();
   const base = `/api/transactions/${encodeURIComponent(short)}/${encodeURIComponent(category)}`;
   return getJson(q ? `${base}?${q}` : base);
+}
+
+export function getCatalog(): Promise<CatalogResponse> {
+  return getJson("/api/categories");
+}
+
+export function saveCatalog(
+  categories: CatalogCategory[]
+): Promise<CatalogResponse> {
+  return sendJson("/api/categories", "PUT", { categories });
 }
 
 export function getSettings(): Promise<SettingsResponse> {

@@ -79,6 +79,21 @@ export interface AddTermResponse {
   matrix: MatrixResponse;
 }
 
+export interface CatalogCategory {
+  category_id?: number | null;
+  local_code: number;
+  label: string;
+  is_remainder: boolean;
+}
+
+export interface CatalogResponse {
+  country: string;
+  country_id?: number | null;
+  remainder_id?: number | null;
+  center?: string;
+  categories: CatalogCategory[];
+}
+
 export interface ModificationResponse {
   person: string;
   folder?: string;

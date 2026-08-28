@@ -108,6 +108,10 @@ class AddTermRequest(BaseModel):
     person: str | None = None
 
 
+class CatalogCategoriesRequest(BaseModel):
+    categories: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class ModificationRequest(BaseModel):
     transaction: dict[str, Any]
 
@@ -661,6 +665,26 @@ def api_add_term(body: AddTermRequest) -> dict[str, Any]:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:
         raise _hub_error(exc) from exc
+
+
+@app.get("/api/categories")
+def api_catalog() -> dict[str, Any]:
+    from app.centrale_sync import hub_get
+
+    try:
+        return hub_get("/categories")
+    except Exception as err:
+        raise _hub_error(err) from err
+
+
+@app.put("/api/categories")
+def api_update_catalog(body: CatalogCategoriesRequest) -> dict[str, Any]:
+    from app.centrale_sync import hub_put
+
+    try:
+        return hub_put("/categories", {"categories": body.categories})
+    except Exception as err:
+        raise _hub_error(err) from err
 
 
 def _mount_frontend() -> None:

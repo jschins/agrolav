@@ -295,6 +295,28 @@ def settings(center: str) -> dict[str, Any]:
         }
 
 
+def catalog(center: str) -> dict[str, Any]:
+    with _center_scope(center) as ws:
+        from app.runtime import active_country
+        from app.sql_catalog import booking_categories_payload, country_for_center
+
+        country = active_country() or country_for_center(ws) or ""
+        payload = booking_categories_payload(country)
+        payload["center"] = ws
+        return payload
+
+
+def update_catalog(center: str, categories: list[dict[str, Any]]) -> dict[str, Any]:
+    with _center_scope(center) as ws:
+        from app.runtime import active_country
+        from app.sql_catalog import country_for_center, save_booking_categories
+
+        country = active_country() or country_for_center(ws) or ""
+        payload = save_booking_categories(country, categories)
+        payload["center"] = ws
+        return payload
+
+
 def update_settings(
     center: str,
     group: str,
