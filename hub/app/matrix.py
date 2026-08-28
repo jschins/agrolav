@@ -575,12 +575,14 @@ def _bank_refresh_one(
                 "iban": str(acc.get("iban") or "").strip(),
                 "account_name": str(acc.get("name") or acc.get("iban") or "account"),
                 "balance": acc.get("balance") or "0",
-                "format": "secret",
+                "format": str(acc.get("aspsp") or "").strip() or None,
+                "uid": str(acc.get("uid") or "").strip() or None,
+                "identification_hash": str(acc.get("identification_hash") or "").strip() or None,
             }
             for acc in accounts
             if isinstance(acc, dict)
         ],
-        default_format="secret",
+        default_format=None,
     )
 
     if len(accounts) <= 1:
@@ -600,15 +602,6 @@ def _bank_refresh_one(
 
         if not list_year_bank_folders(year_path):
             migrate_year_root_json_into_folder(year_path, targets[0][1])
-
-        try:
-            from app import user_store
-
-            user_store.set_user_format(
-                username=pack.folder_name, format=user_store.FORMAT_MULTIPLE
-            )
-        except Exception:  # noqa: BLE001
-            pass
 
         for acc, folder, account_index in targets:
             sub = (year_path / folder).resolve()

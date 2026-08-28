@@ -12,6 +12,7 @@
 --   dbo.person.username   — person folder
 -- Usernames must not overlap the three tables (enforced in the hub, not SQL).
 
+IF OBJECT_ID(N'dbo.v_account_connection_person', N'V') IS NOT NULL DROP VIEW dbo.v_account_connection_person;
 IF OBJECT_ID(N'dbo.enable_account', N'U') IS NOT NULL DROP TABLE dbo.enable_account;
 IF OBJECT_ID(N'dbo.enable_redirect', N'U') IS NOT NULL DROP TABLE dbo.enable_redirect;
 IF OBJECT_ID(N'dbo.private_key', N'U') IS NOT NULL DROP TABLE dbo.private_key;
@@ -91,7 +92,18 @@ CREATE TABLE dbo.person (
 );
 CREATE UNIQUE INDEX ux_person_username ON dbo.person (username);
 
--- format lives on dbo.account (bank csv / secret / excel), not on the login
+-- format lives on dbo.account (csv layout / Enable ASPSP / excel), not on the login.
+-- Bank-connected accounts share enable_connection; Excel accounts leave
+-- connection_id / uid / identification_hash NULL.
+
+CREATE TABLE dbo.enable_connection (
+    connection_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    app_id NVARCHAR(128) NULL,
+    session_id NVARCHAR(256) NULL,
+    valid_until DATETIME2 NULL,
+    created_at DATETIME2 NULL,
+    pem NVARCHAR(MAX) NULL
+);
 
 CREATE TABLE dbo.account (
     account_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
@@ -101,9 +113,31 @@ CREATE TABLE dbo.account (
     format NVARCHAR(64) NULL,
     balance DECIMAL(18, 2) NOT NULL CONSTRAINT df_account_balance DEFAULT (0),
     last_booked DATE NULL,
+    connection_id INT NULL,
+    uid NVARCHAR(128) NULL,
+    identification_hash NVARCHAR(128) NULL,
     CONSTRAINT fk_account_person FOREIGN KEY (person_id) REFERENCES dbo.person (id),
-    CONSTRAINT ux_account_iban UNIQUE (person_id, iban)
+    CONSTRAINT fk_account_connection FOREIGN KEY (connection_id)
+        REFERENCES dbo.enable_connection (connection_id),
+    CONSTRAINT ux_account_iban UNIQUE (person_id, iban),
+    CONSTRAINT ck_account_connection_uid CHECK (
+        (connection_id IS NULL AND uid IS NULL)
+        OR (connection_id IS NOT NULL AND uid IS NOT NULL)
+    )
 );
+
+CREATE UNIQUE INDEX ux_account_uid ON dbo.account (uid) WHERE uid IS NOT NULL;
+
+CREATE VIEW dbo.v_account_connection_person
+WITH SCHEMABINDING
+AS
+SELECT connection_id, person_id, COUNT_BIG(*) AS account_count
+FROM dbo.account
+WHERE connection_id IS NOT NULL
+GROUP BY connection_id, person_id;
+
+CREATE UNIQUE CLUSTERED INDEX ux_v_connection_one_person
+    ON dbo.v_account_connection_person (connection_id);
 
 CREATE TABLE dbo.category_term (
     term_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,

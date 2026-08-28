@@ -598,6 +598,23 @@ def _format_for_file(file_name: str, *, bank_id: int | None) -> str | None:
     return None
 
 
+def _aspsp_for_iban(person_folder: Path, iban: Any) -> str | None:
+    needle = str(iban or "").strip()
+    if not needle:
+        return None
+    profile = _read_json_object(person_folder / "secret" / "profile.json")
+    for conn in profile.get("connections") or []:
+        if not isinstance(conn, dict):
+            continue
+        aspsp = str(conn.get("aspsp") or "").strip()
+        if not aspsp:
+            continue
+        for acc in conn.get("accounts") or []:
+            if isinstance(acc, dict) and str(acc.get("iban") or "").strip() == needle:
+                return aspsp
+    return None
+
+
 def _account_format(person_folder: Path, acc: dict[str, Any]) -> str | None:
     stated = str(acc.get("format") or "").strip()
     if stated:
@@ -607,9 +624,9 @@ def _account_format(person_folder: Path, acc: dict[str, Any]) -> str | None:
         fmt = _format_for_file(str(name), bank_id=None)
         if fmt:
             return fmt
-    secret = person_folder / "secret"
-    if secret.is_dir() and any(secret.glob("*.pem")):
-        return "secret"
+    aspsp = _aspsp_for_iban(person_folder, acc.get("iban"))
+    if aspsp:
+        return aspsp
     return None
 
 

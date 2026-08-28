@@ -252,18 +252,15 @@ def _ensure_categories(cursor, country_id: int) -> dict[int, int]:
 
 def _wipe_person(cursor, person_id: int, table: str) -> None:
     cursor.execute(
-        "SELECT connection_id FROM dbo.enable_connection WHERE person_id = ?",
+        """
+        SELECT DISTINCT connection_id
+        FROM dbo.account
+        WHERE person_id = ? AND connection_id IS NOT NULL
+        """,
         (person_id,),
     )
     conn_ids = [int(row[0]) for row in cursor.fetchall()]
-    for connection_id in conn_ids:
-        cursor.execute(
-            "DELETE FROM dbo.enable_account WHERE connection_id = ?",
-            (connection_id,),
-        )
-    cursor.execute("DELETE FROM dbo.enable_connection WHERE person_id = ?", (person_id,))
     cursor.execute("DELETE FROM dbo.enable_redirect WHERE person_id = ?", (person_id,))
-    cursor.execute("DELETE FROM dbo.private_key WHERE person_id = ?", (person_id,))
     cursor.execute("DELETE FROM dbo.category_total WHERE person_id = ?", (person_id,))
     cursor.execute("DELETE FROM dbo.category_term WHERE person_id = ?", (person_id,))
     cursor.execute(
@@ -275,6 +272,11 @@ def _wipe_person(cursor, person_id: int, table: str) -> None:
     )
     cursor.execute(f"DELETE FROM {table} WHERE person_id = ?", (person_id,))
     cursor.execute("DELETE FROM dbo.account WHERE person_id = ?", (person_id,))
+    for connection_id in conn_ids:
+        cursor.execute(
+            "DELETE FROM dbo.enable_connection WHERE connection_id = ?",
+            (connection_id,),
+        )
     cursor.execute("DELETE FROM dbo.person WHERE id = ?", (person_id,))
     print(f"wiped existing person_id={person_id}")
 
@@ -308,7 +310,7 @@ def _accounts_from_consent(consent: dict[str, Any]) -> list[dict[str, Any]]:
             iban = str(acc.get("iban") or "").strip()
             if not iban:
                 continue
-            out.append(acc)
+            out.append({**acc, "aspsp": str(conn.get("aspsp") or "").strip()})
     if not out:
         raise LoadError("consent has no accounts")
     return out
@@ -320,13 +322,14 @@ def _insert_accounts(cursor, person_id: int, raw_accounts: list[dict[str, Any]])
         iban = str(acc.get("iban") or "").strip()[:64]
         name = str(acc.get("name") or "").strip()[:64] or iban
         balance = _parse_amount(acc.get("balance") or "0", path=DATA / "bog_consent.json")
+        fmt = str(acc.get("aspsp") or "").strip()[:64] or None
         cursor.execute(
             """
             INSERT INTO dbo.account (person_id, iban, account_name, format, balance)
             OUTPUT INSERTED.account_id
             VALUES (?, ?, ?, ?, ?)
             """,
-            (person_id, iban, name, "secret", balance),
+            (person_id, iban, name, fmt, balance),
         )
         ids.append(int(cursor.fetchone()[0]))
     return ids
@@ -432,7 +435,7 @@ def _load_transactions(
     return len(rows)
 
 
-def _load_private_key(cursor, person_id: int, app_id: str) -> None:
+def _load_pem(app_id: str) -> tuple[str, str]:
     pem_path = SECRET / f"{app_id}.pem"
     if not pem_path.is_file():
         pems = sorted(SECRET.glob("*.pem"))
@@ -443,13 +446,7 @@ def _load_private_key(cursor, person_id: int, app_id: str) -> None:
     text = pem_path.read_text(encoding="utf-8")
     if "PRIVATE KEY" not in text:
         raise LoadError(f"Not a PEM private key: {pem_path}")
-    cursor.execute(
-        """
-        INSERT INTO dbo.private_key (person_id, app_id, pem)
-        VALUES (?, ?, ?)
-        """,
-        (person_id, app_id, text.strip() + "\n"),
-    )
+    return app_id, text.strip() + "\n"
 
 
 def _load_enable(
@@ -461,6 +458,7 @@ def _load_enable(
     consent: dict[str, Any],
     app_id: str,
 ) -> None:
+    app_id, pem = _load_pem(app_id)
     by_iban = {
         str(acc.get("iban") or "").strip(): account_id
         for acc, account_id in zip(raw_accounts, account_ids)
@@ -469,27 +467,23 @@ def _load_enable(
         if not isinstance(conn, dict):
             continue
         aspsp = str(conn.get("aspsp") or "").strip()
-        country_iso = str(conn.get("country") or "").strip().upper()
-        if not aspsp or len(country_iso) != 2:
+        if not aspsp:
             continue
         session_id = str(conn.get("session_id") or "").strip() or None
         conn_app = str(conn.get("app_id") or "").strip() or app_id
         cursor.execute(
             """
             INSERT INTO dbo.enable_connection (
-                person_id, app_id, aspsp, country_iso,
-                session_id, valid_until, created_at
+                app_id, session_id, valid_until, created_at, pem
             )
             OUTPUT INSERTED.connection_id
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            person_id,
-            conn_app,
-            aspsp[:64],
-            country_iso,
+            (conn_app[:128] if conn_app else None),
             (session_id[:256] if session_id else None),
             _parse_dt(conn.get("valid_until")),
             _parse_dt(conn.get("created_at")),
+            pem,
         )
         connection_id = int(cursor.fetchone()[0])
         for acc in conn.get("accounts") or []:
@@ -499,22 +493,27 @@ def _load_enable(
             if not uid:
                 continue
             iban = str(acc.get("iban") or "").strip()
+            account_id = by_iban.get(iban)
+            if account_id is None:
+                continue
             hash_value = str(acc.get("identification_hash") or "").strip() or None
-            currency = str(acc.get("currency") or acc.get("balance_currency") or "").strip().upper()
             cursor.execute(
                 """
-                INSERT INTO dbo.enable_account (
-                    connection_id, account_id, uid, enabled,
-                    identification_hash, currency
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
+                UPDATE dbo.account
+                SET
+                    connection_id = ?,
+                    uid = ?,
+                    identification_hash = ?,
+                    format = ?
+                WHERE account_id = ?
                 """,
-                connection_id,
-                by_iban.get(iban),
-                uid[:128],
-                1 if acc.get("enabled", True) else 0,
-                (hash_value[:128] if hash_value else None),
-                (currency if len(currency) == 3 else None),
+                (
+                    connection_id,
+                    uid[:128],
+                    (hash_value[:128] if hash_value else None),
+                    aspsp[:64],
+                    account_id,
+                ),
             )
 
 
@@ -590,7 +589,6 @@ def load(cursor) -> None:
         app_id = str(_read_json_object(profile_path).get("app_id") or "").strip()
     if not app_id:
         raise LoadError("profile has no app_id")
-    _load_private_key(cursor, person_id, app_id)
     _load_enable(
         cursor,
         person_id=person_id,

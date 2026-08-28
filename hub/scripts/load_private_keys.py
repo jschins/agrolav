@@ -1,7 +1,7 @@
-"""Load ``secret/*.pem`` into ``dbo.private_key``.
+"""Stamp ``secret/*.pem`` onto ``dbo.enable_connection.pem``.
 
-Does not drop tables. Run after ``load_phase_c.py`` so ``dbo.person`` exists,
-and after ``hub/sql/json_independence.sql`` so ``dbo.private_key`` exists.
+Connections are those already linked from ``dbo.account``. Run after
+accounts have ``connection_id`` set (migrate or load_json_independence).
 
   cd hub
   uv run python scripts/load_private_keys.py
@@ -106,9 +106,12 @@ def _resolve_pem(secret_dir: Path) -> tuple[str, str] | None:
 
 
 def load_private_keys(cursor, root: Path) -> int:
-    cursor.execute("SELECT OBJECT_ID(N'dbo.private_key', N'U')")
+    cursor.execute("SELECT OBJECT_ID(N'dbo.enable_connection', N'U')")
     if cursor.fetchone()[0] is None:
-        raise LoadError("dbo.private_key missing. Run hub/sql/json_independence.sql first.")
+        raise LoadError("dbo.enable_connection missing.")
+    cursor.execute("SELECT COL_LENGTH(N'dbo.enable_connection', N'pem')")
+    if cursor.fetchone()[0] is None:
+        raise LoadError("dbo.enable_connection.pem missing. Run migrate_enable_onto_account.py first.")
 
     cursor.execute(
         """
@@ -120,7 +123,7 @@ def load_private_keys(cursor, root: Path) -> int:
     for person_id, username in cursor.fetchall():
         users[str(username)] = int(person_id)
 
-    rows: list[tuple[int, str, str]] = []
+    updated = 0
     skipped_people: list[str] = []
 
     cursor.execute("SELECT country_id, username FROM dbo.country")
@@ -145,25 +148,25 @@ def load_private_keys(cursor, root: Path) -> int:
                 if found is None:
                     skipped_people.append(str(secret))
                     continue
-                rows.append((found, app_id, pem))
-
-    cursor.execute("DELETE FROM dbo.private_key")
-    if rows:
-        cursor.fast_executemany = True
-        cursor.executemany(
-            """
-            INSERT INTO dbo.private_key (person_id, app_id, pem)
-            VALUES (?, ?, ?)
-            """,
-            rows,
-        )
-        cursor.fast_executemany = False
+                cursor.execute(
+                    """
+                    UPDATE dbo.enable_connection
+                    SET pem = ?, app_id = COALESCE(NULLIF(LTRIM(RTRIM(app_id)), N''), ?)
+                    WHERE connection_id IN (
+                        SELECT DISTINCT connection_id
+                        FROM dbo.account
+                        WHERE person_id = ? AND connection_id IS NOT NULL
+                    )
+                    """,
+                    (pem, app_id, found),
+                )
+                updated += cursor.rowcount or 0
 
     if skipped_people:
         print(f"skipped (no person): {len(skipped_people)}")
         for item in skipped_people:
             print(f"  {item}")
-    return len(rows)
+    return updated
 
 
 def main() -> None:
@@ -176,10 +179,10 @@ def main() -> None:
     except Exception:
         conn.rollback()
         raise
-    cursor.execute("SELECT COUNT(*) FROM dbo.private_key")
+    cursor.execute("SELECT COUNT(*) FROM dbo.enable_connection WHERE pem IS NOT NULL")
     stored = int(cursor.fetchone()[0])
-    print(f"private_key rows inserted: {count}")
-    print(f"dbo.private_key rows now: {stored}")
+    print(f"enable_connection pem updates: {count}")
+    print(f"dbo.enable_connection rows with pem: {stored}")
 
 
 if __name__ == "__main__":

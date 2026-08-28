@@ -652,7 +652,7 @@ def _refresh_account_count(cursor, person_id: int) -> int:
 def ensure_bound_accounts(
     accounts: list[dict[str, Any]],
     *,
-    default_format: str | None = "secret",
+    default_format: str | None = None,
 ) -> list[dict[str, Any]]:
     """Insert missing ``dbo.account`` rows for the bound person; set ``number_of_accounts``."""
     from app import user_store
@@ -674,6 +674,8 @@ def ensure_bound_accounts(
             if not iban:
                 continue
             fmt = str(item.get("format") or default_format or "").strip() or None
+            uid = str(item.get("uid") or "").strip()[:128] or None
+            ident_hash = str(item.get("identification_hash") or "").strip()[:128] or None
             balance = _decimal_amount(item.get("balance")) or Decimal("0")
             bound.cursor.execute(
                 """
@@ -703,12 +705,25 @@ def ensure_bound_accounts(
                 bound.cursor.execute(
                     """
                     UPDATE dbo.account
-                    SET account_name = ?, format = COALESCE(?, format), balance = ?
+                    SET
+                        account_name = ?,
+                        format = COALESCE(?, format),
+                        balance = ?,
+                        uid = CASE
+                            WHEN connection_id IS NOT NULL THEN COALESCE(?, uid)
+                            ELSE uid
+                        END,
+                        identification_hash = CASE
+                            WHEN connection_id IS NOT NULL THEN COALESCE(?, identification_hash)
+                            ELSE identification_hash
+                        END
                     WHERE account_id = ?
                     """,
                     name or iban,
                     fmt,
                     balance,
+                    uid,
+                    ident_hash,
                     account_id,
                 )
             out.append({"account_id": account_id, "iban": iban, "account_name": name or iban})

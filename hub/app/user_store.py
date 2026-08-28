@@ -887,7 +887,7 @@ def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:
             if not row:
                 return None
             cursor.execute(
-                "UPDATE dbo.account SET format = ? WHERE person_id = ?",
+                "UPDATE dbo.account SET format = ? WHERE person_id = ? AND connection_id IS NULL",
                 (fmt, int(row[0])),
             )
             _sql_connect().commit()

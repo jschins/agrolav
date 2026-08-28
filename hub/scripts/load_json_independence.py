@@ -5,7 +5,8 @@ Run after ``load_phase_c.py`` and after executing ``json_independence.sql``:
   cd hub
   uv run python scripts/load_json_independence.py
 
-Reloads (delete + insert) every json_independence table, including private keys.
+Reloads (delete + insert) json_independence tables. Enable PEM and account
+uids go on ``dbo.enable_connection`` / ``dbo.account``.
 """
 from __future__ import annotations
 
@@ -26,7 +27,7 @@ from app.core.single_client import _consent_subset, _migrate_profile  # noqa: E4
 from app.runtime import country_folder, data_root  # noqa: E402
 from app.upload_acl import _normalize_ip, load_acl_document  # noqa: E402
 from app.yearpath import has_person_layout  # noqa: E402
-from load_private_keys import load_private_keys  # noqa: E402
+from load_private_keys import _resolve_pem  # noqa: E402
 
 IGNORE_DIRS = frozenset(
     {
@@ -50,9 +51,7 @@ TABLES = (
     "bank_modality",
     "hub_ip",
     "enable_connection",
-    "enable_account",
     "enable_redirect",
-    "private_key",
 )
 
 
@@ -329,7 +328,12 @@ def load_enable(cursor) -> tuple[int, int, int]:
         if key[1]:
             accounts[key] = int(account_id)
 
-    cursor.execute("DELETE FROM dbo.enable_account")
+    cursor.execute(
+        """
+        UPDATE dbo.account
+        SET connection_id = NULL, uid = NULL, identification_hash = NULL
+        """
+    )
     cursor.execute("DELETE FROM dbo.enable_connection")
     cursor.execute("DELETE FROM dbo.enable_redirect")
 
@@ -345,34 +349,32 @@ def load_enable(cursor) -> tuple[int, int, int]:
         connections = record.get("connections")
         if not isinstance(connections, list):
             connections = []
+        secret = person_dir / "secret"
+        resolved = _resolve_pem(secret) if secret.is_dir() else None
+        pem = resolved[1] if resolved else None
+        pem_app_id = resolved[0] if resolved else None
         for conn in connections:
             if not isinstance(conn, dict):
                 continue
             aspsp = str(conn.get("aspsp") or "").strip()
-            country_iso = str(conn.get("country") or "").strip().upper()
-            if not aspsp or len(country_iso) != 2:
-                skipped_people.append(
-                    f"{person_dir.name}: connection missing aspsp/country"
-                )
+            if not aspsp:
+                skipped_people.append(f"{person_dir.name}: connection missing aspsp")
                 continue
-            app_id = str(conn.get("app_id") or "").strip() or None
+            app_id = str(conn.get("app_id") or "").strip() or pem_app_id
             session_id = str(conn.get("session_id") or "").strip() or None
             cursor.execute(
                 """
                 INSERT INTO dbo.enable_connection (
-                    person_id, app_id, aspsp, country_iso,
-                    session_id, valid_until, created_at
+                    app_id, session_id, valid_until, created_at, pem
                 )
                 OUTPUT INSERTED.connection_id
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                person_id,
                 app_id,
-                aspsp[:64],
-                country_iso,
                 (session_id[:256] if session_id else None),
                 _parse_dt(conn.get("valid_until")),
                 _parse_dt(conn.get("created_at")),
+                pem,
             )
             connection_id = int(cursor.fetchone()[0])
             connection_count += 1
@@ -383,21 +385,25 @@ def load_enable(cursor) -> tuple[int, int, int]:
                 if not uid:
                     continue
                 iban = _iban_of(acc)
+                account_id = accounts.get((person_id, iban))
+                if account_id is None:
+                    continue
                 hash_value = str(acc.get("identification_hash") or "").strip() or None
                 cursor.execute(
                     """
-                    INSERT INTO dbo.enable_account (
-                        connection_id, account_id, uid, enabled,
-                        identification_hash, currency
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    UPDATE dbo.account
+                    SET
+                        connection_id = ?,
+                        uid = ?,
+                        identification_hash = ?,
+                        format = ?
+                    WHERE account_id = ?
                     """,
                     connection_id,
-                    accounts.get((person_id, iban)),
                     uid[:128],
-                    1 if acc.get("enabled", True) else 0,
                     (hash_value[:128] if hash_value else None),
-                    _currency_of(acc),
+                    aspsp[:64],
+                    account_id,
                 )
                 account_count += 1
 
@@ -437,7 +443,6 @@ def main() -> None:
         modality_n = load_bank_modalities(cursor)
         ip_n = load_hub_ips(cursor)
         conn_n, acc_n, redirect_n = load_enable(cursor)
-        key_n = load_private_keys(cursor, data_root())
         conn.commit()
     except Exception:
         conn.rollback()
@@ -447,9 +452,8 @@ def main() -> None:
     print(f"bank_modality: {modality_n}")
     print(f"hub_ip: {ip_n}")
     print(f"enable_connection: {conn_n}")
-    print(f"enable_account: {acc_n}")
+    print(f"account enable links: {acc_n}")
     print(f"enable_redirect: {redirect_n}")
-    print(f"private_key: {key_n}")
 
 
 if __name__ == "__main__":
