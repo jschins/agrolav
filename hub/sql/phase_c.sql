@@ -7,7 +7,7 @@
 -- To empty tables in SSMS without dropping the database: empty_agrolav.sql.
 --
 -- Logins:
---   dbo.country.username  — country folder (password = username)
+--   dbo.country.username  — country folder
 --   dbo.center.username   — center folder, unique across all countries
 --   dbo.person.username   — person folder
 -- Usernames must not overlap the three tables (enforced in the hub, not SQL).

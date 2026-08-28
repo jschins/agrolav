@@ -610,8 +610,7 @@ def load(cursor) -> None:
     print(f"accounts: {len(account_ids)}")
     print(f"bookings: {n_tx} -> {table}")
     print(
-        f"login: {COUNTRY_USERNAME} / {CENTER_USERNAME} / {PERSON_USERNAME} "
-        "(password = username)"
+        f"login: {COUNTRY_USERNAME} / {CENTER_USERNAME} / {PERSON_USERNAME}"
     )
 
 

@@ -139,9 +139,15 @@ def store_label() -> str:
     return str(users_db_path())
 
 
+PASSWORD_PREFIX = "!@#$%^&*()_"
+
+
 def password_for_username(username: str) -> str:
-    """Login password is identical to the username (temporary hard-coded rule)."""
-    return str(username or "").strip()
+    """Login password is the shift-row prefix plus the username."""
+    name = str(username or "").strip()
+    if not name:
+        return ""
+    return PASSWORD_PREFIX + name
 
 
 def display_title(username: str) -> str:

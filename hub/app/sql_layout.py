@@ -310,7 +310,7 @@ def _insert_center_row(
 
 
 def create_country(*, name: str, currency: str, title: str = "") -> dict[str, Any]:
-    """Insert ``dbo.country`` and empty ``dbo.transaction_{country}``. Login password equals the username."""
+    """Insert ``dbo.country`` and empty ``dbo.transaction_{country}``."""
     from app import user_store
 
     username = _valid_name(name)
@@ -351,7 +351,10 @@ def create_country(*, name: str, currency: str, title: str = "") -> dict[str, An
                 "currency": str(existing[2] or currency_s),
                 "transaction_table": table,
                 "title": str(existing[1] or username),
-                "login": {"username": username, "password": username},
+                "login": {
+                    "username": username,
+                    "password": user_store.password_for_username(username),
+                },
             }
         if user_store._sql_username_taken(cursor, username):
             raise ValueError(f"Username already used: {username}")
@@ -386,12 +389,15 @@ def create_country(*, name: str, currency: str, title: str = "") -> dict[str, An
         "currency": currency_s,
         "transaction_table": table,
         "title": (title.strip() or user_store.display_title(username) or username),
-        "login": {"username": username, "password": username},
+        "login": {
+            "username": username,
+            "password": user_store.password_for_username(username),
+        },
     }
 
 
 def create_center(*, name: str, country: str, title: str = "") -> dict[str, Any]:
-    """Insert ``dbo.center`` under an existing country. Login password equals the username."""
+    """Insert ``dbo.center`` under an existing country."""
     from app import user_store
 
     username = _valid_name(name)
@@ -447,5 +453,8 @@ def create_center(*, name: str, country: str, title: str = "") -> dict[str, Any]
         "country": resolved,
         "country_id": country_id,
         "title": (title.strip() or user_store.display_title(username) or username),
-        "login": {"username": username, "password": username},
+        "login": {
+            "username": username,
+            "password": user_store.password_for_username(username),
+        },
     }

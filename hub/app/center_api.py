@@ -659,11 +659,11 @@ def refresh_person(
 
 
 
-# Personal logins: password equals username (see user_store.password_for_username).
+# Personal logins: password from user_store.password_for_username.
 
 
 def ensure_personal_login_user(*, center: str, person: str) -> dict[str, Any]:
-    """Upsert a personal login (username=person, password=username) in users.db."""
+    """Upsert a personal login (username=person) in users.db."""
     from app import user_store
 
     ws = _clean_ws(center)
