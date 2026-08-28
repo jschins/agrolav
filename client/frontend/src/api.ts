@@ -22,15 +22,18 @@ async function getJson<T>(url: string): Promise<T> {
 
 async function sendJson<T>(
   url: string,
-  method: "PUT" | "POST" | "PATCH",
-  body: unknown
+  method: "PUT" | "POST" | "PATCH" | "DELETE",
+  body?: unknown
 ): Promise<T> {
-  const resp = await fetch(url, {
+  const init: RequestInit = {
     method,
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  };
+  if (body !== undefined) {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const resp = await fetch(url, init);
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error(`${resp.status} ${resp.statusText}: ${text}`);
@@ -248,4 +251,34 @@ export function setCenter(center: string): Promise<{
   people: { short: string; folder: string }[];
 }> {
   return sendJson("/api/center", "POST", { center });
+}
+
+export interface IpAccessTarget {
+  target: string;
+  kind: string;
+  label: string;
+  username: string;
+}
+
+export interface IpAccessRow extends IpAccessTarget {
+  ip: string;
+}
+
+export interface IpAccessResponse {
+  can_edit_b: boolean;
+  targets: IpAccessTarget[];
+  rows: IpAccessRow[];
+}
+
+export function getIpAccess(): Promise<IpAccessResponse> {
+  return getJson("/api/ip-access");
+}
+
+export function addIpAccess(body: { ip: string; target: string }): Promise<IpAccessResponse> {
+  return sendJson("/api/ip-access", "POST", body);
+}
+
+export function deleteIpAccess(ip: string, target: string): Promise<IpAccessResponse> {
+  const q = new URLSearchParams({ ip, target });
+  return sendJson(`/api/ip-access?${q.toString()}`, "DELETE");
 }

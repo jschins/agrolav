@@ -814,6 +814,16 @@ textarea.cell-edit {
   padding: 0.2rem 0.5rem;
 }
 
+.ip-target,
+.ip-address {
+  box-sizing: border-box;
+  width: 100%;
+  font: inherit;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+}
+
 .editable.assign-term {
   cursor: pointer;
 }

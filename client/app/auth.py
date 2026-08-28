@@ -53,8 +53,10 @@ def session_secret() -> str:
     return env or _DEFAULT_SESSION_SECRET
 
 
-def authenticate(username: str, password: str) -> dict[str, Any] | None:
-    """Verify credentials against the hub SQLite user store."""
+def authenticate(
+    username: str, password: str, *, client_ip: str | None = None
+) -> dict[str, Any] | None:
+    """Verify credentials against the hub user store."""
     from app.centrale_sync import hub_request, load_base_settings
 
     if not (username or "").strip() or not password:
@@ -62,14 +64,20 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
     base = load_base_settings()
     if not base.get("enabled"):
         return None
+    body: dict[str, Any] = {"username": username.strip(), "password": password}
+    if client_ip:
+        body["client_ip"] = client_ip
     try:
         data = hub_request(
             "POST",
             "/api/auth/login",
-            body={"username": username.strip(), "password": password},
+            body=body,
             timeout=15.0,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        text = str(exc)
+        if text.startswith("hub 403"):
+            raise PermissionError(text) from exc
         return None
     user = data.get("user") if isinstance(data, dict) else None
     return user if isinstance(user, dict) else None

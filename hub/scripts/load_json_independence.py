@@ -288,10 +288,10 @@ def load_hub_ips(cursor) -> int:
                 continue
             seen.add(ip)
             ips.append(ip[:64])
-    cursor.execute("DELETE FROM dbo.hub_ip")
+    cursor.execute("DELETE FROM dbo.hub_ip WHERE target = N'B'")
     return _insert_many(
         cursor,
-        "INSERT INTO dbo.hub_ip (ip) VALUES (?)",
+        "INSERT INTO dbo.hub_ip (ip, target) VALUES (?, N'B')",
         [(ip,) for ip in ips],
     )
 

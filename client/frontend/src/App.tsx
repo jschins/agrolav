@@ -9,6 +9,11 @@ import {
   getCentraleStatus,
   getBanks,
   getCatalog,
+  getIpAccess,
+  addIpAccess,
+  deleteIpAccess,
+  type IpAccessResponse,
+  type IpAccessTarget,
   getMatrix,
   getSettings,
   getTransactions,
@@ -500,6 +505,7 @@ function SyncNotifyShell({
   onCenterChanged,
   termsView = false,
   categoriesView = false,
+  ipView = false,
   onLogout,
   initialTitle = "",
 }: {
@@ -507,6 +513,7 @@ function SyncNotifyShell({
   onCenterChanged?: () => void;
   termsView?: boolean;
   categoriesView?: boolean;
+  ipView?: boolean;
   onLogout?: () => void;
   initialTitle?: string;
 }) {
@@ -580,8 +587,10 @@ function SyncNotifyShell({
       ? `${brandName} — Terms`
       : categoriesView
         ? `${brandName} — Categories`
-        : brandName;
-  }, [brandName, termsView, categoriesView]);
+        : ipView
+          ? `${brandName} — IP access`
+          : brandName;
+  }, [brandName, termsView, categoriesView, ipView]);
 
   useEffect(() => {
     let cancelled = false;
@@ -707,6 +716,11 @@ function SyncNotifyShell({
         onClick: () => openView("categories"),
       });
     }
+    items.push({
+      id: "ip-access",
+      label: "restrict IP access",
+      onClick: () => openView("ip"),
+    });
     if (uploadUrl) {
       items.push({ id: "upload", label: "upload", href: uploadUrl });
     }
@@ -726,7 +740,7 @@ function SyncNotifyShell({
                 onSelect={handleSelect}
               />
             ) : null}
-            {!termsView && !categoriesView && activeYear ? (
+            {!termsView && !categoriesView && !ipView && activeYear ? (
               <YearSwitcher
                 year={activeYear}
                 years={yearOptions}
@@ -736,7 +750,7 @@ function SyncNotifyShell({
                 }}
               />
             ) : null}
-            {showBankSwitcher && !termsView && !categoriesView ? (
+            {showBankSwitcher && !termsView && !categoriesView && !ipView ? (
               <BankSwitcher
                 view={bankView}
                 folders={bankOptions}
@@ -868,19 +882,22 @@ function abbreviate(map: Record<string, string>, type: unknown): string {
   return t;
 }
 
-function viewUrl(target: "main" | "terms" | "categories"): string {
+function viewUrl(target: "main" | "terms" | "categories" | "ip"): string {
   if (target === "terms") return `${window.location.pathname}?view=terms`;
   if (target === "categories") return `${window.location.pathname}?view=categories`;
+  if (target === "ip") return `${window.location.pathname}?view=ip`;
   return window.location.pathname;
 }
 
-function openView(target: "main" | "terms" | "categories") {
+function openView(target: "main" | "terms" | "categories" | "ip") {
   const name =
     target === "terms"
       ? "boekhouding-terms"
       : target === "categories"
         ? "boekhouding-categories"
-        : "boekhouding-main";
+        : target === "ip"
+          ? "boekhouding-ip"
+          : "boekhouding-main";
   window.open(viewUrl(target), name)?.focus();
 }
 
@@ -897,6 +914,7 @@ export default function App() {
   const isTerms = new URLSearchParams(window.location.search).get("view") === "terms";
   const isCategories =
     new URLSearchParams(window.location.search).get("view") === "categories";
+  const isIp = new URLSearchParams(window.location.search).get("view") === "ip";
   const [wsEpoch, setWsEpoch] = useState(0);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -946,6 +964,7 @@ export default function App() {
       initialTitle={heading}
       termsView={isTerms}
       categoriesView={isCategories}
+      ipView={isIp}
       onLogout={
         authRequired
           ? () => {
@@ -968,6 +987,8 @@ export default function App() {
           <TermsApp key={wsEpoch} />
         ) : isCategories ? (
           <CategoriesApp key={wsEpoch} />
+        ) : isIp ? (
+          <IpAccessApp key={wsEpoch} />
         ) : (
           <MainApp
             key={wsEpoch}
@@ -998,7 +1019,14 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
         onSuccess((status.title || "").trim());
       })
       .catch((err: Error) => {
-        setError(err.message.includes("401") ? "Invalid username or password" : err.message);
+        const text = err.message || "";
+        if (text.includes("401")) {
+          setError("Invalid username or password");
+        } else if (text.includes("403")) {
+          setError("This login is not allowed from your IP address");
+        } else {
+          setError(text);
+        }
       })
       .finally(() => setBusy(false));
   }
@@ -2076,6 +2104,186 @@ function CategoriesApp() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p>Loading…</p>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function kindCaption(kind: string): string {
+  if (kind === "hub") return "Hub 8200";
+  if (kind === "country") return "Country";
+  if (kind === "center") return "Center";
+  if (kind === "person") return "Person";
+  return kind || "Login";
+}
+
+function IpAccessApp() {
+  const [data, setData] = useState<IpAccessResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [ip, setIp] = useState("");
+  const [target, setTarget] = useState("");
+
+  function apply(next: IpAccessResponse) {
+    setData(next);
+    setTarget((prev) => {
+      if (prev && next.targets.some((item) => item.target === prev)) return prev;
+      return next.targets[0]?.target || "";
+    });
+  }
+
+  useEffect(() => {
+    window.name = "boekhouding-ip";
+    let cancelled = false;
+    getIpAccess()
+      .then((payload) => {
+        if (!cancelled) apply(payload);
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!isPlainAlt(e)) return;
+      if (e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        openView("main");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function add() {
+    setError(null);
+    setBusy(true);
+    addIpAccess({ ip: ip.trim(), target })
+      .then((payload) => {
+        apply(payload);
+        setIp("");
+      })
+      .catch((e: Error) => setError(reviewSubmissionMessage(e.message)))
+      .finally(() => setBusy(false));
+  }
+
+  function remove(rowIp: string, rowTarget: string) {
+    setError(null);
+    setBusy(true);
+    deleteIpAccess(rowIp, rowTarget)
+      .then(apply)
+      .catch((e: Error) => setError(reviewSubmissionMessage(e.message)))
+      .finally(() => setBusy(false));
+  }
+
+  const targets: IpAccessTarget[] = data?.targets || [];
+
+  return (
+    <div className="app terms-app">
+      <aside className="sidebar">
+        <div className="winbar">
+          <div className="sidebar-field">
+            <span className="sidebar-field-legend" aria-hidden="true">
+              {"\u00a0"}
+            </span>
+            <button type="button" className="sidebar-knob" onClick={() => openView("main")}>
+              Matrix (Alt+M)
+            </button>
+          </div>
+        </div>
+        <p className="win-hint">
+          Empty list for a login means that login is not IP-restricted. Hub 8200
+          rows (target B) can only be edited by beheer.
+        </p>
+        <div className="sidebar-field">
+          <span className="sidebar-field-legend">Login</span>
+          <select
+            className="ip-target"
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            disabled={targets.length === 0}
+          >
+            {targets.map((item) => (
+              <option key={item.target} value={item.target}>
+                {kindCaption(item.kind)} — {item.label}
+                {item.username ? ` (${item.username})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="sidebar-field">
+          <span className="sidebar-field-legend">IP</span>
+          <input
+            className="ip-address"
+            value={ip}
+            placeholder="1.2.3.4"
+            onChange={(e) => setIp(e.target.value)}
+          />
+        </div>
+        <div className="sidebar-field">
+          <span className="sidebar-field-legend" aria-hidden="true">
+            {"\u00a0"}
+          </span>
+          <button
+            type="button"
+            className="sidebar-knob"
+            disabled={busy || !target || !ip.trim()}
+            onClick={add}
+          >
+            {busy ? "Saving…" : "Add IP"}
+          </button>
+        </div>
+      </aside>
+      <main className="content terms-content">
+        {error && <p className="error">{error}</p>}
+        {data ? (
+          <div className="terms-scroll">
+            <table className="s-table catalog-table">
+              <thead>
+                <tr>
+                  <th>Login</th>
+                  <th>Name</th>
+                  <th>IP</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={4}>No IP restrictions in your scope.</td>
+                  </tr>
+                ) : (
+                  data.rows.map((row) => (
+                    <tr key={`${row.target}:${row.ip}`}>
+                      <td>{kindCaption(row.kind)}</td>
+                      <td>
+                        {row.label}
+                        {row.username ? ` (${row.username})` : ""}
+                      </td>
+                      <td>{row.ip}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="catalog-delete"
+                          disabled={busy}
+                          onClick={() => remove(row.ip, row.target)}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

@@ -187,11 +187,19 @@ def centers_for_country(country: str) -> list[str] | None:
 def hub_allowed_ips() -> frozenset[str]:
     """IPs allowed to reach the hub at all.
 
-    When ``hub_ips`` in ``upload_acl.json`` is a non-empty list, every request
-    (except the bank consent callback and ``/upload``) must come from one of
-    those addresses. ``127.0.0.1`` is always included.
-    Empty / missing ``hub_ips`` → no hub-wide gate.
+    ``dbo.hub_ip`` rows with ``target = 'B'`` are the :8200 allowlist.
+    Empty → no hub-wide gate. ``127.0.0.1`` is always included when the
+    list is non-empty so the local client can still reach the hub.
     """
+    from app.hub_ip import hub_b_ips
+
+    ips = set(hub_b_ips())
+    ips.discard("")
+    ips = {ip for ip in ips if "x" not in ip.lower()}
+    if ips:
+        ips.add("127.0.0.1")
+        return frozenset(ips)
+
     raw = load_acl_document().get("hub_ips")
     if not isinstance(raw, list) or not raw:
         return frozenset()

@@ -133,6 +133,15 @@ class LoginRequest(BaseModel):
     password: str
 
 
+def _request_ip(request: Request) -> str:
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    if forwarded:
+        return forwarded
+    if request.client is not None and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
 def _unwrap_hub_detail(msg: str) -> str:
     text = str(msg or "").strip()
     for _ in range(8):
@@ -202,7 +211,10 @@ def api_login(body: LoginRequest, request: Request, response: Response) -> dict[
 
     if not auth_enabled():
         raise HTTPException(status_code=400, detail="auth is disabled on this client")
-    user = authenticate(body.username, body.password)
+    try:
+        user = authenticate(body.username, body.password, client_ip=_request_ip(request))
+    except PermissionError as exc:
+        raise _hub_error(exc) from exc
     if user is None:
         raise HTTPException(status_code=401, detail="invalid username or password")
     profile = profile_from_user(user)
@@ -705,6 +717,68 @@ def api_update_catalog(body: CatalogCategoriesRequest) -> dict[str, Any]:
 
     try:
         return hub_put("/categories", {"categories": body.categories})
+    except Exception as err:
+        raise _hub_error(err) from err
+
+
+class IpAccessMutate(BaseModel):
+    ip: str
+    target: str
+
+
+def _session_username(request: Request) -> str:
+    session = getattr(request.state, "session", None) or {}
+    username = str(session.get("username") or "").strip()
+    if not username:
+        raise HTTPException(status_code=401, detail="login required")
+    return username
+
+
+@app.get("/api/ip-access")
+def api_ip_access(request: Request) -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+    import urllib.parse
+
+    username = _session_username(request)
+    try:
+        return hub_request(
+            "GET",
+            f"/api/ip-access?{urllib.parse.urlencode({'username': username})}",
+        )
+    except Exception as err:
+        raise _hub_error(err) from err
+
+
+@app.post("/api/ip-access")
+def api_ip_access_add(body: IpAccessMutate, request: Request) -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+
+    username = _session_username(request)
+    try:
+        return hub_request(
+            "POST",
+            "/api/ip-access",
+            body={"username": username, "ip": body.ip, "target": body.target},
+        )
+    except Exception as err:
+        raise _hub_error(err) from err
+
+
+@app.delete("/api/ip-access")
+def api_ip_access_delete(
+    request: Request,
+    ip: str = Query(...),
+    target: str = Query(...),
+) -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+    import urllib.parse
+
+    username = _session_username(request)
+    qs = urllib.parse.urlencode(
+        {"username": username, "ip": ip, "target": target}
+    )
+    try:
+        return hub_request("DELETE", f"/api/ip-access?{qs}")
     except Exception as err:
         raise _hub_error(err) from err
 

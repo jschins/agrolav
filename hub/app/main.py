@@ -148,6 +148,7 @@ def require_api_key(authorization: str | None = Header(default=None)) -> None:
 class AuthLoginRequest(BaseModel):
     username: str
     password: str
+    client_ip: str | None = None
 
 
 @app.post("/api/auth/login")
@@ -155,11 +156,17 @@ def api_auth_login(
     body: AuthLoginRequest,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import user_store
+    from app import hub_ip, user_store
 
     user = user_store.authenticate_public(body.username, body.password)
     if user is None:
         raise HTTPException(status_code=401, detail="invalid username or password")
+    raw = user_store.find_user(body.username)
+    if raw is not None and not hub_ip.login_ip_allowed(raw, body.client_ip):
+        raise HTTPException(
+            status_code=403,
+            detail="This login is not allowed from your IP address",
+        )
     return {"user": user}
 
 
@@ -182,6 +189,63 @@ def api_auth_users(_: None = Depends(require_api_key)) -> dict[str, Any]:
 
     user_store.init_user_store()
     return {"users": user_store.list_users()}
+
+
+class HubIpMutate(BaseModel):
+    username: str
+    ip: str
+    target: str
+
+
+def _hub_ip_http(exc: Exception) -> HTTPException:
+    from app.hub_ip import HubIpError
+
+    if isinstance(exc, HubIpError):
+        msg = str(exc)
+        code = 403 if "cannot edit" in msg.lower() else 400
+        return HTTPException(status_code=code, detail=msg)
+    return HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/api/ip-access")
+def api_ip_access(
+    username: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import hub_ip
+
+    try:
+        return hub_ip.list_access(username)
+    except Exception as exc:
+        raise _hub_ip_http(exc) from exc
+
+
+@app.post("/api/ip-access")
+def api_ip_access_add(
+    body: HubIpMutate,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import hub_ip
+
+    try:
+        return hub_ip.add_ip(body.username, ip=body.ip, target=body.target)
+    except Exception as exc:
+        raise _hub_ip_http(exc) from exc
+
+
+@app.delete("/api/ip-access")
+def api_ip_access_delete(
+    username: str,
+    ip: str,
+    target: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import hub_ip
+
+    try:
+        return hub_ip.delete_ip(username, ip=ip, target=target)
+    except Exception as exc:
+        raise _hub_ip_http(exc) from exc
 
 
 class FilesPayload(BaseModel):

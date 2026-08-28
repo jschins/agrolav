@@ -57,7 +57,8 @@ GO
 IF OBJECT_ID(N'dbo.hub_ip', N'U') IS NULL
 CREATE TABLE dbo.hub_ip (
     ip NVARCHAR(64) NOT NULL,
-    CONSTRAINT pk_hub_ip PRIMARY KEY (ip)
+    target NVARCHAR(32) NOT NULL,
+    CONSTRAINT pk_hub_ip PRIMARY KEY (ip, target)
 )
 GO
 
