@@ -131,7 +131,19 @@ def _password_hash_by_person_center() -> dict[tuple[str, str], str]:
 
 
 def discover_center_persons() -> list[tuple[str, str]]:
-    """``(center, person)`` for each person folder under ``country/center``."""
+    """``(center, person)`` for each person (SQL when configured, else disk folders)."""
+    from app import user_store
+
+    if user_store.database_url():
+        from app.sql_catalog import list_center_usernames, list_country_usernames, people_in_center
+
+        out: list[tuple[str, str]] = []
+        for country in list_country_usernames():
+            for center in list_center_usernames(country):
+                for person in people_in_center(center):
+                    out.append((center, person))
+        return out
+
     from app.runtime import list_country_folders
 
     root = data_root()
@@ -213,26 +225,26 @@ def hub_allowed_ips() -> frozenset[str]:
 
 
 def load_grants(*, force: bool = False) -> list[UploadGrant]:
-    """Build upload grants from center folders + user-store password hashes."""
+    """Build upload grants from the person/center token map (SQL or users.db).
+
+    Disk discovery is not used: Excel people often have no year/secret folder,
+    so they would be missing from grants and ``/upload`` would 401.
+    """
     from app.core.bank_csv import discover_person_banks
+    from app.runtime import resolve_country_for_center
 
     del force
-    tokens = _password_hash_by_person_center()
     out: list[UploadGrant] = []
-    for center, person in discover_center_persons():
-        token = tokens.get((person, center))
+    for (person, center), token in _password_hash_by_person_center().items():
         if not token:
             continue
-        banks = discover_person_banks(person, center)
-        from app.runtime import resolve_country_for_center
-
         out.append(
             UploadGrant(
                 person=person,
                 token=token,
                 center=center,
                 country=resolve_country_for_center(center) or "",
-                banks=banks,
+                banks=discover_person_banks(person, center),
             )
         )
     return out
@@ -318,15 +330,79 @@ def grant_with_folder(
     return replace(grant, bank=chosen)
 
 
-def find_grant_by_token(token: str | None) -> UploadGrant | None:
-    needle = "" if token is None else str(token)
-    for grant in load_grants():
-        try:
-            if secrets.compare_digest(grant.token, needle):
-                return grant
-        except ValueError:
+def _token_matches(stored: str, needle: str) -> bool:
+    if not stored or not needle:
+        return False
+    if len(stored) != len(needle):
+        return False
+    try:
+        return secrets.compare_digest(stored, needle)
+    except (ValueError, TypeError):
+        return stored == needle
+
+
+def _grant_for_person_center(person: str, center: str, token: str) -> UploadGrant:
+    from app.core.bank_csv import discover_person_banks
+    from app.runtime import resolve_country_for_center
+
+    return UploadGrant(
+        person=person,
+        token=token,
+        center=center,
+        country=resolve_country_for_center(center) or "",
+        banks=discover_person_banks(person, center),
+    )
+
+
+def find_grant_by_token(
+    token: str | None,
+    *,
+    person: str | None = None,
+    center: str | None = None,
+) -> UploadGrant | None:
+    from urllib.parse import unquote
+
+    needles: list[str] = []
+    for raw in (str(token or ""), unquote(str(token or ""))):
+        text = raw.strip()
+        if text and text not in needles:
+            needles.append(text)
+    if not needles:
+        return None
+
+    person_name = str(person or "").strip()
+    center_name = str(center or "").strip()
+    tokens = _password_hash_by_person_center()
+
+    def _wanted(person_key: str, center_key: str) -> bool:
+        if person_name and person_key.casefold() != person_name.casefold():
+            return False
+        if center_name and center_key.casefold() != center_name.casefold():
+            return False
+        return True
+
+    matched: list[tuple[str, str, str]] = []
+    for (person_key, center_key), stored in tokens.items():
+        if not any(_token_matches(stored, needle) for needle in needles):
             continue
-    return None
+        if _wanted(person_key, center_key):
+            matched.append((person_key, center_key, stored))
+
+    # Shared token + a mistyped center must not 401 if this person is unique.
+    if not matched and person_name:
+        person_hits = [
+            (person_key, center_key, stored)
+            for (person_key, center_key), stored in tokens.items()
+            if person_key.casefold() == person_name.casefold()
+            and any(_token_matches(stored, needle) for needle in needles)
+        ]
+        if len({item[0].casefold() for item in person_hits}) == 1:
+            matched = person_hits
+
+    if not matched:
+        return None
+    person_key, center_key, stored = matched[0]
+    return _grant_for_person_center(person_key, center_key, stored)
 
 
 def grant_token_for_person(person: str, center: str) -> str | None:
@@ -335,9 +411,17 @@ def grant_token_for_person(person: str, center: str) -> str | None:
     center_name = center.strip()
     if not person_name or not center_name:
         return None
-    for grant in load_grants():
-        if grant.person == person_name and grant.center == center_name and grant.token:
-            return grant.token
+    tokens = _password_hash_by_person_center()
+    direct = tokens.get((person_name, center_name))
+    if direct:
+        return direct
+    for (person_key, center_key), stored in tokens.items():
+        if (
+            person_key.casefold() == person_name.casefold()
+            and center_key.casefold() == center_name.casefold()
+            and stored
+        ):
+            return stored
     return None
 
 

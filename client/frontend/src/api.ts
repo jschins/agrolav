@@ -53,6 +53,7 @@ export interface BanksResponse {
   show_switcher: boolean;
   upload_token?: string;
   person?: string;
+  center?: string;
   year?: string;
 }
 
@@ -196,8 +197,6 @@ export interface ConsentReadyPerson {
 export interface CentraleSyncStatus {
   enabled: boolean;
   center: string;
-  /** Fixed identity for the session (does not follow center switcher). */
-  author?: string;
   /** personal | local | country */
   access?: string;
   /** Empty / omitted = all people; otherwise only this short is visible. */

@@ -567,7 +567,16 @@ function SyncNotifyShell({
       .then((res) => {
         const hub = (status?.centrale_url || "").replace(/\/$/, "");
         const token = (res.upload_token || "").trim();
-        setUploadUrl(hub && token ? `${hub}/upload?t=${encodeURIComponent(token)}` : "");
+        const person = (res.person || status?.person || "").trim();
+        const center = (res.center || status?.center || "").trim();
+        let nextUrl = "";
+        if (hub && token) {
+          const qs = new URLSearchParams({ t: token });
+          if (person) qs.set("person", person);
+          if (center) qs.set("center", center);
+          nextUrl = `${hub}/upload?${qs.toString()}`;
+        }
+        setUploadUrl(nextUrl);
         setShowBankSwitcher(
           Boolean(res.show_switcher) || (res.folders || []).length > 1
         );
@@ -583,7 +592,7 @@ function SyncNotifyShell({
         setBankOptions([]);
         setUploadUrl("");
       });
-  }, [status?.access, activeYear, status?.center, status?.centrale_url]);
+  }, [status?.access, activeYear, status?.center, status?.person, status?.centrale_url]);
 
   useEffect(() => {
     if (!brandName) return;

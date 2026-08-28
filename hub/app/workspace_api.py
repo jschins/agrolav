@@ -103,9 +103,11 @@ def person_banks(workspace: str, short: str, *, year: str | None = None) -> dict
         opts = person_bank_folder_options(
             pack.folder, pack.year, person=pack.folder_name, center=ws
         )
-        from app.upload_acl import grant_token_for_person
+        from app import user_store
 
-        token = grant_token_for_person(pack.folder_name, ws)
+        token = user_store.upload_token_by_person_center().get(
+            (pack.folder_name, ws), ""
+        ) or ""
         return {
             "workspace": ws,
             "person": pack.short,

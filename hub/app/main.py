@@ -262,13 +262,55 @@ class FilePutPayload(BaseModel):
 
 
 class SessionPayload(BaseModel):
-    """Client listen port, config author, optional computer hostname, browser viewer."""
+    """Client listen port, optional computer hostname, browser viewer identity."""
 
     port: int | None = None
-    author: str | None = None
     hostname: str | None = None
     client_ip: str | None = None
     username: str | None = None
+    country: str | None = None
+    center: str | None = None
+    person: str | None = None
+    access: str | None = None
+
+
+def _session_scope_label(body: SessionPayload, path_center: str) -> str:
+    """Login path for the hub sessions list: country, country/center, or country/center/person."""
+    from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON, parse_centers
+
+    country = (body.country or "").strip()
+    center = (body.center or "").strip()
+    person = (body.person or "").strip()
+    access = (body.access or "").strip().lower()
+    username = (body.username or "").strip()
+
+    if username:
+        try:
+            from app import user_store
+
+            raw = user_store.find_user(username)
+            if raw is not None:
+                rec = user_store.enrich_user_record(raw)
+                country = str(rec.get("country") or country).strip()
+                center = str(rec.get("center") or center).strip()
+                person = str(rec.get("person") or person).strip()
+                access = str(rec.get("access") or access).strip().lower()
+        except Exception:  # noqa: BLE001
+            pass
+
+    centers = parse_centers(center)
+    path = (path_center or "").strip()
+    chosen_center = path if path and path in centers else (centers[0] if centers else center)
+
+    if access == ACCESS_COUNTRY or (country and not chosen_center and not person):
+        return country or username or "?"
+    if access == ACCESS_CENTER or (chosen_center and not person and access != ACCESS_PERSON):
+        parts = [part for part in (country, chosen_center) if part]
+        return "/".join(parts) or username or "?"
+    if access == ACCESS_PERSON or person:
+        parts = [part for part in (country, chosen_center, person or username) if part]
+        return "/".join(parts) or username or "?"
+    return username or "?"
 
 
 def _short_computer_name(raw: str) -> str:
@@ -303,7 +345,7 @@ def _session_label_host(request: Request, body: SessionPayload) -> str:
 
 
 def _client_session_label(
-    request: Request, _center: str, body: SessionPayload
+    request: Request, center: str, body: SessionPayload
 ) -> str:
     import socket
 
@@ -314,10 +356,7 @@ def _client_session_label(
         if port is not None and 1 <= int(port) <= 65535
         else host
     )
-    author = (body.author or "").strip() or "?"
-    username = (body.username or "").strip()
-    if username:
-        author = f"{username} · {author}" if author != "?" else username
+    who = _session_scope_label(body, center)
     computer = _short_computer_name(body.hostname or "")
     if not computer and host not in ("unknown", "127.0.0.1"):
         # Fallback when client is an older build: reverse-DNS / Tailscale MagicDNS.
@@ -326,8 +365,8 @@ def _client_session_label(
         except OSError:
             computer = ""
     if computer:
-        return f"{computer} @ {addr} ({author})"
-    return f"{addr} ({author})"
+        return f"{computer} @ {addr} ({who})"
+    return f"{addr} ({who})"
 
 
 @app.get("/api/health")
@@ -1299,7 +1338,6 @@ _ADMIN_HTML = """<!DOCTYPE html>
       <a class="action" href="/add-person">Add person</a>
       <a class="action" href="/create-country">Create country</a>
       <a class="action" href="/create-center">Create center</a>
-      <a class="action" href="/upload">Upload data</a>
       <button class="action" id="btnClearSessions" type="button">Clear sessions</button>
       <button class="stop" id="btnStop" type="button">Stop hub</button>
     </div>
@@ -1343,9 +1381,7 @@ _ADMIN_HTML = """<!DOCTYPE html>
       const sessionText = sessions.length
         ? sessions.map((label) => "• " + label).join("\\n")
         : "(none)";
-      statusEl.textContent =
-        "Sessions:\\n" + sessionText +
-        "\\n\\ncenters: " + ((s.centers || []).join(", ") || "(none)");
+      statusEl.textContent = "Sessions:\\n" + sessionText;
       metaEl.textContent = "latest_event_id=" + (s.latest_event_id || 0);
     }
 
@@ -1966,14 +2002,34 @@ _UPLOAD_HTML = """<!DOCTYPE html>
     const _STORAGE_KEY = "upload_token";
 
     const urlToken = (params.get("t") || "").trim();
+    const urlPerson = (params.get("person") || "").trim();
+    const urlCenter = (params.get("center") || "").trim();
+    const _PERSON_KEY = "upload_person";
+    const _CENTER_KEY = "upload_center";
     let _token = urlToken;
+    let _person = urlPerson;
+    let _center = urlCenter;
     if (_token) {
       try { localStorage.setItem(_STORAGE_KEY, _token); } catch (_) {}
+      try { localStorage.setItem(_PERSON_KEY, _person); } catch (_) {}
+      try { localStorage.setItem(_CENTER_KEY, _center); } catch (_) {}
     } else {
       try { _token = (localStorage.getItem(_STORAGE_KEY) || "").trim(); } catch (_) {}
+      try { _person = (localStorage.getItem(_PERSON_KEY) || "").trim(); } catch (_) {}
+      try { _center = (localStorage.getItem(_CENTER_KEY) || "").trim(); } catch (_) {}
     }
 
     function token() { return _token; }
+    function appendIdentityQuery(url) {
+      if (_person) url += "&person=" + encodeURIComponent(_person);
+      if (_center) url += "&center=" + encodeURIComponent(_center);
+      return url;
+    }
+    function appendIdentityForm(fd) {
+      if (_person) fd.append("person", _person);
+      if (_center) fd.append("center", _center);
+      if (_token) fd.append("token", _token);
+    }
     const yearEl = document.getElementById("year");
     const folderEl = document.getElementById("folder");
     const folderListEl = document.getElementById("folderList");
@@ -2109,6 +2165,8 @@ _UPLOAD_HTML = """<!DOCTYPE html>
     async function loadGrant() {
       let url = "/upload/api/upload/grant?year=" + encodeURIComponent(yearValue());
       if (folderValue()) url += "&folder=" + encodeURIComponent(folderValue());
+      url = appendIdentityQuery(url);
+      if (token()) url += "&t=" + encodeURIComponent(token());
       const g = await api("GET", url);
       showGrant(g);
       return g;
@@ -2144,6 +2202,7 @@ _UPLOAD_HTML = """<!DOCTYPE html>
         const fd = new FormData();
         fd.append("file", file, file.name);
         if (needsFolder() && folderValue()) fd.append("folder", folderValue());
+        appendIdentityForm(fd);
         const res = await api("POST", "/upload/api/upload/peek-year", fd, true);
         if (res.year) {
           ensureYearSelected(String(res.year));
@@ -2174,6 +2233,7 @@ _UPLOAD_HTML = """<!DOCTYPE html>
         fd.append("file", file, file.name);
         fd.append("year", yearValue());
         if (needsFolder() && folderValue()) fd.append("folder", folderValue());
+        appendIdentityForm(fd);
         const res = await api("POST", "/upload/api/upload", fd, true);
         if (res.balance_check === "pass") {
           okEl.textContent = "Dry run: balance check passed for " + res.path + ".";
@@ -2229,13 +2289,15 @@ def api_upload_grant(
     year: str | None = Query(default=None),
     folder: str | None = Query(default=None),
     bank: str | None = Query(default=None),
+    person: str | None = Query(default=None),
+    center: str | None = Query(default=None),
 ) -> dict[str, Any]:
     from app import upload_acl
     from app.core.bank_csv import bank_modalities, person_uses_bank_subfolders
     from app.yearpath import parse_year
 
-    token = _upload_token(authorization, None)
-    grant = upload_acl.find_grant_by_token(token)
+    token = _upload_token(authorization, request.query_params.get("t"))
+    grant = upload_acl.find_grant_by_token(token, person=person, center=center)
     if grant is None:
         raise HTTPException(status_code=401, detail="Invalid upload token")
     ip = _upload_client_ip(request)
@@ -2295,12 +2357,14 @@ async def api_upload(
     format: str | None = Form(None),
     folder: str | None = Form(None),
     bank: str | None = Form(None),
+    person: str | None = Form(None),
+    center: str | None = Form(None),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     from app import upload_acl
 
     auth_token = _upload_token(authorization, token)
-    grant = upload_acl.find_grant_by_token(auth_token)
+    grant = upload_acl.find_grant_by_token(auth_token, person=person, center=center)
     if grant is None:
         raise HTTPException(status_code=401, detail="Invalid upload token")
     ip = _upload_client_ip(request)
@@ -2346,6 +2410,8 @@ async def api_upload_peek_year(
     token: str | None = Form(None),
     folder: str | None = Form(None),
     bank: str | None = Form(None),
+    person: str | None = Form(None),
+    center: str | None = Form(None),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Return the calendar year of the first dated row (Excel or bank CSV)."""
@@ -2356,7 +2422,7 @@ async def api_upload_peek_year(
     from app.core.natwest_csv_import import first_entry_year_from_csv_bytes as natwest_year_from_csv
 
     auth_token = _upload_token(authorization, token)
-    grant = upload_acl.find_grant_by_token(auth_token)
+    grant = upload_acl.find_grant_by_token(auth_token, person=person, center=center)
     if grant is None:
         raise HTTPException(status_code=401, detail="Invalid upload token")
     content = await file.read()
@@ -2414,6 +2480,8 @@ def api_upload_grant_proxy(
         year=year,
         folder=request.query_params.get("folder"),
         bank=request.query_params.get("bank"),
+        person=request.query_params.get("person"),
+        center=request.query_params.get("center"),
     )
 
 
@@ -2427,6 +2495,8 @@ async def api_upload_proxy(
     format: str | None = Form(None),
     folder: str | None = Form(None),
     bank: str | None = Form(None),
+    person: str | None = Form(None),
+    center: str | None = Form(None),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Upload endpoints variant under ``/upload`` (see ``api_upload_grant_proxy``)."""
@@ -2440,6 +2510,8 @@ async def api_upload_proxy(
         format=format,
         folder=folder,
         bank=bank,
+        person=person,
+        center=center,
         authorization=authorization,
     )
 
@@ -2451,6 +2523,8 @@ async def api_upload_peek_year_proxy(
     token: str | None = Form(None),
     folder: str | None = Form(None),
     bank: str | None = Form(None),
+    person: str | None = Form(None),
+    center: str | None = Form(None),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     return await api_upload_peek_year(
@@ -2459,16 +2533,24 @@ async def api_upload_peek_year_proxy(
         token=token,
         folder=folder,
         bank=bank,
+        person=person,
+        center=center,
         authorization=authorization,
     )
 
 
 def _upload_token(authorization: str | None, form_token: str | None) -> str:
+    from urllib.parse import unquote
+
+    raw = ""
     if form_token and form_token.strip():
-        return form_token.strip()
-    if authorization and authorization.lower().startswith("bearer "):
-        return authorization[7:].strip()
-    return ""
+        raw = form_token.strip()
+    elif authorization and authorization.lower().startswith("bearer "):
+        raw = authorization[7:].strip()
+    if not raw:
+        return ""
+    decoded = unquote(raw).strip()
+    return decoded or raw
 
 
 def run() -> None:

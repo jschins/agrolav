@@ -42,7 +42,6 @@ _cached_has_secrets: bool = False
 class HubConfig:
     url: str
     center: str  # currently selected center (from access / switcher)
-    author: str  # session label: center for local/personal; country username otherwise
     person: str  # empty unless access=personal
     access: str  # personal | local | country
     api_key: str
@@ -131,19 +130,16 @@ def _build_hub_config(
         if not parsed_ws:
             raise ValueError("personal login requires a center")
         person = person_key
-        author = username or person_key
         centers = (parsed_ws[0],)
         center = parsed_ws[0]
     elif access == ACCESS_CENTER:
         if not parsed_ws:
             raise ValueError("local login requires a center")
         person = ""
-        author = username or parsed_ws[0]
         centers = (parsed_ws[0],)
         center = parsed_ws[0]
     elif access == ACCESS_COUNTRY:
         person = ""
-        author = username or "country"
         all_ws = _fetch_hub_center_names(url, api_key=api_key, country=country)
         if not all_ws:
             all_ws = list(parsed_ws)
@@ -186,7 +182,6 @@ def _build_hub_config(
     return HubConfig(
         url=url,
         center=center,
-        author=author,
         person=person,
         access=access,
         api_key=api_key,
@@ -272,7 +267,6 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
             _file_profile_cache = HubConfig(
                 url=_file_profile_cache.url,
                 center=ws,
-                author=_file_profile_cache.author,
                 person=_file_profile_cache.person,
                 access=_file_profile_cache.access,
                 api_key=_file_profile_cache.api_key,
@@ -671,7 +665,6 @@ def sync_status() -> dict[str, Any]:
         "enabled": cfg.enabled,
         "center": cfg.center,
         "country": cfg.country,
-        "author": cfg.author,
         "person": cfg.person,
         "access": cfg.access,
         "username": cfg.username,
@@ -779,10 +772,10 @@ def poll_central_events() -> dict[str, Any]:
         data = hub_request("GET", f"/api/events?{q}", timeout=10.0)
         applied_any = False
         for ev in data.get("events") or []:
-            # UI chip: center author only (not every affected file path).
-            author = str(ev.get("center") or "").strip()
-            if author and author not in ("_shared", "_merged"):
-                _queue_notification(author)
+            # UI chip: center name only (not every affected file path).
+            center_name = str(ev.get("center") or "").strip()
+            if center_name and center_name not in ("_shared", "_merged"):
+                _queue_notification(center_name)
             applied_any = True
             _last_event_id = max(_last_event_id, int(ev.get("id") or 0))
         if applied_any:
@@ -862,7 +855,10 @@ def _session_body(*, session: dict[str, Any] | None = None, client_ip: str | Non
     if hostname:
         hostname = hostname.split(".", 1)[0]
     body: dict[str, Any] = {
-        "author": cfg.author,
+        "country": cfg.country or None,
+        "center": cfg.center or None,
+        "person": cfg.person or None,
+        "access": cfg.access or None,
     }
     if client_ip:
         body["client_ip"] = client_ip.strip()
