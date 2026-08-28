@@ -593,7 +593,7 @@ class PersonRefreshRequest(BaseModel):
 
 
 class CreatePersonRequest(BaseModel):
-    folder: str
+    person: str
     account_name: str = ""
     mode: str = "pem"
     country: str = "NL"
@@ -1192,7 +1192,7 @@ def api_create_person(
     try:
         return center_api.create_person(
             center,
-            folder=body.folder,
+          person=body.person,
             account_name=body.account_name,
             mode=body.mode,
             country=body.country,
@@ -1507,7 +1507,7 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
 
     <div id="step1" class="step active">
       <table>
-        <tr><th>person name</th><td><input id="folder" type="text"/></td></tr>
+        <tr><th>person name</th><td><input id="person" type="text"/></td></tr>
         <tr id="rowHolder"><th>account holder name</th><td><input id="accountHolder" type="text"/></td></tr>
         <tr id="rowAccountNumber" style="display:none"><th>account number</th><td><input id="accountNumber" type="text"/></td></tr>
         <tr id="rowInitial" style="display:none"><th>initial balance</th><td><input id="initialBalance" type="text" value="0.00"/></td></tr>
@@ -1653,7 +1653,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         box.style.display = "none";
         return;
       }
-      const user = login.username || payload.folder || "";
+      const user = login.username || payload.person || "";
       userEl.textContent = user;
       passEl.textContent = login.password || user;
       box.style.display = "";
@@ -1663,9 +1663,9 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       errEl.textContent = "";
       const center = document.getElementById("center").value;
       const modeValue = mode();
-      const folder = document.getElementById("folder").value.trim();
+      const person = document.getElementById("person").value.trim();
       const body = {
-        folder,
+        person,
         mode: modeValue,
       };
       if (modeValue === "excel") {
@@ -1677,17 +1677,17 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         created = await api("POST", `/api/local/${encodeURIComponent(center)}/people/create`, body);
         if (modeValue === "excel") {
           document.getElementById("doneMsg").textContent =
-            `Excel person created: ${created.folder} (${created.center}), opening balance ${created.initial_balance}.`;
+            `Excel person created: ${created.person} (${created.center}), opening balance ${created.initial_balance}.`;
           showLoginHint(created);
           document.getElementById("fetchOut").textContent = JSON.stringify(created, null, 2);
           showStep("step3");
           return;
         }
         document.getElementById("createdLabel").textContent =
-          `${created.folder} in ${created.center}`;
+          `${created.person} in ${created.center}`;
         document.getElementById("ebLink").href = created.enable_banking_url || "https://enablebanking.com/cp/applications";
         document.getElementById("hintAppName").textContent =
-          `boekh-${(created.folder || folder || "person").toLowerCase()}`;
+          `boekh-${(created.person || person || "person").toLowerCase()}`;
         document.getElementById("hintCountry").textContent = "Netherlands";
         document.getElementById("hintAspsp").textContent = "ING";
         showStep("step2");
@@ -1703,7 +1703,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       const file = fileInput.files && fileInput.files[0];
       if (!file) { errEl.textContent = "Choose a .pem file."; return; }
       const center = created.center;
-      const short = created.folder || created.person;
+      const short = created.person;
       try {
         const fd = new FormData();
         fd.append("file", file, file.name);

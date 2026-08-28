@@ -1439,6 +1439,20 @@ function MainApp({
             results: res.results || [],
             warnings: res.warnings || [],
           };
+          const authorizationUrl = payload.results.find(
+            (result) =>
+              result.skipped &&
+              result.reason === "needs_consent_renewal" &&
+              result.authorization_url
+          )?.authorization_url;
+          if (authorizationUrl) {
+            const authorizationWindow = window.open(
+              authorizationUrl,
+              "_blank",
+              "noopener,noreferrer"
+            );
+            if (!authorizationWindow) window.location.assign(authorizationUrl);
+          }
           saveStoredRefreshStatus(payload, refreshScope);
           setRefreshStatus(payload);
           setSelection(null);

@@ -567,23 +567,14 @@ def _bank_refresh_one(
     fetched = fetch_transactions(date_from=date_from, date_to=date_to)
     accounts = enabled_bank_accounts()
     account_folders: list[str] = []
-    from app.sql_replica import ensure_bound_accounts
+    from app import user_store
+    from app.enable_sql import upsert_person_accounts
 
-    ensure_bound_accounts(
-        [
-            {
-                "iban": str(acc.get("iban") or "").strip(),
-                "account_name": str(acc.get("name") or acc.get("iban") or "account"),
-                "balance": acc.get("balance") or "0",
-                "format": str(acc.get("aspsp") or "").strip() or None,
-                "uid": str(acc.get("uid") or "").strip() or None,
-                "identification_hash": str(acc.get("identification_hash") or "").strip() or None,
-            }
-            for acc in accounts
-            if isinstance(acc, dict)
-        ],
-        default_format=None,
-    )
+    if user_store.database_url() and accounts:
+        upsert_person_accounts(
+            pack.folder_name,
+            [acc for acc in accounts if isinstance(acc, dict)],
+        )
 
     if len(accounts) <= 1:
         process_transactions(fetched.transactions, new_year=bool(new_year))

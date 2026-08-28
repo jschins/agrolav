@@ -726,20 +726,20 @@ def ensure_personal_login_user(*, center: str, person: str) -> dict[str, Any]:
     from app import user_store
 
     ws = _clean_ws(center)
-    folder = _valid_folder_name(person)
+    person_name = _valid_person_name(person)
     user_store.init_user_store()
     from app.runtime import active_country
 
     public = user_store.upsert_personal_login(
         center=ws,
-        person=folder,
+        person=person_name,
         country=active_country() or "",
     )
     return {
         "username": public["username"],
         "password": user_store.password_for_username(public["username"]),
         "center": ws,
-        "person": folder,
+        "person": person_name,
         "users_db": user_store.store_label(),
     }
 
@@ -793,26 +793,26 @@ def _set_profile_app_id(profile: dict[str, Any], app_id: str) -> dict[str, Any]:
     return profile
 
 
-_FOLDER_NAME_MAX = 40
+_PERSON_NAME_MAX = 40
 
 
-def _valid_folder_name(name: str) -> str:
+def _valid_person_name(name: str) -> str:
     cleaned = name.strip()
     if not cleaned or ".." in cleaned or "/" in cleaned or "\\" in cleaned:
-        raise ValueError(f"Invalid folder name: {name!r}")
+        raise ValueError(f"Invalid person name: {name!r}")
     if not all(c.isalnum() or c in "_-" for c in cleaned):
         raise ValueError(
-            f"Folder name must be alphanumeric/underscore/hyphen: {name!r}"
+            f"Person name must be alphanumeric/underscore/hyphen: {name!r}"
         )
-    if len(cleaned) > _FOLDER_NAME_MAX:
-        raise ValueError(f"Folder name too long (max {_FOLDER_NAME_MAX}): {name!r}")
+    if len(cleaned) > _PERSON_NAME_MAX:
+        raise ValueError(f"Person name too long (max {_PERSON_NAME_MAX}): {name!r}")
     return cleaned
 
 
 def create_person(
     center: str,
     *,
-    folder: str,
+    person: str,
     account_name: str = "",
     mode: str = "pem",
     country: str = "NL",
@@ -825,7 +825,7 @@ def create_person(
     from app.settings import refresh_people
     from app.yearpath import CATEGORY_TOTALS_FILENAME
 
-    folder_name = _valid_folder_name(folder)
+    person_name = _valid_person_name(person)
     mode_s = (mode or "pem").strip().lower()
     if mode_s not in {"pem", "excel"}:
         raise ValueError("mode must be 'pem' or 'excel'")
@@ -849,31 +849,31 @@ def create_person(
             country_name = country_for_center(ws)
             if not country_name:
                 raise ValueError(f"Unknown center: {ws}")
-            if folder_name.lower() in {name.lower() for name in people_in_center(ws)}:
-                raise ValueError(f"Person already exists: {folder_name}")
+            if person_name.lower() in {name.lower() for name in people_in_center(ws)}:
+                raise ValueError(f"Person already exists: {person_name}")
             if mode_s == "pem":
                 login = user_store.upsert_personal_login(
-                    center=ws, person=folder_name, country=country_name
+                    center=ws, person=person_name, country=country_name
                 )
                 user_store.set_user_format(
-                    username=folder_name, format=user_store.FORMAT_SECRET
+                    username=person_name, format=user_store.FORMAT_SECRET
                 )
                 return {
                     "ok": True,
                     "center": ws,
-                    "person": folder_name,
+                    "person": person_name,
                     "mode": "pem",
                     "login": login,
                     "enable_banking_url": "https://enablebanking.com/cp/applications",
                 }
 
         root = store.center_dir(ws)
-        target = root / folder_name
+        target = root / person_name
         if target.exists():
-            raise ValueError(f"Folder already exists: {folder_name}")
+            raise ValueError(f"Person already exists: {person_name}")
         for pack in list_people(root):
-            if pack.folder_name.lower() == folder_name.lower():
-                raise ValueError(f"Person already exists: {folder_name}")
+            if pack.folder_name.lower() == person_name.lower():
+                raise ValueError(f"Person already exists: {person_name}")
 
         from app.paths import shared_categories_path
 
@@ -915,12 +915,11 @@ def create_person(
             totals["account_balances"] = balances
             totals_path.write_text(json.dumps(totals, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             refresh_people()
-            login = ensure_personal_login_user(center=ws, person=folder_name)
+            login = ensure_personal_login_user(center=ws, person=person_name)
             return {
                 "ok": True,
                 "center": ws,
-                "folder": folder_name,
-                "person": folder_name,
+                "person": person_name,
                 "mode": "excel",
                 "account_holder": holder,
                 "account_number": account_no or "onbekend",
@@ -932,7 +931,7 @@ def create_person(
         secret_dir.mkdir(parents=True, exist_ok=False)
         (secret_dir / store.PERSONAL_CATEGORIES).write_text("{}\n", encoding="utf-8")
         profile = _pem_profile_template(
-            person=folder_name,
+            person=person_name,
             country=country_s,
             aspsp=aspsp_s,
         )
@@ -941,16 +940,15 @@ def create_person(
             encoding="utf-8",
         )
         refresh_people()
-        login = ensure_personal_login_user(center=ws, person=folder_name)
+        login = ensure_personal_login_user(center=ws, person=person_name)
         from app import user_store
 
-        user_store.set_user_format(username=folder_name, format=user_store.FORMAT_SECRET)
+        user_store.set_user_format(username=person_name, format=user_store.FORMAT_SECRET)
 
     return {
         "ok": True,
         "center": ws,
-        "folder": folder_name,
-        "person": folder_name,
+        "person": person_name,
         "mode": "pem",
         "profile": profile,
         "login": login,
@@ -972,7 +970,7 @@ def upload_person_pem(
     from app.people import get_person
     from app.settings import refresh_people
 
-    person = _valid_folder_name(short)
+    person = _valid_person_name(short)
     name = Path(filename).name
     if not name.lower().endswith(".pem"):
         raise ValueError("PEM upload must be a .pem file")
@@ -1015,7 +1013,6 @@ def upload_person_pem(
         "ok": True,
         "center": ws,
         "person": person,
-        "folder": pack.folder_name,
         "app_id": stem,
         "connection_id": stored["connection_id"],
         "stored": "database",

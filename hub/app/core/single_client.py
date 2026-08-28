@@ -837,13 +837,16 @@ def set_enabled_account_uids(uids: list[str]) -> dict[str, Any]:
 
 
 def _save_session_connection(profile: dict[str, Any], session: dict[str, Any]) -> None:
+    from app import enable_sql, user_store
+
     record = _load_consent()
     record["person"] = paths.PERSON_SHORT or profile.get("person", record.get("person", "unknown"))
-    record = _merge_connection(record, _build_connection(profile, session))
+    connection = _build_connection(profile, session)
+    record = _merge_connection(record, connection)
     _save_consent(record)
-    from app import enable_sql
 
-    if paths.PERSON_SHORT and isinstance(session.get("accounts"), list):
+    if user_store.database_url() and paths.PERSON_SHORT and isinstance(session.get("accounts"), list):
+        enable_sql.update_person_connection(paths.PERSON_SHORT, connection)
         enable_sql.upsert_person_accounts(
             paths.PERSON_SHORT,
             _iter_accounts(record, active_only=False),

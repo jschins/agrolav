@@ -199,6 +199,45 @@ def upsert_person_accounts(username: str, accounts: list[dict[str, Any]]) -> lis
     return result
 
 
+def update_person_connection(username: str, connection: dict[str, Any]) -> int:
+    """Persist the Enable Banking session metadata for a person."""
+    cursor = _cursor()
+    if cursor is None:
+        raise RuntimeError("SQL Server is not configured")
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        raise ValueError(f"Unknown person login: {username}")
+    session_id = str(connection.get("session_id") or "").strip() or None
+    valid_until = str(connection.get("valid_until") or "").strip() or None
+    created_at = str(connection.get("created_at") or "").strip() or None
+    cursor.execute(
+        """
+        SELECT TOP 1 connection_id
+        FROM dbo.enable_connection
+        WHERE person_id = ?
+        ORDER BY CASE WHEN app_id IS NULL OR LTRIM(RTRIM(app_id)) = N'' THEN 1 ELSE 0 END,
+                 connection_id DESC
+        """,
+        (person_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise ValueError(f"No Enable Banking connection for person: {username}")
+    connection_id = int(row[0])
+    cursor.execute(
+        """
+        UPDATE dbo.enable_connection
+        SET session_id = ?, valid_until = ?, created_at = ?
+        WHERE connection_id = ?
+        """,
+        (session_id, valid_until, created_at, connection_id),
+    )
+    from app import user_store
+
+    user_store._sql_connect().commit()
+    return connection_id
+
+
 def upsert_person_pem(username: str, *, app_id: str, pem: str) -> dict[str, Any]:
     """Write application id + PEM for this person. Does not write files."""
     app = str(app_id or "").strip()
