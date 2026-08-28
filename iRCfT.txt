@@ -1,39 +1,71 @@
 AGENDA
 
-1. At creating a new country: 
-additionally make, in table dbo.dim_categories, a third row
-(country_id * 100 + 2, country_id, 97, '18 UFO', 'True', NULL)
+Laatste onderbroken, onvoltooide opdracht:
 
-2. SHOW modify_categories menu option only for national login and make it a knob in 8200 and have it refer thereto (like add-person, accessible to national and local logins)
-i think the add-person option was broke
+The "upload data" menu shows among others:
 
-3. At modifying categories in the menu, such that previously existing catogory_id's cease existing:
-additionally, eliminate all rows in table dbo.category_term that have the eliminated category_id
-(this is the first operation in a sequence, the last one of which is the elimination of that category_id in the table dbo.dim_category)
-Moreover, require that any new category be structured as 2digits+space+character_sequence such that 2digits (==local_code) represent unique number [omit semantic requirement that character_sequence be unique within country]
-NOTE that 2digits and char_seq must be input and stored independently
-NOTE that SUBMIT can reply with an error, upon which user has choice to cancel or continue
+"CSV files already on the hub :
+(none yet)"
 
-4. replace secret -> ing in dbo.account.format, and add columns of now table dbo.enable_account
-          "connection_id" (FK referring to table dbo.enable_connection) 
-          "uid": "1f60d580-f565-4cb2-a6bd-c285d818bfee",
-          "identification_hash": "WwpbCiJhY2NvdW50IiwKImFjY291bnRfaWQiLAoiaWJhbiIKXSwKWwoiYWNjb3VudCIsCiJjdXJyZW5jeSIKXQpd.gz/T5pnwk7aZ/7C6kMmw8RDx5+RnPLQO3zF9rCxWNdk=",
-NOTE that ing = apsp
-IDEA is that 
-+ every account has its own uid and hash
-+ several accounts can connect via a single connection_id
-+ CONSTRAINT is that equal connection_id's on different accounts require those accounts to belong to the same person
+1. instead of reading the uploaded files from disk: read the file names from database table dbo.account.balance_file, then in the frontend list the filenames and their format
 
-5. table dbo.enable_connection contains the columns
-      connection_id (PK)
-      "app_id": "fb529b7f-9655-4b21-9589-6054459bde25",
-      "session_id": "08761cd8-ffdf-461f-9b8c-ceda2ed8f11d",
-      "valid_until": "2026-11-08T15:29:51.524206Z",
-      "created_at": "2026-08-10T15:30:41.276604+00:00",
-      "pem":  pem-string 
-NB app_id and pem from dbo.private_key, erroneously LINKED TO person_id
-IDEA is that one person can have some accounts under pem, and some others summarized in a manually uploaded excel document
-DELETE dbo.private_key
+2. backend processing after user hits teh upload button: instead of writing file to disk, process file contents, and update the tables
++ dbo.account_balance_file
++ dbo.transaction_{country}
+
+
+===========================================
+
+Verdere toekomst
+
+4. "add person" in pem mode gaat fout, en de woorden "folder" moeten eruit
+
+
+Add person
+Center 
+test
+Mode 
+pem
+folder name	
+juleon
+For your reference:
+
+redirect-URL:               https://deoudegracht.nl/banking-callback.html
+Privacy policy URL:      https://deoudegracht.nl/privacy.html
+Terms of service URL:  https://deoudegracht.nl/terms.html
+Create folder
+Center folder does not exist: C:\Coding\agrolav\workspaces\beheer\test. The hub does not create center folders; only person packs inside them.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5. vraag nut van dbo.enable_redirect
+
+
+
+
+
+
+
 
 6. User's guide:
 + 18 reserved for UFO
@@ -42,22 +74,15 @@ DELETE dbo.private_key
 + right-clicking on amount or term in description/name
 + blue and editing in description
 + categories per country, P and G, 
-
-7. add split amount option: right-clicking on amount gives menu
-
-8. change password to !@#$%^&*()_{login_name}
-
-9. add column dbo.hub_ip.target
-+ if its value == 'B': refers to ip's with access to 8200
-+ if its value == C_{country_id} or L_{center_id} or P_{person_id} then the value limits access to that login on 8300 
-IDEA is that multiple IP's may be assocaiated with a single login
-so at login, code should check if IP is one of all IP's associated with that login
-
-10. add 8200 knob and menu item "restrict IP access" visible to everybody: if no IP address is specfied, access is possible from everywhere
-
-11. can you read the pem file content & name wthout committing it to disk?
++ edit access ip's
++ edit categories for national login
 
 
+
+8. Menu trigger monthly secret-download ?
+
+
+sudo sed -E 's/(PWD|PASSWORD|password)=[^;]*/\1=***REDACTED***/g' /etc/agrolav/hub.env
 
 ================================================================================================
 

@@ -117,6 +117,88 @@ def center_has_pem(center: str) -> bool:
     return cursor.fetchone() is not None
 
 
+def upsert_person_accounts(username: str, accounts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Persist every account returned by Enable Banking for a person."""
+    cursor = _cursor()
+    if cursor is None:
+        raise RuntimeError("SQL Server is not configured")
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        raise ValueError(f"Unknown person login: {username}")
+    cursor.execute(
+        "SELECT TOP 1 connection_id FROM dbo.enable_connection WHERE person_id = ? ORDER BY connection_id",
+        (person_id,),
+    )
+    connection = cursor.fetchone()
+    if connection is None:
+        raise ValueError(f"No Enable Banking connection for person: {username}")
+    connection_id = int(connection[0])
+    result: list[dict[str, Any]] = []
+    for account in accounts:
+        uid = str(account.get("uid") or "").strip()[:128]
+        if not uid:
+            continue
+        iban = str(account.get("iban") or "Credit Card").strip()[:64] or "Credit Card"
+        name = str(account.get("name") or iban).strip()[:64] or iban
+        balance = str(account.get("balance") or "0").strip().replace(",", ".") or "0"
+        cursor.execute(
+            """
+            SELECT TOP 1 account_id
+            FROM dbo.account
+            WHERE person_id = ? AND (uid = ? OR iban = ?)
+            ORDER BY CASE WHEN uid = ? THEN 0 ELSE 1 END, account_id
+            """,
+            (person_id, uid, iban, uid),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            cursor.execute(
+                """
+                INSERT INTO dbo.account
+                    (person_id, iban, account_name, format, balance, connection_id, uid, identification_hash)
+                OUTPUT INSERTED.account_id
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    person_id,
+                    iban,
+                    name,
+                    str(account.get("aspsp") or "").strip()[:64] or None,
+                    balance,
+                    connection_id,
+                    uid,
+                    str(account.get("identification_hash") or "").strip()[:128] or None,
+                ),
+            )
+            account_id = int(cursor.fetchone()[0])
+        else:
+            account_id = int(row[0])
+            cursor.execute(
+                """
+                UPDATE dbo.account
+                SET account_name = ?, balance = ?, connection_id = ?, uid = ?, identification_hash = ?
+                WHERE account_id = ?
+                """,
+                (
+                    name,
+                    balance,
+                    connection_id,
+                    uid,
+                    str(account.get("identification_hash") or "").strip()[:128] or None,
+                    account_id,
+                ),
+            )
+        result.append({"account_id": account_id, "uid": uid, "iban": iban, "account_name": name})
+    cursor.execute(
+        "UPDATE dbo.person SET number_of_accounts = (SELECT COUNT(*) FROM dbo.account WHERE person_id = ?) WHERE id = ?",
+        (person_id, person_id),
+    )
+    from app import user_store
+
+    user_store._sql_connect().commit()
+    return result
+
+
 def upsert_person_pem(username: str, *, app_id: str, pem: str) -> dict[str, Any]:
     """Write application id + PEM for this person. Does not write files."""
     app = str(app_id or "").strip()

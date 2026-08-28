@@ -34,7 +34,6 @@ def _center_scope(center: str) -> Iterator[str]:
         ws = coerce_center(ws)
         country = request_country() or country_for_center(ws)
         set_active_center(ws, country=country)
-        store.require_center_dir(ws)
         from app.settings import init_app
 
         init_app()
@@ -821,10 +820,7 @@ def create_person(
     initial_balance: str | None = None,
     account_number: str | None = None,
 ) -> dict[str, Any]:
-    """Scaffold a person pack under an *existing* ``workspaces/<country>/<ws>/<folder>/``.
-
-    The center folder must already exist on disk; this never creates it.
-    """
+    """Create a person in the configured database or legacy filesystem store."""
     from app.people import list_people
     from app.settings import refresh_people
     from app.yearpath import CATEGORY_TOTALS_FILENAME
@@ -845,7 +841,33 @@ def create_person(
         raise ValueError("aspsp is required")
 
     with _center_scope(center) as ws:
-        root = store.require_center_dir(ws)
+        from app import user_store
+
+        if user_store.database_url():
+            from app.sql_catalog import country_for_center, people_in_center
+
+            country_name = country_for_center(ws)
+            if not country_name:
+                raise ValueError(f"Unknown center: {ws}")
+            if folder_name.lower() in {name.lower() for name in people_in_center(ws)}:
+                raise ValueError(f"Person already exists: {folder_name}")
+            if mode_s == "pem":
+                login = user_store.upsert_personal_login(
+                    center=ws, person=folder_name, country=country_name
+                )
+                user_store.set_user_format(
+                    username=folder_name, format=user_store.FORMAT_SECRET
+                )
+                return {
+                    "ok": True,
+                    "center": ws,
+                    "person": folder_name,
+                    "mode": "pem",
+                    "login": login,
+                    "enable_banking_url": "https://enablebanking.com/cp/applications",
+                }
+
+        root = store.center_dir(ws)
         target = root / folder_name
         if target.exists():
             raise ValueError(f"Folder already exists: {folder_name}")

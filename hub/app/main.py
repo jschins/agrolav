@@ -656,10 +656,7 @@ def api_years(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]
         sql_years = years_for_center(coerce_center(center))
         years = sql_years or [default_y]
         return {"years": years, "default_year": default_y}
-    try:
-        ws_root = store.require_center_dir(center)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    ws_root = store.center_dir(center)
     existing_years: set[str] = set()
     if ws_root.is_dir():
         for child in ws_root.iterdir():
@@ -688,10 +685,7 @@ def api_person_years(
 
     if user_store.database_url():
         return {"person": short, "years": []}
-    try:
-        ws_root = store.require_center_dir(center)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    ws_root = store.center_dir(center)
     person_folder = (ws_root / short).resolve()
     if not person_folder.is_dir():
         raise HTTPException(status_code=404, detail=f"Person {short!r} not found")
@@ -1513,7 +1507,7 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
 
     <div id="step1" class="step active">
       <table>
-        <tr><th>folder name</th><td><input id="folder" type="text"/></td></tr>
+        <tr><th>person name</th><td><input id="folder" type="text"/></td></tr>
         <tr id="rowHolder"><th>account holder name</th><td><input id="accountHolder" type="text"/></td></tr>
         <tr id="rowAccountNumber" style="display:none"><th>account number</th><td><input id="accountNumber" type="text"/></td></tr>
         <tr id="rowInitial" style="display:none"><th>initial balance</th><td><input id="initialBalance" type="text" value="0.00"/></td></tr>
@@ -1525,12 +1519,12 @@ Privacy policy URL:      https://deoudegracht.nl/privacy.html
 Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       </div>
       <div class="actions">
-        <button type="button" id="btnCreate">Create folder</button>
+        <button type="button" id="btnCreate">Create person</button>
       </div>
     </div>
 
     <div id="step2" class="step">
-      <p>Folder created for <strong id="createdLabel"></strong>.</p>
+      <p>Person created: <strong id="createdLabel"></strong>.</p>
       <div class="actions">
         <a class="link-btn" id="ebLink" href="https://enablebanking.com/cp/applications" target="_blank" rel="noopener noreferrer">Open Enable Banking applications</a>
       </div>
@@ -1704,7 +1698,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
 
     document.getElementById("btnPem").onclick = async () => {
       errEl.textContent = "";
-      if (!created) { errEl.textContent = "Create the folder first."; return; }
+      if (!created) { errEl.textContent = "Create the person first."; return; }
       const fileInput = document.getElementById("pemFile");
       const file = fileInput.files && fileInput.files[0];
       if (!file) { errEl.textContent = "Choose a .pem file."; return; }

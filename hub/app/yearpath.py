@@ -176,8 +176,7 @@ def ensure_year_folder(
 ) -> Path:
     """Create ``person/Y`` with empty books and the previous year's closing balance.
 
-    Creates the person folder and year folder when missing. Never creates the
-    parent center folder — that must already exist on disk.
+    Creates the person and year paths when missing.
 
     Idempotent: if the year directory already exists, it is left unchanged.
     """
@@ -186,13 +185,6 @@ def ensure_year_folder(
     if folder.is_dir():
         _sync_category_names(folder / CATEGORY_TOTALS_FILENAME, categories_path)
         return folder
-
-    center = person_folder.parent
-    if not center.is_dir():
-        raise FileNotFoundError(
-            f"Center folder does not exist: {center}. "
-            "The hub does not create center folders; only person packs inside them."
-        )
 
     prev = previous_year_name(person_folder, y)
     prev_totals = _load_totals(person_folder / prev / CATEGORY_TOTALS_FILENAME) if prev else {}

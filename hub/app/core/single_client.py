@@ -841,6 +841,13 @@ def _save_session_connection(profile: dict[str, Any], session: dict[str, Any]) -
     record["person"] = paths.PERSON_SHORT or profile.get("person", record.get("person", "unknown"))
     record = _merge_connection(record, _build_connection(profile, session))
     _save_consent(record)
+    from app import enable_sql
+
+    if paths.PERSON_SHORT and isinstance(session.get("accounts"), list):
+        enable_sql.upsert_person_accounts(
+            paths.PERSON_SHORT,
+            _iter_accounts(record, active_only=False),
+        )
 
 
 def _store_last_redirect_code(code_or_url: str) -> None:

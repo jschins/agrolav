@@ -133,28 +133,6 @@ def center_dir(center: str) -> Path:
     return base / ws
 
 
-def require_center_dir(center: str) -> Path:
-    """Return the center path. With SQL configured, disk folders are optional."""
-    from app import user_store
-
-    path = center_dir(center)
-    if user_store.database_url():
-        from app.sql_catalog import center_exists
-
-        if center_exists(center):
-            return path
-        raise FileNotFoundError(
-            f"Center {center!r} is not in dbo.center (SQL Server)."
-        )
-    if path.is_dir():
-        return path
-    raise FileNotFoundError(
-        f"Center {center!r} does not exist under {data_root()} "
-        f"(looked at {path}). "
-        "Create the country/center folders on disk first; the hub does not initialize them."
-    )
-
-
 def list_countries() -> list[str]:
     from app.runtime import list_country_folders
     from app.sql_catalog import list_country_usernames
