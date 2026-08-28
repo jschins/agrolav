@@ -1442,7 +1442,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
           <dt>Privacy policy URL</dt><dd><a href="https://deoudegracht.nl/privacy.html" target="_blank" rel="noopener noreferrer">https://deoudegracht.nl/privacy.html</a></dd>
           <dt>Terms of service URL</dt><dd><a href="https://deoudegracht.nl/terms.html" target="_blank" rel="noopener noreferrer">https://deoudegracht.nl/terms.html</a></dd>
         </dl>
-        <p class="note">Download / save the private key (<code>.pem</code>) when Enable Banking offers it — you only get it once. Keep the filename (Application ID).</p>
+        <p class="note">Download / save the private key (<code>.pem</code>) when Enable Banking offers it — you only get it once. Keep the filename (Application ID). The hub stores the key in the database, not as a file on the server.</p>
       </div>
 
       <div class="remind">
@@ -1460,7 +1460,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         <ol>
           <li>Save the <code>.pem</code> on this laptop (do not rename if possible — stem becomes <code>app_id</code>).</li>
           <li>Return to this wizard and choose the file below.</li>
-          <li>Click <strong>Upload PEM</strong> — this only stores the key. Bank consent and download happen after personal login.</li>
+          <li>Click <strong>Upload PEM</strong> — this writes <code>app_id</code> and the private key into the database. Bank consent and download happen after personal login.</li>
         </ol>
       </div>
 
@@ -1621,7 +1621,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         if (!up.ok) throw new Error(upData.detail || upText || up.statusText);
 
         document.getElementById("doneMsg").textContent =
-          `PEM saved as ${upData.key_file}. Setup is complete — no download yet.`;
+          `PEM stored in the database (application id ${upData.app_id || "unknown"}). Setup is complete — no download yet.`;
         showLoginHint(created);
         document.getElementById("fetchOut").textContent = JSON.stringify(
           { pem: upData, login: created.login || null },

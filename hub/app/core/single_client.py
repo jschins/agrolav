@@ -158,12 +158,21 @@ class SingleDockerClient(EnableBankingClient):
 
     @classmethod
     def from_profile(cls, profile: dict[str, Any]) -> SingleDockerClient:
+        from app import enable_sql, paths as pathmod
+
+        person = str(profile.get("person") or pathmod.PERSON_SHORT or "").strip()
+        stored = enable_sql.credentials_for_person(person) if person else None
+        if stored:
+            return cls(stored[0], stored[1])
         app_id = profile_app_id(profile)
         if not app_id:
-            raise EnableBankingError("profile.json connections[].app_id is required")
+            raise EnableBankingError("Enable Banking app_id is required")
         key_path = profile_pem_path(profile)
         if not key_path.is_file():
-            raise EnableBankingError(f"Private key file not found: {key_path}")
+            raise EnableBankingError(
+                "Enable Banking private key is not in the database "
+                f"(and no file at {key_path})"
+            )
         return cls(app_id, key_path.read_bytes())
 
     def start_authorization(

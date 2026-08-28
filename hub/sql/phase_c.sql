@@ -98,11 +98,14 @@ CREATE UNIQUE INDEX ux_person_username ON dbo.person (username);
 
 CREATE TABLE dbo.enable_connection (
     connection_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    person_id INT NULL,
     app_id NVARCHAR(128) NULL,
     session_id NVARCHAR(256) NULL,
     valid_until DATETIME2 NULL,
     created_at DATETIME2 NULL,
-    pem NVARCHAR(MAX) NULL
+    pem NVARCHAR(MAX) NULL,
+    CONSTRAINT fk_enable_connection_person FOREIGN KEY (person_id)
+        REFERENCES dbo.person (id)
 );
 
 CREATE TABLE dbo.account (

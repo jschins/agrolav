@@ -365,11 +365,12 @@ def load_enable(cursor) -> tuple[int, int, int]:
             cursor.execute(
                 """
                 INSERT INTO dbo.enable_connection (
-                    app_id, session_id, valid_until, created_at, pem
+                    person_id, app_id, session_id, valid_until, created_at, pem
                 )
                 OUTPUT INSERTED.connection_id
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
+                person_id,
                 app_id,
                 (session_id[:256] if session_id else None),
                 _parse_dt(conn.get("valid_until")),

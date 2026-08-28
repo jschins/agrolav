@@ -42,6 +42,10 @@ def _center_scope(center: str) -> Iterator[str]:
 
 
 def _has_secrets(center: str) -> bool:
+    from app.enable_sql import center_has_pem
+
+    if center_has_pem(center):
+        return True
     root = store.center_dir(center)
     if not root.is_dir():
         return False
@@ -883,9 +887,10 @@ def upload_person_pem(
     filename: str,
     content: bytes,
 ) -> dict[str, Any]:
-    """Store the Enable Banking private key and update profile app_id from the filename."""
+    """Store app_id + PEM in SQL (not as a file) and stamp profile.json app_id."""
     from pathlib import Path
 
+    from app import enable_sql
     from app.people import get_person
     from app.settings import refresh_people
 
@@ -898,21 +903,27 @@ def upload_person_pem(
         raise ValueError("PEM filename stem (Application ID) is empty")
     if not content or b"PRIVATE KEY" not in content:
         raise ValueError("File does not look like an RSA private key PEM")
+    try:
+        pem_text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        pem_text = content.decode("ascii")
 
     with _center_scope(center) as ws:
         pack = get_person(person)
+        stored = enable_sql.upsert_person_pem(person, app_id=stem, pem=pem_text)
         secret = pack.secret_dir
         secret.mkdir(parents=True, exist_ok=True)
         for old in secret.glob("*.pem"):
             old.unlink(missing_ok=True)
-        pem_path = secret / f"{stem}.pem"
-        pem_path.write_bytes(content)
 
         profile_path = pack.profile_path
         if not profile_path.is_file():
             profile_path = secret / "profile.json"
-        profile = json.loads(profile_path.read_text(encoding="utf-8"))
-        if not isinstance(profile, dict):
+        if profile_path.is_file():
+            profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            if not isinstance(profile, dict):
+                profile = {}
+        else:
             profile = {}
         profile["person"] = person
         profile = _set_profile_app_id(profile, stem)
@@ -928,7 +939,8 @@ def upload_person_pem(
         "person": person,
         "folder": pack.folder_name,
         "app_id": stem,
-        "key_file": pem_path.name,
+        "connection_id": stored["connection_id"],
+        "stored": "database",
         "profile": profile,
     }
 

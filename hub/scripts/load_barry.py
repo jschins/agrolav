@@ -474,11 +474,12 @@ def _load_enable(
         cursor.execute(
             """
             INSERT INTO dbo.enable_connection (
-                app_id, session_id, valid_until, created_at, pem
+                person_id, app_id, session_id, valid_until, created_at, pem
             )
             OUTPUT INSERTED.connection_id
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
+            person_id,
             (conn_app[:128] if conn_app else None),
             (session_id[:256] if session_id else None),
             _parse_dt(conn.get("valid_until")),
