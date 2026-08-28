@@ -1042,8 +1042,7 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
   return (
     <div className="login-screen">
       <form className="login-card" onSubmit={submit}>
-        <h1 className="login-title">Sign in</h1>
-        <p className="login-muted">Sign in to continue</p>
+        <h1 className="login-title">Expenses</h1>
         <label className="login-label">
           Username
           <input
