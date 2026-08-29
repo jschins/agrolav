@@ -139,7 +139,7 @@ def parse_excel_date(value: str) -> str | None:
 
 
 def _latest_iso_date(transactions: list[dict[str, Any]]) -> str | None:
-    """Newest transaction date as ``YYYY-MM-DD`` (for users.db ``updated_at``)."""
+    """Newest transaction date as ``YYYY-MM-DD`` (for ``updated_at``)."""
     from app.user_store import latest_transaction_date
 
     return latest_transaction_date(transactions)

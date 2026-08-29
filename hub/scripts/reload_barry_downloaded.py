@@ -4,7 +4,7 @@
 ``_account_index`` 1 → IE62AIBK93353815584066
 
 Deletes only ``dbo.transaction_ireland`` rows for Barry, then inserts the
-downloaded file (Enable Banking raw). Does not create workspace folders.
+downloaded file (Enable Banking raw). Does not create on-disk center folders.
 
   cd hub
   uv run python scripts/reload_barry_downloaded.py

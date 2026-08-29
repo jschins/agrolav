@@ -1,4 +1,4 @@
-"""SQL Server bookings for the person/year(/bank) bound in ``app.paths``.
+"""SQL Server bookings for the person/year(/bank) bound in ``app.runtime``.
 
 Reads return JSON-shaped rows. Writes INSERT/UPDATE ``transaction_*`` rows.
 JSON files remain a write-through cache for imports and file publish.
@@ -169,7 +169,7 @@ def _bound_where(bound: _BoundScope, alias: str = "t") -> tuple[str, list[Any]]:
 
 def _open_bound_scope() -> _BoundScope | None:
     """Resolve the bound person/year(/bank) against SQL, or None if SQL is unused."""
-    from app import paths, user_store
+    from app import runtime as paths, user_store
 
     if not user_store.database_url():
         return None
@@ -534,7 +534,7 @@ def _executemany_commit(conn, cursor, sql: str, params: list[tuple[Any, ...]]) -
 
 
 def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
-    """UPDATE ``transaction_*`` for the person/year(/bank) bound in ``app.paths``."""
+    """UPDATE ``transaction_*`` for the person/year(/bank) bound in ``app.runtime``."""
     from app import user_store
     from app.core.categorize import DEFAULT_CATEGORY
 
@@ -785,7 +785,7 @@ def ingest_bound_transactions(
         if remainder_id is None:
             print(f"sql replica: no remainder category for {bound.username!r}")
             return 0
-        bank_id = None if bound.bank_key < 0 else bound.bank_key
+        bank_id = bound.bank_key if (bound.bank_key or 0) >= 0 else None
         where_sql, where_params = _bound_where(bound)
         where_sql = where_sql.replace("t.", "")
         bound.cursor.execute(

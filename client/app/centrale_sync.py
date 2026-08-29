@@ -238,12 +238,9 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
     # Auth on but no session: bootstrap for lifespan / health (no all-countries view).
     if auth_on:
         bootstrap_country = os.environ.get("CLIENT_COUNTRY", "").strip()
-        bootstrap_ws = (
-            os.environ.get("CLIENT_BOOTSTRAP_CENTER", "").strip()
-            or os.environ.get("CLIENT_BOOTSTRAP_WORKSPACE", "").strip()
-        )
-        if not bootstrap_ws:
-            bootstrap_ws = (
+        bootstrap_center = os.environ.get("CLIENT_BOOTSTRAP_CENTER", "").strip()
+        if not bootstrap_center:
+            bootstrap_center = (
                 _first_hub_center(url, api_key=api_key, country=bootstrap_country) or ""
             )
         return _build_hub_config(
@@ -252,9 +249,9 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
             enabled=enabled,
             port=port,
             access=ACCESS_COUNTRY,
-            center_key=bootstrap_ws,
+            center_key=bootstrap_center,
             person_key="",
-            selected=bootstrap_ws,
+            selected=bootstrap_center,
             username="",
             auth_required=True,
             apply_process_runtime=True,
@@ -282,10 +279,7 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
 
     # Auth off: identity from environment only (CLIENT_ACCESS / CENTER / PERSON).
     access = _coerce_access(os.environ.get("CLIENT_ACCESS", "").strip() or ACCESS_CENTER)
-    center_key = (
-        os.environ.get("CLIENT_CENTER", "").strip()
-        or os.environ.get("CLIENT_WORKSPACE", "").strip()
-    )
+    center_key = os.environ.get("CLIENT_CENTER", "").strip()
     person_key = os.environ.get("CLIENT_PERSON", "").strip()
     env_country = os.environ.get("CLIENT_COUNTRY", "").strip()
     default_port = (
@@ -322,15 +316,13 @@ def apply_session_profile(session: dict[str, Any]) -> HubConfig:
     access = _coerce_access(str(session.get("access") or "local"))
     person_key = str(session.get("person") or "").strip()
     selected = (
-        str(session.get("selected_center") or session.get("selected_workspace") or "").strip()
-        or str(session.get("center") or session.get("workspace") or "").strip()
+        str(session.get("selected_center") or "").strip()
+        or str(session.get("center") or "").strip()
         or None
     )
     username = str(session.get("username") or "").strip()
     title = str(session.get("title") or "").strip()
     centers_raw = session.get("centers")
-    if not isinstance(centers_raw, list):
-        centers_raw = session.get("workspaces")
     centers_allowlist: list[str] | None = None
     if isinstance(centers_raw, list):
         centers_allowlist = [str(w).strip() for w in centers_raw if str(w).strip()]
@@ -375,7 +367,7 @@ def _fetch_hub_center_names(url: str, *, api_key: str = "", country: str = "") -
         if country:
             suffix = f"/api/status?country={urllib.parse.quote(country)}"
         data = _hub_get_json(url, suffix, api_key=api_key)
-        names = data.get("centers") or data.get("workspaces") or []
+        names = data.get("centers") or []
         if isinstance(names, list) and names:
             return [str(n).strip() for n in names if str(n).strip()]
     except Exception:  # noqa: BLE001
@@ -390,24 +382,24 @@ def _first_hub_center(url: str, *, api_key: str = "", country: str = "") -> str 
 
 
 def configured_person() -> str:
-    """Return configured person short, or ``\"\"`` when all people are visible."""
+    """Return configured person name, or ``\"\"`` when all people are visible."""
     return (load_config().person or "").strip()
 
 
-def person_allowed(short: str) -> bool:
-    """True when ``short`` may be shown/mutated under the current person scope."""
+def person_allowed(person_name: str) -> bool:
+    """True when ``person_name`` may be shown or mutated under the current person scope."""
     scope = configured_person()
     if not scope:
         return True
-    return short.strip().lower() == scope.lower()
+    return person_name.strip().lower() == scope.lower()
 
 
-def require_person(short: str) -> None:
-    if person_allowed(short):
+def require_person(person_name: str) -> None:
+    if person_allowed(person_name):
         return
     scope = configured_person()
     raise PermissionError(
-        f"This client is scoped to person {scope!r}; {short!r} is not available."
+        f"This client is scoped to person {scope!r}; {person_name!r} is not available."
     )
 
 
@@ -419,7 +411,7 @@ def scope_people(people: list[Any] | None) -> list[Any]:
     return [
         p
         for p in people
-        if isinstance(p, dict) and str(p.get("short") or "").strip().lower() == needle
+        if isinstance(p, dict) and str(p.get("person_name") or "").strip().lower() == needle
     ]
 
 
@@ -431,7 +423,7 @@ def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
     out = dict(payload)
     people = scope_people(out.get("people") if isinstance(out.get("people"), list) else [])
     out["people"] = people
-    shorts = {str(p.get("short") or "") for p in people if isinstance(p, dict)}
+    person_names = {str(p.get("person_name") or "") for p in people if isinstance(p, dict)}
     cells = out.get("cells")
     if isinstance(cells, dict):
         trimmed: dict[str, Any] = {}
@@ -439,7 +431,7 @@ def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(row, dict):
                 continue
             trimmed[cat] = {
-                k: v for k, v in row.items() if str(k) in shorts or str(k).lower() == scope.lower()
+                k: v for k, v in row.items() if str(k) in person_names or str(k).lower() == scope.lower()
             }
         out["cells"] = trimmed
     return out
@@ -473,7 +465,7 @@ def scope_refresh(payload: dict[str, Any]) -> dict[str, Any]:
         out["results"] = [
             r
             for r in results
-            if isinstance(r, dict) and str(r.get("short") or "").strip().lower() == scope.lower()
+            if isinstance(r, dict) and str(r.get("person_name") or "").strip().lower() == scope.lower()
         ]
     warnings = out.get("warnings")
     if isinstance(warnings, list):
@@ -495,7 +487,7 @@ def scope_consent_ready(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         item
         for item in items
-        if str(item.get("short") or "").strip().lower() == needle
+        if str(item.get("person_name") or "").strip().lower() == needle
     ]
 
 
@@ -625,7 +617,7 @@ def sidebar_title_from_session(session: dict[str, Any]) -> str:
     return sidebar_title(
         username=str(session.get("username") or "").strip(),
         access=str(session.get("access") or "").strip(),
-        center=str(session.get("center") or session.get("workspace") or "").strip(),
+        center=str(session.get("center") or "").strip(),
         country=str(session.get("country") or "").strip(),
         fallback=str(session.get("title") or "").strip(),
     )
@@ -651,11 +643,10 @@ def sync_status() -> dict[str, Any]:
             if isinstance(raw, list):
                 consent_ready = [
                     {
-                        "short": str(item.get("short") or ""),
-                        "folder": str(item.get("folder") or ""),
+                        "person_name": str(item.get("person_name") or ""),
                     }
                     for item in raw
-                    if isinstance(item, dict) and str(item.get("short") or "").strip()
+                    if isinstance(item, dict) and str(item.get("person_name") or "").strip()
                 ]
         except Exception:  # noqa: BLE001
             consent_ready = []
@@ -987,7 +978,7 @@ def start_session_and_pull() -> dict[str, Any]:
         people: list[str] = []
         if ws:
             caps = refresh_capabilities()
-            people = [p.get("short") for p in (caps.get("people") or [])]
+            people = [p.get("person_name") for p in (caps.get("people") or [])]
             events = hub_request(
                 "GET",
                 f"/api/events?{urllib.parse.urlencode({'viewer': _events_viewer(), 'center': ws, 'since_id': 0})}",

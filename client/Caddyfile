@@ -1,4 +1,13 @@
 boekhouding.agrolav.nl {
     encode gzip
-    reverse_proxy client:8300
+
+    handle /api/consent/callback* {
+        reverse_proxy 127.0.0.1:8200
+    }
+
+    handle /upload* {
+        reverse_proxy 127.0.0.1:8200
+    }
+
+    reverse_proxy 127.0.0.1:8300
 }

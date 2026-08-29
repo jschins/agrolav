@@ -278,10 +278,10 @@ html.refresh-busy body::before {
 }
 
 .fetch-form--person-scope {
-  background: #fbcfe8;
+  background: #fecaca;
   padding: 0.55rem 0.65rem 0.65rem;
   border-radius: 8px;
-  border: 1px solid #f9a8d4;
+  border: 1px solid #fca5a5;
 }
 
 .sidebar-field {

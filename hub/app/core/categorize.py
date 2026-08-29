@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import app.paths as paths
+from app import runtime as paths
 
 DEFAULT_CATEGORY = 18
 CATEGORIZE_LOGIC_VERSION = "2026-08-26-ircft-personal-and-last-stick"
@@ -67,7 +67,7 @@ def _personal_category_map() -> dict[str, list[str]]:
     if _use_sql():
         from app.sql_catalog import personal_categories_payload
 
-        name = str(paths.BOUND_PERSON or paths.PERSON_SHORT or "").strip()
+        name = str(paths.BOUND_PERSON or paths.PERSON_NAME or "").strip()
         return personal_categories_payload(name)
     data = _load_json_object(paths.PERSONAL_CATEGORIES_PATH)
     return _category_map(data)
@@ -1321,7 +1321,7 @@ def _save_personal_category_terms(category_name: str, terms: list[str]) -> None:
     if _use_sql():
         from app.sql_catalog import save_category_terms
 
-        name = str(paths.BOUND_PERSON or paths.PERSON_SHORT or "").strip()
+        name = str(paths.BOUND_PERSON or paths.PERSON_NAME or "").strip()
         if not name:
             raise ValueError("personal terms need a bound person")
         save_category_terms(category_name, cleaned, person=name)

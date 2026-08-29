@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.paths import PersonPack, bind_person
+from app.runtime import PersonPack, bind_person
 from app.people import get_person, list_people
 from app.settings import get_people, refresh_people
 
@@ -28,7 +28,7 @@ def _category_map(data: dict[str, Any]) -> dict[str, list[str]]:
 
 
 def general_categories_source(people: list[PersonPack] | None = None) -> Path:
-    from app.paths import shared_categories_path
+    from app.runtime import shared_categories_path
 
     path = shared_categories_path()
     if path.is_file():
@@ -47,7 +47,7 @@ def load_general_file(people: list[PersonPack] | None = None) -> dict[str, Any]:
     if user_store.database_url():
         country = active_country() or country_for_center(active_center() or "") or ""
         return categories_payload(country)
-    from app.paths import shared_categories_path
+    from app.runtime import shared_categories_path
 
     path = shared_categories_path()
     if path.is_file():
@@ -65,7 +65,7 @@ def category_names(people: list[PersonPack] | None = None) -> list[str]:
 def sync_general_categories(payload: dict[str, Any], people: list[PersonPack] | None = None) -> None:
     """Write the shared ``categories.json`` at the boekhouding deploy root."""
     from app import user_store
-    from app.paths import shared_categories_path
+    from app.runtime import shared_categories_path
 
     del people
     if user_store.database_url():
@@ -126,7 +126,7 @@ def person_current_balance(pack: PersonPack) -> str | None:
     """Sum of ``dbo.account.balance`` for this person (one IBAN when that view is selected)."""
     from app import user_store
 
-    accounts = user_store.list_accounts_for_username(pack.folder_name)
+    accounts = user_store.list_accounts_for_username(pack.person_name)
     if accounts:
         view = pack.data_dir.name
         if view != pack.year:
@@ -152,7 +152,7 @@ def person_current_balance(pack: PersonPack) -> str | None:
         return None
 
     from app.core.categorize import _load_json_object
-    import app.paths as paths
+    from app import runtime as paths
 
     with bind_person(pack):
         data = _load_json_object(paths.CATEGORY_TOTALS_PATH)
@@ -231,7 +231,7 @@ def build_matrix(
     balance_name, date_name = _footer_labels(categories)
     booking = [name for name in categories if _category_code(name) is not None]
     category_list = booking + [balance_name, date_name]
-    columns = [{"short": p.short, "folder": p.folder_name} for p in packs]
+    columns = [{"person_name": p.person_name} for p in packs]
     cells: dict[str, dict[str, str]] = {name: {} for name in category_list}
     ws = active_center() or ""
     sql_matrix = None
@@ -258,12 +258,12 @@ def build_matrix(
     if sql_matrix is not None:
         totals_map, dates, balances = sql_matrix
         for pack in packs:
-            key = pack.folder_name or pack.short
+            key = pack.person_name
             totals = totals_map.get(key) or {}
             for name in booking:
-                cells[name][pack.short] = _amount_for_category(totals, name)
-            cells[balance_name][pack.short] = balances.get(key) or ""
-            cells[date_name][pack.short] = dates.get(key) or ""
+                cells[name][pack.person_name] = _amount_for_category(totals, name)
+            cells[balance_name][pack.person_name] = balances.get(key) or ""
+            cells[date_name][pack.person_name] = dates.get(key) or ""
     else:
         for pack in packs:
             view_pack = pack_for_bank_view(pack, bank, center=ws) if bank else pack
@@ -272,9 +272,9 @@ def build_matrix(
             except Exception:  # noqa: BLE001
                 totals = {}
             for name in booking:
-                cells[name][pack.short] = _amount_for_category(totals, name)
-            cells[balance_name][pack.short] = person_current_balance(view_pack) or ""
-            cells[date_name][pack.short] = person_last_booked(view_pack) or ""
+                cells[name][pack.person_name] = _amount_for_category(totals, name)
+            cells[balance_name][pack.person_name] = person_current_balance(view_pack) or ""
+            cells[date_name][pack.person_name] = person_last_booked(view_pack) or ""
     payload: dict[str, Any] = {
         "categories": category_list,
         "people": columns,
@@ -291,7 +291,7 @@ def build_matrix(
 def recalculate_all(person_folders: list[str] | None = None) -> dict[str, Any]:
     """Recategorize people; when ``person_folders`` is set, only those packs are rewritten."""
     from app.core.categorize import recategorize_transactions
-    from app.paths import CALC_LOCK
+    from app.runtime import CALC_LOCK
 
     with CALC_LOCK:
         from app import user_store
@@ -299,7 +299,7 @@ def recalculate_all(person_folders: list[str] | None = None) -> dict[str, Any]:
         packs = refresh_people()
         if person_folders:
             wanted = {Path(name).name for name in person_folders}
-            to_run = [p for p in packs if p.folder_name in wanted]
+            to_run = [p for p in packs if p.person_name in wanted]
         else:
             to_run = packs
         sql = bool(user_store.database_url())
@@ -348,13 +348,13 @@ def recalculate_pack_from_scratch(pack: PersonPack) -> None:
 
 def recalculate_all_from_scratch(person_folders: list[str] | None = None) -> dict[str, Any]:
     """From-scratch recategorize of the bound center (every year folder)."""
-    from app.paths import CALC_LOCK
+    from app.runtime import CALC_LOCK
 
     with CALC_LOCK:
         packs = refresh_people()
         if person_folders:
             wanted = {Path(name).name for name in person_folders}
-            to_run = [p for p in packs if p.folder_name in wanted]
+            to_run = [p for p in packs if p.person_name in wanted]
         else:
             to_run = packs
         for pack in to_run:
@@ -365,11 +365,11 @@ def recalculate_all_from_scratch(person_folders: list[str] | None = None) -> dic
 def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
     from app.core.bank_csv import person_csv_banks, refresh_bank_csv_year
     from app.core.excel_import import import_person_excel, list_xlsx_files
-    from app.paths import shared_categories_path
+    from app.runtime import shared_categories_path
 
     categories_path = shared_categories_path()
     center = pack.folder.parent.name
-    person = pack.folder_name
+    person = pack.person_name
     banks = person_csv_banks(person, center)
     if banks:
         refreshed = refresh_bank_csv_year(
@@ -381,8 +381,7 @@ def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
         )
         if refreshed.get("skipped"):
             return {
-                "short": pack.short,
-                "folder": pack.folder_name,
+                "person_name": pack.person_name,
                 "skipped": True,
                 "source": "bank-csv",
                 "reason": refreshed.get("reason") or "no csv bank data",
@@ -413,8 +412,7 @@ def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
                     finalize_imported_bookings()
         finalize_imported_bookings()
         return {
-            "short": pack.short,
-            "folder": pack.folder_name,
+            "person_name": pack.person_name,
             "skipped": False,
             "source": "bank-csv",
             "transaction_count": total_tx,
@@ -427,8 +425,7 @@ def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
         }
     if not list_xlsx_files(pack.data_dir):
         return {
-            "short": pack.short,
-            "folder": pack.folder_name,
+            "person_name": pack.person_name,
             "skipped": True,
             "source": "excel",
             "reason": "no xlsx or csv files",
@@ -438,8 +435,7 @@ def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
 
     finalize_imported_bookings()
     return {
-        "short": pack.short,
-        "folder": pack.folder_name,
+        "person_name": pack.person_name,
         "skipped": False,
         "source": "excel",
         "transaction_count": info.get("transaction_count", 0),
@@ -454,7 +450,7 @@ def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
 
 def _narrow_totals_to_account(uid: str) -> None:
     """Keep only this account's balance row in the bound category_totals.json."""
-    from app import paths as path_mod
+    from app import runtime as path_mod
     from app import user_store
 
     if user_store.database_url():
@@ -532,7 +528,7 @@ def _bank_refresh_one(
         get_authorization_url,
         needs_consent_renewal,
     )
-    from app.paths import apply_person, shared_categories_path
+    from app.runtime import apply_person, shared_categories_path
     from app.runtime import active_center
 
     warnings: list[str] = []
@@ -541,22 +537,18 @@ def _bank_refresh_one(
         try:
             auth_url = get_authorization_url(
                 center=active_center(),
-                person_short=pack.short,
-                folder=pack.folder_name,
+                person_name=pack.person_name,
             )
         except Exception as exc:  # noqa: BLE001
             warnings.append(
-                f"{pack.short} ({pack.folder_name}): "
+                f"{pack.person_name}: "
                 f"consent renewal required — could not get authorization URL ({exc})"
             )
         else:
-            warnings.append(
-                f"{pack.short} ({pack.folder_name}): consent renewal required — skipped"
-            )
+            warnings.append(f"{pack.person_name}: consent renewal required — skipped")
         return (
             {
-                "short": pack.short,
-                "folder": pack.folder_name,
+                "person_name": pack.person_name,
                 "skipped": True,
                 "reason": "needs_consent_renewal",
                 "authorization_url": auth_url,
@@ -572,7 +564,7 @@ def _bank_refresh_one(
 
     if user_store.database_url() and accounts:
         upsert_person_accounts(
-            pack.folder_name,
+            pack.person_name,
             [acc for acc in accounts if isinstance(acc, dict)],
         )
 
@@ -609,7 +601,7 @@ def _bank_refresh_one(
         consolidate_person_year(
             pack.folder,
             year=pack.year,
-            person=pack.folder_name,
+            person=pack.person_name,
             center=active_center(),
             categories_path=shared_categories_path(),
         )
@@ -617,13 +609,12 @@ def _bank_refresh_one(
 
     if fetched.warnings:
         for w in fetched.warnings:
-            warnings.append(f"{pack.short}: {w}")
+            warnings.append(f"{pack.person_name}: {w}")
     if fetched.account_errors:
         for err in fetched.account_errors:
-            warnings.append(f"{pack.short}: {err}")
+            warnings.append(f"{pack.person_name}: {err}")
     result: dict[str, Any] = {
-        "short": pack.short,
-        "folder": pack.folder_name,
+        "person_name": pack.person_name,
         "skipped": False,
         "source": "bank",
         "transaction_count": len(fetched.transactions),
@@ -637,6 +628,137 @@ def _bank_refresh_one(
     if new_year:
         result["new_year"] = True
     return result, warnings
+
+
+def _downloaded_sql_row_count() -> int | None:
+    """Rows now on ``transaction_{country}`` for the bound person/year, or None if SQL is unused."""
+    from app import runtime as paths, user_store
+    from app.sql_replica import _transaction_table
+
+    country = str(paths.BOUND_COUNTRY or "").strip()
+    username = str(paths.BOUND_PERSON or "").strip()
+    year = paths.BOUND_YEAR
+    if not (country and username and year is not None):
+        return None
+    table = _transaction_table(country)
+    if table is None or not user_store.database_url():
+        return None
+    user_store.init_user_store()
+    conn = user_store._sql_connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id FROM dbo.person
+        WHERE username = ? COLLATE Latin1_General_CI_AI
+        """,
+        (username,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    cursor.execute(
+        f"SELECT COUNT(*) FROM {table} WHERE person_id = ? AND year = ?",
+        (int(row[0]), int(year)),
+    )
+    count = cursor.fetchone()
+    return int(count[0]) if count else None
+
+
+def process_downloaded_file(person_name: str, *, new_year: bool = False) -> dict[str, Any]:
+    """Categorize the fixed ``downloaded_transactions.json`` (agrolav-sql disk) into SQL.
+
+    Reads the one container file and runs the existing machinery
+    (``categorize.process_transactions``) for the person, which writes the
+    categorized statements into ``transaction_{country}`` referencing that
+    person. Idempotent: rows already present by source_id are not re-inserted.
+    """
+    from app.core.categorize import process_transactions
+    from app.core.single_client import (
+        EnableBankingError,
+        downloaded_transactions_target,
+    )
+
+    pack = get_person(person_name)
+    target = downloaded_transactions_target()
+    if not target.is_file():
+        raise EnableBankingError(f"No downloaded_transactions.json on SQL disk ({target}).")
+    try:
+        data = _read_json(target)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EnableBankingError(f"Cannot read downloaded_transactions.json: {exc}") from exc
+    if not isinstance(data, list):
+        raise EnableBankingError("downloaded_transactions.json must be a JSON list.")
+    records = [item for item in data if isinstance(item, dict)]
+    with bind_person(pack):
+        totals = process_transactions(records, new_year=new_year)
+        rows = _downloaded_sql_row_count()
+        _write_categorized_inspection(
+            target,
+            pack=pack,
+            records=records,
+            totals=totals,
+            rows=rows,
+        )
+    return {
+        "person_name": pack.person_name,
+        "source": "downloaded-file",
+        "new_year": bool(new_year),
+        "raw_count": len(records),
+        "transaction_rows": rows,
+        "totals": totals,
+    }
+
+
+def _write_categorized_inspection(
+    target: Path,
+    *,
+    pack: PersonPack,
+    records: list[dict[str, Any]],
+    totals: dict[str, Any],
+    rows: int | None,
+) -> Path:
+    """Dump the categorized result beside downloaded_transactions.json for inspection."""
+    from app import runtime as path_mod
+    from app.sql_replica import load_bound_transactions
+
+    transactions = None
+    try:
+        transactions = load_bound_transactions()
+    except Exception as exc:  # noqa: BLE001
+        print(f"categorized inspection: could not load SQL rows: {exc}")
+    country = str(path_mod.BOUND_COUNTRY or pack.country or "").strip()
+    payload = {
+        "person": str(path_mod.BOUND_PERSON or pack.person_name),
+        "center": pack.center,
+        "country": country,
+        "year": path_mod.BOUND_YEAR,
+        "table": f"dbo.transaction_{country}" if country else "",
+        "raw_count": len(records),
+        "transaction_rows": rows,
+        "totals": totals,
+        "transactions": transactions if isinstance(transactions, list) else [],
+    }
+    out = target.parent / "categorized_transactions.json"
+    _write_json(out, payload)
+    return out
+
+
+def _process_downloaded_after_fetch(
+    *,
+    person_name: str,
+    result: dict[str, Any],
+    extra: list[str],
+) -> dict[str, Any]:
+    """After a successful bank fetch, feed the fixed file through the machinery."""
+    if result.get("skipped") or result.get("source") != "bank":
+        return result
+    try:
+        processed = process_downloaded_file(person_name, new_year=bool(result.get("new_year")))
+    except Exception as exc:  # noqa: BLE001 - processing must not fail the download
+        extra.append(f"{person_name}: downloaded file processing failed: {exc}")
+    else:
+        result["downloaded"] = processed
+    return result
 
 
 def _record_user_updated_at(person: str, result: dict[str, Any]) -> None:
@@ -669,32 +791,30 @@ def _refresh_one_person(
         else:
             excel = _excel_refresh_result(pack)
             extra = [
-                f"{pack.short} ({pack.folder_name}): {err}"
+                f"{pack.person_name}: {err}"
                 for err in (excel.get("file_errors") or [])
                 if str(err).strip()
             ]
             result = excel
-        _record_user_updated_at(pack.folder_name, result)
+        _record_user_updated_at(pack.person_name, result)
         return result, extra
     except EnableBankingError as exc:
         return (
             {
-                "short": pack.short,
-                "folder": pack.folder_name,
+                "person_name": pack.person_name,
                 "skipped": True,
                 "reason": str(exc),
             },
-            [f"{pack.short} ({pack.folder_name}): {exc}"],
+            [f"{pack.person_name}: {exc}"],
         )
     except Exception as exc:
         return (
             {
-                "short": pack.short,
-                "folder": pack.folder_name,
+                "person_name": pack.person_name,
                 "skipped": True,
                 "reason": str(exc),
             },
-            [f"{pack.short} ({pack.folder_name}): {exc}"],
+            [f"{pack.person_name}: {exc}"],
         )
 
 
@@ -703,7 +823,7 @@ def refresh_all(
     date_to: str | None = None,
 ) -> dict[str, Any]:
     """Bank fetch for secret packs; Excel conversion for everyone else."""
-    from app.paths import CALC_LOCK
+    from app.runtime import CALC_LOCK
 
     with CALC_LOCK:
         packs = refresh_people()
@@ -715,7 +835,7 @@ def refresh_all(
                 result, extra = _refresh_one_person(
                     pack, date_from=date_from, date_to=date_to, new_year=False
                 )
-                results.append(result)
+                results.append(_process_downloaded_after_fetch(person_name=pack.person_name, result=result, extra=extra))
                 warnings.extend(extra)
 
         matrix = build_matrix(packs)
@@ -723,18 +843,18 @@ def refresh_all(
 
 
 def refresh_person(
-    short: str,
+    person_name: str,
     *,
     date_from: str | None = None,
     date_to: str | None = None,
     new_year: bool = False,
 ) -> dict[str, Any]:
     """Refresh one person (bank fetch or Excel conversion)."""
-    from app.paths import CALC_LOCK
+    from app.runtime import CALC_LOCK
 
     with CALC_LOCK:
         packs = refresh_people()
-        pack = get_person(short)
+        pack = get_person(person_name)
         warnings: list[str] = []
         results: list[dict[str, Any]] = []
 
@@ -742,7 +862,7 @@ def refresh_person(
             result, extra = _refresh_one_person(
                 pack, date_from=date_from, date_to=date_to, new_year=new_year
             )
-            results.append(result)
+            results.append(_process_downloaded_after_fetch(person_name=pack.person_name, result=result, extra=extra))
             warnings.extend(extra)
 
         matrix = build_matrix(packs)
@@ -771,10 +891,10 @@ def save_general_terms(category_name: str, terms: list[str]) -> list[str]:
     return cleaned
 
 
-def save_personal_terms(short: str, category_name: str, terms: list[str]) -> list[str]:
+def save_personal_terms(person_name: str, category_name: str, terms: list[str]) -> list[str]:
     from app.core.categorize import _cleaned_terms, _save_personal_category_terms
 
-    pack = get_person(short)
+    pack = get_person(person_name)
     with bind_person(pack):
         cleaned = _cleaned_terms(terms)
         _save_personal_category_terms(category_name, cleaned)

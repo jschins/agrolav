@@ -10,4 +10,4 @@ services:
     ports:
       - "1433:1433"
     volumes:
-      - "C:/SQLBackups:/var/opt/mssql/backup"
+      - "${AGROLAV_SQL_DISK:-C:/SQLBackups}:/var/opt/mssql/backup"

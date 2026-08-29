@@ -2,19 +2,22 @@
 from __future__ import annotations
 
 import os
-import zipfile
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
-from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app import store
 
 API_KEY = os.environ.get("CENTRALE_API_KEY", "").strip()
+
+# The bookhouding client is where the beheer session lives; after the add-person
+# wizard (on the hub), return there rather than leaving the user on the hub page.
+CLIENT_RETURN_URL = os.environ.get("HUB_CLIENT_URL", "http://127.0.0.1:8300").rstrip("/")
 
 
 @asynccontextmanager
@@ -32,18 +35,25 @@ app = FastAPI(title="boekhouding-hub", version="0.1", lifespan=_lifespan)
 @app.middleware("http")
 async def bind_request_country(request: Request, call_next):  # type: ignore[no-untyped-def]
     """Prefer ``?country=`` / ``X-Agrolav-Country`` so local routes find ``nederland/dkg``."""
-    from app.runtime import reset_request_country, set_request_country
+    from app.runtime import (
+        reset_request_country,
+        reset_request_host,
+        set_request_country,
+        set_request_host,
+    )
 
     raw = (
         request.query_params.get("country")
         or request.headers.get("x-agrolav-country")
         or ""
     ).strip()
-    token = set_request_country(raw or None)
+    country_token = set_request_country(raw or None)
+    host_token = set_request_host(request.headers.get("host") or request.url.netloc)
     try:
         return await call_next(request)
     finally:
-        reset_request_country(token)
+        reset_request_country(country_token)
+        reset_request_host(host_token)
 
 # Bank redirect hop must stay reachable even when hub_ips is set.
 _HUB_IP_EXEMPT_PREFIXES = (
@@ -84,57 +94,6 @@ class _HubIpAllowlistMiddleware:
 
 
 app.add_middleware(_HubIpAllowlistMiddleware)
-
-
-def _upload_client_ip(request: Request) -> str:
-    """Best-effort client IP for upload endpoints behind a reverse proxy.
-
-    Upload endpoints are protected by grant tokens, so using reverse-proxy
-    headers is the only practical way to show the "real" IP in
-    ``workspaces/upload.log``.
-    """
-
-    from app import upload_acl
-
-    def _strip_port(token: str) -> str:
-        t = (token or "").strip()
-        if not t:
-            return ""
-        # IPv6 in brackets: [::1]:1234
-        if t.startswith("[") and "]" in t:
-            return t[1 : t.index("]")]
-        # host:port (IPv4 or single-colon forms)
-        if t.count(":") == 1:
-            return t.split(":", 1)[0]
-        return t
-
-    def _valid_ip(token: str) -> bool:
-        t = (token or "").strip()
-        if not t:
-            return False
-        return t.lower() not in {"unknown", "none", "-"}
-
-    headers = request.headers
-
-    # Common proxy headers (Cloudflare / generic reverse proxies).
-    for key in ("CF-Connecting-IP", "X-Real-IP"):
-        raw = headers.get(key)
-        if raw:
-            cand = _strip_port(raw.split(",")[0])
-            if _valid_ip(cand):
-                return upload_acl.client_ip(cand)
-
-    xff = headers.get("X-Forwarded-For")
-    if xff:
-        for part in xff.split(","):
-            cand = _strip_port(part)
-            if _valid_ip(cand):
-                return upload_acl.client_ip(cand)
-
-    # Fallback: what uvicorn sees (often the proxy IP).
-    if request.client is not None and request.client.host:
-        return upload_acl.client_ip(request.client.host)
-    return upload_acl.client_ip("unknown")
 
 
 def require_api_key(authorization: str | None = Header(default=None)) -> None:
@@ -645,51 +604,26 @@ def api_people(center: str, _: None = Depends(require_api_key)) -> dict[str, Any
 
 @app.get("/api/local/{center}/years")
 def api_years(center: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
-    from app.yearpath import default_upload_year, list_year_names
-    from app import user_store
-    from app.sql_catalog import years_for_center
+    from app.yearpath import default_upload_year
+    from app.sql_catalog import coerce_center, years_for_center
 
     default_y = default_upload_year()
-    if user_store.database_url():
-        from app.sql_catalog import coerce_center
-
-        sql_years = years_for_center(coerce_center(center))
-        years = sql_years or [default_y]
-        return {"years": years, "default_year": default_y}
-    ws_root = store.center_dir(center)
-    existing_years: set[str] = set()
-    if ws_root.is_dir():
-        for child in ws_root.iterdir():
-            if child.is_dir() and not child.name.startswith("."):
-                existing_years.update(list_year_names(child))
-    year_options = sorted(existing_years)
-    return {
-        "years": year_options,
-        "default_year": default_y,
-    }
+    sql_years = years_for_center(coerce_center(center))
+    return {"years": sql_years or [default_y], "default_year": default_y}
 
 
-@app.get("/api/local/{center}/people/{short}/years")
+@app.get("/api/local/{center}/people/{person_name}/years")
 def api_person_years(
     center: str,
-    short: str,
+    person_name: str,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app.yearpath import list_year_names
     from app.sql_catalog import years_for_person
 
-    sql_years = years_for_person(short)
+    sql_years = years_for_person(person_name)
     if sql_years:
-        return {"person": short, "years": sql_years}
-    from app import user_store
-
-    if user_store.database_url():
-        return {"person": short, "years": []}
-    ws_root = store.center_dir(center)
-    person_folder = (ws_root / short).resolve()
-    if not person_folder.is_dir():
-        raise HTTPException(status_code=404, detail=f"Person {short!r} not found")
-    return {"person": short, "years": list_year_names(person_folder)}
+        return {"person": person_name, "years": sql_years}
+    return {"person": person_name, "years": []}
 
 
 @app.get("/api/local/{center}/matrix")
@@ -713,17 +647,17 @@ def api_matrix(
         ) from exc
 
 
-@app.get("/api/local/{center}/people/{short}/banks")
+@app.get("/api/local/{center}/people/{person_name}/banks")
 def api_person_banks(
     center: str,
-    short: str,
+    person_name: str,
     year: str | None = Query(default=None),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app import center_api
 
     try:
-        return center_api.person_banks(center, short, year=year)
+        return center_api.person_banks(center, person_name, year=year)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:
@@ -734,10 +668,10 @@ def api_person_banks(
         ) from exc
 
 
-@app.get("/api/local/{center}/people/{short}/split")
+@app.get("/api/local/{center}/people/{person_name}/split")
 def api_transaction_split_get(
     center: str,
-    short: str,
+    person_name: str,
     id: str,
     year: str | None = Query(default=None),
     bank: str | None = Query(default=None),
@@ -747,7 +681,7 @@ def api_transaction_split_get(
 
     try:
         return center_api.transaction_split(
-            center, short, source_id=id, year=year, bank=bank
+            center, person_name, source_id=id, year=year, bank=bank
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -757,10 +691,10 @@ def api_transaction_split_get(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.put("/api/local/{center}/people/{short}/split")
+@app.put("/api/local/{center}/people/{person_name}/split")
 def api_transaction_split_save(
     center: str,
-    short: str,
+    person_name: str,
     body: TransactionSplitSave,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
@@ -769,7 +703,7 @@ def api_transaction_split_save(
     try:
         return center_api.save_transaction_split(
             center,
-            short,
+            person_name,
             source_id=body.id,
             description=body.description,
             lines=[
@@ -787,10 +721,10 @@ def api_transaction_split_save(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.get("/api/local/{center}/transactions/{short}/{category_name}")
+@app.get("/api/local/{center}/transactions/{person_name}/{category_name}")
 def api_transactions(
     center: str,
-    short: str,
+    person_name: str,
     category_name: str,
     year: str | None = Query(default=None),
     bank: str | None = Query(default=None),
@@ -800,7 +734,7 @@ def api_transactions(
 
     try:
         return center_api.transactions(
-            center, short, category_name, year=year, bank=bank
+            center, person_name, category_name, year=year, bank=bank
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -814,10 +748,10 @@ def api_transactions(
         ) from exc
 
 
-@app.put("/api/local/{center}/transactions/{short}/modification")
+@app.put("/api/local/{center}/transactions/{person_name}/modification")
 def api_modification(
     center: str,
-    short: str,
+    person_name: str,
     body: ModificationRequest,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
@@ -825,7 +759,7 @@ def api_modification(
 
     try:
         return center_api.record_modification(
-            center, short, body.transaction, source=body.source
+            center, person_name, body.transaction, source=body.source
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -959,10 +893,10 @@ def api_refresh(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{center}/refresh/{short}")
+@app.post("/api/local/{center}/refresh/{person_name}")
 def api_refresh_person(
     center: str,
-    short: str,
+    person_name: str,
     body: PersonRefreshRequest | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
@@ -972,7 +906,7 @@ def api_refresh_person(
     try:
         return center_api.refresh_person(
             center,
-            short,
+            person_name,
             date_from=req.date_from,
             date_to=req.date_to,
             new_year=req.new_year,
@@ -1016,8 +950,12 @@ def consent_callback(
     registered when the authorization link was created.
     """
     from app import consent_flow
-    from app.core.single_client import EnableBankingError, complete_authorization
-    from app.paths import CALC_LOCK, bind_person
+    from app.core.single_client import (
+        EnableBankingError,
+        complete_authorization,
+        default_redirect_url,
+    )
+    from app.runtime import CALC_LOCK, bind_person
     from app.people import get_person
     from app.runtime import set_active_center
     from app.settings import init_app
@@ -1031,8 +969,8 @@ def consent_callback(
                 "<a href='https://enablebanking.com/cp/applications'>Enable Banking Control Panel</a>:</p>"
                 "<ul>"
                 "<li>Redirect URL is exactly "
-                "<code>https://deoudegracht.nl/banking-callback.html</code> "
-                "(not localhost, no trailing slash)</li>"
+                f"<code>{default_redirect_url()}</code> "
+                "(no trailing slash)</li>"
                 "<li>ING (Netherlands) is linked with usage type <code>personal</code></li>"
                 "</ul>"
                 "<p>Then return to Boekhouding, get a <strong>new</strong> authorization link, "
@@ -1076,23 +1014,22 @@ def consent_callback(
         )
 
     ws = str(pending.get("center") or "")
-    short = str(pending.get("short") or "")
-    folder = str(pending.get("folder") or short)
+    person_name = str(pending.get("person_name") or "")
     raw_code = str(code).strip()
     try:
         with CALC_LOCK:
             set_active_center(ws)
             init_app()
-            pack = get_person(short)
+            pack = get_person(person_name)
             with bind_person(pack):
                 complete_authorization(raw_code)
-            consent_flow.mark_ready(center=ws, short=short, folder=folder)
+            consent_flow.mark_ready(center=ws, person_name=person_name)
     except (EnableBankingError, KeyError, FileNotFoundError, ValueError) as exc:
         return HTMLResponse(
             content=(
                 "<!doctype html><html><head><meta charset='utf-8'>"
                 "<title>Bank consent failed</title></head><body>"
-                f"<h1>Bank consent failed ({short})</h1><p>{exc}</p>"
+                f"<h1>Bank consent failed ({person_name})</h1><p>{exc}</p>"
                 "<p>You can close this tab and return to Boekhouding.</p>"
                 "</body></html>"
             ),
@@ -1103,7 +1040,7 @@ def consent_callback(
             content=(
                 "<!doctype html><html><head><meta charset='utf-8'>"
                 "<title>Bank consent failed</title></head><body>"
-                f"<h1>Bank consent failed ({short})</h1><p>{exc}</p>"
+                f"<h1>Bank consent failed ({person_name})</h1><p>{exc}</p>"
                 "</body></html>"
             ),
             status_code=500,
@@ -1113,9 +1050,9 @@ def consent_callback(
         content=(
             "<!doctype html><html><head><meta charset='utf-8'>"
             "<title>Bank consent received</title></head><body>"
-            f"<h1>Bank consent received — {short}</h1>"
-            f"<p>Updated consent for {folder} in center {ws}.</p>"
-            f"<p>Return to Boekhouding and use <strong>fetch for {short}</strong> "
+            f"<h1>Bank consent received — {person_name}</h1>"
+            f"<p>Updated consent for {person_name} in center {ws}.</p>"
+            f"<p>Return to Boekhouding and use <strong>fetch for {person_name}</strong> "
             "(optional new year overwrite). You can close this tab.</p>"
             "<script>window.close();</script>"
             "</body></html>"
@@ -1128,22 +1065,36 @@ def api_consent_ready(
     center: str,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import consent_flow
+    from app import consent_flow, enable_sql, user_store
 
-    return {"ready": consent_flow.list_ready(center)}
+    ready = consent_flow.list_ready(center)
+    if user_store.database_url():
+        existing = {str(item.get("person_name") or "").strip() for item in ready}
+        now = time.time()
+        for person_name in enable_sql.consent_ready_people(center):
+            if (person_name or "").strip() and person_name not in existing:
+                ready.append(
+                    {
+                        "center": center,
+                        "person_name": person_name,
+                        "created": now,
+                        "sql": True,
+                    }
+                )
+    return {"ready": ready}
 
 
-@app.post("/api/local/{center}/consent-ready/{short}/clear")
+@app.post("/api/local/{center}/consent-ready/{person_name}/clear")
 def api_consent_ready_clear(
     center: str,
-    short: str,
+    person_name: str,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app import consent_flow
 
     return {
         "ok": True,
-        "cleared": consent_flow.clear_ready(center=center, short=short),
+        "cleared": consent_flow.clear_ready(center=center, person_name=person_name),
     }
 
 
@@ -1210,10 +1161,10 @@ def api_create_person(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{center}/people/{short}/pem")
+@app.post("/api/local/{center}/people/{person_name}/pem")
 async def api_upload_person_pem(
     center: str,
-    short: str,
+    person_name: str,
     file: UploadFile = File(...),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
@@ -1223,7 +1174,7 @@ async def api_upload_person_pem(
     try:
         return center_api.upload_person_pem(
             center,
-            short,
+            person_name,
             filename=file.filename or "key.pem",
             content=raw,
         )
@@ -1235,10 +1186,10 @@ async def api_upload_person_pem(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{center}/people/{short}/bootstrap-fetch")
+@app.post("/api/local/{center}/people/{person_name}/bootstrap-fetch")
 def api_bootstrap_person_fetch(
     center: str,
-    short: str,
+    person_name: str,
     body: BootstrapFetchRequest | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
@@ -1248,7 +1199,7 @@ def api_bootstrap_person_fetch(
     try:
         return center_api.bootstrap_person_fetch(
             center,
-            short,
+            person_name,
             date_from=req.date_from,
             date_to=req.date_to,
         )
@@ -1325,7 +1276,7 @@ _ADMIN_HTML = """<!DOCTYPE html>
 <body>
   <main>
     <h1>Centrale boekhouding</h1>
-    <p class="lead">Immediate sync hub. Client changes appear here as short-lived notifications.</p>
+    <p class="lead">Immediate sync hub. Client changes appear here as live notifications.</p>
     <div class="status" id="status">Loading…</div>
     <div class="notify-wrap" id="notify" aria-live="polite"></div>
     <div class="actions">
@@ -1514,7 +1465,7 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
       </table>
       <div id="pemReference" class="remind">
         <p style="margin:0 0 0.35rem;font-weight:700">For your reference:</p>
-        <pre style="margin:0;font:inherit;white-space:pre-wrap;line-height:1.5">redirect-URL:               https://deoudegracht.nl/banking-callback.html
+        <pre style="margin:0;font:inherit;white-space:pre-wrap;line-height:1.5">redirect-URL:               __REDIRECT_URL__
 Privacy policy URL:      https://deoudegracht.nl/privacy.html
 Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       </div>
@@ -1533,7 +1484,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         <h2>1. Create the API application — fill in:</h2>
         <dl>
           <dt>Application name</dt><dd>e.g. <code id="hintAppName">boekh-juleon_schins</code></dd>
-          <dt>Redirect URL</dt><dd><code id="hintRedirect">https://deoudegracht.nl/banking-callback.html</code></dd>
+          <dt>Redirect URL</dt><dd><code id="hintRedirect">__REDIRECT_URL__</code></dd>
           <dt>Description of app</dt><dd>e.g. <code>boekhouding</code></dd>
           <dt>Data protection email</dt><dd>e.g. <code>j.m.schins@gmail.com</code></dd>
           <dt>Privacy policy URL</dt><dd><a href="https://deoudegracht.nl/privacy.html" target="_blank" rel="noopener noreferrer">https://deoudegracht.nl/privacy.html</a></dd>
@@ -1580,6 +1531,9 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         <p class="note">After login, start bank consent (authorization URL), then fetch transactions from 1 January of the current year.</p>
       </div>
       <pre id="fetchOut" style="white-space:pre-wrap;font-size:0.8rem;background:#f8fafc;padding:0.75rem;overflow:auto"></pre>
+      <div class="actions" style="margin-top:0.75rem">
+        <a class="action" id="returnClient" href="__CLIENT_RETURN_URL__/">← Return to the client</a>
+      </div>
     </div>
 
     <p id="err" class="err"></p>
@@ -1703,13 +1657,13 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       const file = fileInput.files && fileInput.files[0];
       if (!file) { errEl.textContent = "Choose a .pem file."; return; }
       const center = created.center;
-      const short = created.person;
+      const person_name = created.person;
       try {
         const fd = new FormData();
         fd.append("file", file, file.name);
         const h = { "Accept": "application/json" };
         const up = await fetch(
-          `/api/local/${encodeURIComponent(center)}/people/${encodeURIComponent(short)}/pem`,
+          `/api/local/${encodeURIComponent(center)}/people/${encodeURIComponent(person_name)}/pem`,
           { method: "POST", headers: h, body: fd }
         );
         const upText = await up.text();
@@ -1742,7 +1696,12 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
 
 @app.get("/add-person", response_class=HTMLResponse)
 def add_person_page() -> str:
-    return _ADD_PERSON_HTML
+    from app.core.single_client import default_redirect_url
+
+    return (
+        _ADD_PERSON_HTML.replace("__CLIENT_RETURN_URL__", CLIENT_RETURN_URL)
+        .replace("__REDIRECT_URL__", default_redirect_url())
+    )
 
 
 _CREATE_COUNTRY_HTML = """<!DOCTYPE html>
@@ -1919,632 +1878,6 @@ def create_country_page() -> str:
 @app.get("/create-center", response_class=HTMLResponse)
 def create_center_page() -> str:
     return _CREATE_CENTER_HTML
-
-
-_UPLOAD_HTML = """<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Upload data — hub</title>
-  <style>
-    :root { font-family: Georgia, "Times New Roman", serif; color: #1a1a1a; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
-           background: linear-gradient(160deg, #e8eef5 0%, #f7f4ef 55%, #dde6f0 100%); }
-    main { width: min(40rem, 94vw); padding: 2rem; }
-    h1 { font-size: 1.6rem; margin: 0 0 0.35rem; }
-    p.lead { margin: 0 0 1rem; color: #444; line-height: 1.45; }
-    label { display: block; margin-top: 0.75rem; font-size: 0.9rem; color: #334155; font-weight: 600; }
-    input[type="text"], input[type="password"], input[type="number"], select {
-      width: 100%; box-sizing: border-box; font: inherit; padding: 0.4rem 0.5rem;
-      border: 1px solid #94a3b8; border-radius: 4px; background: #fff; margin-top: 0.25rem;
-    }
-    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
-    button, .link-btn {
-      font: inherit; cursor: pointer; padding: 0.5rem 0.9rem; border-radius: 6px;
-      border: 1px solid #2a5a8c; background: #c1f4ff; color: #0f172a; font-weight: 700;
-      text-decoration: none; display: inline-flex; align-items: center;
-    }
-    button.primary { background: #2a5a8c; color: #fff; }
-    .panel { margin-top: 1rem; padding: 0.85rem 1rem; background: rgba(255,255,255,0.85);
-             border-left: 4px solid #2a5a8c; border-radius: 0 6px 6px 0; }
-    .panel h2 { margin: 0 0 0.4rem; font-size: 0.95rem; }
-    .panel ul { margin: 0.35rem 0 0; padding-left: 1.2rem; font-size: 0.85rem; }
-    .err { color: #a33; margin-top: 0.75rem; min-height: 1.2em; white-space: pre-wrap; }
-    .ok { color: #166534; margin-top: 0.75rem; white-space: pre-wrap; font-weight: 700; }
-    .meta { font-size: 0.85rem; color: #666; margin-top: 1rem; }
-    code { font-size: 0.85em; }
-    #grantBox { display: none; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>Upload data</h1>
-
-    <div id="grantBox" class="panel" style="display:none">
-      <h2 id="grantLabel"></h2>
-      <div>Your IP: <code id="yourIp"></code></div>
-      <label>Year
-        <select id="year"><option value="__YEAR__">__YEAR__</option></select>
-      </label>
-      <label id="folderBox" style="display:none">Folder
-        <input id="folder" type="text" list="folderList" autocomplete="off"/>
-        <datalist id="folderList"></datalist>
-      </label>
-      <div id="xlsxBox" style="margin-top:0.75rem">
-        <div><span id="uploadFilesLabel">Excel files already on the hub</span> <span id="fileCount" style="color:#666"></span>:</div>
-        <ul id="xlsxList"></ul>
-      </div>
-      <label>File <span style="font-weight:400;color:#666">(max 32 MB)</span>
-        <input id="file" type="file"/>
-      </label>
-      <div class="actions">
-        <button type="button" id="btnUpload" class="primary">Upload</button>
-      </div>
-    </div>
-
-    <p id="err" class="err"></p>
-    <p id="ok" class="ok"></p>
-    <div id="doneBox" style="display:none" class="actions">
-      <button type="button" id="btnDone" class="primary">Done</button>
-    </div>
-  </main>
-  <script>
-    const params = new URLSearchParams(location.search);
-    const errEl = document.getElementById("err");
-    const okEl = document.getElementById("ok");
-    const _STORAGE_KEY = "upload_token";
-
-    const urlToken = (params.get("t") || "").trim();
-    const urlPerson = (params.get("person") || "").trim();
-    const urlCenter = (params.get("center") || "").trim();
-    const _PERSON_KEY = "upload_person";
-    const _CENTER_KEY = "upload_center";
-    let _token = urlToken;
-    let _person = urlPerson;
-    let _center = urlCenter;
-    if (_token) {
-      try { localStorage.setItem(_STORAGE_KEY, _token); } catch (_) {}
-      try { localStorage.setItem(_PERSON_KEY, _person); } catch (_) {}
-      try { localStorage.setItem(_CENTER_KEY, _center); } catch (_) {}
-    } else {
-      try { _token = (localStorage.getItem(_STORAGE_KEY) || "").trim(); } catch (_) {}
-      try { _person = (localStorage.getItem(_PERSON_KEY) || "").trim(); } catch (_) {}
-      try { _center = (localStorage.getItem(_CENTER_KEY) || "").trim(); } catch (_) {}
-    }
-
-    function token() { return _token; }
-    function appendIdentityQuery(url) {
-      if (_person) url += "&person=" + encodeURIComponent(_person);
-      if (_center) url += "&center=" + encodeURIComponent(_center);
-      return url;
-    }
-    function appendIdentityForm(fd) {
-      if (_person) fd.append("person", _person);
-      if (_center) fd.append("center", _center);
-      if (_token) fd.append("token", _token);
-    }
-    const yearEl = document.getElementById("year");
-    const folderEl = document.getElementById("folder");
-    const folderListEl = document.getElementById("folderList");
-    let _banks = [];
-    let _modalityFolders = [];
-    let _multiBank = false;
-    let _csvCapable = false;
-    function yearValue() { return (yearEl.value || yearEl.placeholder || "").trim(); }
-    function folderValue() { return (folderEl && folderEl.value || "").trim(); }
-    function selectedFile() {
-      const fileInput = document.getElementById("file");
-      return fileInput.files && fileInput.files[0];
-    }
-    function selectedFileName() {
-      const file = selectedFile();
-      return file ? String(file.name || "").toLowerCase() : "";
-    }
-    function isCsvFileSelected() { return selectedFileName().endsWith(".csv"); }
-    function isXlsxFileSelected() { return selectedFileName().endsWith(".xlsx"); }
-    function needsFolder() {
-      if (!isCsvFileSelected()) return false;
-      return _modalityFolders.length > 0 || _banks.length > 0;
-    }
-    function isPeekYearFormat() {
-      return isCsvFileSelected() || isXlsxFileSelected();
-    }
-    function uploadFileLabel() {
-      if (isCsvFileSelected() || (_csvCapable && !isXlsxFileSelected())) return "CSV files already on the hub";
-      return "Excel files already on the hub";
-    }
-    function ensureYearSelected(y) {
-      if (!y) return;
-      let found = false;
-      for (const opt of yearEl.options) {
-        if (opt.value === y) { found = true; break; }
-      }
-      if (!found) {
-        const opt = document.createElement("option");
-        opt.value = y;
-        opt.textContent = y;
-        yearEl.appendChild(opt);
-      }
-      yearEl.value = y;
-    }
-
-    async function api(method, path, body, isForm) {
-      const opts = { method, headers: { "Accept": "application/json" } };
-      const t = token();
-      if (t) opts.headers["Authorization"] = "Bearer " + t;
-      if (isForm) {
-        opts.body = body;
-      } else if (body !== undefined) {
-        opts.headers["Content-Type"] = "application/json";
-        opts.body = JSON.stringify(body);
-      }
-      const r = await fetch(path, opts);
-      const text = await r.text();
-      let data = {};
-      try { data = text ? JSON.parse(text) : {}; } catch (_) { data = { detail: text }; }
-      if (!r.ok) throw new Error(data.detail || text || r.statusText);
-      return data;
-    }
-
-    let _grantLoaded = false;
-
-    function updateFolderVisibility() {
-      const folderBox = document.getElementById("folderBox");
-      folderBox.style.display = needsFolder() ? "" : "none";
-    }
-
-    function refreshFolderOptions(g) {
-      const options = g.bank_folders || _modalityFolders || _banks || [];
-      if (!options.length) return;
-      folderListEl.replaceChildren();
-      const seen = new Set();
-      for (const name of options) {
-        if (!name || seen.has(name)) continue;
-        seen.add(name);
-        const opt = document.createElement("option");
-        opt.value = name;
-        folderListEl.appendChild(opt);
-      }
-      if (g.folder) folderEl.value = g.folder;
-      else if (!folderEl.value && options.length === 1) folderEl.value = options[0];
-      folderEl.readOnly = !_multiBank && options.length <= 1;
-    }
-
-    function showGrant(g) {
-      document.getElementById("grantBox").style.display = "block";
-      document.getElementById("grantLabel").textContent = (g.data_folder || "");
-      if (!_grantLoaded) {
-        _grantLoaded = true;
-        if (g.year_options && g.year_options.length) {
-          const selected = g.year || g.default_year || "";
-          yearEl.innerHTML = "";
-          for (const y of g.year_options) {
-            const opt = document.createElement("option");
-            opt.value = y;
-            opt.textContent = y;
-            if (y === selected) opt.selected = true;
-            yearEl.appendChild(opt);
-          }
-        }
-        _banks = g.banks || [];
-        _modalityFolders = g.modality_folders || [];
-        _multiBank = !!g.multi_bank;
-        _csvCapable = !!g.csv_capable;
-        updateFolderVisibility();
-      }
-      refreshFolderOptions(g);
-      updateFolderVisibility();
-      document.getElementById("yourIp").textContent = g.client_ip || "?";
-      const xlsxUl = document.getElementById("xlsxList");
-      xlsxUl.replaceChildren();
-      const files = g.upload_files || g.xlsx_files || [];
-      const labelEl = document.getElementById("uploadFilesLabel");
-      if (labelEl) labelEl.textContent = uploadFileLabel();
-      const countEl = document.getElementById("fileCount");
-      if (countEl) countEl.textContent = files.length ? "(" + files.length + ")" : "";
-      if (files.length === 0) {
-        const empty = document.createElement("li");
-        empty.textContent = "(none yet)";
-        xlsxUl.appendChild(empty);
-      } else {
-        for (const name of files) {
-          const item = document.createElement("li");
-          item.textContent = name;
-          xlsxUl.appendChild(item);
-        }
-      }
-    }
-
-    async function loadGrant() {
-      let url = "/upload/api/upload/grant?year=" + encodeURIComponent(yearValue());
-      if (folderValue()) url += "&folder=" + encodeURIComponent(folderValue());
-      url = appendIdentityQuery(url);
-      if (token()) url += "&t=" + encodeURIComponent(token());
-      const g = await api("GET", url);
-      showGrant(g);
-      return g;
-    }
-
-    folderEl.addEventListener("change", async () => {
-      if (document.getElementById("grantBox").style.display === "none") return;
-      errEl.textContent = "";
-      try {
-        await loadGrant();
-      } catch (e) {
-        errEl.textContent = String(e.message || e);
-      }
-    });
-
-    yearEl.addEventListener("change", async () => {
-      if (document.getElementById("grantBox").style.display === "none") return;
-      errEl.textContent = "";
-      try {
-        await loadGrant();
-      } catch (e) {
-        errEl.textContent = String(e.message || e);
-      }
-    });
-
-    document.getElementById("file").addEventListener("change", async () => {
-      errEl.textContent = "";
-      updateFolderVisibility();
-      if (!isPeekYearFormat()) return;
-      const file = selectedFile();
-      if (!file) return;
-      try {
-        const fd = new FormData();
-        fd.append("file", file, file.name);
-        if (needsFolder() && folderValue()) fd.append("folder", folderValue());
-        appendIdentityForm(fd);
-        const res = await api("POST", "/upload/api/upload/peek-year", fd, true);
-        if (res.year) {
-          ensureYearSelected(String(res.year));
-          await loadGrant();
-        }
-      } catch (e) {
-        errEl.textContent = String(e.message || e);
-      }
-    });
-
-    function showDone() {
-      document.getElementById("doneBox").style.display = "flex";
-    }
-
-    document.getElementById("btnDone").onclick = () => {
-      location.assign("/upload");
-    };
-
-    document.getElementById("btnUpload").onclick = async () => {
-      errEl.textContent = "";
-      okEl.textContent = "";
-      document.getElementById("doneBox").style.display = "none";
-      const fileInput = document.getElementById("file");
-      const file = fileInput.files && fileInput.files[0];
-      if (!file) { errEl.textContent = "Choose a file."; return; }
-      try {
-        const fd = new FormData();
-        fd.append("file", file, file.name);
-        fd.append("year", yearValue());
-        if (needsFolder() && folderValue()) fd.append("folder", folderValue());
-        appendIdentityForm(fd);
-        const res = await api("POST", "/upload/api/upload", fd, true);
-        if (res.balance_check === "pass") {
-          okEl.textContent = "Dry run: balance check passed for " + res.path + ".";
-        } else if (res.balance_check === "fail") {
-          errEl.textContent = "Dry run: balance check failed — " + (res.detail || "unknown error");
-        } else if (res.via === "test") {
-          okEl.textContent = "Saved " + res.path + " (" + res.bytes + " bytes) — no processing (test mode).";
-          showDone();
-        } else {
-          let extra = "";
-          if (res.excel && res.excel.import) {
-            extra = " — " + (res.excel.import.transaction_count || 0) + " transactions imported.";
-          } else if (res.bank_csv && res.bank_csv.import) {
-            extra = " — " + (res.bank_csv.import.transaction_count || 0) + " transactions imported.";
-            if (res.bank_csv.consolidation && res.bank_csv.consolidation.consolidated) {
-              extra += " Consolidated " + (res.bank_csv.consolidation.transaction_count || 0) + " at year level.";
-            }
-          }
-          okEl.textContent = "Uploaded " + res.path + " (" + res.bytes + " bytes) via " + res.via + extra;
-          showDone();
-        }
-      } catch (e) {
-        errEl.textContent = String(e.message || e);
-      }
-    };
-
-    if (token()) {
-      loadGrant().catch((e) => { errEl.textContent = String(e.message || e); });
-    } else {
-      errEl.textContent = "No token provided. Add ?t=<token> to the URL.";
-    }
-  </script>
-</body>
-</html>
-"""
-
-
-@app.get("/upload", response_class=HTMLResponse)
-def upload_page() -> str:
-    from app import upload_acl
-    from app.yearpath import current_year
-
-    upload_acl.ensure_example_acl()
-    from app.yearpath import default_upload_year
-
-    return _UPLOAD_HTML.replace("__YEAR__", default_upload_year())
-
-
-@app.get("/api/upload/grant")
-def api_upload_grant(
-    request: Request,
-    authorization: str | None = Header(default=None),
-    year: str | None = Query(default=None),
-    folder: str | None = Query(default=None),
-    bank: str | None = Query(default=None),
-    person: str | None = Query(default=None),
-    center: str | None = Query(default=None),
-) -> dict[str, Any]:
-    from app import upload_acl
-    from app.core.bank_csv import bank_modalities, person_uses_bank_subfolders
-    from app.yearpath import parse_year
-
-    token = _upload_token(authorization, request.query_params.get("t"))
-    grant = upload_acl.find_grant_by_token(token, person=person, center=center)
-    if grant is None:
-        raise HTTPException(status_code=401, detail="Invalid upload token")
-    ip = _upload_client_ip(request)
-    from app.yearpath import default_upload_year
-
-    try:
-        y = parse_year(year) if year else default_upload_year()
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    from app.yearpath import list_year_names
-
-    folder_options = upload_acl.list_grant_folder_options(grant, year=y)
-    resolved = grant
-    target = (folder or bank or "").strip()
-    if target:
-        try:
-            resolved = upload_acl.grant_with_folder(grant, folder=target, bank=target)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    elif grant.banks and len(grant.banks) == 1:
-        resolved = upload_acl.grant_with_folder(grant)
-
-    person_folder = upload_acl.resolve_under_data_root(f"{grant.center}/{grant.person}")
-    existing = list_year_names(person_folder)
-    default_y = default_upload_year()
-    next_y = str(int(default_y) + 1)
-    year_options = sorted(set(existing + [default_y, next_y]))
-    multi_bank = person_uses_bank_subfolders(grant.person, grant.center)
-    csv_capable = bool(bank_modalities())
-
-    return {
-        "person": grant.person,
-        "center": grant.center,
-        "year": y,
-        "data_folder": resolved.year_folder(y),
-        "folder": resolved.effective_bank(),
-        "bank_folders": folder_options,
-        "modality_folders": sorted(bank_modalities()),
-        "banks": list(grant.banks),
-        "multi_bank": multi_bank,
-        "csv_capable": csv_capable,
-        "client_ip": ip,
-        "xlsx_files": upload_acl.list_grant_upload_files(resolved, year=y),
-        "upload_files": upload_acl.list_grant_upload_files(resolved, year=y),
-        "default_year": default_y,
-        "year_options": year_options,
-    }
-
-
-@app.post("/api/upload")
-async def api_upload(
-    request: Request,
-    file: UploadFile = File(...),
-    path: str | None = Form(None),
-    token: str | None = Form(None),
-    year: str | None = Form(None),
-    format: str | None = Form(None),
-    folder: str | None = Form(None),
-    bank: str | None = Form(None),
-    person: str | None = Form(None),
-    center: str | None = Form(None),
-    authorization: str | None = Header(default=None),
-) -> dict[str, Any]:
-    from app import upload_acl
-
-    auth_token = _upload_token(authorization, token)
-    grant = upload_acl.find_grant_by_token(auth_token, person=person, center=center)
-    if grant is None:
-        raise HTTPException(status_code=401, detail="Invalid upload token")
-    ip = _upload_client_ip(request)
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Empty file")
-    # Cap uploads at 32 MiB
-    if len(content) > 32 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 32 MiB)")
-    dest = (path or "").strip()
-    name_lower = (file.filename or "").lower()
-    fmt = (format or "").strip().lower()
-    test_mode = fmt == "test"
-    dry_run = fmt == "dry run"
-    try:
-        if name_lower.endswith(".csv"):
-            grant = upload_acl.grant_for_upload(
-                grant, folder=folder, bank=bank, for_csv=True, csv_content=content
-            )
-        return await run_in_threadpool(
-            upload_acl.save_upload,
-            grant=grant,
-            ip=ip,
-            rel_path=dest,
-            content=content,
-            filename=file.filename,
-            year=year,
-            test=test_mode,
-            dry_run=dry_run,
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except OSError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/api/upload/peek-year")
-async def api_upload_peek_year(
-    request: Request,
-    file: UploadFile = File(...),
-    token: str | None = Form(None),
-    folder: str | None = Form(None),
-    bank: str | None = Form(None),
-    person: str | None = Form(None),
-    center: str | None = Form(None),
-    authorization: str | None = Header(default=None),
-) -> dict[str, Any]:
-    """Return the calendar year of the first dated row (Excel or bank CSV)."""
-    from app import upload_acl
-    from app.core.bank_csv import csv_layout
-    from app.core.bos_lloyds_csv_import import first_entry_year_from_csv_bytes as bos_year_from_csv
-    from app.core.excel_import import first_entry_year_from_xlsx_bytes
-    from app.core.natwest_csv_import import first_entry_year_from_csv_bytes as natwest_year_from_csv
-
-    auth_token = _upload_token(authorization, token)
-    grant = upload_acl.find_grant_by_token(auth_token, person=person, center=center)
-    if grant is None:
-        raise HTTPException(status_code=401, detail="Invalid upload token")
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Empty file")
-    if len(content) > 32 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 32 MiB)")
-    name = (file.filename or "").lower()
-    if name.endswith(".csv"):
-        try:
-            grant = upload_acl.grant_for_upload(
-                grant, folder=folder, bank=bank, for_csv=True, csv_content=content
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        grant_fmt = grant.normalized_format()
-        try:
-            if csv_layout(grant_fmt) == "debit_credit":
-                year = await run_in_threadpool(bos_year_from_csv, content)
-            else:
-                year = await run_in_threadpool(natwest_year_from_csv, content)
-        except (ValueError, OSError, UnicodeDecodeError) as exc:
-            raise HTTPException(status_code=400, detail=f"Could not read CSV: {exc}") from exc
-    elif name.endswith(".xlsx"):
-        try:
-            year = await run_in_threadpool(first_entry_year_from_xlsx_bytes, content)
-        except (ValueError, zipfile.BadZipFile, OSError) as exc:
-            raise HTTPException(status_code=400, detail=f"Could not read Excel: {exc}") from exc
-    else:
-        raise HTTPException(status_code=400, detail="Expected an .xlsx or bank .csv file")
-    if not year:
-        raise HTTPException(status_code=400, detail="No dated transaction entry found")
-    return {
-        "year": year,
-        "person": grant.person,
-        "folder": grant.effective_bank(),
-    }
-
-
-@app.get("/upload/api/upload/grant")
-def api_upload_grant_proxy(
-    request: Request,
-    authorization: str | None = Header(default=None),
-    year: str | None = Query(default=None),
-) -> dict[str, Any]:
-    """Upload endpoints variant under ``/upload``.
-
-    This lets a reverse proxy expose only ``/upload`` over HTTPS without
-    also forwarding ``/api/upload``.
-    """
-
-    return api_upload_grant(
-        request,
-        authorization=authorization,
-        year=year,
-        folder=request.query_params.get("folder"),
-        bank=request.query_params.get("bank"),
-        person=request.query_params.get("person"),
-        center=request.query_params.get("center"),
-    )
-
-
-@app.post("/upload/api/upload")
-async def api_upload_proxy(
-    request: Request,
-    file: UploadFile = File(...),
-    path: str | None = Form(None),
-    token: str | None = Form(None),
-    year: str | None = Form(None),
-    format: str | None = Form(None),
-    folder: str | None = Form(None),
-    bank: str | None = Form(None),
-    person: str | None = Form(None),
-    center: str | None = Form(None),
-    authorization: str | None = Header(default=None),
-) -> dict[str, Any]:
-    """Upload endpoints variant under ``/upload`` (see ``api_upload_grant_proxy``)."""
-
-    return await api_upload(
-        request,
-        file=file,
-        path=path,
-        token=token,
-        year=year,
-        format=format,
-        folder=folder,
-        bank=bank,
-        person=person,
-        center=center,
-        authorization=authorization,
-    )
-
-
-@app.post("/upload/api/upload/peek-year")
-async def api_upload_peek_year_proxy(
-    request: Request,
-    file: UploadFile = File(...),
-    token: str | None = Form(None),
-    folder: str | None = Form(None),
-    bank: str | None = Form(None),
-    person: str | None = Form(None),
-    center: str | None = Form(None),
-    authorization: str | None = Header(default=None),
-) -> dict[str, Any]:
-    return await api_upload_peek_year(
-        request,
-        file=file,
-        token=token,
-        folder=folder,
-        bank=bank,
-        person=person,
-        center=center,
-        authorization=authorization,
-    )
-
-
-def _upload_token(authorization: str | None, form_token: str | None) -> str:
-    from urllib.parse import unquote
-
-    raw = ""
-    if form_token and form_token.strip():
-        raw = form_token.strip()
-    elif authorization and authorization.lower().startswith("bearer "):
-        raw = authorization[7:].strip()
-    if not raw:
-        return ""
-    decoded = unquote(raw).strip()
-    return decoded or raw
 
 
 def run() -> None:

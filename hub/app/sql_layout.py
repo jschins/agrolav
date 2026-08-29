@@ -1,4 +1,4 @@
-"""Create dbo.country / dbo.center rows. Does not create workspace directories."""
+"""Create dbo.country / dbo.center rows. Does not create on-disk country/center directories."""
 from __future__ import annotations
 
 import json
@@ -55,7 +55,7 @@ def _donor_categories() -> Path | None:
 
 
 def _seed_system_categories(cursor, country_id: int) -> None:
-    """Balance, Updated, and unclassified 18 UFO (local codes 98, 99, 97)."""
+    """Balance, Updated, and unclassified 18 UFO (local codes 98, 99, 18)."""
     base = country_id * 100
     cursor.execute(
         """
@@ -91,7 +91,7 @@ def _seed_system_categories(cursor, country_id: int) -> None:
         """,
         base + 2,
         country_id,
-        97,
+        DEFAULT_CATEGORY,
         "18 UFO",
         1,
         None,

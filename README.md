@@ -7,7 +7,7 @@ agrolav/
   hub/          :8200 — data API, refresh, upload, add-person
   client/       :8300 — BFF + React UI
   shared/       login access helpers (user_access)
-  workspaces/   data + secrets (not for public git)
+  agrolav-sql   SQL Server — all data (persons, centers, countries, transactions, categories)
   deploy/       optional ops notes / Caddyfile samples
 ```
 
@@ -44,8 +44,9 @@ There is **no** `client_config.json`. Defaults are hardcoded; override only with
 | `CLIENT_SESSION_SECRET` | insecure dev string | **Set in production** |
 | `CENTRALE_API_KEY` | empty | Optional hub Bearer |
 | `CENTRALE_SYNC` | on | Hub sync |
+| `ENABLEBANKING_REDIRECT_URL` | `http://127.0.0.1:8200/api/consent/callback` | Exact callback registered with Enable Banking; set to the public HTTPS callback in production |
 
-Login users live in hub `workspaces/users.db` (password = username for now).
+Logins live in SQL Server (dbo.country / dbo.center / dbo.person); the hub requires SQL.
 
 ## Public front door (already set up)
 
@@ -53,7 +54,7 @@ Login users live in hub `workspaces/users.db` (password = username for now).
 Browser → https://boekhouding.agrolav.nl
        → Lightsail Caddy
        → Tailscale → 100.116.99.89:8300 (client)
-                   → 127.0.0.1:8200 (hub + workspaces/)
+                   → 127.0.0.1:8200 (hub → SQL agrolav-sql)
 ```
 
 Bank data and PEMs stay on the home server. Lightsail only proxies HTTPS.

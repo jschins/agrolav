@@ -1,6 +1,5 @@
 export interface PersonInfo {
-  short: string;
-  folder: string;
+  person_name: string;
 }
 
 export interface MatrixResponse {
@@ -12,8 +11,7 @@ export interface MatrixResponse {
 }
 
 export interface RefreshPersonResult {
-  short: string;
-  folder?: string;
+  person_name: string;
   skipped: boolean;
   reason?: string;
   transaction_count?: number;
@@ -51,7 +49,6 @@ export type Transaction = Record<string, unknown>;
 
 export interface TransactionsResponse {
   person: string;
-  folder?: string;
   category: string;
   columns: string[];
   transactions: Transaction[];
@@ -96,7 +93,6 @@ export interface CatalogResponse {
 
 export interface ModificationResponse {
   person: string;
-  folder?: string;
   transaction?: Transaction;
   matrix?: MatrixResponse;
 }
@@ -109,7 +105,6 @@ export interface TransactionSplitLine {
 
 export interface TransactionSplitResponse {
   person: string;
-  folder?: string;
   year?: string;
   id: string;
   original_amount: string;

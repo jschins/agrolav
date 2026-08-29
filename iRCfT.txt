@@ -18,7 +18,8 @@ The "upload data" menu shows among others:
 
 Verdere toekomst
 
-4. "add person" in pem mode gaat fout, en de woorden "folder" moeten eruit
+4. na "add person" revert to 8300 niet 8200
+
 
 
 Add person

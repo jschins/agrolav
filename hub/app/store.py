@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.runtime import data_root
-from app.yearpath import has_person_layout, is_year_name, list_year_names, parse_year
+from app.yearpath import is_year_name, list_year_names, parse_year
 
 
 def _use_sql() -> bool:
@@ -18,7 +18,7 @@ def _use_sql() -> bool:
     return bool(user_store.database_url())
 
 
-def _workspace_json_blocked(path: Path) -> bool:
+def _data_root_json_blocked(path: Path) -> bool:
     if not _use_sql():
         return False
     try:
@@ -134,63 +134,35 @@ def center_dir(center: str) -> Path:
 
 
 def list_countries() -> list[str]:
-    from app.runtime import list_country_folders
     from app.sql_catalog import list_country_usernames
 
-    names = list_country_usernames()
-    return names if names else list_country_folders()
+    return list_country_usernames()
 
 
 def list_centers(country: str | None = None) -> list[str]:
-    """Center folder names under one country (e.g. dkg, gph).
+    """Center names under one country (e.g. dkg, gph); SQL required.
 
-    Does not list country folders themselves. Without ``country`` (and without
+    Does not list country names themselves. Without ``country`` (and without
     an active country) returns an empty list — there is no all-countries view.
     """
     from app.runtime import active_country, country_folder
+    from app.sql_catalog import list_center_usernames
 
-    skip = frozenset({"upload_acl.json", "users.db", "upload.log", "categories.json"})
     name = country_folder(country or active_country() or "")
     if not name:
         return []
-    from app.sql_catalog import list_center_usernames
-
-    sql_names = list_center_usernames(name)
-    if sql_names:
-        return sql_names
-    root = data_root() / name
-    if not root.is_dir():
-        return []
-    names: list[str] = []
-    for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
-        if not child.is_dir():
-            continue
-        if child.name.startswith("_") or child.name.startswith("."):
-            continue
-        if child.name in skip:
-            continue
-        names.append(child.name)
-    return names
+    return list_center_usernames(name)
 
 
 def list_person_folders(center: str) -> list[str]:
-    if _use_sql():
-        from app.sql_catalog import people_in_center
+    from app.sql_catalog import people_in_center
 
-        return people_in_center(center)
-    root = center_dir(center)
-    if not root.is_dir():
-        return []
-    names: list[str] = []
-    for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
-        if child.is_dir() and has_person_layout(child):
-            names.append(child.name)
-    return names
+    return people_in_center(center)
 
 
 def shared_categories_path() -> Path:
     """``categories.json`` for the active country."""
-    from app.paths import shared_categories_path as _person_cats
+    from app.runtime import shared_categories_path as _person_cats
 
     return _person_cats()
 
@@ -239,57 +211,6 @@ def _path_triggers_recalc(rel_path: str) -> bool:
     return False
 
 
-def publish_derived_files(
-    center: str,
-    *,
-    person_folders: list[str] | None = None,
-    source: str = "central",
-    skip_events: bool = True,
-    all_years: bool = False,
-) -> None:
-    """Re-publish categorized_transactions and category_totals for the store."""
-    if _use_sql():
-        return
-    ws = _clean_center(center)
-    wanted = {Path(name).name for name in person_folders} if person_folders else None
-    root = center_dir(ws)
-    for child in root.iterdir():
-        if not child.is_dir() or not has_person_layout(child):
-            continue
-        if wanted is not None and child.name not in wanted:
-            continue
-        years = list_year_names(child) if all_years else [parse_year(None)]
-        for year in years:
-            totals_path = child / year / CATEGORY_TOTALS
-            if totals_path.is_file():
-                try:
-                    content = json.loads(totals_path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    continue
-                put_file(
-                    ws,
-                    person_year_rel(child.name, CATEGORY_TOTALS, year=year),
-                    content,
-                    source=source,
-                    skip_recalc=True,
-                    skip_event=skip_events,
-                )
-            cat_path = child / year / CATEGORIZED
-            if cat_path.is_file():
-                try:
-                    content = json.loads(cat_path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    continue
-                put_file(
-                    ws,
-                    person_year_rel(child.name, CATEGORIZED, year=year),
-                    content,
-                    source=source,
-                    skip_recalc=True,
-                    skip_event=skip_events,
-                )
-
-
 def recalculate_center(
     center: str,
     *,
@@ -302,7 +223,7 @@ def recalculate_center(
     and only their derived files are re-published.
     """
     from app.matrix import recalculate_all
-    from app.paths import CALC_LOCK
+    from app.runtime import CALC_LOCK
     from app.runtime import set_active_center
     from app.settings import init_app
 
@@ -312,12 +233,6 @@ def recalculate_center(
         set_active_center(ws)
         init_app()
         matrix = recalculate_all(person_folders=list(wanted) if wanted else None)
-        publish_derived_files(
-            ws,
-            person_folders=list(wanted) if wanted else None,
-            source="central",
-            skip_events=skip_events,
-        )
         return {"ok": True, "center": ws, "matrix": matrix}
 
 
@@ -334,7 +249,7 @@ def ircft_center(
     """Apply iRCfT for one center; publish derived files; return the matrix."""
     from app.core.categorize import apply_ircft_terms
     from app.matrix import build_matrix
-    from app.paths import CALC_LOCK, bind_person
+    from app.runtime import CALC_LOCK, bind_person
     from app.runtime import set_active_center
     from app.settings import init_app, refresh_people
 
@@ -345,7 +260,7 @@ def ircft_center(
         init_app()
         packs = refresh_people()
         sql = _use_sql()
-        to_run = [pack for pack in packs if wanted is None or pack.folder_name in wanted]
+        to_run = [pack for pack in packs if wanted is None or pack.person_name in wanted]
         for pack in to_run:
             if (
                 not sql
@@ -360,12 +275,6 @@ def ircft_center(
                     personal=personal,
                     category_name=category_name,
                 )
-        publish_derived_files(
-            ws,
-            person_folders=list(wanted) if wanted else None,
-            source="central",
-            skip_events=skip_events,
-        )
         return {"ok": True, "center": ws, "matrix": build_matrix(packs)}
 
 
@@ -382,9 +291,9 @@ def derived_paths_for_center(center: str, *, all_years: bool = False) -> list[st
     return paths
 
 
-def derived_paths_for_person(center: str, folder_name: str) -> list[str]:
+def derived_paths_for_person(center: str, person: str) -> list[str]:
     ws = _clean_center(center)
-    safe = Path(folder_name).name
+    safe = Path(person).name
     return [
         f"{ws}/{person_year_rel(safe, CATEGORIZED)}",
         f"{ws}/{person_year_rel(safe, CATEGORY_TOTALS)}",
@@ -510,7 +419,7 @@ def mutate_and_recalculate(
     recalc_all_centers: bool = False,
 ) -> dict[str, Any]:
     """Announce expected files, recalculate affected person(s)/center(s), return matrix."""
-    from app.paths import CALC_LOCK
+    from app.runtime import CALC_LOCK
 
     primary = _clean_center(center)
     expected, person_folders, multi = _mutation_scope(
@@ -559,7 +468,7 @@ def mutate_and_publish(
 ) -> dict[str, Any]:
     """Publish ingested files without recategorizing existing bookings."""
     from app.matrix import build_matrix
-    from app.paths import CALC_LOCK
+    from app.runtime import CALC_LOCK
     from app.runtime import set_active_center
     from app.settings import init_app
 
@@ -588,7 +497,7 @@ def mutate_and_publish(
 def recalculate_from_scratch_all(center: str, *, source: str = "central") -> dict[str, Any]:
     """Wipe hit/modification and recategorize every person in every country."""
     from app.matrix import build_matrix, recalculate_all_from_scratch
-    from app.paths import CALC_LOCK
+    from app.runtime import CALC_LOCK
     from app.runtime import (
         active_country,
         list_country_folders,
@@ -611,12 +520,6 @@ def recalculate_from_scratch_all(center: str, *, source: str = "central") -> dic
                     set_active_center(ws, country=country)
                     init_app()
                     recalculate_all_from_scratch()
-                    publish_derived_files(
-                        ws,
-                        source=source,
-                        skip_events=True,
-                        all_years=True,
-                    )
                     announced.extend(
                         announce_mutation(
                             ws,
@@ -655,7 +558,7 @@ def mutate_and_ircft(
     category_name: str,
 ) -> dict[str, Any]:
     """Announce expected files, iRCfT affected person(s)/center(s), return matrix."""
-    from app.paths import CALC_LOCK
+    from app.runtime import CALC_LOCK
 
     primary = _clean_center(center)
     expected, person_folders, multi = _mutation_scope(
@@ -937,7 +840,7 @@ def write_center_files(
 
 
 def _read_json_or_none(path: Path) -> Any | None:
-    if _workspace_json_blocked(path):
+    if _data_root_json_blocked(path):
         return None
     if not path.is_file():
         return None
@@ -948,7 +851,7 @@ def _read_json_or_none(path: Path) -> Any | None:
 
 
 def _write_json(path: Path, payload: Any) -> None:
-    if _workspace_json_blocked(path):
+    if _data_root_json_blocked(path):
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

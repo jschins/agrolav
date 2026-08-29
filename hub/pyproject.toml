@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "boekhouding-hub"
 version = "0.1"
-description = "Always-on boekhouding hub: sync, merge, calculation under server/workspaces"
+description = "Always-on boekhouding hub: sync, merge, calculation backed by SQL Server (agrolav-sql)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"

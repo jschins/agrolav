@@ -1,6 +1,7 @@
-"""Enable Banking client for the single-person workflow.
+"""Enable Banking client service for the single-person workflow.
 
-Reads credentials from the configured profile path and private key file.
+Credentials come from the SQL Server store (per person), with a legacy
+fallback to the on-disk profile/key files only when no database row exists.
 Returns raw bank JSON to the caller.
 """
 from __future__ import annotations
@@ -8,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import argparse
 import json
+import os
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -24,9 +26,81 @@ from app.core.enable_banking.transactions import (
     fetch_transactions_period,
 )
 
-import app.paths as paths
+from app import app_config
+from app import runtime as paths
 
 DEFAULT_REDIRECT = "https://deoudegracht.nl/banking-callback.html"
+
+
+def default_redirect_url() -> str:
+    """Return the configured callback used by Enable Banking redirects."""
+    override = os.environ.get("ENABLEBANKING_REDIRECT_URL", "").strip()
+    if override:
+        return override
+    return app_config.enablebanking_redirect_url() or DEFAULT_REDIRECT
+
+
+def _db_configured() -> bool:
+    """True when SQL Server is the data store and a person is bound."""
+    from app import user_store
+
+    return bool(user_store.database_url() and paths.PERSON_NAME)
+
+
+_DB_ISO_KEYS: dict[tuple[str, ...], str] = {
+    ("nederland", "netherlands", "the_netherlands", "nl", "beheer"): "NL",
+    ("united_kingdom", "uk", "great_britain", "gb"): "GB",
+    ("ireland", "ie"): "IE",
+}
+
+
+def _country_iso_from_name(name: str) -> str:
+    """ISO 3166-1 alpha-2 from a country name/login key."""
+    key = str(name or "").strip().lower().replace("-", "_").replace(" ", "_")
+    for keys, iso in _DB_ISO_KEYS.items():
+        if key in keys:
+            return iso
+    if len(key) == 2:
+        return key.upper()
+    return "NL"
+
+
+def _db_country_iso() -> str:
+    """ISO code for the bound person: ``dbo.country`` first, then BOUND_COUNTRY."""
+    if _db_configured():
+        from app import enable_sql
+
+        name = enable_sql.person_country_username(paths.PERSON_NAME)
+        if str(name or "").strip():
+            return _country_iso_from_name(str(name))
+    return _country_iso_from_name(getattr(paths, "BOUND_COUNTRY", "") or "")
+
+
+def _db_aspsp_default() -> str:
+    return "ING"
+
+
+def _db_profile() -> dict[str, Any] | None:
+    """Build the person profile from SQL when configured and bound."""
+    if not _db_configured():
+        return None
+    from app import enable_sql
+
+    stored = enable_sql.credentials_for_person(paths.PERSON_NAME)
+    app_id = str(stored[0]) if stored else ""
+    return {
+        "person": paths.PERSON_NAME,
+        "connections": [
+            {
+                "app_id": app_id or None,
+                "aspsp": enable_sql.person_aspsp(paths.PERSON_NAME)
+                or _db_aspsp_default(),
+                "country": _db_country_iso(),
+                "accounts": [],
+            }
+        ],
+    }
+
 
 AIB_HISTORICAL_YEARS = 2
 AIB_ROLLING_DAYS = 90
@@ -158,9 +232,9 @@ class SingleDockerClient(EnableBankingClient):
 
     @classmethod
     def from_profile(cls, profile: dict[str, Any]) -> SingleDockerClient:
-        from app import enable_sql, paths as pathmod
+        from app import enable_sql, runtime as pathmod
 
-        person = str(profile.get("person") or pathmod.PERSON_SHORT or "").strip()
+        person = str(profile.get("person") or pathmod.PERSON_NAME or "").strip()
         stored = enable_sql.credentials_for_person(person) if person else None
         if stored:
             return cls(stored[0], stored[1])
@@ -186,7 +260,7 @@ class SingleDockerClient(EnableBankingClient):
         return super().start_authorization(
             aspsp_name=aspsp,
             country=country,
-            redirect_url=DEFAULT_REDIRECT,
+            redirect_url=default_redirect_url(),
             valid_until=valid_until,
             state=state,
         )
@@ -230,6 +304,22 @@ def _read_json(path: Path) -> Any:
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def downloaded_transactions_target() -> Path:
+    """Disk location for ``downloaded_transactions.json`` (inside agrolav-sql).
+
+    ``AGROLAV_SQL_DISK`` is the host directory mounted into the SQL Server
+    container at ``/var/opt/mssql/backup``, so the file written there is
+    visible inside the container (and on the server: expenses.apsurt.nl).
+    When the variable is unset, the per-person year folder is used.
+    """
+    root = str(os.environ.get("AGROLAV_SQL_DISK") or "").strip()
+    if root:
+        target = Path(root) / "downloaded_transactions.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        return target
+    return paths.RAW_TRANSACTIONS_PATH
 
 
 def profile_app_id(profile: dict[str, Any]) -> str:
@@ -330,6 +420,9 @@ def _migrate_profile(raw: dict[str, Any], profile_path: Path) -> tuple[dict[str,
 
 
 def load_profile() -> dict[str, Any]:
+    db_profile = _db_profile()
+    if db_profile is not None:
+        return db_profile
     if not paths.PROFILE_PATH.exists():
         raise EnableBankingError(f"Profile not found: {paths.PROFILE_PATH}")
     raw = _read_json(paths.PROFILE_PATH)
@@ -419,7 +512,7 @@ def _extract_account_balance(acc: dict[str, Any]) -> tuple[str, str]:
         balances = acc.get("Balances")
     if isinstance(balances, list):
         preferred_types = (
-            # ISO-like short codes returned by AIB / Enable Banking
+            # ISO 20022-style balance-type codes returned by AIB / Enable Banking
             "ITAV",  # interim available
             "XPCD",  # closing booked (bank-specific code)
             "OPAV",  # opening available
@@ -585,12 +678,141 @@ def _apply_consent_subset(profile: dict[str, Any], record: dict[str, Any]) -> di
 
 
 def _load_consent() -> dict[str, Any]:
+    db_record = _db_consent_record()
+    if db_record is not None:
+        return db_record
     if not paths.PROFILE_PATH.exists():
         return {"person": "unknown", "connections": []}
     return _consent_subset(load_profile())
 
 
+def _db_consent_record() -> dict[str, Any] | None:
+    """Normalized consent built from ``dbo.enable_connection`` + ``dbo.account``.
+
+    Returns ``None`` when the database is not configured or unreachable so the
+    legacy file path can take over.
+    """
+    if not _db_configured():
+        return None
+    from app import enable_sql, user_store
+
+    user_store.init_user_store()
+    connection = user_store._sql_connect()
+    person = paths.PERSON_NAME
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (person,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return _normalize_consent({"person": person, "connections": []})
+        person_id = int(row[0])
+        cursor.execute(
+            """
+            SELECT TOP 1 connection_id, app_id, session_id, valid_until, created_at
+            FROM dbo.enable_connection
+            WHERE person_id = ?
+            ORDER BY connection_id DESC
+            """,
+            (person_id,),
+        )
+        connection_row = cursor.fetchone()
+        if connection_row is None:
+            return _normalize_consent({"person": person, "connections": []})
+        connection_id = int(connection_row[0])
+        raw_accounts: list[tuple[Any, ...]] = []
+        cursor.execute(
+            """
+            SELECT uid, iban, account_name, balance, identification_hash, format
+            FROM dbo.account
+            WHERE person_id = ? AND connection_id = ?
+            ORDER BY account_id
+            """,
+            (person_id, connection_id),
+        )
+        raw_accounts = [tuple(item) for item in cursor.fetchall()]
+    except Exception:  # noqa: BLE001
+        return None
+
+    accounts: list[dict[str, Any]] = []
+    aspsp = _db_aspsp_default()
+    for uid, iban, account_name, balance, ident, fmt in raw_accounts:
+        if not uid:
+            continue
+        if fmt:
+            aspsp = str(fmt)
+        accounts.append(
+            {
+                "uid": str(uid),
+                "iban": str(iban or "") if iban else "",
+                "name": str(account_name or "") if account_name else "",
+                "balance": f"{balance:.2f}" if balance is not None else "",
+                "balance_currency": "",
+                "identification_hash": str(ident or "") if ident else "",
+                "enabled": True,
+            }
+        )
+    return _normalize_consent(
+        {
+            "person": person,
+            "connections": [
+                {
+                    "app_id": str(connection_row[1]) if connection_row[1] else None,
+                    "aspsp": aspsp,
+                    "country": _db_country_iso(),
+                    "session_id": str(connection_row[2]) if connection_row[2] else None,
+                    "valid_until": str(connection_row[3]) if connection_row[3] else None,
+                    "created_at": str(connection_row[4]) if connection_row[4] else None,
+                    "accounts": accounts,
+                }
+            ],
+        }
+    )
+
+
+def _primary_db_connection(record: dict[str, Any]) -> dict[str, Any] | None:
+    connections = record.get("connections")
+    if not isinstance(connections, list):
+        return None
+    with_session = [
+        c
+        for c in connections
+        if isinstance(c, dict) and str(c.get("session_id") or "").strip()
+    ]
+    pool = with_session or [
+        c for c in connections if isinstance(c, dict)
+    ]
+    for conn in pool:
+        if conn.get("aspsp") and conn.get("country"):
+            return conn
+    return pool[0] if pool else None
+
+
+def _db_save_consent(record: dict[str, Any]) -> None:
+    from app import enable_sql
+
+    normalized = _normalize_consent(record)
+    connection = _primary_db_connection(normalized)
+    if connection is None or not str(connection.get("country") or "").strip():
+        return
+    if not str(connection.get("session_id") or "").strip():
+        return
+    enable_sql.update_person_connection(paths.PERSON_NAME, connection)
+    accounts = [
+        acc
+        for acc in connection.get("accounts", [])
+        if isinstance(acc, dict) and acc.get("uid")
+    ]
+    if accounts:
+        enable_sql.upsert_person_accounts(paths.PERSON_NAME, accounts)
+
+
 def _save_consent(record: dict[str, Any]) -> None:
+    if _db_configured():
+        _db_save_consent(record)
+        return
     profile = load_profile()
     _write_json(paths.PROFILE_PATH, _apply_consent_subset(profile, record))
 
@@ -682,12 +904,18 @@ def _consent_person_matches(record: dict[str, Any], profile: dict[str, Any]) -> 
     got = str(record.get("person") or "").strip()
     if not got:
         return True
-    expected = str(paths.PERSON_SHORT or profile.get("person") or "").strip()
+    expected = str(paths.PERSON_NAME or profile.get("person") or "").strip()
     return got.lower() == expected.lower()
 
 
 def needs_consent_renewal() -> bool:
     """True when the profile bank has no usable session (first consent or renewal)."""
+    from app import enable_sql, user_store
+
+    if user_store.database_url():
+        ready = enable_sql.person_consent_ready(paths.PERSON_NAME)
+        if ready is not None:
+            return not ready
     if not paths.PROFILE_PATH.exists():
         return True
     try:
@@ -781,6 +1009,7 @@ def list_bank_accounts() -> dict[str, Any]:
                 "balance_currency": str(acc.get("balance_currency") or ""),
                 "aspsp": str(acc.get("aspsp") or ""),
                 "country": str(acc.get("country") or ""),
+                "identification_hash": str(acc.get("identification_hash") or ""),
                 "enabled": bool(acc.get("enabled", True)) and active,
                 "active": active,
             }
@@ -837,20 +1066,11 @@ def set_enabled_account_uids(uids: list[str]) -> dict[str, Any]:
 
 
 def _save_session_connection(profile: dict[str, Any], session: dict[str, Any]) -> None:
-    from app import enable_sql, user_store
-
     record = _load_consent()
-    record["person"] = paths.PERSON_SHORT or profile.get("person", record.get("person", "unknown"))
+    record["person"] = paths.PERSON_NAME or profile.get("person", record.get("person", "unknown"))
     connection = _build_connection(profile, session)
     record = _merge_connection(record, connection)
     _save_consent(record)
-
-    if user_store.database_url() and paths.PERSON_SHORT and isinstance(session.get("accounts"), list):
-        enable_sql.update_person_connection(paths.PERSON_SHORT, connection)
-        enable_sql.upsert_person_accounts(
-            paths.PERSON_SHORT,
-            _iter_accounts(record, active_only=False),
-        )
 
 
 def _store_last_redirect_code(code_or_url: str) -> None:
@@ -947,7 +1167,7 @@ def _reject_non_bank_auth_url(url: str) -> None:
     ):
         hint = (
             "Check the Enable Banking application for this person: redirect URL must be "
-            f"exactly {DEFAULT_REDIRECT!r}, ING (NL) must be linked as personal, "
+            f"exactly {default_redirect_url()!r}, ING (NL) must be linked as personal, "
             "then request a fresh authorization link."
         )
         raise EnableBankingError(
@@ -959,8 +1179,7 @@ def _reject_non_bank_auth_url(url: str) -> None:
 def get_authorization_url(
     *,
     center: str | None = None,
-    person_short: str | None = None,
-    folder: str | None = None,
+    person_name: str | None = None,
 ) -> str:
     """Start Enable Banking auth; returns the bank authorization URL (not the local callback)."""
     from app import consent_flow
@@ -977,8 +1196,7 @@ def get_authorization_url(
     _reject_non_bank_auth_url(url)
 
     ws = (center or active_center() or "").strip()
-    short = (person_short or str(profile.get("person") or "").strip() or "").strip()
-    fold = (folder or "").strip() or short
+    person_name = (person_name or str(profile.get("person") or "").strip() or "").strip()
     # Bind callback to whatever state Enable Banking put on the auth URL / response.
     state = str(auth.get("state") or "").strip()
     if not state:
@@ -988,14 +1206,10 @@ def get_authorization_url(
             state = ""
     if not state:
         state = str(auth.get("authorization_id") or "").strip()
-    if ws and short and state:
-        consent_flow.register_pending(
-            center=ws, short=short, folder=fold, state=state
-        )
-    elif ws and short:
-        consent_flow.register_pending(
-            center=ws, short=short, folder=fold, state=None
-        )
+    if ws and person_name and state:
+        consent_flow.register_pending(center=ws, person_name=person_name, state=state)
+    elif ws and person_name:
+        consent_flow.register_pending(center=ws, person_name=person_name, state=None)
     return url
 
 
@@ -1076,6 +1290,10 @@ def fetch_transactions(
     redirect_code: str | None = None,
 ) -> FetchResult:
     """Download raw transactions from the bank and return them."""
+    if not redirect_code and needs_consent_renewal():
+        raise EnableBankingError(
+            "Bank consent is required before transactions can be downloaded."
+        )
     profile = load_profile()
     client = SingleDockerClient.from_profile(profile)
     accounts, renewed_session = _linked_accounts(profile, client, redirect_code)
@@ -1106,6 +1324,8 @@ def fetch_transactions(
 
     if not raw_transactions and account_errors:
         raise EnableBankingError("; ".join(account_errors))
+
+    _write_json(downloaded_transactions_target(), raw_transactions)
 
     _refresh_account_balances(
         client,

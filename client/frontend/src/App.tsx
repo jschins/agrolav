@@ -152,7 +152,7 @@ function filterRefreshStatusForPerson(
   const needle = person.trim().toLowerCase();
   return {
     results: stored.results.filter(
-      (r) => String(r.short || "").trim().toLowerCase() === needle
+      (r) => String(r.person_name || "").trim().toLowerCase() === needle
     ),
     warnings: stored.warnings.filter((w) => {
       const lower = w.toLowerCase();
@@ -256,7 +256,7 @@ function afterPaint(fn: () => void): () => void {
   };
 }
 
-type CellSelection = { short: string; category: string };
+type CellSelection = { person_name: string; category: string };
 
 function CenterSwitcher({
   center,
@@ -512,7 +512,13 @@ function SyncNotifyShell({
   onLogout,
   initialTitle = "",
 }: {
-  children: (brandName: string, activeYear: string, bankView: string, dataRev: number) => ReactNode;
+  children: (
+    brandName: string,
+    activeYear: string,
+    bankView: string,
+    dataRev: number,
+    banks: { person?: string; first_download: boolean; needs_initial_authorization: boolean }
+  ) => ReactNode;
   onCenterChanged?: () => void;
   termsView?: boolean;
   categoriesView?: boolean;
@@ -536,6 +542,12 @@ function SyncNotifyShell({
   const [scratchError, setScratchError] = useState<string | null>(null);
   const [dataRev, setDataRev] = useState(0);
   const dataEpochRef = useRef<number | null>(null);
+
+  const [banksState, setBanksState] = useState<{
+    person?: string;
+    first_download: boolean;
+    needs_initial_authorization: boolean;
+  }>({ first_download: false, needs_initial_authorization: false });
 
   const brandName = (status?.title || initialTitle || "").trim();
 
@@ -561,37 +573,58 @@ function SyncNotifyShell({
       setBankOptions([]);
       setBankView("consolidated");
       setUploadUrl("");
+      setBanksState({ first_download: false, needs_initial_authorization: false });
       return;
     }
-    getBanks(activeYear)
-      .then((res) => {
-        const hub = (status?.centrale_url || "").replace(/\/$/, "");
-        const token = (res.upload_token || "").trim();
-        const person = (res.person || status?.person || "").trim();
-        const center = (res.center || status?.center || "").trim();
-        let nextUrl = "";
-        if (hub && token) {
-          const qs = new URLSearchParams({ t: token });
-          if (person) qs.set("person", person);
-          if (center) qs.set("center", center);
-          nextUrl = `${hub}/upload?${qs.toString()}`;
-        }
-        setUploadUrl(nextUrl);
-        setShowBankSwitcher(
-          Boolean(res.show_switcher) || (res.folders || []).length > 1
-        );
-        setBankOptions(res.folders || []);
-        setBankView((prev) => {
-          if (prev === "consolidated") return prev;
-          if ((res.folders || []).includes(prev)) return prev;
-          return "consolidated";
+    let cancelled = false;
+    function loadBanks() {
+      getBanks(activeYear)
+        .then((res) => {
+          if (cancelled) return;
+          const hub = (status?.centrale_url || "").replace(/\/$/, "");
+          const token = (res.upload_token || "").trim();
+          const person = (res.person || status?.person || "").trim();
+          const center = (res.center || status?.center || "").trim();
+          let nextUrl = "";
+          if (hub && token) {
+            const qs = new URLSearchParams({ t: token });
+            if (person) qs.set("person", person);
+            if (center) qs.set("center", center);
+            nextUrl = `${hub}/upload?${qs.toString()}`;
+          }
+          setUploadUrl(nextUrl);
+          setShowBankSwitcher(
+            Boolean(res.show_switcher) || (res.folders || []).length > 1
+          );
+          setBankOptions(res.folders || []);
+          setBankView((prev) => {
+            if (prev === "consolidated") return prev;
+            if ((res.folders || []).includes(prev)) return prev;
+            return "consolidated";
+          });
+          setBanksState({
+            person: person || undefined,
+            first_download: res.first_download === true,
+            needs_initial_authorization: res.needs_initial_authorization === true,
+          });
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setShowBankSwitcher(false);
+          setBankOptions([]);
+          setUploadUrl("");
+          setBanksState({
+            first_download: false,
+            needs_initial_authorization: false,
+          });
         });
-      })
-      .catch(() => {
-        setShowBankSwitcher(false);
-        setBankOptions([]);
-        setUploadUrl("");
-      });
+    }
+    loadBanks();
+    const id = window.setInterval(loadBanks, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
   }, [status?.access, activeYear, status?.center, status?.person, status?.centrale_url]);
 
   useEffect(() => {
@@ -811,7 +844,7 @@ function SyncNotifyShell({
           </div>
         </div>
       )}
-      {children(brandName, activeYear, bankView, dataRev)}
+      {children(brandName, activeYear, bankView, dataRev, banksState)}
     </div>
     </HeaderActionsContext.Provider>
   );
@@ -997,7 +1030,7 @@ export default function App() {
       }
       onCenterChanged={bumpCenterEpoch}
     >
-      {(brandName, year, bankView, dataRev) =>
+      {(brandName, year, bankView, dataRev, banks) =>
         isTerms ? (
           <TermsApp key={wsEpoch} />
         ) : isCategories ? (
@@ -1013,6 +1046,7 @@ export default function App() {
             year={year}
             bankView={bankView}
             dataRev={dataRev}
+            banks={banks}
           />
         )
       }
@@ -1089,18 +1123,21 @@ function MainApp({
   year,
   bankView,
   dataRev,
+  banks,
 }: {
   brandName: string;
   year: string;
   bankView: string;
   dataRev: number;
+  banks?: { person?: string; first_download: boolean; needs_initial_authorization: boolean };
 }) {
   const [matrix, setMatrix] = useState<MatrixResponse | null>(null);
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const [detail, setDetail] = useState<TransactionsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [fetchingShort, setFetchingShort] = useState<string | null>(null);
+  const [fetchingPerson, setfetchingPerson] = useState<string | null>(null);
+  const [firstDownloading, setFirstDownloading] = useState(false);
   const [personNewYear, setPersonNewYear] = useState<Record<string, boolean>>({});
   const [consentReady, setConsentReady] = useState<Record<string, boolean>>({});
   const [refreshScope, setRefreshScope] = useState<RefreshStatusScope | null>(null);
@@ -1172,8 +1209,8 @@ function MainApp({
           if (cancelled) return;
           const next: Record<string, boolean> = {};
           for (const item of s.consent_ready || []) {
-            const short = (item.short || "").trim();
-            if (short) next[short] = true;
+            const person_name = (item.person_name || "").trim();
+            if (person_name) next[person_name] = true;
           }
           setConsentReady(next);
         })
@@ -1191,6 +1228,33 @@ function MainApp({
     selectionRef.current = selection;
   }, [selection]);
 
+  const bankAuthRequired =
+    banks?.needs_initial_authorization === true && Boolean(banks?.person);
+  const bankAuthAutoRef = useRef(false);
+  useEffect(() => {
+    if (!bankAuthRequired) return;
+    if (bankAuthAutoRef.current) return;
+    const person_name = banks?.person || "";
+    if (!person_name) return;
+    let cancelled = false;
+    let tries = 0;
+    function attempt() {
+      if (cancelled) return;
+      if (hasSecrets) {
+        bankAuthAutoRef.current = true;
+        doFirstDownload(person_name);
+        return;
+      }
+      tries += 1;
+      if (tries < 10 && !cancelled) window.setTimeout(attempt, 300);
+    }
+    attempt();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankAuthRequired, hasSecrets]);
+
   useEffect(() => {
     return () => endRefreshBusy();
   }, []);
@@ -1202,12 +1266,12 @@ function MainApp({
   const bankQuery = bankView !== "consolidated" ? bankView : undefined;
 
   function loadDetail(
-    short: string,
+    person_name: string,
     category: string,
     { quiet = false }: { quiet?: boolean } = {}
   ): Promise<void> {
     if (!quiet) setDetail(null);
-    return getTransactions(short, category, year, bankQuery)
+    return getTransactions(person_name, category, year, bankQuery)
       .then(setDetail)
       .catch((e: Error) => setError(e.message));
   }
@@ -1224,7 +1288,7 @@ function MainApp({
           if (!quiet) setDetail(null);
           return;
         }
-        return loadDetail(sel.short, sel.category, { quiet });
+        return loadDetail(sel.person_name, sel.category, { quiet });
       })
       .catch((e: Error) => setError(e.message));
   }
@@ -1241,7 +1305,7 @@ function MainApp({
           setDetail(null);
           return;
         }
-        return getTransactions(sel.short, sel.category, year, bankQuery).then(setDetail);
+        return getTransactions(sel.person_name, sel.category, year, bankQuery).then(setDetail);
       })
       .catch((e: Error) => setError(e.message));
   }
@@ -1278,7 +1342,7 @@ function MainApp({
         if (cancelled) return;
         setMatrix(payload);
         if (!sel) return;
-        return getTransactions(sel.short, sel.category, year, bankQuery).then((next) => {
+        return getTransactions(sel.person_name, sel.category, year, bankQuery).then((next) => {
           if (!cancelled) setDetail(next);
         });
       })
@@ -1308,16 +1372,16 @@ function MainApp({
     };
   }, []);
 
-  function selectCell(short: string, category: string) {
+  function selectCell(person_name: string, category: string) {
     if (matrix && isMatrixFooter(matrix, category)) return;
-    const sel = { short, category };
+    const sel = { person_name, category };
     setSelection(sel);
     setError(null);
     if (dirtyRef.current) {
       void refreshMainView(sel);
       return;
     }
-    void loadDetail(short, category);
+    void loadDetail(person_name, category);
   }
 
   function backToMatrix() {
@@ -1350,7 +1414,7 @@ function MainApp({
       }
       return prev;
     });
-    recordModification(selection.short, modified)
+    recordModification(selection.person_name, modified)
       .then((res) => {
         if (res.matrix) setMatrix(res.matrix);
       })
@@ -1377,8 +1441,8 @@ function MainApp({
   }
 
   function saveTermMenu(term: string, targetCategory: string, general: boolean) {
-    const short = selectionRef.current?.short;
-    if (!general && !short) return Promise.resolve();
+    const person_name = selectionRef.current?.person_name;
+    if (!general && !person_name) return Promise.resolve();
     const sel = selectionRef.current;
     const rowId = termMenu?.transactionId;
     closeTermMenu();
@@ -1389,11 +1453,11 @@ function MainApp({
       category_name: targetCategory,
       term,
       general,
-      person: general ? undefined : short,
+      person: general ? undefined : person_name,
     })
       .then((res) => {
         setMatrix(res.matrix);
-        if (sel) return loadDetail(sel.short, sel.category, { quiet: true });
+        if (sel) return loadDetail(sel.person_name, sel.category, { quiet: true });
       })
       .catch((err: Error) => setError(err.message));
   }
@@ -1418,7 +1482,7 @@ function MainApp({
   }, []);
 
   function doRefresh() {
-    if (refreshing || fetchingShort) return;
+    if (refreshing || fetchingPerson) return;
     beginRefreshBusy();
     flushSync(() => {
       setRefreshing(true);
@@ -1466,18 +1530,18 @@ function MainApp({
     });
   }
 
-  function doRefreshPerson(short: string) {
-    if (refreshing || fetchingShort) return;
+  function doRefreshPerson(person_name: string) {
+    if (refreshing || fetchingPerson) return;
     beginRefreshBusy();
     flushSync(() => {
-      setFetchingShort(short);
+      setfetchingPerson(person_name);
       setError(null);
     });
     afterPaint(() => {
-      refreshPerson(short, {
+      refreshPerson(person_name, {
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
-        new_year: Boolean(personNewYear[short]),
+        new_year: Boolean(personNewYear[person_name]),
       })
         .then((res) => {
           setMatrix(res.matrix);
@@ -1485,12 +1549,12 @@ function MainApp({
           const prev = refreshStatus || { results: [], warnings: [] };
           const results = nextResult
             ? [
-                ...prev.results.filter((r) => r.short !== short),
+                ...prev.results.filter((r) => r.person_name !== person_name),
                 nextResult,
               ]
-            : prev.results.filter((r) => r.short !== short);
+            : prev.results.filter((r) => r.person_name !== person_name);
           const warnings = [
-            ...prev.warnings.filter((w) => !w.startsWith(`${short}:`) && !w.startsWith(`${short} (`)),
+            ...prev.warnings.filter((w) => !w.startsWith(`${person_name}:`) && !w.startsWith(`${person_name} (`)),
             ...(res.warnings || []),
           ];
           const payload: StoredRefreshStatus = { results, warnings };
@@ -1501,7 +1565,49 @@ function MainApp({
         })
         .catch((e: Error) => setError(e.message))
         .finally(() => {
-          setFetchingShort(null);
+          setfetchingPerson(null);
+          endRefreshBusy();
+        });
+    });
+  }
+
+  function doFirstDownload(person_name: string) {
+    if (refreshing || fetchingPerson || firstDownloading) return;
+    beginRefreshBusy();
+    flushSync(() => {
+      setFirstDownloading(true);
+      setError(null);
+    });
+    afterPaint(() => {
+      const start = `${new Date().getFullYear()}-01-01`;
+      const end = isoDate(new Date());
+      refreshPerson(person_name, { date_from: start, date_to: end, new_year: true })
+        .then((res) => {
+          setMatrix(res.matrix);
+          const nextResult = (res.results || [])[0];
+          const prev = refreshStatus || { results: [], warnings: [] };
+          const results = nextResult
+            ? [
+                ...prev.results.filter((r) => r.person_name !== person_name),
+                nextResult,
+              ]
+            : prev.results.filter((r) => r.person_name !== person_name);
+          const warnings = [
+            ...prev.warnings.filter(
+              (w) => !w.startsWith(`${person_name}:`) && !w.startsWith(`${person_name} (`)
+            ),
+            ...(res.warnings || []),
+          ];
+          const payload: StoredRefreshStatus = { results, warnings };
+          saveStoredRefreshStatus(payload, refreshScope);
+          setRefreshStatus(payload);
+          setConsentReady({});
+          setSelection(null);
+          setDetail(null);
+        })
+        .catch((e: Error) => setError(e.message))
+        .finally(() => {
+          setFirstDownloading(false);
           endRefreshBusy();
         });
     });
@@ -1511,8 +1617,33 @@ function MainApp({
     (r) =>
       r.skipped &&
       r.reason === "needs_consent_renewal" &&
-      Boolean(consentReady[r.short])
+      Boolean(consentReady[r.person_name])
   );
+
+  const postConsentFiredRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (!awaitingPostConsentFetch) return;
+    const person_name = (banks?.person || "").trim();
+    if (!person_name) return;
+    if (postConsentFiredRef.current.includes(person_name)) return;
+    let cancelled = false;
+    let tries = 0;
+    function attempt() {
+      if (cancelled) return;
+      if (hasSecrets) {
+        postConsentFiredRef.current.push(person_name);
+        doFirstDownload(person_name);
+        return;
+      }
+      tries += 1;
+      if (tries < 10 && !cancelled) window.setTimeout(attempt, 300);
+    }
+    attempt();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [awaitingPostConsentFetch, banks?.person, hasSecrets]);
 
   const setHeaderActions = useContext(HeaderActionsContext);
   useEffect(() => {
@@ -1521,7 +1652,7 @@ function MainApp({
       items.push({
         id: "refresh",
         label: refreshing ? "Refreshing…" : "↻ Refresh all",
-        disabled: refreshing || Boolean(fetchingShort),
+        disabled: refreshing || Boolean(fetchingPerson),
         onClick: doRefresh,
       });
     }
@@ -1538,13 +1669,38 @@ function MainApp({
     hasSecrets,
     awaitingPostConsentFetch,
     refreshing,
-    fetchingShort,
+    fetchingPerson,
     canAddPerson,
     addPersonUrl,
     setHeaderActions,
   ]);
 
   const inPView = selection !== null;
+
+  const bankAuthUrl = (() => {
+    if (!bankAuthRequired) return "";
+    const person_name = banks?.person || "";
+    for (const r of refreshStatus?.results || []) {
+      if (
+        r.person_name === person_name &&
+        r.skipped &&
+        r.reason === "needs_consent_renewal" &&
+        r.authorization_url
+      ) {
+        return r.authorization_url;
+      }
+    }
+    return "";
+  })();
+
+  const authOpenedRef = useRef<string>("");
+  useEffect(() => {
+    if (!bankAuthUrl) return;
+    if (bankAuthUrl === authOpenedRef.current) return;
+    authOpenedRef.current = bankAuthUrl;
+    window.open(bankAuthUrl, "_blank", "noopener,noreferrer");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankAuthUrl]);
 
   return (
     <div className="app">
@@ -1587,23 +1743,23 @@ function MainApp({
                       return (
                         r.skipped &&
                         r.reason === "needs_consent_renewal" &&
-                        Boolean(consentReady[r.short])
+                        Boolean(consentReady[r.person_name])
                       );
                     })
                     .map((r) => (
-                    <div key={r.short} className="refresh-status-line">
+                    <div key={r.person_name} className="refresh-status-line">
                       {r.skipped ? (
                         r.reason === "needs_consent_renewal" ? (
                           <>
                             {!awaitingPostConsentFetch ? (
                               <span>
-                                {r.short}: bank consent required
-                                {!r.authorization_url && !consentReady[r.short]
+                                {r.person_name}: bank consent required
+                                {!r.authorization_url && !consentReady[r.person_name]
                                   ? " (no authorization URL)"
                                   : ""}
                               </span>
                             ) : null}
-                            {!consentReady[r.short] && r.authorization_url ? (
+                            {!consentReady[r.person_name] && r.authorization_url ? (
                               <div className="sidebar-field">
                                 <span className="sidebar-field-legend" aria-hidden="true">
                                   {"\u00a0"}
@@ -1614,25 +1770,25 @@ function MainApp({
                                   target="_blank"
                                   rel="noopener noreferrer"
                                 >
-                                  {`authorize ${r.short}`}
+                                  {`authorize ${r.person_name}`}
                                 </a>
                               </div>
                             ) : null}
-                            {consentReady[r.short] ? (
+                            {consentReady[r.person_name] ? (
                               <>
                                 <label className="refresh-person-newyear">
                                   <input
                                     type="checkbox"
-                                    checked={Boolean(personNewYear[r.short])}
-                                    disabled={Boolean(refreshing || fetchingShort)}
+                                    checked={Boolean(personNewYear[r.person_name])}
+                                    disabled={Boolean(refreshing || fetchingPerson)}
                                     onChange={(e) =>
                                       setPersonNewYear((prev) => ({
                                         ...prev,
-                                        [r.short]: e.target.checked,
+                                        [r.person_name]: e.target.checked,
                                       }))
                                     }
                                   />
-                                  new year (overwrite {r.short} only)
+                                  new year (overwrite {r.person_name} only)
                                 </label>
                                 <div className="sidebar-field">
                                   <span className="sidebar-field-legend" aria-hidden="true">
@@ -1641,12 +1797,12 @@ function MainApp({
                                   <button
                                     type="button"
                                     className="sidebar-knob"
-                                    disabled={Boolean(refreshing || fetchingShort)}
-                                    onClick={() => doRefreshPerson(r.short)}
+                                    disabled={Boolean(refreshing || fetchingPerson)}
+                                    onClick={() => doRefreshPerson(r.person_name)}
                                   >
-                                    {fetchingShort === r.short
-                                      ? `Fetching ${r.short}…`
-                                      : `fetch for ${r.short}`}
+                                    {fetchingPerson === r.person_name
+                                      ? `Fetching ${r.person_name}…`
+                                      : `fetch for ${r.person_name}`}
                                   </button>
                                 </div>
                               </>
@@ -1654,13 +1810,13 @@ function MainApp({
                           </>
                         ) : (
                           <span>
-                            {r.short}: skipped
+                            {r.person_name}: skipped
                             {r.reason ? ` (${r.reason})` : ""}
                           </span>
                         )
                       ) : (
                         <span>
-                          {r.short}: {r.transaction_count ?? 0} transaction
+                          {r.person_name}: {r.transaction_count ?? 0} transaction
                           {(r.transaction_count ?? 0) === 1 ? "" : "s"}
                           {r.date_from && r.date_to
                             ? ` (${r.date_from} .. ${r.date_to})`
@@ -1670,15 +1826,15 @@ function MainApp({
                       )}
                       {!awaitingPostConsentFetch
                         ? (r.warnings || []).map((w) => (
-                            <div key={`${r.short}-w-${w}`} className="refresh-status-note">
-                              {r.short}: {w}
+                            <div key={`${r.person_name}-w-${w}`} className="refresh-status-note">
+                              {r.person_name}: {w}
                             </div>
                           ))
                         : null}
                       {!awaitingPostConsentFetch
                         ? (r.account_errors || []).map((w) => (
-                            <div key={`${r.short}-e-${w}`} className="refresh-status-note">
-                              {r.short}: {w}
+                            <div key={`${r.person_name}-e-${w}`} className="refresh-status-note">
+                              {r.person_name}: {w}
                             </div>
                           ))
                         : null}
@@ -1716,9 +1872,9 @@ function MainApp({
             </div>
             <PersonColumnTable
               matrix={matrix}
-              personShort={selection.short}
+              person_name={selection.person_name}
               selectedCategory={selection.category}
-              onPick={(category) => selectCell(selection.short, category)}
+              onPick={(category) => selectCell(selection.person_name, category)}
             />
           </>
         )}
@@ -2334,7 +2490,7 @@ function MatrixTable({
 }: {
   matrix: MatrixResponse;
   selection: CellSelection | null;
-  onPick: (short: string, category: string) => void;
+  onPick: (person_name: string, category: string) => void;
 }) {
   const { categories, people, cells } = matrix;
   const terms = matrix.table_header_terms;
@@ -2344,8 +2500,8 @@ function MatrixTable({
         <tr>
           <th className="cat">{tableHeaderTerm(terms, "Category")}</th>
           {people.map((p) => (
-            <th key={p.short} className="num">
-              {p.short}
+            <th key={p.person_name} className="num">
+              {p.person_name}
             </th>
           ))}
         </tr>
@@ -2358,15 +2514,15 @@ function MatrixTable({
           >
             <td className="cat">{cat}</td>
             {people.map((p) => {
-              const amount = cells[cat]?.[p.short] ?? "";
+              const amount = cells[cat]?.[p.person_name] ?? "";
               const isActive =
-                selection?.short === p.short && selection?.category === cat;
+                selection?.person_name === p.person_name && selection?.category === cat;
               const clickable = !isMatrixFooter(matrix, cat) && amount !== "";
               return (
                 <td
-                  key={p.short}
+                  key={p.person_name}
                   className={`num${clickable ? " clickable" : ""}${isActive ? " active-cell" : ""}`}
-                  onClick={clickable ? () => onPick(p.short, cat) : undefined}
+                  onClick={clickable ? () => onPick(p.person_name, cat) : undefined}
                 >
                   {amount}
                 </td>
@@ -2381,12 +2537,12 @@ function MatrixTable({
 
 function PersonColumnTable({
   matrix,
-  personShort,
+  person_name,
   selectedCategory,
   onPick,
 }: {
   matrix: MatrixResponse;
-  personShort: string;
+  person_name: string;
   selectedCategory: string | null;
   onPick: (category: string) => void;
 }) {
@@ -2397,7 +2553,7 @@ function PersonColumnTable({
       <thead>
         <tr>
           <th className="cat">{tableHeaderTerm(terms, "Category")}</th>
-          <th className="num">{personShort}</th>
+          <th className="num">{person_name}</th>
         </tr>
       </thead>
       <tbody>
@@ -2408,7 +2564,7 @@ function PersonColumnTable({
           >
             <td className="cat">{cat}</td>
             {(() => {
-              const amount = cells[cat]?.[personShort] ?? "";
+              const amount = cells[cat]?.[person_name] ?? "";
               const clickable = !isMatrixFooter(matrix, cat) && amount !== "";
               return (
                 <td
@@ -3049,7 +3205,7 @@ function termsColumnWidths(
   return columns.map((category) => {
     const texts = [category, ...(general[category] ?? []), "+ term"];
     for (const p of people) {
-      texts.push(...(personal[p.short]?.[category] ?? []));
+      texts.push(...(personal[p.person_name]?.[category] ?? []));
     }
     const maxChars = Math.max(...texts.map(measure));
     return Math.ceil(maxChars * 7.5 + 20);
@@ -3086,16 +3242,16 @@ function TermsTables({
         </section>
         {people.map((p) => (
           <section
-            key={p.short}
+            key={p.person_name}
             className="terms-panel terms-panel-personal"
-            aria-label={`${p.short} terms`}
+            aria-label={`${p.person_name} terms`}
           >
-            <h2 className="terms-panel-label">{p.short}</h2>
+            <h2 className="terms-panel-label">{p.person_name}</h2>
             <TermsColumnTable
               columns={columns}
               columnWidths={columnWidths}
-              termsForCategory={(name) => personal[p.short]?.[name] ?? EMPTY_TERMS}
-              onCommit={(name, terms) => onUpdate(p.short, name, terms)}
+              termsForCategory={(name) => personal[p.person_name]?.[name] ?? EMPTY_TERMS}
+              onCommit={(name, terms) => onUpdate(p.person_name, name, terms)}
             />
           </section>
         ))}

@@ -1,8 +1,8 @@
 # boekhouding-hub
 
-Always-on hub for `workspaces/` (sibling of this folder). See [`../README.md`](../README.md).
+Always-on hub; all data lives in SQL Server (agrolav-sql), not folders. See [`../README.md`](../README.md).
 
-**Center folders** (`dkg`, `jl`, …) are created on disk by an admin — the hub never initializes them. The hub only creates **person packs** (and year folders) inside an existing center.
+**Centers and persons** are SQL Server rows (`dbo.center`, `dbo.person`); the hub never creates folders on disk.
 
 ## Listen / client `SERVER_URL`
 
@@ -20,7 +20,7 @@ Start the hub on **8200** first, then the client on **8300**.
 
 ## Hub IP gate + scoped upload
 
-Config: `workspaces/upload_acl.json` (next to `hub/`).
+Config: `upload_acl.json` at the disk root (`AGROLAV_SQL_DISK`; legacy — migrating to `dbo.hub_ip` / `dbo.bank_modality`).
 
 ```json
 {

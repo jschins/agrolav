@@ -55,6 +55,10 @@ export interface BanksResponse {
   person?: string;
   center?: string;
   year?: string;
+  /** Consent active and the person has never downloaded transactions yet. */
+  first_download?: boolean;
+  /** PEM credentials exist but consent is not active and nothing was downloaded yet. */
+  needs_initial_authorization?: boolean;
 }
 
 export function getYears(): Promise<YearsResponse> {
@@ -90,18 +94,18 @@ export function refreshAll(body: {
 }
 
 export function refreshPerson(
-  short: string,
+  person_name: string,
   body: {
     date_from?: string;
     date_to?: string;
     new_year?: boolean;
   } = {}
 ): Promise<RefreshResponse> {
-  return sendJson(`/api/refresh/${encodeURIComponent(short)}`, "POST", body);
+  return sendJson(`/api/refresh/${encodeURIComponent(person_name)}`, "POST", body);
 }
 
 export function getTransactions(
-  short: string,
+  person_name: string,
   category: string,
   year?: string,
   bank?: string
@@ -110,7 +114,7 @@ export function getTransactions(
   if (year) params.set("year", year);
   if (bank) params.set("bank", bank);
   const q = params.toString();
-  const base = `/api/transactions/${encodeURIComponent(short)}/${encodeURIComponent(category)}`;
+  const base = `/api/transactions/${encodeURIComponent(person_name)}/${encodeURIComponent(category)}`;
   return getJson(q ? `${base}?${q}` : base);
 }
 
@@ -150,16 +154,16 @@ export function addCategoryTerm(body: {
 }
 
 export function recordModification(
-  short: string,
+  person_name: string,
   transaction: Transaction
 ): Promise<ModificationResponse> {
-  return sendJson(`/api/transactions/${encodeURIComponent(short)}/modification`, "PUT", {
+  return sendJson(`/api/transactions/${encodeURIComponent(person_name)}/modification`, "PUT", {
     transaction,
   });
 }
 
 export function getTransactionSplit(
-  short: string,
+  person_name: string,
   id: string,
   year?: string,
   bank?: string
@@ -168,11 +172,11 @@ export function getTransactionSplit(
   params.set("id", id);
   if (year) params.set("year", year);
   if (bank) params.set("bank", bank);
-  return getJson(`/api/split/${encodeURIComponent(short)}?${params.toString()}`);
+  return getJson(`/api/split/${encodeURIComponent(person_name)}?${params.toString()}`);
 }
 
 export function saveTransactionSplit(
-  short: string,
+  person_name: string,
   body: {
     id: string;
     description: string;
@@ -181,7 +185,7 @@ export function saveTransactionSplit(
     bank?: string;
   }
 ): Promise<TransactionSplitResponse> {
-  return sendJson(`/api/split/${encodeURIComponent(short)}`, "PUT", body);
+  return sendJson(`/api/split/${encodeURIComponent(person_name)}`, "PUT", body);
 }
 
 export interface SyncNotification {
@@ -190,8 +194,7 @@ export interface SyncNotification {
 }
 
 export interface ConsentReadyPerson {
-  short: string;
-  folder?: string;
+  person_name: string;
 }
 
 export interface CentraleSyncStatus {
@@ -199,7 +202,7 @@ export interface CentraleSyncStatus {
   center: string;
   /** personal | local | country */
   access?: string;
-  /** Empty / omitted = all people; otherwise only this short is visible. */
+  /** Empty / omitted = all people; otherwise only this person is visible. */
   person?: string;
   username?: string;
   title?: string;
@@ -274,7 +277,7 @@ export function getCenters(): Promise<{
 export function setCenter(center: string): Promise<{
   ok: boolean;
   center: string;
-  people: { short: string; folder: string }[];
+  people: { person_name: string }[];
 }> {
   return sendJson("/api/center", "POST", { center });
 }

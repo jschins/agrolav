@@ -17,7 +17,7 @@ HUB_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HUB_ROOT))
 sys.path.insert(0, str(HUB_ROOT.parent / "shared"))
 
-from app.paths import app_id_from_profile_data  # noqa: E402
+from app.runtime import app_id_from_profile_data  # noqa: E402
 from app.runtime import country_folder, data_root  # noqa: E402
 from app.yearpath import has_person_layout  # noqa: E402
 

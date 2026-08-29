@@ -25,7 +25,7 @@ There is **no** `client_config.json`.
 
 The client listens on **`0.0.0.0`** when auth is on. On the same machine as the hub, leave `SERVER_URL` at `http://127.0.0.1:8200`.
 
-Users live in hub **`workspaces/users.db`**. Login password equals the username.
+Users live in SQL Server (`dbo.person` / `dbo.center` / `dbo.country`). Login password equals the username.
 
 ```powershell
 cd ..\hub

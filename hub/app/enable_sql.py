@@ -5,6 +5,7 @@ A connection row can exist for a person before any ``dbo.account`` rows.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -80,6 +81,27 @@ def person_has_pem(username: str) -> bool:
     return credentials_for_person(username) is not None
 
 
+def person_has_pem_light(username: str) -> bool:
+    """Cheap existence check: connection row with a PEM present (no blob read)."""
+    cursor = _cursor()
+    if cursor is None:
+        return False
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        return False
+    cursor.execute(
+        """
+        SELECT TOP 1 1
+        FROM dbo.enable_connection
+        WHERE person_id = ?
+          AND pem IS NOT NULL
+          AND LTRIM(RTRIM(pem)) <> N''
+        """,
+        (person_id,),
+    )
+    return cursor.fetchone() is not None
+
+
 def center_has_pem(center: str) -> bool:
     cursor = _cursor()
     if cursor is None:
@@ -115,6 +137,256 @@ def center_has_pem(center: str) -> bool:
         (name,),
     )
     return cursor.fetchone() is not None
+
+
+def person_consent_ready(username: str) -> bool | None:
+    """Return SQL consent readiness, or None when SQL is not configured."""
+    cursor = _cursor()
+    if cursor is None:
+        return None
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        return False
+    cursor.execute(
+        """
+        SELECT TOP 1 ec.session_id, ec.valid_until,
+            (SELECT COUNT(*) FROM dbo.account a WHERE a.person_id = p.id) AS account_count
+        FROM dbo.person p
+        LEFT JOIN dbo.enable_connection ec ON ec.person_id = p.id
+        WHERE p.id = ?
+        ORDER BY ec.connection_id DESC
+        """,
+        (person_id,),
+    )
+    row = cursor.fetchone()
+    if row is None or not str(row[0] or "").strip() or int(row[2] or 0) == 0:
+        return False
+    valid_until = row[1]
+    if valid_until is None:
+        return False
+    if isinstance(valid_until, datetime):
+        expires = valid_until
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+    else:
+        try:
+            expires = datetime.fromisoformat(str(valid_until).replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+    return expires >= datetime.now(timezone.utc)
+
+
+def person_has_transactions(username: str) -> bool:
+    """True when the person already has transactions in their country table."""
+    cursor = _cursor()
+    if cursor is None:
+        return False
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        return False
+    cursor.execute(
+        """
+        SELECT TOP 1 c.username
+        FROM dbo.person p
+        INNER JOIN dbo.country c ON c.country_id = p.country_id
+        WHERE p.id = ?
+        """,
+        (person_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return False
+    from app.sql_replica import _transaction_table
+
+    table = _transaction_table(str(row[0] or ""))
+    if table is None:
+        return False
+    cursor.execute(
+        f"SELECT TOP 1 transaction_id FROM {table} WHERE person_id = ?",
+        (person_id,),
+    )
+    return cursor.fetchone() is not None
+
+
+def person_country_username(username: str) -> str:
+    """``dbo.country.username`` for the person (``nederland``, ``united_kingdom``, ...)."""
+    cursor = _cursor()
+    if cursor is None:
+        return ""
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        return ""
+    cursor.execute(
+        """
+        SELECT TOP 1 c.username
+        FROM dbo.person p
+        INNER JOIN dbo.country c ON c.country_id = p.country_id
+        WHERE p.id = ?
+        """,
+        (person_id,),
+    )
+    row = cursor.fetchone()
+    return str(row[0] or "") if row else ""
+
+
+def person_aspsp(username: str) -> str:
+    """ASPSP hint from ``dbo.account.format`` (top account for the person)."""
+    cursor = _cursor()
+    if cursor is None:
+        return ""
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        return ""
+    cursor.execute(
+        """
+        SELECT TOP 1 format
+        FROM dbo.account
+        WHERE person_id = ?
+          AND format IS NOT NULL
+          AND LTRIM(RTRIM(format)) <> N''
+        ORDER BY account_id
+        """,
+        (person_id,),
+    )
+    row = cursor.fetchone()
+    return str(row[0] or "") if row else ""
+
+
+def consent_ready_people(center: str) -> list[str]:
+    """Usernames in ``center`` whose bank consent is active in SQL.
+
+    Mirrors ``person_consent_ready`` (session present, ``valid_until`` in the
+    future, at least one account) so the client can recover readiness after a
+    hub restart wiped the in-memory callback markers.
+    """
+    cursor = _cursor()
+    if cursor is None:
+        return []
+    name = str(center or "").strip()
+    if not name:
+        return []
+    cursor.execute(
+        """
+        SELECT p.username
+        FROM dbo.person p
+        INNER JOIN dbo.center n ON n.center_id = p.center_id
+        WHERE n.username = ? COLLATE Latin1_General_CI_AI
+          AND EXISTS (
+              SELECT TOP 1 1
+              FROM dbo.enable_connection ec
+              WHERE ec.person_id = p.id
+                AND ec.session_id IS NOT NULL
+                AND LTRIM(RTRIM(ec.session_id)) <> N''
+                AND ec.valid_until >= GETUTCDATE()
+          )
+          AND EXISTS (
+              SELECT TOP 1 1
+              FROM dbo.account a
+              WHERE a.person_id = p.id
+          )
+        ORDER BY p.username
+        """,
+        (name,),
+    )
+    return [str(row[0]) for row in cursor.fetchall() if row[0]]
+
+
+_PENDING_TTL_MINUTES = 30
+
+
+def _prune_consent_pending_rows(cursor) -> None:
+    cursor.execute(
+        """
+        DELETE FROM dbo.consent_pending
+        WHERE created_at < DATEADD(minute, ?, GETUTCDATE())
+        """,
+        (-_PENDING_TTL_MINUTES,),
+    )
+
+
+def upsert_consent_pending(state: str, *, center: str, person_name: str) -> None:
+    """Persist the ``state -> person_name`` mapping across hub restarts.
+
+    Best-effort: callers also keep their in-memory copy. No-op when SQL is
+    not configured or the table is missing.
+    """
+    cursor = _cursor()
+    if cursor is None:
+        return
+    token = str(state or "").strip()
+    if not token:
+        return
+    try:
+        _prune_consent_pending_rows(cursor)
+        person = str(person_name or "").strip()
+        cursor.execute(
+            """
+            UPDATE dbo.consent_pending
+            SET center = ?, person_name = ?, created_at = GETUTCDATE()
+            WHERE state = ?
+            """,
+            (str(center or "").strip(), person, token),
+        )
+        if cursor.rowcount == 0:
+            cursor.execute(
+                """
+                INSERT INTO dbo.consent_pending (state, center, person_name, created_at)
+                VALUES (?, ?, ?, GETUTCDATE())
+                """,
+                (token, str(center or "").strip(), person),
+            )
+        cursor.connection.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def take_consent_pending(state: str) -> dict[str, Any] | None:
+    """Pop and return the persisted ``state`` row, or None."""
+    cursor = _cursor()
+    if cursor is None:
+        return None
+    token = str(state or "").strip()
+    if not token:
+        return None
+    try:
+        _prune_consent_pending_rows(cursor)
+        cursor.execute(
+            """
+            SELECT TOP 1 center, person_name
+            FROM dbo.consent_pending
+            WHERE state = ?
+            ORDER BY created_at DESC
+            """,
+            (token,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        cursor.execute("DELETE FROM dbo.consent_pending WHERE state = ?", (token,))
+        cursor.connection.commit()
+        return {
+            "center": str(row[0] or ""),
+            "person_name": str(row[1] or ""),
+        }
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def delete_consent_pending(state: str) -> None:
+    """Remove a persisted ``state`` row (no-op when SQL is not configured)."""
+    cursor = _cursor()
+    if cursor is None:
+        return
+    token = str(state or "").strip()
+    if not token:
+        return
+    try:
+        cursor.execute("DELETE FROM dbo.consent_pending WHERE state = ?", (token,))
+        cursor.connection.commit()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def upsert_person_accounts(username: str, accounts: list[dict[str, Any]]) -> list[dict[str, Any]]:

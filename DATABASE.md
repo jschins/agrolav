@@ -23,32 +23,25 @@ C:\Coding\agrolav\docker-compose.sqlserver.yml
 
 
 
-JSON under `workspaces/` is the source of truth until SQL Server is loaded.
-The folder layout is already the grain of the future schema:
+SQL Server (agrolav-sql) is the source of truth. The folder layout is gone:
+the schema mirrors the old grain directly:
 
 ```text
-workspaces/
-  nederland/
-    categories.json
-    dkg/
-      anton_schins/
-        secret/              # PEMs, personal_categories.json (stay files)
-        2026/
-          categorized_transactions.json
-          category_totals.json
-          downloaded_transactions.json
-          <Bank>/            # optional per-bank copies
-  uk/
-    categories.json
-    gph/
-      xavier_bosch/
-        …
-  users.db                   # SQLite logins (see SQLSERVER.md)
-  upload_acl.json            # IP / upload policy (stays a file)
+data/ (removed)             -> dir is gone; everything is SQL
+country                     -> dbo.country
+center                      -> dbo.center
+person                      -> dbo.person
+account                     -> dbo.account
+transaction                 -> dbo.transaction_<country>
+categories.json             -> dbo.table_header_term / dbo.type_rule / dbo.dim_category
+upload_acl.json             -> dbo.bank_modality / dbo.hub_ip
+secret/profile.json + consent.json -> dbo.enable_connection
+users.db                    -> removed (logins are dbo.country/center/person)
 ```
 
-Hub paths are `workspaces/{country}/{center}/{person}` with
-`categories.json` per country. See `MIGRATION_TO_SQLSERVER.md` phase A.
+Hub storage is SQL Server only. The two always-overwritten flat JSON scratch
+files — `downloaded_transactions.json` and `categorized_transactions.json` —
+live at the `AGROLAV_SQL_DISK` mount root (see `MIGRATION_TO_SQLSERVER.md`).
 
 ---
 
@@ -367,7 +360,10 @@ Not loaded into SQL Server:
 
 - `secret/*.pem`, `consent.json`
 - uploaded CSVs / xlsx
-- `downloaded_transactions.json` (optional later)
+- `downloaded_transactions.json` (optional later) — after a bank download the
+  hub also writes it inside the SQL Server container at
+  `/var/opt/mssql/backup/downloaded_transactions.json` (the host dir that is
+  mounted there is `AGROLAV_SQL_DISK`; see `docker-compose.sqlserver.yml`)
 - `upload_acl.json`, `upload.log`
 
 `categories.json` and `categorized_transactions.json` remain the JSON-store

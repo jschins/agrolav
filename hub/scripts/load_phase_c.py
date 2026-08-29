@@ -1,4 +1,4 @@
-"""Load workspaces JSON into SQL Server (Phase C). Hub writes stay on JSON."""
+"""Load on-disk JSON data into SQL Server (Phase C). Hub writes stay on JSON."""
 from __future__ import annotations
 
 import json

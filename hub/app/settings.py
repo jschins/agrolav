@@ -1,7 +1,7 @@
 """Admin app settings — no single-person AppSettings; people are discovered."""
 from __future__ import annotations
 
-from app.paths import PersonPack, configure as configure_paths
+from app.runtime import PersonPack, configure as configure_paths
 from app.people import list_people
 
 _people: list[PersonPack] | None = None

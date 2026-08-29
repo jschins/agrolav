@@ -1,6 +1,6 @@
 """SQL Server catalog: countries, centers, people, years, categories.
 
-Used when workspace folders are absent. Bookings stay in ``sql_replica``.
+Used when on-disk center folders are absent. Bookings stay in ``sql_replica``.
 """
 from __future__ import annotations
 

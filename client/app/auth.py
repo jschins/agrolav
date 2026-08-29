@@ -86,7 +86,7 @@ def authenticate(
 def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
     person = str(user.get("person") or "").strip()
     country = str(user.get("country") or "").strip()
-    center = str(user.get("center") or user.get("workspace") or "").strip()
+    center = str(user.get("center") or "").strip()
     username = str(user.get("username") or "").strip()
     raw_access = str(user.get("access") or "").strip().lower()
     if raw_access in (ACCESS_PERSON, ACCESS_CENTER, ACCESS_COUNTRY):
@@ -95,8 +95,6 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
         access = deduce_access(person=person, center=center, country=country)
 
     centers_raw = user.get("centers")
-    if not isinstance(centers_raw, list):
-        centers_raw = user.get("workspaces")
     if isinstance(centers_raw, list):
         centers = [str(w).strip() for w in centers_raw if str(w).strip()]
     else:

@@ -1,4 +1,4 @@
-"""Admin helpers for the hub SQLite user store."""
+"""Admin helpers for the hub SQL Server user store (dbo.country / dbo.center / dbo.person)."""
 from __future__ import annotations
 
 import argparse
@@ -14,7 +14,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Hub user store admin")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("list", help="list users in users.db")
+    sub.add_parser("list", help="list users (SQL Server dbo.country / dbo.center / dbo.person)")
 
     args = parser.parse_args()
     from app import user_store

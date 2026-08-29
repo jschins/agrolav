@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from app import store
-from app.paths import CALC_LOCK
-from app.yearpath import current_year, ensure_year_folder, has_person_layout, parse_year
+from app.runtime import CALC_LOCK
+from app.yearpath import current_year
 
 
 def _clean_ws(center: str) -> str:
@@ -43,28 +43,19 @@ def _center_scope(center: str) -> Iterator[str]:
 def _has_secrets(center: str) -> bool:
     from app.enable_sql import center_has_pem
 
-    if center_has_pem(center):
-        return True
-    root = store.center_dir(center)
-    if not root.is_dir():
-        return False
-    for child in root.iterdir():
-        if child.is_dir() and (child / "secret").is_dir() and has_person_layout(child):
-            if any((child / "secret").glob("*.pem")):
-                return True
-    return False
+    return center_has_pem(center)
 
 
 def _people_payload(people: list[Any]) -> list[dict[str, str]]:
-    return [{"short": p.short, "folder": p.folder_name} for p in people]
+    return [{"person_name": p.person_name} for p in people]
 
 
-def _with_person(rows: list[dict[str, Any]], short: str) -> list[dict[str, Any]]:
-    """Stamp each row with the bound person short (API identity; not written to disk)."""
+def _with_person(rows: list[dict[str, Any]], person_name: str) -> list[dict[str, Any]]:
+    """Stamp each row with the bound person name (API identity; not written to disk)."""
     out: list[dict[str, Any]] = []
     for row in rows:
         item = dict(row)
-        item["person"] = short
+        item["person"] = person_name
         out.append(item)
     return out
 
@@ -98,16 +89,16 @@ def matrix(center: str, *, year: str | None = None, bank: str | None = None) -> 
         return payload
 
 
-def person_banks(center: str, short: str, *, year: str | None = None) -> dict[str, Any]:
+def person_banks(center: str, person_name: str, *, year: str | None = None) -> dict[str, Any]:
     with _center_scope(center) as ws:
         from app.core.bank_csv import _optional_text, person_bank_folder_options
         from app.people import get_person
 
-        person_name = short.strip()
+        person_name = person_name.strip()
         year_name = _optional_text(year) or current_year()
         try:
-            pack = get_person(short, year=year_name)
-            person_name = pack.folder_name
+            pack = get_person(person_name, year=year_name)
+            person_name = pack.person_name
             year_name = pack.year
             folder = pack.folder
         except KeyError:
@@ -116,26 +107,38 @@ def person_banks(center: str, short: str, *, year: str | None = None) -> dict[st
             folder, year_name, person=person_name, center=ws
         )
         token = ""
+        first_download = False
+        needs_initial_authorization = False
         try:
-            from app import user_store
+            from app import enable_sql, user_store
 
             token = user_store.upload_token_by_person_center().get(
                 (person_name, ws), ""
             ) or ""
+            if user_store.database_url() and person_name:
+                has_credentials = enable_sql.person_has_pem_light(person_name)
+                consent_active = enable_sql.person_consent_ready(person_name) is True
+                has_downloads = enable_sql.person_has_transactions(person_name)
+                first_download = bool(consent_active) and not has_downloads
+                needs_initial_authorization = (
+                    bool(has_credentials) and not consent_active and not has_downloads
+                )
         except Exception:  # noqa: BLE001
-            token = ""
+            token = token or ""
         return {
             "center": ws,
             "person": person_name,
             "year": year_name,
             "upload_token": token,
+            "first_download": first_download,
+            "needs_initial_authorization": needs_initial_authorization,
             **opts,
         }
 
 
 def transactions(
     center: str,
-    short: str,
+    person_name: str,
     category_name: str,
     *,
     year: str | None = None,
@@ -152,10 +155,10 @@ def transactions(
             transaction_display_column_keys as column_keys,
             transactions_for_category as load_transactions,
         )
-        from app.paths import bind_person
+        from app.runtime import bind_person
         from app.people import get_person
 
-        pack = get_person(short, year=_optional_text(year) or None)
+        pack = get_person(person_name, year=_optional_text(year) or None)
         pack = pack_for_bank_view(pack, bank, center=ws)
         with bind_person(pack):
             rows = load_transactions(category_name)
@@ -164,11 +167,10 @@ def transactions(
             header_terms = cat_data.get("table_header_terms") if isinstance(cat_data, dict) else {}
             return {
                 "center": ws,
-                "person": pack.short,
-                "folder": pack.folder_name,
+                "person": pack.person_name,
                 "category": category_name,
                 "columns": column_keys(rows),
-                "transactions": _with_person(rows, pack.short),
+                "transactions": _with_person(rows, pack.person_name),
                 "keywords": terms_for_category(category_name),
                 "description_modified_ids": description_modified_ids,
                 "category_modified_ids": category_modified_ids,
@@ -183,17 +185,17 @@ def transactions(
 
 def record_modification(
     center: str,
-    short: str,
+    person_name: str,
     transaction: dict[str, Any],
     *,
     source: str = "local",
 ) -> dict[str, Any]:
     with _center_scope(center) as ws:
         from app.core.categorize import record_modification as _record
-        from app.paths import bind_person
+        from app.runtime import bind_person
         from app.people import get_person
 
-        pack = get_person(short)
+        pack = get_person(person_name)
         with bind_person(pack):
             modified = _record(transaction)
         from app import user_store
@@ -203,16 +205,15 @@ def record_modification(
 
             modified_out = dict(modified) if isinstance(modified, dict) else modified
             if isinstance(modified_out, dict):
-                modified_out["person"] = pack.short
+                modified_out["person"] = pack.person_name
             return {
                 "center": ws,
-                "person": pack.short,
-                "folder": pack.folder_name,
+                "person": pack.person_name,
                 "transaction": modified_out,
                 "affected_files": [],
                 "matrix": build_matrix(year=pack.year),
             }
-        rel = store.person_year_rel(pack.folder_name, store.CATEGORIZED, year=pack.year)
+        rel = store.person_year_rel(pack.person_name, store.CATEGORIZED, year=pack.year)
         path = store.resolve_file_path(ws, rel)
         content = json.loads(path.read_text(encoding="utf-8"))
         store.put_file(
@@ -224,7 +225,7 @@ def record_modification(
             skip_event=True,
         )
         totals_rel = store.person_year_rel(
-            pack.folder_name, store.CATEGORY_TOTALS, year=pack.year
+            pack.person_name, store.CATEGORY_TOTALS, year=pack.year
         )
         totals_path = store.resolve_file_path(ws, totals_rel)
         inputs = [rel]
@@ -241,11 +242,10 @@ def record_modification(
         result = store.mutate_and_publish(ws, inputs, source=source, announce=False)
         modified_out = dict(modified) if isinstance(modified, dict) else modified
         if isinstance(modified_out, dict):
-            modified_out["person"] = pack.short
+            modified_out["person"] = pack.person_name
         return {
             "center": ws,
-            "person": pack.short,
-            "folder": pack.folder_name,
+            "person": pack.person_name,
             "transaction": modified_out,
             "affected_files": result.get("affected_files") or [],
             "matrix": result.get("matrix"),
@@ -254,7 +254,7 @@ def record_modification(
 
 def transaction_split(
     center: str,
-    short: str,
+    person_name: str,
     *,
     source_id: str,
     year: str | None = None,
@@ -263,17 +263,16 @@ def transaction_split(
     with _center_scope(center) as ws:
         from app.core.bank_csv import _optional_text, pack_for_bank_view
         from app.core.categorize import load_transaction_split
-        from app.paths import bind_person
+        from app.runtime import bind_person
         from app.people import get_person
 
-        pack = get_person(short, year=_optional_text(year) or None)
+        pack = get_person(person_name, year=_optional_text(year) or None)
         pack = pack_for_bank_view(pack, bank, center=ws)
         with bind_person(pack):
             payload = load_transaction_split(source_id)
         return {
             "center": ws,
-            "person": pack.short,
-            "folder": pack.folder_name,
+            "person": pack.person_name,
             "year": pack.year,
             **payload,
         }
@@ -281,7 +280,7 @@ def transaction_split(
 
 def save_transaction_split(
     center: str,
-    short: str,
+    person_name: str,
     *,
     source_id: str,
     description: str,
@@ -292,17 +291,16 @@ def save_transaction_split(
     with _center_scope(center) as ws:
         from app.core.bank_csv import _optional_text, pack_for_bank_view
         from app.core.categorize import save_transaction_split as _save
-        from app.paths import bind_person
+        from app.runtime import bind_person
         from app.people import get_person
 
-        pack = get_person(short, year=_optional_text(year) or None)
+        pack = get_person(person_name, year=_optional_text(year) or None)
         pack = pack_for_bank_view(pack, bank, center=ws)
         with bind_person(pack):
             payload = _save(source_id, description=description, lines=lines)
         return {
             "center": ws,
-            "person": pack.short,
-            "folder": pack.folder_name,
+            "person": pack.person_name,
             "year": pack.year,
             **payload,
         }
@@ -319,7 +317,7 @@ def settings(center: str) -> dict[str, Any]:
             type_rules_payload,
         )
         from app.matrix import category_names, load_general_file, table_header_terms
-        from app.paths import bind_person
+        from app.runtime import bind_person
         from app.settings import get_people
 
         if user_store.database_url():
@@ -335,7 +333,7 @@ def settings(center: str) -> dict[str, Any]:
         remainder = ""
         for pack in people_list:
             with bind_person(pack):
-                personal[pack.short] = _personal_category_map()
+                personal[pack.person_name] = _personal_category_map()
                 if not typerules:
                     typerules = type_rules_payload()
                 if not codes:
@@ -394,7 +392,7 @@ def update_settings(
     )
     from app.matrix import build_matrix, save_general_terms, save_personal_terms
     from app.people import get_person
-    from app.paths import bind_person
+    from app.runtime import bind_person
 
     sql = bool(user_store.database_url())
     with _center_scope(center) as ws:
@@ -404,15 +402,14 @@ def update_settings(
             rel = store.SHARED_CATEGORIES
             content: Any = None if sql else _categories_file()
             recalc_all = True
-            pack_short = "general"
-            pack_folder = None
+            group_name = "general"
             personal = False
         else:
             pack = get_person(group)
             with bind_person(pack):
                 old_terms = list(_personal_category_map().get(category_name, []) or [])
-            cleaned = save_personal_terms(pack.short, category_name, terms)
-            rel = store.person_secret_rel(pack.folder_name, store.PERSONAL_CATEGORIES)
+            cleaned = save_personal_terms(pack.person_name, category_name, terms)
+            rel = store.person_secret_rel(pack.person_name, store.PERSONAL_CATEGORIES)
             content = None
             if not sql:
                 path = store.resolve_file_path(ws, rel)
@@ -421,8 +418,7 @@ def update_settings(
                 else:
                     content = {}
             recalc_all = False
-            pack_short = pack.short
-            pack_folder = pack.folder_name
+            group_name = pack.person_name
             personal = True
 
     added, removed = term_list_diff(old_terms, cleaned)
@@ -452,8 +448,7 @@ def update_settings(
         matrix = result.get("matrix") or {**build_matrix(), "center": ws}
     return {
         "center": ws,
-        "group": pack_short,
-        "folder": pack_folder,
+        "group": group_name,
         "category": category_name,
         "terms": cleaned,
         "matrix": matrix,
@@ -484,7 +479,7 @@ def add_term(
             load_general_file,
             sync_general_categories,
         )
-        from app.paths import bind_person
+        from app.runtime import bind_person
         from app.people import get_person
         from app.settings import get_people
 
@@ -500,7 +495,7 @@ def add_term(
                     category_name,
                     term,
                     group="general",
-                    person=pack.short,
+                    person=pack.person_name,
                 )
                 after_terms = list(
                     _category_map(_categories_file()).get(category_name, []) or []
@@ -532,7 +527,6 @@ def add_term(
             return {
                 "center": ws,
                 "group": "general",
-                "folder": None,
                 "category": category_name,
                 "term": term,
                 "terms": terms,
@@ -540,21 +534,21 @@ def add_term(
                 "affected_files": result.get("affected_files") or [],
             }
 
-        short = (person or "").strip()
-        if not short:
+        person_name = (person or "").strip()
+        if not person_name:
             raise ValueError("person is required when general=false")
-        pack = get_person(short)
+        pack = get_person(person_name)
         with bind_person(pack):
             old_terms = list(_personal_category_map().get(category_name, []) or [])
             terms = append_category_term(
                 category_name,
                 term,
-                group=pack.short,
-                person=pack.short,
+                group=pack.person_name,
+                person=pack.person_name,
             )
             after_terms = list(_personal_category_map().get(category_name, []) or [])
         added, removed = term_list_diff(old_terms, after_terms)
-        rel = store.person_secret_rel(pack.folder_name, store.PERSONAL_CATEGORIES)
+        rel = store.person_secret_rel(pack.person_name, store.PERSONAL_CATEGORIES)
         if not sql:
             path = store.resolve_file_path(ws, rel)
             content = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
@@ -572,79 +566,13 @@ def add_term(
             result = {"affected_files": [rel], "matrix": None}
         return {
             "center": ws,
-            "group": pack.short,
-            "folder": pack.folder_name,
+            "group": pack.person_name,
             "category": category_name,
             "term": term,
             "terms": terms,
             "matrix": result.get("matrix") or {**build_matrix(), "center": ws},
             "affected_files": result.get("affected_files") or [],
         }
-
-
-def _ingest_person_data_files(
-    ws: str, *, folder_names: list[str] | None = None, year: str | None = None
-) -> list[str]:
-    """Load on-disk person year JSON into the store; return relative paths."""
-    from app import user_store
-
-    if user_store.database_url():
-        return []
-    inputs: list[str] = []
-    root = store.center_dir(ws)
-    wanted = {name for name in folder_names} if folder_names is not None else None
-    y = parse_year(year)
-    for child in root.iterdir():
-        if not child.is_dir() or not has_person_layout(child):
-            continue
-        if wanted is not None and child.name not in wanted:
-            continue
-        for name in (store.DOWNLOADED, store.CATEGORIZED, store.CATEGORY_TOTALS):
-            path = child / y / name
-            if not path.is_file():
-                continue
-            try:
-                content = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            rel = store.person_year_rel(child.name, name, year=y)
-            inputs.append(rel)
-            store.put_file(
-                ws,
-                rel,
-                content,
-                source="central",
-                skip_recalc=True,
-                skip_event=True,
-            )
-    return inputs
-
-
-def _ensure_people_year(
-    ws: str, *, folder_names: list[str] | None = None, year: str | None = None
-) -> None:
-    """Seed missing year folders for secret-folder people in ``ws`` (write path).
-
-    Excel-only people get a new year folder only when an upload's first sheet
-    entry lands in a year that does not exist yet — never during refresh/import.
-    """
-    from app import user_store
-    from app.paths import shared_categories_path
-
-    if user_store.database_url():
-        return
-    y = parse_year(year)
-    cats = shared_categories_path()
-    root = store.center_dir(ws)
-    wanted = {name for name in folder_names} if folder_names is not None else None
-    for child in root.iterdir():
-        if not child.is_dir() or not has_person_layout(child):
-            continue
-        if wanted is not None and child.name not in wanted:
-            continue
-        if not (child / "secret").is_dir():
-            continue
-        ensure_year_folder(child, y, categories_path=cats)
 
 
 def refresh(
@@ -657,11 +585,9 @@ def refresh(
     from app.matrix import refresh_all
 
     with _center_scope(center) as ws:
-        _ensure_people_year(ws)
         result = refresh_all(date_from=date_from, date_to=date_to)
-        inputs = _ingest_person_data_files(ws)
 
-    mut = store.mutate_and_publish(ws, inputs, source="central")
+    mut = store.mutate_and_publish(ws, [], source="central")
     matrix_payload = mut.get("matrix") or result.get("matrix") or {}
     if isinstance(matrix_payload, dict):
         matrix_payload = {**matrix_payload, "center": ws}
@@ -678,7 +604,7 @@ def refresh(
 
 def refresh_person(
     center: str,
-    short: str,
+    person_name: str,
     *,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -689,21 +615,19 @@ def refresh_person(
     from app.people import get_person
 
     with _center_scope(center) as ws:
-        pack = get_person(short)
-        _ensure_people_year(ws, folder_names=[pack.folder_name], year=pack.year)
+        pack = get_person(person_name)
         result = matrix_refresh_person(
-            short,
+            person_name,
             date_from=date_from,
             date_to=date_to,
             new_year=new_year,
         )
-        inputs = _ingest_person_data_files(ws, folder_names=[pack.folder_name])
         from app import consent_flow
 
         # Person-only fetch completed (or re-skipped); drop the post-callback prompt.
-        consent_flow.clear_ready(center=ws, short=pack.short)
+        consent_flow.clear_ready(center=ws, person_name=pack.person_name)
 
-    mut = store.mutate_and_publish(ws, inputs, source="central")
+    mut = store.mutate_and_publish(ws, [], source="central")
     matrix_payload = mut.get("matrix") or result.get("matrix") or {}
     if isinstance(matrix_payload, dict):
         matrix_payload = {**matrix_payload, "center": ws}
@@ -716,51 +640,6 @@ def refresh_person(
         "warnings": list(result.get("warnings") or []),
     }
 
-
-
-# Personal logins: password from user_store.password_for_username.
-
-
-def ensure_personal_login_user(*, center: str, person: str) -> dict[str, Any]:
-    """Upsert a personal login (username=person) in users.db."""
-    from app import user_store
-
-    ws = _clean_ws(center)
-    person_name = _valid_person_name(person)
-    user_store.init_user_store()
-    from app.runtime import active_country
-
-    public = user_store.upsert_personal_login(
-        center=ws,
-        person=person_name,
-        country=active_country() or "",
-    )
-    return {
-        "username": public["username"],
-        "password": user_store.password_for_username(public["username"]),
-        "center": ws,
-        "person": person_name,
-        "users_db": user_store.store_label(),
-    }
-
-
-def _pem_profile_template(
-    *,
-    person: str,
-    country: str,
-    aspsp: str,
-    app_id: str = "",
-) -> dict[str, Any]:
-    """Canonical profile shape: ``person`` + ``connections[]`` only (see anton_schins)."""
-    conn: dict[str, Any] = {
-        "aspsp": aspsp,
-        "country": country,
-        "accounts": [],
-    }
-    app_id = str(app_id or "").strip()
-    if app_id:
-        conn = {"app_id": app_id, **conn}
-    return {"person": person, "connections": [conn]}
 
 
 def _set_profile_app_id(profile: dict[str, Any], app_id: str) -> dict[str, Any]:
@@ -820,11 +699,7 @@ def create_person(
     initial_balance: str | None = None,
     account_number: str | None = None,
 ) -> dict[str, Any]:
-    """Create a person in the configured database or legacy filesystem store."""
-    from app.people import list_people
-    from app.settings import refresh_people
-    from app.yearpath import CATEGORY_TOTALS_FILENAME
-
+    """Create a person in SQL Server (agrolav-sql)."""
     person_name = _valid_person_name(person)
     mode_s = (mode or "pem").strip().lower()
     if mode_s not in {"pem", "excel"}:
@@ -855,9 +730,7 @@ def create_person(
                 login = user_store.upsert_personal_login(
                     center=ws, person=person_name, country=country_name
                 )
-                user_store.set_user_format(
-                    username=person_name, format=user_store.FORMAT_SECRET
-                )
+                user_store.set_user_format(username=person_name, format=aspsp_s)
                 return {
                     "ok": True,
                     "center": ws,
@@ -866,99 +739,20 @@ def create_person(
                     "login": login,
                     "enable_banking_url": "https://enablebanking.com/cp/applications",
                 }
+            if mode_s == "excel":
+                raise ValueError(
+                    "Excel mode is not supported on SQL Server (agrolav-sql) yet — "
+                    "create the person with pem mode instead."
+                )
 
-        root = store.center_dir(ws)
-        target = root / person_name
-        if target.exists():
-            raise ValueError(f"Person already exists: {person_name}")
-        for pack in list_people(root):
-            if pack.folder_name.lower() == person_name.lower():
-                raise ValueError(f"Person already exists: {person_name}")
-
-        from app.paths import shared_categories_path
-
-        ensure_year_folder(
-            target,
-            current_year(),
-            categories_path=shared_categories_path(),
-            include_downloaded=mode_s != "excel",
+        raise RuntimeError(
+            "SQL Server (agrolav-sql) is required — person creation is only supported via SQL."
         )
-        if mode_s == "excel":
-            # Excel mode: no secret folder; keep zeroed categories and seed opening balance.
-            amount_text = str(initial_balance or "0").strip().replace(",", ".")
-            try:
-                amount = float(amount_text)
-            except ValueError as exc:
-                raise ValueError(f"invalid initial_balance: {initial_balance!r}") from exc
-            totals_path = target / current_year() / CATEGORY_TOTALS_FILENAME
-            totals = json.loads(totals_path.read_text(encoding="utf-8"))
-            if not isinstance(totals, dict):
-                totals = {}
-            balances = totals.get("account_balances")
-            if not isinstance(balances, list) or not balances:
-                balances = [
-                    {
-                        "iban": "onbekend",
-                        "name": holder or "onbekend",
-                        "currency": "EUR",
-                        "balance": "0.00",
-                        "files": [],
-                    }
-                ]
-            first = balances[0] if isinstance(balances[0], dict) else {}
-            if not isinstance(first, dict):
-                first = {}
-            first["iban"] = account_no or "onbekend"
-            first["name"] = holder
-            first["balance"] = f"{amount:.2f}"
-            balances[0] = first
-            totals["account_balances"] = balances
-            totals_path.write_text(json.dumps(totals, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            refresh_people()
-            login = ensure_personal_login_user(center=ws, person=person_name)
-            return {
-                "ok": True,
-                "center": ws,
-                "person": person_name,
-                "mode": "excel",
-                "account_holder": holder,
-                "account_number": account_no or "onbekend",
-                "initial_balance": f"{amount:.2f}",
-                "login": login,
-            }
-
-        secret_dir = target / "secret"
-        secret_dir.mkdir(parents=True, exist_ok=False)
-        (secret_dir / store.PERSONAL_CATEGORIES).write_text("{}\n", encoding="utf-8")
-        profile = _pem_profile_template(
-            person=person_name,
-            country=country_s,
-            aspsp=aspsp_s,
-        )
-        (secret_dir / "profile.json").write_text(
-            json.dumps(profile, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        refresh_people()
-        login = ensure_personal_login_user(center=ws, person=person_name)
-        from app import user_store
-
-        user_store.set_user_format(username=person_name, format=user_store.FORMAT_SECRET)
-
-    return {
-        "ok": True,
-        "center": ws,
-        "person": person_name,
-        "mode": "pem",
-        "profile": profile,
-        "login": login,
-        "enable_banking_url": "https://enablebanking.com/cp/applications",
-    }
 
 
 def upload_person_pem(
     center: str,
-    short: str,
+    person_name: str,
     *,
     filename: str,
     content: bytes,
@@ -970,7 +764,7 @@ def upload_person_pem(
     from app.people import get_person
     from app.settings import refresh_people
 
-    person = _valid_person_name(short)
+    person = _valid_person_name(person_name)
     name = Path(filename).name
     if not name.lower().endswith(".pem"):
         raise ValueError("PEM upload must be a .pem file")
@@ -985,28 +779,45 @@ def upload_person_pem(
         pem_text = content.decode("ascii")
 
     with _center_scope(center) as ws:
+        from app import user_store
+
         pack = get_person(person)
         stored = enable_sql.upsert_person_pem(person, app_id=stem, pem=pem_text)
-        secret = pack.secret_dir
-        secret.mkdir(parents=True, exist_ok=True)
-        for old in secret.glob("*.pem"):
-            old.unlink(missing_ok=True)
+        if not user_store.database_url():
+            secret = pack.secret_dir
+            secret.mkdir(parents=True, exist_ok=True)
+            for old in secret.glob("*.pem"):
+                old.unlink(missing_ok=True)
 
-        profile_path = pack.profile_path
-        if not profile_path.is_file():
-            profile_path = secret / "profile.json"
-        if profile_path.is_file():
-            profile = json.loads(profile_path.read_text(encoding="utf-8"))
-            if not isinstance(profile, dict):
+            profile_path = pack.profile_path
+            if not profile_path.is_file():
+                profile_path = secret / "profile.json"
+            if profile_path.is_file():
+                profile = json.loads(profile_path.read_text(encoding="utf-8"))
+                if not isinstance(profile, dict):
+                    profile = {}
+            else:
                 profile = {}
+            profile["person"] = person
+            profile = _set_profile_app_id(profile, stem)
+            profile_path.write_text(
+                json.dumps(profile, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
         else:
-            profile = {}
-        profile["person"] = person
-        profile = _set_profile_app_id(profile, stem)
-        profile_path.write_text(
-            json.dumps(profile, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+            from app.core.single_client import _db_aspsp_default, _db_country_iso
+
+            profile = {
+                "person": person,
+                "connections": [
+                    {
+                        "app_id": stem,
+                        "aspsp": _db_aspsp_default(),
+                        "country": _db_country_iso(),
+                        "accounts": [],
+                    }
+                ],
+            }
         refresh_people()
 
     return {
@@ -1022,7 +833,7 @@ def upload_person_pem(
 
 def bootstrap_person_fetch(
     center: str,
-    short: str,
+    person_name: str,
     *,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -1035,7 +846,7 @@ def bootstrap_person_fetch(
     end = date_to or today.isoformat()
     return refresh_person(
         center,
-        short,
+        person_name,
         date_from=start,
         date_to=end,
         new_year=True,

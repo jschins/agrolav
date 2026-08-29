@@ -19,7 +19,7 @@ def parse_centers(raw: str | None) -> list[str]:
 
 
 def deduce_access(*, person: str, center: str = "", country: str = "") -> str:
-    """Access follows the users.db assignment fields (empty string = NULL).
+    """Access follows the SQL login assignment fields (empty string = NULL).
 
     - person set → personal
     - person empty, center set → local (that center)
@@ -39,14 +39,10 @@ def enrich_user_record(user: dict[str, Any]) -> dict[str, Any]:
     """Add derived ``access`` and parsed ``centers`` list to a user dict.
 
     ``center`` / ``centers`` are the API names for the center folder(s).
-    ``workspace`` is accepted as a legacy key when ``center`` is empty.
     There is no all-countries login.
     """
     person = str(user.get("person") or "").strip()
-    raw_center = user.get("center")
-    if raw_center is None or str(raw_center).strip() == "":
-        raw_center = user.get("workspace")
-    center = "" if raw_center is None else str(raw_center).strip()
+    center = str(user.get("center") or "").strip()
     country = str(user.get("country") or "").strip()
     centers = parse_centers(center)
     access = deduce_access(person=person, center=center, country=country)

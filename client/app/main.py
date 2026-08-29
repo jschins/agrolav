@@ -450,11 +450,11 @@ def api_years() -> dict[str, Any]:
         for person in people:
             if not isinstance(person, dict):
                 continue
-            short = str(person.get("short") or "").strip()
-            if not short:
+            person_name = str(person.get("person_name") or "").strip()
+            if not person_name:
                 continue
             try:
-                per = hub_get(f"/people/{urllib.parse.quote(short)}/years")
+                per = hub_get(f"/people/{urllib.parse.quote(person_name)}/years")
                 vals = per.get("years") if isinstance(per, dict) else None
                 if isinstance(vals, list):
                     years.update(str(v) for v in vals if str(v).strip())
@@ -573,16 +573,16 @@ def api_refresh(body: RefreshRequest | None = None) -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
-@app.post("/api/refresh/{short}")
-def api_refresh_person(short: str, body: PersonRefreshRequest | None = None) -> dict[str, Any]:
+@app.post("/api/refresh/{person_name}")
+def api_refresh_person(person_name: str, body: PersonRefreshRequest | None = None) -> dict[str, Any]:
     from app.centrale_sync import hub_post, require_person, scope_refresh
     import urllib.parse
 
     req = body or PersonRefreshRequest()
     try:
-        require_person(short)
+        require_person(person_name)
         result = hub_post(
-            f"/refresh/{urllib.parse.quote(short)}",
+            f"/refresh/{urllib.parse.quote(person_name)}",
             {
                 "date_from": req.date_from,
                 "date_to": req.date_to,
@@ -597,9 +597,9 @@ def api_refresh_person(short: str, body: PersonRefreshRequest | None = None) -> 
         raise _hub_error(exc) from exc
 
 
-@app.get("/api/transactions/{short}/{category_name}")
+@app.get("/api/transactions/{person_name}/{category_name}")
 def api_transactions(
-    short: str,
+    person_name: str,
     category_name: str,
     year: str | None = Query(default=None),
     bank: str | None = Query(default=None),
@@ -609,7 +609,7 @@ def api_transactions(
     import urllib.parse
 
     try:
-        require_person(short)
+        require_person(person_name)
         cfg = load_config()
         personal = cfg.access == ACCESS_PERSON
         params: list[str] = []
@@ -618,7 +618,7 @@ def api_transactions(
         if personal and bank:
             params.append(f"bank={urllib.parse.quote(bank)}")
         suffix = (
-            f"/transactions/{urllib.parse.quote(short)}/"
+            f"/transactions/{urllib.parse.quote(person_name)}/"
             f"{urllib.parse.quote(category_name)}"
         )
         if params:
@@ -630,15 +630,15 @@ def api_transactions(
         raise _hub_error(exc) from exc
 
 
-@app.put("/api/transactions/{short}/modification")
-def api_modification(short: str, body: ModificationRequest) -> dict[str, Any]:
+@app.put("/api/transactions/{person_name}/modification")
+def api_modification(person_name: str, body: ModificationRequest) -> dict[str, Any]:
     from app.centrale_sync import hub_put, require_person, scope_matrix
     import urllib.parse
 
     try:
-        require_person(short)
+        require_person(person_name)
         result = hub_put(
-            f"/transactions/{urllib.parse.quote(short)}/modification",
+            f"/transactions/{urllib.parse.quote(person_name)}/modification",
             {"transaction": body.transaction, "source": _source()},
         )
         if isinstance(result, dict) and isinstance(result.get("matrix"), dict):
@@ -650,9 +650,9 @@ def api_modification(short: str, body: ModificationRequest) -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
-@app.get("/api/split/{short}")
+@app.get("/api/split/{person_name}")
 def api_transaction_split_get(
-    short: str,
+    person_name: str,
     id: str,
     year: str | None = Query(default=None),
     bank: str | None = Query(default=None),
@@ -661,14 +661,14 @@ def api_transaction_split_get(
     import urllib.parse
 
     try:
-        require_person(short)
+        require_person(person_name)
         params: list[str] = [f"id={urllib.parse.quote(id)}"]
         if year:
             params.append(f"year={urllib.parse.quote(year)}")
         if bank:
             params.append(f"bank={urllib.parse.quote(bank)}")
         return hub_get(
-            f"/people/{urllib.parse.quote(short)}/split?{'&'.join(params)}"
+            f"/people/{urllib.parse.quote(person_name)}/split?{'&'.join(params)}"
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -676,15 +676,15 @@ def api_transaction_split_get(
         raise _hub_error(exc) from exc
 
 
-@app.put("/api/split/{short}")
-def api_transaction_split_save(short: str, body: TransactionSplitSave) -> dict[str, Any]:
+@app.put("/api/split/{person_name}")
+def api_transaction_split_save(person_name: str, body: TransactionSplitSave) -> dict[str, Any]:
     from app.centrale_sync import hub_put, require_person
     import urllib.parse
 
     try:
-        require_person(short)
+        require_person(person_name)
         return hub_put(
-            f"/people/{urllib.parse.quote(short)}/split",
+            f"/people/{urllib.parse.quote(person_name)}/split",
             {
                 "id": body.id,
                 "description": body.description,
@@ -721,7 +721,7 @@ def api_update_settings(
     import urllib.parse
 
     try:
-        # Personal term groups are named by person short; general/shared stay open.
+        # Personal term groups are named by person name; general/shared stay open.
         if group not in ("general", "shared", "categories") and not person_allowed(group):
             require_person(group)
         result = hub_put(

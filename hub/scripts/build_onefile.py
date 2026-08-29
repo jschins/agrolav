@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""PyInstaller onefile build → ``server/workspaces/server.exe``.
+"""PyInstaller onefile build → ``server/server.exe``.
 
-Run the hub from ``workspaces/`` so ``data_root`` is the folder next to the exe
-(dkg/, jl/, categories.json, …).
+The hub keeps no data folder: all data lives in SQL Server (agrolav-sql).
+The only on-disk files are the two flat, always-overwritten JSON scratch
+files ``downloaded_transactions.json`` and ``categorized_transactions.json``
+on the ``AGROLAV_SQL_DISK`` mount (or the process cwd when unset).
 """
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ ROOT = PROJECT.parent
 SHARED_ROOT = ROOT / "shared"
 ENTRY = PROJECT / "entry.py"
 NAME = "server"
-DEPLOY = ROOT / "workspaces"
+DEPLOY = ROOT
 STAGE_DIST = PROJECT / "build" / "dist"
 
 
@@ -135,7 +137,7 @@ def main() -> int:
         ) from exc
 
     print(f"Built: {target}")
-    print("Run from server/workspaces/ (data_root = that folder).")
+    print("Run the hub exe from anywhere; SQL Server is the store (AGROLAV_SQL_DISK holds the two flat JSON scratch files).")
     return 0
 
 

@@ -1,6 +1,6 @@
 """Load Barry O'Grady (AIB / Ireland) from the single-docker dist pack.
 
-Does not create workspace folders. Does not DROP DATABASE. Re-runnable: wipes
+Does not create on-disk center folders. Does not DROP DATABASE. Re-runnable: wipes
 only this person, then inserts again. Ireland catalog / center / txn table are
 created once.
 

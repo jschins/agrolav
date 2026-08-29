@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.excel_import import build_category_totals, category_name_map
-from app.paths import PersonPack
+from app.runtime import PersonPack
 from app.runtime import data_root
 
 CONSOLIDATED_VIEW = "consolidated"

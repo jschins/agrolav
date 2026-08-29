@@ -1,9 +1,8 @@
-"""Login users: SQL Server country / center / person when ``HUB_DATABASE_URL`` is set, else SQLite."""
+"""Login users come from SQL Server (agrolav-sql): ``dbo.person`` / ``dbo.center`` / ``dbo.country``."""
 from __future__ import annotations
 
 import os
 import re
-import sqlite3
 import threading
 import time
 from datetime import date, datetime, timezone
@@ -12,16 +11,11 @@ from typing import Any, Iterable
 
 from shared.user_access import ACCESS_COUNTRY, deduce_access, enrich_user_record, parse_centers
 
-from app.runtime import data_root
-
-USERS_DB_FILENAME = "users.db"
 _LOCK = threading.RLock()
-_SQLITE: sqlite3.Connection | None = None
 _SQL = None  # last pyodbc connection (readiness flag; do not share across threads)
 _SQL_TLS = threading.local()
 _WORKING_URL: str | None = None
 _STORE_READY = False
-_SQLITE_COPY_DONE = False
 
 FORMAT_SECRET = "secret"
 FORMAT_MULTIPLE = "multiple"
@@ -30,20 +24,6 @@ FORMAT_MULTIPLE = "multiple"
 DEFAULT_UPLOAD_TOKEN = (
     "scrypt$16384$8$1$DqM8xC0un6VYeM0i4FwKcQ$sUhw7V7Wfd4Rz0PB9RoWEHVIVcNpNId2GM5QIU-8_fQ"
 )
-
-_SQLITE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
-    title TEXT,
-    country TEXT,
-    center TEXT,
-    person TEXT,
-    format TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-"""
 
 _SQL_PERSON_SELECT = """
 SELECT
@@ -122,21 +102,8 @@ def database_url() -> str:
     return os.environ.get("HUB_DATABASE_URL", "").strip()
 
 
-def _use_sqlserver() -> bool:
-    return bool(database_url())
-
-
-def users_db_path() -> Path:
-    env = os.environ.get("HUB_USERS_DB", "").strip()
-    if env:
-        return Path(env).resolve()
-    return (data_root() / USERS_DB_FILENAME).resolve()
-
-
 def store_label() -> str:
-    if _use_sqlserver():
-        return "sqlserver:dbo.person"
-    return str(users_db_path())
+    return "sqlserver:dbo.person"
 
 
 PASSWORD_PREFIX = "!@#$%^&*()_"
@@ -235,8 +202,6 @@ def _cell(row: Any, key: str) -> Any:
 
 def _row_to_user(row: Any) -> dict[str, Any]:
     center_raw = _cell(row, "center")
-    if center_raw is None:
-        center_raw = _cell(row, "workspace")
     country_raw = _cell(row, "country")
     title_raw = _cell(row, "title")
     format_raw = _cell(row, "format")
@@ -372,18 +337,13 @@ def _open_sql_connection():
 
 def _sql_connect():
     """Return this thread's SQL Server connection."""
-    global _SQL, _SQLITE_COPY_DONE
+    global _SQL
     conn = getattr(_SQL_TLS, "conn", None)
     if conn is not None:
         return conn
     conn = _open_sql_connection()
     _SQL_TLS.conn = conn
     _SQL = conn
-    if not _SQLITE_COPY_DONE:
-        with _LOCK:
-            if not _SQLITE_COPY_DONE:
-                _copy_sqlite_into_sqlserver_if_empty()
-                _SQLITE_COPY_DONE = True
     return conn
 
 
@@ -468,201 +428,6 @@ def _sql_username_taken(cursor, username: str, *, except_person_id: int | None =
     return cursor.fetchone() is not None
 
 
-def _sqlite_open_readonly() -> sqlite3.Connection | None:
-    path = users_db_path()
-    if not path.is_file():
-        return None
-    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _copy_sqlite_into_sqlserver_if_empty() -> int:
-    cursor = _sql_connect().cursor()
-    cursor.execute("SELECT OBJECT_ID(N'dbo.person', N'U')")
-    if cursor.fetchone()[0] is None:
-        return 0
-    count = int(cursor.execute("SELECT COUNT(*) FROM dbo.person").fetchone()[0])
-    if count:
-        return 0
-    src = _sqlite_open_readonly()
-    if src is None:
-        return 0
-    try:
-        cols = {str(row[1]) for row in src.execute("PRAGMA table_info(users)")}
-        if not cols:
-            return 0
-        inserted = 0
-        for row in src.execute("SELECT * FROM users"):
-            keys = set(row.keys())
-            username = str(row["username"] or "").strip()
-            if not username:
-                continue
-            center = ""
-            if "center" in keys and row["center"] is not None:
-                center = str(row["center"])
-            elif "workspace" in keys and row["workspace"] is not None:
-                center = str(row["workspace"])
-            country = str(row["country"] or "") if "country" in keys else ""
-            person = str(row["person"] or "") if "person" in keys else ""
-            title = str(row["title"] or "") if "title" in keys else ""
-            created = as_date_only(str(row["created_at"] or "")) or _utc_today()
-            updated = as_date_only(str(row["updated_at"] or "")) or created
-            country_id = _sql_country_id(cursor, country or username)
-            if country_id is None:
-                continue
-            center_id = _sql_center_id(cursor, country_id, center) if center else None
-            if not person or center_id is None:
-                continue
-            cursor.execute(
-                """
-                INSERT INTO dbo.person
-                    (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 0, ?, ?)
-                """,
-                (
-                    username,
-                    title.strip() or username,
-                    country_id,
-                    center_id,
-                    created,
-                    updated,
-                ),
-            )
-            inserted += 1
-        _sql_connect().commit()
-        print(f"copied {inserted} person(s) from SQLite into dbo.person")
-        return inserted
-    finally:
-        src.close()
-
-
-def _sqlite_connect() -> sqlite3.Connection:
-    global _SQLITE
-    if _SQLITE is not None:
-        return _SQLITE
-    path = users_db_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.executescript(_SQLITE_SCHEMA)
-    _migrate_sqlite_schema(conn)
-    _import_users_csv(conn)
-    _strip_sqlite_timestamps(conn)
-    conn.commit()
-    _SQLITE = conn
-    return conn
-
-
-def _strip_sqlite_timestamps(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        """
-        UPDATE users
-        SET created_at = substr(created_at, 1, 10)
-        WHERE created_at IS NOT NULL AND length(created_at) > 10
-        """
-    )
-    conn.execute(
-        """
-        UPDATE users
-        SET updated_at = substr(updated_at, 1, 10)
-        WHERE updated_at IS NOT NULL AND length(updated_at) > 10
-        """
-    )
-
-
-def _sqlite_columns(conn: sqlite3.Connection) -> set[str]:
-    return {str(row[1]) for row in conn.execute("PRAGMA table_info(users)")}
-
-
-def _migrate_sqlite_schema(conn: sqlite3.Connection) -> None:
-    cols = _sqlite_columns(conn)
-    if not cols:
-        return
-    if "workspace" in cols and "center" not in cols:
-        conn.execute("ALTER TABLE users RENAME COLUMN workspace TO center")
-        cols = _sqlite_columns(conn)
-    if "center" not in cols:
-        conn.execute("ALTER TABLE users ADD COLUMN center TEXT")
-    if "country" not in cols:
-        conn.execute("ALTER TABLE users ADD COLUMN country TEXT")
-    conn.execute("DROP INDEX IF EXISTS idx_users_person_workspace")
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_users_person_center
-        ON users(person COLLATE NOCASE, center COLLATE NOCASE)
-        """
-    )
-
-
-def _csv_cell(row: dict[str, str], *keys: str) -> str:
-    for key in keys:
-        if key in row and row[key] is not None:
-            return str(row[key]).strip()
-    return ""
-
-
-def _import_users_csv(conn: sqlite3.Connection) -> None:
-    import csv
-
-    path = users_db_path().parent / "users.csv"
-    if not path.is_file():
-        return
-    today = _utc_today()
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for raw in reader:
-            name = _csv_cell(raw, "username")
-            if not name:
-                continue
-            country = _csv_cell(raw, "country") or None
-            center = _csv_cell(raw, "center", "workspace") or None
-            person = _csv_cell(raw, "person") or None
-            fmt = _csv_cell(raw, "format") or None
-            created = _csv_cell(raw, "created_at") or today
-            updated = _csv_cell(raw, "updated_at") or created
-            row = conn.execute(
-                "SELECT id FROM users WHERE username = ? COLLATE NOCASE",
-                (name,),
-            ).fetchone()
-            if row:
-                conn.execute(
-                    """
-                    UPDATE users
-                    SET country = ?, center = ?, person = ?, format = ?,
-                        created_at = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        country,
-                        center,
-                        person,
-                        fmt,
-                        created[:10],
-                        updated[:10],
-                        int(row["id"]),
-                    ),
-                )
-            else:
-                conn.execute(
-                    """
-                    INSERT INTO users
-                        (username, title, country, center, person, format, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        name,
-                        _csv_cell(raw, "title") or None,
-                        country,
-                        center,
-                        person,
-                        fmt,
-                        created[:10],
-                        updated[:10],
-                    ),
-                )
-
-
 def _ensure_login_titles(cursor) -> None:
     """Add country/center title if missing. Does not overwrite existing titles."""
     for table in ("country", "center"):
@@ -683,28 +448,48 @@ def _ensure_login_titles(cursor) -> None:
             )
 
 
+def _ensure_consent_pending(cursor) -> None:
+    """Create ``dbo.consent_pending`` (state -> person_name) if missing."""
+    cursor.execute("SELECT OBJECT_ID(N'dbo.consent_pending', N'U')")
+    if cursor.fetchone()[0] is not None:
+        return
+    cursor.execute(
+        """
+        CREATE TABLE dbo.consent_pending (
+            state NVARCHAR(128) NOT NULL PRIMARY KEY,
+            center NVARCHAR(256) NOT NULL,
+            person_name NVARCHAR(256) NOT NULL,
+            created_at DATETIME2 NOT NULL
+        )
+        """
+    )
+
+
 def init_user_store() -> str:
-    """Open the user store (SQL Server or SQLite) and ensure schema exists."""
+    """Open the SQL Server user store and ensure its schema exists."""
     global _STORE_READY
     if _STORE_READY:
         return store_label()
     with _LOCK:
         if _STORE_READY:
             return store_label()
-        if _use_sqlserver():
-            conn = _sql_connect()
-            cursor = conn.cursor()
-            cursor.execute("SELECT OBJECT_ID(N'dbo.person', N'U')")
-            if cursor.fetchone()[0] is None:
-                raise RuntimeError(
-                    "dbo.person missing. Stop the hub and run "
-                    "`uv run python scripts/migrate_person.py` from hub/ "
-                    "(fresh empty DB: load_phase_c.py)."
-                )
-            _ensure_login_titles(cursor)
-            conn.commit()
-        else:
-            _sqlite_connect()
+        if not database_url():
+            raise RuntimeError(
+                "HUB_DATABASE_URL is not set — SQL Server (agrolav-sql) is "
+                "required; users.db / SQLite is no longer used."
+            )
+        conn = _sql_connect()
+        cursor = conn.cursor()
+        cursor.execute("SELECT OBJECT_ID(N'dbo.person', N'U')")
+        if cursor.fetchone()[0] is None:
+            raise RuntimeError(
+                "dbo.person missing. Stop the hub and run "
+                "`uv run python scripts/migrate_person.py` from hub/ "
+                "(fresh empty DB: load_phase_c.py)."
+            )
+        _ensure_login_titles(cursor)
+        _ensure_consent_pending(cursor)
+        conn.commit()
         _STORE_READY = True
         return store_label()
 
@@ -715,24 +500,18 @@ def find_user(username: str) -> dict[str, Any] | None:
         return None
     with _LOCK:
         init_user_store()
-        if _use_sqlserver():
-            cursor = _sql_connect().cursor()
-            row = None
-            for sql in (
-                _SQL_PERSON_SELECT + " WHERE p.username = ? COLLATE Latin1_General_CI_AI",
-                _SQL_CENTER_SELECT + " WHERE n.username = ? COLLATE Latin1_General_CI_AI",
-                _SQL_COUNTRY_SELECT + " WHERE c.username = ? COLLATE Latin1_General_CI_AI",
-            ):
-                cursor.execute(sql, (needle,))
-                raw = cursor.fetchone()
-                if raw:
-                    row = _sql_cursor_row(cursor, raw)
-                    break
-        else:
-            row = _SQLITE.execute(
-                "SELECT * FROM users WHERE username = ? COLLATE NOCASE",
-                (needle,),
-            ).fetchone()
+        cursor = _sql_connect().cursor()
+        row = None
+        for sql in (
+            _SQL_PERSON_SELECT + " WHERE p.username = ? COLLATE Latin1_General_CI_AI",
+            _SQL_CENTER_SELECT + " WHERE n.username = ? COLLATE Latin1_General_CI_AI",
+            _SQL_COUNTRY_SELECT + " WHERE c.username = ? COLLATE Latin1_General_CI_AI",
+        ):
+            cursor.execute(sql, (needle,))
+            raw = cursor.fetchone()
+            if raw:
+                row = _sql_cursor_row(cursor, raw)
+                break
     return _row_to_user(row) if row else None
 
 
@@ -754,16 +533,11 @@ def authenticate_public(username: str, password: str) -> dict[str, Any] | None:
 def list_users() -> list[dict[str, Any]]:
     with _LOCK:
         init_user_store()
-        if _use_sqlserver():
-            cursor = _sql_connect().cursor()
-            cursor.execute(
-                "SELECT * FROM (" + _SQL_USER_SELECT + ") u ORDER BY u.username"
-            )
-            rows = [_sql_cursor_row(cursor, raw) for raw in cursor.fetchall()]
-        else:
-            rows = _SQLITE.execute(
-                "SELECT * FROM users ORDER BY username COLLATE NOCASE"
-            ).fetchall()
+        cursor = _sql_connect().cursor()
+        cursor.execute(
+            "SELECT * FROM (" + _SQL_USER_SELECT + ") u ORDER BY u.username"
+        )
+        rows = [_sql_cursor_row(cursor, raw) for raw in cursor.fetchall()]
     return [_public_user(_row_to_user(row)) for row in rows]
 
 
@@ -786,69 +560,43 @@ def upsert_user(
     today = _utc_today()
     with _LOCK:
         init_user_store()
-        if _use_sqlserver():
-            cursor = _sql_connect().cursor()
-            if not person_s:
-                raise ValueError("SQL Server person login requires a person folder")
-            country_id = _sql_country_id(cursor, country_s or name)
-            if country_id is None:
-                raise ValueError(f"Unknown country {country_s or name!r}")
-            center_id = _sql_center_id(cursor, country_id, center_s or "") if center_s else None
-            if center_id is None:
-                raise ValueError(f"Unknown center {center_s!r} for country_id={country_id}")
+        cursor = _sql_connect().cursor()
+        if not person_s:
+            raise ValueError("SQL Server person login requires a person folder")
+        country_id = _sql_country_id(cursor, country_s or name)
+        if country_id is None:
+            raise ValueError(f"Unknown country {country_s or name!r}")
+        center_id = _sql_center_id(cursor, country_id, center_s or "") if center_s else None
+        if center_id is None:
+            raise ValueError(f"Unknown center {center_s!r} for country_id={country_id}")
+        cursor.execute(
+            "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (name,),
+        )
+        row = cursor.fetchone()
+        person_id = int(row[0]) if row else None
+        if _sql_username_taken(cursor, name, except_person_id=person_id):
+            raise ValueError(f"Username already used: {name}")
+        title_value = title_s or display_title(name) or name
+        if person_id is not None:
             cursor.execute(
-                "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
-                (name,),
+                """
+                UPDATE dbo.person
+                SET title = ?, country_id = ?, center_id = ?
+                WHERE id = ?
+                """,
+                (title_value, country_id, center_id, person_id),
             )
-            row = cursor.fetchone()
-            person_id = int(row[0]) if row else None
-            if _sql_username_taken(cursor, name, except_person_id=person_id):
-                raise ValueError(f"Username already used: {name}")
-            title_value = title_s or display_title(name) or name
-            if person_id is not None:
-                cursor.execute(
-                    """
-                    UPDATE dbo.person
-                    SET title = ?, country_id = ?, center_id = ?
-                    WHERE id = ?
-                    """,
-                    (title_value, country_id, center_id, person_id),
-                )
-            else:
-                cursor.execute(
-                    """
-                    INSERT INTO dbo.person
-                        (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, 0, ?, ?)
-                    """,
-                    (name, title_value, country_id, center_id, today, today),
-                )
-            _sql_connect().commit()
         else:
-            conn = _SQLITE
-            row = conn.execute(
-                "SELECT id FROM users WHERE username = ? COLLATE NOCASE",
-                (name,),
-            ).fetchone()
-            if row:
-                conn.execute(
-                    """
-                    UPDATE users
-                    SET title = ?, country = ?, center = ?, person = ?
-                    WHERE id = ?
-                    """,
-                    (title_s, country_s, center_s, person_s, int(row["id"])),
-                )
-            else:
-                conn.execute(
-                    """
-                    INSERT INTO users
-                        (username, title, country, center, person, format, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
-                    """,
-                    (name, title_s, country_s, center_s, person_s, today, today),
-                )
-            conn.commit()
+            cursor.execute(
+                """
+                INSERT INTO dbo.person
+                    (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 0, ?, ?)
+                """,
+                (name, title_value, country_id, center_id, today, today),
+            )
+        _sql_connect().commit()
     user = find_user(name)
     if user is None:
         raise RuntimeError(f"failed to upsert user {name!r}")
@@ -883,30 +631,19 @@ def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:
         return None
     with _LOCK:
         init_user_store()
-        if _use_sqlserver():
-            cursor = _sql_connect().cursor()
-            cursor.execute(
-                "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
-                (name,),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cursor.execute(
-                "UPDATE dbo.account SET format = ? WHERE person_id = ? AND connection_id IS NULL",
-                (fmt, int(row[0])),
-            )
-            _sql_connect().commit()
-        else:
-            conn = _SQLITE
-            row = conn.execute(
-                "SELECT id FROM users WHERE username = ? COLLATE NOCASE",
-                (name,),
-            ).fetchone()
-            if not row:
-                return None
-            conn.execute("UPDATE users SET format = ? WHERE id = ?", (fmt, int(row["id"])))
-            conn.commit()
+        cursor = _sql_connect().cursor()
+        cursor.execute(
+            "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (name,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        cursor.execute(
+            "UPDATE dbo.account SET format = ? WHERE person_id = ? AND connection_id IS NULL",
+            (fmt, int(row[0])),
+        )
+        _sql_connect().commit()
     user = find_user(name)
     return _public_user(user) if user else None
 
@@ -918,30 +655,19 @@ def set_user_updated_at(*, username: str, date: str | None) -> dict[str, Any] | 
         return None
     with _LOCK:
         init_user_store()
-        if _use_sqlserver():
-            cursor = _sql_connect().cursor()
-            cursor.execute(
-                "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
-                (name,),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cursor.execute(
-                "UPDATE dbo.person SET updated_at = ? WHERE id = ?",
-                (iso, int(row[0])),
-            )
-            _sql_connect().commit()
-        else:
-            conn = _SQLITE
-            row = conn.execute(
-                "SELECT id FROM users WHERE username = ? COLLATE NOCASE",
-                (name,),
-            ).fetchone()
-            if not row:
-                return None
-            conn.execute("UPDATE users SET updated_at = ? WHERE id = ?", (iso, int(row["id"])))
-            conn.commit()
+        cursor = _sql_connect().cursor()
+        cursor.execute(
+            "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (name,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        cursor.execute(
+            "UPDATE dbo.person SET updated_at = ? WHERE id = ?",
+            (iso, int(row[0])),
+        )
+        _sql_connect().commit()
     user = find_user(name)
     return _public_user(user) if user else None
 
@@ -949,7 +675,7 @@ def set_user_updated_at(*, username: str, date: str | None) -> dict[str, Any] | 
 def list_accounts_for_username(username: str) -> list[dict[str, str]]:
     """IBANs (and balances) for a person pack."""
     name = (username or "").strip()
-    if not name or not _use_sqlserver():
+    if not name:
         return []
     init_user_store()
     cursor = _sql_connect().cursor()
@@ -973,30 +699,31 @@ def upload_token_by_person_center() -> dict[tuple[str, str], str]:
     """Map ``(person, center)`` → upload token for personal users."""
     with _LOCK:
         init_user_store()
-        if _use_sqlserver():
-            cursor = _sql_connect().cursor()
-            cursor.execute(
-                """
-                SELECT p.username, n.username
-                FROM dbo.person p
-                JOIN dbo.center n ON n.center_id = p.center_id
-                """
-            )
-            rows = cursor.fetchall()
-            pairs = [(str(r[0] or "").strip(), str(r[1] or "").strip()) for r in rows]
-        else:
-            raw_rows = _SQLITE.execute(
-                """
-                SELECT person, center
-                FROM users
-                WHERE person IS NOT NULL AND person != ''
-                  AND center IS NOT NULL AND center != ''
-                """
-            ).fetchall()
-            pairs = [(str(r["person"] or "").strip(), str(r["center"] or "").strip()) for r in raw_rows]
+        cursor = _sql_connect().cursor()
+        cursor.execute(
+            """
+            SELECT p.username, n.username,
+                CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM dbo.enable_connection ec
+                    WHERE ec.person_id = p.id
+                      AND ec.pem IS NOT NULL
+                      AND LTRIM(RTRIM(ec.pem)) <> N''
+                ) THEN 1 ELSE 0 END
+            FROM dbo.person p
+            JOIN dbo.center n ON n.center_id = p.center_id
+            """
+        )
+        rows = cursor.fetchall()
+        pairs = [
+            (str(r[0] or "").strip(), str(r[1] or "").strip(), int(r[2] or 0))
+            for r in rows
+        ]
     out: dict[tuple[str, str], str] = {}
-    for person, raw_ws in pairs:
+    for person, raw_ws, has_pem in pairs:
         if not person:
+            continue
+        if has_pem:
             continue
         for center in parse_centers(raw_ws) or ([raw_ws] if raw_ws else []):
             if center:

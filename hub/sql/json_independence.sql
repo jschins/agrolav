@@ -1,4 +1,4 @@
--- Tables still needed after phase_c.sql to stop depending on workspace JSON.
+-- Tables still needed after phase_c.sql to stop depending on the hub's JSON data.
 -- Does not DROP existing tables. Run against database agrolav in SSMS.
 --
 -- Already created by phase_c.sql (do not recreate here):
