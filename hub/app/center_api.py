@@ -791,8 +791,21 @@ def upload_person_pem(
         pem_text = content.decode("ascii")
 
     with _center_scope(center) as ws:
+        from app.core.single_client import _db_aspsp_default, _db_country_iso
+
         pack = get_person(person)
         stored = enable_sql.upsert_person_pem(person, app_id=stem, pem=pem_text)
+        profile = {
+            "person": person,
+            "connections": [
+                {
+                    "app_id": stem,
+                    "aspsp": _db_aspsp_default(),
+                    "country": _db_country_iso(),
+                    "accounts": [],
+                }
+            ],
+        }
         refresh_people()
 
     return {

@@ -102,5 +102,34 @@ class AppConfigRedirectTests(unittest.TestCase):
         self.assertEqual(app_config.get("NO_SUCH_KEY", "fallback"), "fallback")
 
 
+class AppConfigPublicUrlTests(unittest.TestCase):
+    def tearDown(self):
+        app_config.reset_cache()
+
+    def test_public_urls_empty_in_local_mode(self):
+        rows = {
+            "PUBLIC_HUB_URL": "https://expenses.apsurt.nl",
+            "PUBLIC_CLIENT_URL": "https://expenses.apsurt.nl",
+        }
+        with mock.patch.object(app_config, "load", return_value=rows):
+            self.assertEqual(app_config.public_hub_url(), "")
+            self.assertEqual(app_config.public_client_url(), "")
+
+    def test_public_urls_from_rows_on_server(self):
+        rows = {
+            "RUN_ON_SERVER": "True",
+            "PUBLIC_HUB_URL": "https://hub.example",
+            "PUBLIC_CLIENT_URL": "https://client.example",
+        }
+        with mock.patch.object(app_config, "load", return_value=rows):
+            self.assertEqual(app_config.public_hub_url(), "https://hub.example")
+            self.assertEqual(app_config.public_client_url(), "https://client.example")
+
+    def test_public_urls_empty_when_rows_missing_even_on_server(self):
+        with mock.patch.object(app_config, "load", return_value={"RUN_ON_SERVER": "True"}):
+            self.assertEqual(app_config.public_hub_url(), "")
+            self.assertEqual(app_config.public_client_url(), "")
+
+
 if __name__ == "__main__":
     unittest.main()

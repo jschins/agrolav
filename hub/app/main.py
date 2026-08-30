@@ -1697,6 +1697,8 @@ def public_links() -> dict[str, str]:
 
     ``PUBLIC_HUB_URL`` is where the Add person / Upload pages live;
     ``PUBLIC_CLIENT_URL`` is where the wizard returns after finishing.
+    Both are returned only when the hub runs on the server; otherwise they
+    are empty so browsers get local (127.0.0.1) links.
     """
     from app import app_config
 

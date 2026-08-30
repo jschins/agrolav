@@ -104,10 +104,25 @@ def enablebanking_redirect_url() -> str:
 
 
 def public_hub_url() -> str:
-    """Browser-facing hub base from the ``PUBLIC_HUB_URL`` row (the hub pages)."""
+    """Browser-facing hub base (the hub's Add person / Upload pages).
+
+    The ``PUBLIC_HUB_URL`` row is honoured only on the server
+    (``RUN_ON_SERVER`` truthy). Local mode returns ``""`` so consumers fall
+    back to their own 127.0.0.1 addresses instead of pointing browsers at
+    production.
+    """
+    if not running_on_server():
+        return ""
     return get(PUBLIC_HUB_URL)
 
 
 def public_client_url() -> str:
-    """Browser-facing client base from the ``PUBLIC_CLIENT_URL`` row (return link)."""
+    """Browser-facing client base (where the wizard returns after finishing).
+
+    The ``PUBLIC_CLIENT_URL`` row is honoured only on the server
+    (``RUN_ON_SERVER`` truthy). Local mode returns ``""`` so consumers fall
+    back to env ``HUB_CLIENT_URL`` / localhost.
+    """
+    if not running_on_server():
+        return ""
     return get(PUBLIC_CLIENT_URL)
