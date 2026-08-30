@@ -1526,7 +1526,6 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
     </div>
 
     <p id="err" class="err"></p>
-    <p class="meta"><a href="/">← Hub status</a></p>
   </main>
   <script>
     const params = new URLSearchParams(location.search);

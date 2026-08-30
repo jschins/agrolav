@@ -566,13 +566,11 @@ def write_outputs(
     categorized, totals, info = convert_excel_files(folder, categories_path=categories_path)
     categorized_path = folder / "categorized_transactions.json"
     totals_path = folder / "category_totals.json"
-    categorized_path.write_text(json.dumps(categorized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    totals_path.write_text(json.dumps(totals, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return categorized_path, totals_path, info
 
 
 def import_person_excel(*, data_dir: Path, categories_path: Path) -> dict[str, Any]:
-    """Hub RefreshAll / upload entry: rewrite JSON from ``YYYY/*.xlsx``.
+    """Hub RefreshAll / upload entry: convert ``YYYY/*.xlsx`` in memory.
 
     Processes the year folder as a whole. Does not create other year folders when
     sheet dates cross into the next calendar year (secret/bank refresh stays

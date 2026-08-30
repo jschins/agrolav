@@ -31,16 +31,7 @@ def _under_data_root(path: Path) -> bool:
 
 
 def _read_json(path: Path) -> Any:
-    if _use_sql() and _under_data_root(path):
-        return {}
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _write_json(path: Path, payload: Any) -> None:
-    if _use_sql() and _under_data_root(path):
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -87,17 +78,14 @@ def _load_categorized_store() -> dict[str, Any]:
 
 
 def _persist_categorized_store(data: dict[str, Any]) -> dict[str, Any]:
-    """UPDATE matching SQL rows. Write JSON only when SQL is not configured."""
+    """UPDATE matching SQL rows."""
     data = _migrate_categorized_store(data)
     data.pop("modifications", None)
-    from app import user_store
     from app.sql_replica import sync_bound_transactions
 
     txs = data.get("transactions")
     if isinstance(txs, list):
         sync_bound_transactions(txs)
-    if not user_store.database_url():
-        _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, data)
     return data
 
 
@@ -199,18 +187,6 @@ def _remittance_lines(transaction: dict[str, Any]) -> list[str]:
     return [str(line).strip() for line in raw if line]
 
 
-def _debug_remittance_log(payload: dict[str, Any]) -> None:
-    """Append one JSON line to ``data/debug.log`` (best-effort)."""
-    try:
-        path = paths.DATA_DIR / "debug.log"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        entry = {"ts": datetime.now(timezone.utc).isoformat(), **payload}
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
-
-
 def _structured_remittance_fields(transaction: dict[str, Any]) -> dict[str, str]:
     lines = _remittance_lines(transaction)
     split = _split_bracketed_remittance(lines)
@@ -260,24 +236,6 @@ def _structured_remittance_fields(transaction: dict[str, Any]) -> dict[str, str]
         "iban": iban or iban_from_lines,
         "description": description,
     }
-    _debug_remittance_log(
-        {
-            "fn": "_structured_remittance_fields",
-            "tx_id": tx_id,
-            "lines": lines,
-            "split": {"prefix": prefix, "block": block},
-            "pairs_raw": pairs_raw,
-            "tx_type": tx_type,
-            "mandate_id": iban,
-            "pairs_after_extract": pairs_after_extract,
-            "pairs_after_date_filter": pairs_after_date_filter,
-            "remainder": remainder,
-            "bank_type": bank_type,
-            "iban_from_lines": iban_from_lines,
-            "description": description,
-            "result": result,
-        }
-    )
     return result
 
 
@@ -832,44 +790,15 @@ def build_category_totals(
     return {name: _amount_str(cents) for name, cents in totals.items()}
 
 
-def _totals_payload_with_balances(categories: dict[str, str]) -> dict[str, Any]:
-    """Bank balances when available; otherwise keep existing account_balances (Excel files)."""
-    existing = _load_json_object(paths.CATEGORY_TOTALS_PATH)
-    existing_accounts = existing.get("account_balances")
-    try:
-        from app.core.single_client import current_balance_payload, ensure_consent_credit_card_labels
-
-        ensure_consent_credit_card_labels()
-        bank = current_balance_payload()
-        accounts = bank.get("account_balances")
-        if isinstance(accounts, list) and accounts:
-            return {"categories": categories, **bank}
-    except Exception:
-        pass
-    payload: dict[str, Any] = {"categories": categories}
-    if isinstance(existing_accounts, list) and existing_accounts:
-        payload["account_balances"] = existing_accounts
-    return payload
-
-
 def _write_category_totals(merged: dict[str, Any], general: dict[str, list[str]]) -> dict[str, str]:
-    totals = build_category_totals(merged, list(general.keys()))
-    from app import user_store
-
-    if not user_store.database_url():
-        _write_json(paths.CATEGORY_TOTALS_PATH, _totals_payload_with_balances(totals))
-    return totals
+    return build_category_totals(merged, list(general.keys()))
 
 
 def refresh_category_totals_balances() -> dict[str, str]:
-    """Update balance fields in the category totals file from consent (no recategorization)."""
+    """Recompute category totals (no recategorization, no files written)."""
     general = _category_map(_categories_file())
     merged = _load_categorized_store()
     categories = build_category_totals(merged, list(general.keys()))
-    from app import user_store
-
-    if not user_store.database_url():
-        _write_json(paths.CATEGORY_TOTALS_PATH, _totals_payload_with_balances(categories))
     return {str(name): str(amount) for name, amount in categories.items()}
 
 
@@ -1305,33 +1234,19 @@ def _cleaned_terms(terms: list[str]) -> list[str]:
 
 def _save_general_category_terms(category_name: str, terms: list[str]) -> None:
     cleaned = _cleaned_terms(terms)
-    if _use_sql():
-        from app.sql_catalog import save_category_terms
+    from app.sql_catalog import save_category_terms
 
-        save_category_terms(category_name, cleaned, person=None)
-        return
-    data = _categories_file()
-    categories = data.setdefault("categories", {})
-    categories[category_name] = cleaned
-    _write_json(paths.CATEGORIES_PATH, data)
+    save_category_terms(category_name, cleaned, person=None)
 
 
 def _save_personal_category_terms(category_name: str, terms: list[str]) -> None:
     cleaned = _cleaned_terms(terms)
-    if _use_sql():
-        from app.sql_catalog import save_category_terms
+    from app.sql_catalog import save_category_terms
 
-        name = str(paths.BOUND_PERSON or paths.PERSON_NAME or "").strip()
-        if not name:
-            raise ValueError("personal terms need a bound person")
-        save_category_terms(category_name, cleaned, person=name)
-        return
-    data = _load_json_object(paths.PERSONAL_CATEGORIES_PATH)
-    if cleaned:
-        data[category_name] = cleaned
-    else:
-        data.pop(category_name, None)
-    _write_json(paths.PERSONAL_CATEGORIES_PATH, data)
+    name = str(paths.BOUND_PERSON or paths.PERSON_NAME or "").strip()
+    if not name:
+        raise ValueError("personal terms need a bound person")
+    save_category_terms(category_name, cleaned, person=name)
 
 
 def append_category_term(
@@ -1578,19 +1493,6 @@ def process_transactions(raw_transactions: list[dict[str, Any]], new_year: bool)
     their stored category and modification.
     """
     new_records = _simplify_uncategorized(raw_transactions)
-
-    if new_year:
-        merged = _merge_simplified({"transactions": []}, new_records)
-    else:
-        existing = _load_categorized_store()
-        if not isinstance(existing.get("transactions"), list):
-            existing = {"transactions": []}
-        merged = _merge_simplified(existing, new_records)
-
-    merged = _migrate_categorized_store(merged)
-    merged.pop("modifications", None)
-    _write_json(paths.RAW_TRANSACTIONS_PATH, raw_transactions)
-    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, merged)
     from app.sql_replica import ingest_bound_transactions
 
     ingest_bound_transactions(new_records)
@@ -1636,104 +1538,7 @@ def save_transaction_split(
     lines: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Persist split lines. Parent amount is computed so the group total is unchanged."""
-    from decimal import Decimal
+    from app.sql_replica import save_bound_split
 
-    from app.sql_replica import (
-        _json_amount,
-        _money,
-        _next_split_ids,
-        _root_source_id,
-        _SPLIT_CHILD,
-        save_bound_split,
-    )
-
-    if _use_sql():
-        return save_bound_split(source_id, description=description, lines=lines)
-
-    current = load_transaction_split(source_id)
-    parent_id = str(current["id"])
-    data = _load_categorized_store()
-    rows = [item for item in (data.get("transactions") or []) if isinstance(item, dict)]
-    parent = None
-    for item in rows:
-        if str(item.get("id") or "") == parent_id:
-            parent = item
-            break
-    if parent is None:
-        raise ValueError(f"Transaction not found: {parent_id}")
-
-    original = _money(current["original_amount"])
-    prefix = f"{parent_id}~s"
-    existing = [
-        str(item.get("id") or "")
-        for item in rows
-        if str(item.get("id") or "").startswith(prefix)
-        and _root_source_id(str(item.get("id") or "")) == parent_id
-    ]
-    used_n = set()
-    for sid in existing:
-        match = _SPLIT_CHILD.fullmatch(sid)
-        if match:
-            used_n.add(int(match.group(2)))
-
-    cleaned: list[dict[str, Any]] = []
-    need_new = 0
-    existing_set = set(existing)
-    for item in lines:
-        if not isinstance(item, dict):
-            continue
-        line_id = str(item.get("id") or "").strip()
-        if not line_id or line_id not in existing_set:
-            need_new += 1
-        cleaned.append(item)
-    fresh = _next_split_ids(parent_id, used_n, need_new)
-    fresh_i = 0
-    keep: set[str] = set()
-    child_rows: list[dict[str, Any]] = []
-    line_total = _money("0")
-    by_id = {str(item.get("id") or ""): item for item in rows}
-    for item in cleaned:
-        line_id = str(item.get("id") or "").strip()
-        if not line_id or line_id not in existing_set:
-            line_id = fresh[fresh_i]
-            fresh_i += 1
-        keep.add(line_id)
-        amount = _money(item.get("amount"))
-        line_total += amount
-        base = dict(by_id.get(line_id) or parent)
-        base["id"] = line_id
-        base["amount"] = _json_amount(amount)
-        base["description"] = str(item.get("description") or "")
-        base["modification"] = _with_mod_bits(
-            MOD_CATEGORY,
-            description=bool(str(item.get("description") or "").strip()),
-        )
-        child_rows.append(base)
-
-    remainder = (original - line_total).quantize(Decimal("0.01"))
-    parent["amount"] = _json_amount(remainder)
-    new_description = str(description or "")
-    if new_description != str(parent.get("description") or ""):
-        parent["description"] = new_description
-        parent["modification"] = _with_mod_bits(
-            _modification_of(parent),
-            description=True,
-        )
-
-    next_rows: list[dict[str, Any]] = []
-    for item in rows:
-        sid = str(item.get("id") or "")
-        if sid == parent_id:
-            next_rows.append(parent)
-            continue
-        if sid.startswith(prefix) and _root_source_id(sid) == parent_id:
-            continue
-        next_rows.append(item)
-    next_rows.extend(child_rows)
-    data["transactions"] = next_rows
-    data.pop("modifications", None)
-    _write_json(paths.CATEGORIZED_TRANSACTIONS_PATH, data)
-    general = _category_map(_categories_file())
-    _write_category_totals(data, general)
-    return load_transaction_split(parent_id)
+    return save_bound_split(source_id, description=description, lines=lines)
 

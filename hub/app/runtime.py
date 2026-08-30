@@ -79,11 +79,12 @@ def project_root() -> Path:
 
 
 def data_root() -> Path:
-    """Disk root for the only on-disk files: the two always-overwritten flat JSON scratch files.
+    """Disk root for the on-disk flat JSON scratch files, when SQL is not configured.
 
-    ``downloaded_transactions.json`` and ``categorized_transactions.json`` are
-    written flat at the ``AGROLAV_SQL_DISK`` mount root (else the process cwd).
-    No ``data/``, ``workspaces/`` or per-person folder is used.
+    ``downloaded_transactions.json`` and ``categorized_transactions.json`` would
+    be written flat at the ``AGROLAV_SQL_DISK`` mount root (else the process cwd).
+    With SQL configured the disk no longer stores these scratch files — the
+    database is authoritative.
     """
     env = os.environ.get("AGROLAV_SQL_DISK", "").strip()
     if env:

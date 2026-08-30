@@ -46,15 +46,12 @@ class LoadProfileDbTests(unittest.TestCase):
             "app.enable_sql.person_country_username", return_value="nederland"
         ), mock.patch(
             "app.enable_sql.person_aspsp", return_value="ING"
-        ), mock.patch.object(
-            single_client, "_write_json", side_effect=AssertionError("no file writes in DB mode")
-        ) as _write:
+        ):
             profile = single_client.load_profile()
         self.assertEqual(profile["person"], "janpiet")
         self.assertEqual(profile["connections"][0]["app_id"], "APPLICATION_ID")
         self.assertEqual(profile["connections"][0]["country"], "NL")
         self.assertEqual(profile["connections"][0]["aspsp"], "ING")
-        _write.assert_not_called()
 
     def test_aspsp_from_account_format(self):
         with _db_enabled(), mock.patch.object(
@@ -111,20 +108,13 @@ class SaveConsentDbTests(unittest.TestCase):
         self.cm_db = _db_enabled()
         self.cm_person = mock.patch.object(single_client.paths, "PERSON_NAME", "janpiet")
         self.cm_country = mock.patch.object(single_client.paths, "BOUND_COUNTRY", "nederland")
-        self.cm_write = mock.patch.object(
-            single_client,
-            "_write_json",
-            side_effect=AssertionError("no file writes in DB mode"),
-        )
         self.cm_db.start()
         self.cm_person.start()
         self.cm_country.start()
         self.cm_update.start()
         self.cm_upsert.start()
-        self.cm_write.start()
 
     def tearDown(self):
-        self.cm_write.stop()
         self.cm_upsert.stop()
         self.cm_update.stop()
         self.cm_country.stop()

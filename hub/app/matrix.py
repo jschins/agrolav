@@ -17,11 +17,6 @@ def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
 def _category_map(data: dict[str, Any]) -> dict[str, list[str]]:
     nested = data.get("categories")
     return nested if isinstance(nested, dict) else data
@@ -60,17 +55,6 @@ def load_general_file(people: list[PersonPack] | None = None) -> dict[str, Any]:
 def category_names(people: list[PersonPack] | None = None) -> list[str]:
     general = _category_map(load_general_file(people))
     return list(general.keys())
-
-
-def sync_general_categories(payload: dict[str, Any], people: list[PersonPack] | None = None) -> None:
-    """Write the shared ``categories.json`` at the boekhouding deploy root."""
-    from app import user_store
-    from app.runtime import shared_categories_path
-
-    del people
-    if user_store.database_url():
-        return
-    _write_json(shared_categories_path(), payload)
 
 
 def table_header_terms(people: list[PersonPack] | None = None) -> dict[str, str]:
@@ -448,34 +432,6 @@ def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
     }
 
 
-def _narrow_totals_to_account(uid: str) -> None:
-    """Keep only this account's balance row in the bound category_totals.json."""
-    from app import runtime as path_mod
-    from app import user_store
-
-    if user_store.database_url():
-        return
-    path = path_mod.CATEGORY_TOTALS_PATH
-    if not path.is_file():
-        return
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    if not isinstance(data, dict):
-        return
-    balances = data.get("account_balances")
-    if not isinstance(balances, list):
-        return
-    needle = str(uid or "")
-    data["account_balances"] = [
-        row
-        for row in balances
-        if isinstance(row, dict) and str(row.get("uid") or "") == needle
-    ]
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-
 def _txs_for_account(
     transactions: list[dict[str, Any]],
     *,
@@ -512,14 +468,6 @@ def _bank_refresh_one(
     date_to: str | None,
     new_year: bool,
 ) -> tuple[dict[str, Any], list[str]]:
-    from dataclasses import replace
-
-    from app.core.bank_csv import (
-        consolidate_person_year,
-        list_year_bank_folders,
-        migrate_year_root_json_into_folder,
-        pem_account_folder_name,
-    )
     from app.core.categorize import process_transactions
     from app.core.single_client import (
         account_index_by_uid,
@@ -528,7 +476,6 @@ def _bank_refresh_one(
         get_authorization_url,
         needs_consent_renewal,
     )
-    from app.runtime import apply_person, shared_categories_path
     from app.runtime import active_center
 
     warnings: list[str] = []
@@ -558,7 +505,6 @@ def _bank_refresh_one(
 
     fetched = fetch_transactions(date_from=date_from, date_to=date_to)
     accounts = enabled_bank_accounts()
-    account_folders: list[str] = []
     from app import user_store
     from app.enable_sql import upsert_person_accounts
 
@@ -571,41 +517,15 @@ def _bank_refresh_one(
     if len(accounts) <= 1:
         process_transactions(fetched.transactions, new_year=bool(new_year))
     else:
-        year_path = pack.data_dir
         index_by_uid = account_index_by_uid()
-        targets: list[tuple[dict[str, Any], str, int]] = []
         for acc in accounts:
-            folder = pem_account_folder_name(
-                aspsp=str(acc.get("aspsp") or ""),
-                account_number=str(acc.get("iban") or acc.get("name") or ""),
-            )
             uid = str(acc.get("uid") or "")
-            targets.append((acc, folder, index_by_uid.get(uid, -1)))
-            account_folders.append(folder)
-
-        if not list_year_bank_folders(year_path):
-            migrate_year_root_json_into_folder(year_path, targets[0][1])
-
-        for acc, folder, account_index in targets:
-            sub = (year_path / folder).resolve()
-            sub.mkdir(parents=True, exist_ok=True)
-            apply_person(replace(pack, data_dir=sub))
             batch = _txs_for_account(
                 fetched.transactions,
-                uid=str(acc.get("uid") or ""),
-                account_index=account_index,
+                uid=uid,
+                account_index=index_by_uid.get(uid, -1),
             )
             process_transactions(batch, new_year=bool(new_year))
-            _narrow_totals_to_account(str(acc.get("uid") or ""))
-
-        consolidate_person_year(
-            pack.folder,
-            year=pack.year,
-            person=pack.person_name,
-            center=active_center(),
-            categories_path=shared_categories_path(),
-        )
-        apply_person(pack)
 
     if fetched.warnings:
         for w in fetched.warnings:
@@ -623,142 +543,9 @@ def _bank_refresh_one(
         "warnings": fetched.warnings,
         "account_errors": fetched.account_errors,
     }
-    if account_folders:
-        result["account_folders"] = account_folders
     if new_year:
         result["new_year"] = True
     return result, warnings
-
-
-def _downloaded_sql_row_count() -> int | None:
-    """Rows now on ``transaction_{country}`` for the bound person/year, or None if SQL is unused."""
-    from app import runtime as paths, user_store
-    from app.sql_replica import _transaction_table
-
-    country = str(paths.BOUND_COUNTRY or "").strip()
-    username = str(paths.BOUND_PERSON or "").strip()
-    year = paths.BOUND_YEAR
-    if not (country and username and year is not None):
-        return None
-    table = _transaction_table(country)
-    if table is None or not user_store.database_url():
-        return None
-    user_store.init_user_store()
-    conn = user_store._sql_connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT id FROM dbo.person
-        WHERE username = ? COLLATE Latin1_General_CI_AI
-        """,
-        (username,),
-    )
-    row = cursor.fetchone()
-    if row is None:
-        return None
-    cursor.execute(
-        f"SELECT COUNT(*) FROM {table} WHERE person_id = ? AND year = ?",
-        (int(row[0]), int(year)),
-    )
-    count = cursor.fetchone()
-    return int(count[0]) if count else None
-
-
-def process_downloaded_file(person_name: str, *, new_year: bool = False) -> dict[str, Any]:
-    """Categorize the fixed ``downloaded_transactions.json`` (agrolav-sql disk) into SQL.
-
-    Reads the one container file and runs the existing machinery
-    (``categorize.process_transactions``) for the person, which writes the
-    categorized statements into ``transaction_{country}`` referencing that
-    person. Idempotent: rows already present by source_id are not re-inserted.
-    """
-    from app.core.categorize import process_transactions
-    from app.core.single_client import (
-        EnableBankingError,
-        downloaded_transactions_target,
-    )
-
-    pack = get_person(person_name)
-    target = downloaded_transactions_target()
-    if not target.is_file():
-        raise EnableBankingError(f"No downloaded_transactions.json on SQL disk ({target}).")
-    try:
-        data = _read_json(target)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise EnableBankingError(f"Cannot read downloaded_transactions.json: {exc}") from exc
-    if not isinstance(data, list):
-        raise EnableBankingError("downloaded_transactions.json must be a JSON list.")
-    records = [item for item in data if isinstance(item, dict)]
-    with bind_person(pack):
-        totals = process_transactions(records, new_year=new_year)
-        rows = _downloaded_sql_row_count()
-        _write_categorized_inspection(
-            target,
-            pack=pack,
-            records=records,
-            totals=totals,
-            rows=rows,
-        )
-    return {
-        "person_name": pack.person_name,
-        "source": "downloaded-file",
-        "new_year": bool(new_year),
-        "raw_count": len(records),
-        "transaction_rows": rows,
-        "totals": totals,
-    }
-
-
-def _write_categorized_inspection(
-    target: Path,
-    *,
-    pack: PersonPack,
-    records: list[dict[str, Any]],
-    totals: dict[str, Any],
-    rows: int | None,
-) -> Path:
-    """Dump the categorized result beside downloaded_transactions.json for inspection."""
-    from app import runtime as path_mod
-    from app.sql_replica import load_bound_transactions
-
-    transactions = None
-    try:
-        transactions = load_bound_transactions()
-    except Exception as exc:  # noqa: BLE001
-        print(f"categorized inspection: could not load SQL rows: {exc}")
-    country = str(path_mod.BOUND_COUNTRY or pack.country or "").strip()
-    payload = {
-        "person": str(path_mod.BOUND_PERSON or pack.person_name),
-        "center": pack.center,
-        "country": country,
-        "year": path_mod.BOUND_YEAR,
-        "table": f"dbo.transaction_{country}" if country else "",
-        "raw_count": len(records),
-        "transaction_rows": rows,
-        "totals": totals,
-        "transactions": transactions if isinstance(transactions, list) else [],
-    }
-    out = target.parent / "categorized_transactions.json"
-    _write_json(out, payload)
-    return out
-
-
-def _process_downloaded_after_fetch(
-    *,
-    person_name: str,
-    result: dict[str, Any],
-    extra: list[str],
-) -> dict[str, Any]:
-    """After a successful bank fetch, feed the fixed file through the machinery."""
-    if result.get("skipped") or result.get("source") != "bank":
-        return result
-    try:
-        processed = process_downloaded_file(person_name, new_year=bool(result.get("new_year")))
-    except Exception as exc:  # noqa: BLE001 - processing must not fail the download
-        extra.append(f"{person_name}: downloaded file processing failed: {exc}")
-    else:
-        result["downloaded"] = processed
-    return result
 
 
 def _record_user_updated_at(person: str, result: dict[str, Any]) -> None:
@@ -835,7 +622,7 @@ def refresh_all(
                 result, extra = _refresh_one_person(
                     pack, date_from=date_from, date_to=date_to, new_year=False
                 )
-                results.append(_process_downloaded_after_fetch(person_name=pack.person_name, result=result, extra=extra))
+                results.append(result)
                 warnings.extend(extra)
 
         matrix = build_matrix(packs)
@@ -862,7 +649,7 @@ def refresh_person(
             result, extra = _refresh_one_person(
                 pack, date_from=date_from, date_to=date_to, new_year=new_year
             )
-            results.append(_process_downloaded_after_fetch(person_name=pack.person_name, result=result, extra=extra))
+            results.append(result)
             warnings.extend(extra)
 
         matrix = build_matrix(packs)
@@ -870,24 +657,10 @@ def refresh_person(
 
 
 def save_general_terms(category_name: str, terms: list[str]) -> list[str]:
-    from app import user_store
-    from app.core.categorize import _cleaned_terms, _category_map, _save_general_category_terms
+    from app.core.categorize import _cleaned_terms, _save_general_category_terms
 
     cleaned = _cleaned_terms(terms)
-    if user_store.database_url():
-        _save_general_category_terms(category_name, cleaned)
-        return cleaned
-    packs = get_people()
-    original = load_general_file(packs)
-    if not isinstance(original, dict):
-        original = {}
-    if isinstance(original.get("categories"), dict):
-        original["categories"][category_name] = cleaned
-    else:
-        categories = _category_map(original)
-        categories[category_name] = cleaned
-        original = categories
-    sync_general_categories(original, packs)
+    _save_general_category_terms(category_name, cleaned)
     return cleaned
 
 

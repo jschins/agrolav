@@ -487,14 +487,6 @@ def consolidate_person_year(
     }
     consolidated_cat = _migrate_categorized_store({"transactions": all_transactions})
 
-    cat_out = year_path / "categorized_transactions.json"
-    tot_out = year_path / "category_totals.json"
-    cat_out.write_text(
-        json.dumps(consolidated_cat, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    tot_out.write_text(
-        json.dumps(consolidated_totals, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
     return {
         "consolidated": True,
         "banks": sources,

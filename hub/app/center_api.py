@@ -476,8 +476,6 @@ def add_term(
         )
         from app.matrix import (
             build_matrix,
-            load_general_file,
-            sync_general_categories,
         )
         from app.runtime import bind_person
         from app.people import get_person
@@ -501,7 +499,6 @@ def add_term(
                     _category_map(_categories_file()).get(category_name, []) or []
                 )
             added, removed = term_list_diff(old_terms, after_terms)
-            sync_general_categories(load_general_file([pack]), people_list)
             if not sql:
                 store.put_file(
                     ws,
@@ -772,7 +769,7 @@ def upload_person_pem(
     filename: str,
     content: bytes,
 ) -> dict[str, Any]:
-    """Store app_id + PEM in SQL (not as a file) and stamp profile.json app_id."""
+    """Store app_id + PEM in SQL (not as a file)."""
     from pathlib import Path
 
     from app import enable_sql
@@ -794,45 +791,8 @@ def upload_person_pem(
         pem_text = content.decode("ascii")
 
     with _center_scope(center) as ws:
-        from app import user_store
-
         pack = get_person(person)
         stored = enable_sql.upsert_person_pem(person, app_id=stem, pem=pem_text)
-        if not user_store.database_url():
-            secret = pack.secret_dir
-            secret.mkdir(parents=True, exist_ok=True)
-            for old in secret.glob("*.pem"):
-                old.unlink(missing_ok=True)
-
-            profile_path = pack.profile_path
-            if not profile_path.is_file():
-                profile_path = secret / "profile.json"
-            if profile_path.is_file():
-                profile = json.loads(profile_path.read_text(encoding="utf-8"))
-                if not isinstance(profile, dict):
-                    profile = {}
-            else:
-                profile = {}
-            profile["person"] = person
-            profile = _set_profile_app_id(profile, stem)
-            profile_path.write_text(
-                json.dumps(profile, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-        else:
-            from app.core.single_client import _db_aspsp_default, _db_country_iso
-
-            profile = {
-                "person": person,
-                "connections": [
-                    {
-                        "app_id": stem,
-                        "aspsp": _db_aspsp_default(),
-                        "country": _db_country_iso(),
-                        "accounts": [],
-                    }
-                ],
-            }
         refresh_people()
 
     return {

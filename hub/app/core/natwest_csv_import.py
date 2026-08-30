@@ -20,7 +20,6 @@ from app.core.excel_import import (
     category_name_map,
     cell_amount_cents,
     format_amount,
-    transaction_id,
 )
 
 NATWEST_HEADERS = frozenset(
@@ -316,10 +315,6 @@ def write_outputs(
     )
     categorized_path = folder / "categorized_transactions.json"
     totals_path = folder / "category_totals.json"
-    categorized_path.write_text(
-        json.dumps(categorized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    totals_path.write_text(json.dumps(totals, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return categorized_path, totals_path, info
 
 

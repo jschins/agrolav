@@ -686,7 +686,6 @@ def put_file(
             }
 
         new_rev = current_rev + 1
-        _write_json(path, content)
         now = time.time()
         _file_meta[key] = {"revision": new_rev, "source": source, "mtime": now}
         display = SHARED_CATEGORIES if rel == SHARED_CATEGORIES else f"{ws}/{rel}"
@@ -848,13 +847,6 @@ def _read_json_or_none(path: Path) -> Any | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-
-
-def _write_json(path: Path, payload: Any) -> None:
-    if _data_root_json_blocked(path):
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _json_equal(a: Any, b: Any) -> bool:

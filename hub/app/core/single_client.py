@@ -301,27 +301,6 @@ def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def downloaded_transactions_target() -> Path:
-    """Disk location for ``downloaded_transactions.json`` (inside agrolav-sql).
-
-    ``AGROLAV_SQL_DISK`` is the host directory mounted into the SQL Server
-    container at ``/var/opt/mssql/backup``, so the file written there is
-    visible inside the container (and on the server: expenses.apsurt.nl).
-    When the variable is unset, the per-person year folder is used.
-    """
-    root = str(os.environ.get("AGROLAV_SQL_DISK") or "").strip()
-    if root:
-        target = Path(root) / "downloaded_transactions.json"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        return target
-    return paths.RAW_TRANSACTIONS_PATH
-
-
 def profile_app_id(profile: dict[str, Any]) -> str:
     return paths.app_id_from_profile_data(profile)
 
@@ -428,9 +407,7 @@ def load_profile() -> dict[str, Any]:
     raw = _read_json(paths.PROFILE_PATH)
     if not isinstance(raw, dict):
         raise EnableBankingError(f"Profile is not a JSON object: {paths.PROFILE_PATH}")
-    profile, changed = _migrate_profile(raw, paths.PROFILE_PATH)
-    if changed:
-        _write_json(paths.PROFILE_PATH, profile)
+    profile, _ = _migrate_profile(raw, paths.PROFILE_PATH)
     _, country = _profile_bank_pair(profile)
     if country and len(country) != 2:
         raise EnableBankingError(
@@ -810,11 +787,7 @@ def _db_save_consent(record: dict[str, Any]) -> None:
 
 
 def _save_consent(record: dict[str, Any]) -> None:
-    if _db_configured():
-        _db_save_consent(record)
-        return
-    profile = load_profile()
-    _write_json(paths.PROFILE_PATH, _apply_consent_subset(profile, record))
+    _db_save_consent(record)
 
 
 def _find_connection(record: dict[str, Any], aspsp: str, country: str) -> dict[str, Any] | None:
@@ -1324,8 +1297,6 @@ def fetch_transactions(
 
     if not raw_transactions and account_errors:
         raise EnableBankingError("; ".join(account_errors))
-
-    _write_json(downloaded_transactions_target(), raw_transactions)
 
     _refresh_account_balances(
         client,
