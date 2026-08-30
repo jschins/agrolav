@@ -316,6 +316,25 @@ def years_by_person_in_center(center: str) -> dict[str, list[str]]:
         return {}
 
 
+def category_codes_for_country(country: str) -> frozenset[int]:
+    """Category ``local_code`` values registered for ``country``."""
+    name = (country or "").strip()
+    if not name or not _sql_ready():
+        return frozenset()
+    cursor = _cursor()
+    cursor.execute(
+        """
+        SELECT d.local_code
+        FROM dbo.dim_category d
+        JOIN dbo.country c ON c.country_id = d.country_id
+        WHERE c.username = ? COLLATE Latin1_General_CI_AI
+        ORDER BY d.local_code
+        """,
+        (name,),
+    )
+    return frozenset(int(row[0]) for row in cursor.fetchall())
+
+
 def categories_payload(country: str) -> dict[str, Any]:
     """``categories.json``-shaped dict from ``dim_category`` / terms / headers."""
     name = (country or "").strip()

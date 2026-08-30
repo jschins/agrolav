@@ -646,7 +646,8 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
         raise
 
 
-def _remainder_id(cursor, person_id: int) -> int | None:
+def _category_lookup(cursor, person_id: int) -> tuple[dict[int, int], int | None]:
+    """Map the person's country ``local_code`` -> ``category_id`` plus the remainder id."""
     from app.core.categorize import DEFAULT_CATEGORY
 
     cursor.execute(
@@ -665,7 +666,11 @@ def _remainder_id(cursor, person_id: int) -> int | None:
         by_code[int(local_code)] = int(category_id)
         if int(is_remainder):
             remainder_id = int(category_id)
-    return remainder_id or by_code.get(DEFAULT_CATEGORY)
+    return by_code, remainder_id or by_code.get(DEFAULT_CATEGORY)
+
+
+def _remainder_id(cursor, person_id: int) -> int | None:
+    return _category_lookup(cursor, person_id)[1]
 
 
 def _refresh_account_count(cursor, person_id: int) -> int:
@@ -802,8 +807,14 @@ def ingest_bound_transactions(
     records: list[dict[str, Any]],
     *,
     account_id: int | None = None,
+    locked: bool = False,
 ) -> int:
-    """INSERT bookings that are not yet in SQL as remainder / modification -1 / hit NULL."""
+    """INSERT bookings that are not yet in SQL.
+
+    ``locked`` stores the record's parsed ``category`` (mapped to the person's
+    country) and marks the row user-set, so categorization never recalculates
+    it. Otherwise rows land as remainder / modification -1 / hit NULL.
+    """
     from app import user_store
 
     if not user_store.database_url() or not records:
@@ -812,7 +823,7 @@ def ingest_bound_transactions(
         bound = _open_bound_scope()
         if bound is None:
             return 0
-        remainder_id = _remainder_id(bound.cursor, bound.person_id)
+        by_code, remainder_id = _category_lookup(bound.cursor, bound.person_id)
         if remainder_id is None:
             print(f"sql replica: no remainder category for {bound.username!r}")
             return 0
@@ -852,6 +863,11 @@ def ingest_bound_transactions(
                 print(f"sql replica: no account for {bound.username!r} id={source_id}")
                 continue
             iban = str(item.get("iban") or "").strip()[:64] or None
+            code = _local_code(item.get("category"))
+            category_id = (
+                by_code.get(code, remainder_id) if locked and code is not None else remainder_id
+            )
+            modification = _mod_bits(0, category=True) if locked else -1
             params.append(
                 (
                     bound.person_id,
@@ -865,8 +881,8 @@ def ingest_bound_transactions(
                     iban,
                     str(item.get("description") or "") or None,
                     booked,
-                    remainder_id,
-                    -1,
+                    category_id,
+                    modification,
                     None,
                 )
             )

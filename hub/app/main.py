@@ -1522,20 +1522,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
     </div>
 
     <div id="step3" class="step">
-      <p class="ok" id="doneMsg">Done.</p>
-      <div id="loginBox" class="remind" style="display:none;margin-top:0.75rem">
-        <h2>Next: personal login</h2>
-        <p class="note" style="margin-top:0">Open the client and sign in with:</p>
-        <dl>
-          <dt>Username</dt><dd><code id="loginUser">…</code></dd>
-          <dt>Password</dt><dd><code id="loginPass">…</code> <span class="note">(same as username)</span></dd>
-        </dl>
-        <p class="note">After login, start bank consent (authorization URL), then fetch transactions from 1 January of the current year.</p>
-      </div>
-      <pre id="fetchOut" style="white-space:pre-wrap;font-size:0.8rem;background:#f8fafc;padding:0.75rem;overflow:auto"></pre>
-      <div class="actions" style="margin-top:0.75rem">
-        <a class="action" id="returnClient" href="__CLIENT_RETURN_URL__/">← Return to the client</a>
-      </div>
+      <p id="finishMsg" class="ok"></p>
     </div>
 
     <p id="err" class="err"></p>
@@ -1600,19 +1587,11 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       }
     }
 
-    function showLoginHint(payload) {
-      const login = payload && payload.login;
-      const box = document.getElementById("loginBox");
-      const userEl = document.getElementById("loginUser");
-      const passEl = document.getElementById("loginPass");
-      if (!login) {
-        box.style.display = "none";
-        return;
-      }
-      const user = login.username || payload.person || "";
-      userEl.textContent = user;
-      passEl.textContent = login.password || user;
-      box.style.display = "";
+    function finish(message) {
+      document.getElementById("finishMsg").textContent =
+        message + " Returning to the client…";
+      showStep("step3");
+      setTimeout(() => { location.assign("__CLIENT_RETURN_URL__/"); }, 900);
     }
 
     document.getElementById("btnCreate").onclick = async () => {
@@ -1632,11 +1611,9 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       try {
         created = await api("POST", `/api/local/${encodeURIComponent(center)}/people/create`, body);
         if (modeValue === "manual-upload") {
-          document.getElementById("doneMsg").textContent =
-            `Manual-upload person created: ${created.person} (${created.center}), opening balance ${created.initial_balance}.`;
-          showLoginHint(created);
-          document.getElementById("fetchOut").textContent = JSON.stringify(created, null, 2);
-          showStep("step3");
+          finish(
+            `Manual-upload person created: ${created.person} (${created.center}), opening balance ${created.initial_balance}.`
+          );
           return;
         }
         document.getElementById("createdLabel").textContent =
@@ -1673,15 +1650,9 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         try { upData = upText ? JSON.parse(upText) : {}; } catch (_) { upData = { detail: upText }; }
         if (!up.ok) throw new Error(upData.detail || upText || up.statusText);
 
-        document.getElementById("doneMsg").textContent =
-          `PEM stored in the database (application id ${upData.app_id || "unknown"}). Setup is complete — no download yet.`;
-        showLoginHint(created);
-        document.getElementById("fetchOut").textContent = JSON.stringify(
-          { pem: upData, login: created.login || null },
-          null,
-          2
+        finish(
+          `PEM stored in the database (application id ${upData.app_id || "unknown"}).`
         );
-        showStep("step3");
       } catch (e) {
         errEl.textContent = String(e.message || e);
       }
@@ -1763,14 +1734,12 @@ _UPLOAD_HTML = """<!DOCTYPE html>
 
     <p id="err" class="err"></p>
     <p id="ok" class="ok"></p>
-    <div id="doneBox" style="display:none" class="actions">
-      <button type="button" id="btnDone" class="primary">Done</button>
-    </div>
   </main>
   <script>
     const params = new URLSearchParams(location.search);
     const errEl = document.getElementById("err");
     const okEl = document.getElementById("ok");
+    const CLIENT_URL = "__CLIENT_RETURN_URL__/";
     const _STORAGE_KEY = "upload_token";
     const urlToken = (params.get("t") || "").trim();
     const urlPerson = (params.get("person") || "").trim();
@@ -1912,17 +1881,13 @@ _UPLOAD_HTML = """<!DOCTYPE html>
     });
 
     function showDone() {
-      document.getElementById("doneBox").style.display = "flex";
+      okEl.textContent += " Returning to the client…";
+      setTimeout(() => { location.assign(CLIENT_URL); }, 700);
     }
-
-    document.getElementById("btnDone").onclick = () => {
-      location.assign("/upload");
-    };
 
     document.getElementById("btnUpload").onclick = async () => {
       errEl.textContent = "";
       okEl.textContent = "";
-      document.getElementById("doneBox").style.display = "none";
       const fileInput = document.getElementById("file");
       const file = fileInput.files && fileInput.files[0];
       if (!file) { errEl.textContent = "Choose a file."; return; }
@@ -1959,7 +1924,10 @@ _UPLOAD_HTML = """<!DOCTYPE html>
 def upload_page() -> str:
     from app.yearpath import default_upload_year
 
-    return _UPLOAD_HTML.replace("__YEAR__", default_upload_year())
+    return (
+        _UPLOAD_HTML.replace("__YEAR__", default_upload_year())
+        .replace("__CLIENT_RETURN_URL__", CLIENT_RETURN_URL)
+    )
 
 
 def _upload_token(authorization: str | None, form_token: str | None) -> str:
@@ -2003,14 +1971,23 @@ def _rows_for_upload_format(fmt: str, content: bytes) -> list[dict[str, Any]]:
 
 
 def _records_for_upload_format(
-    fmt: str, rows: list[dict[str, Any]], filename: str | None
+    fmt: str,
+    rows: list[dict[str, Any]],
+    filename: str | None,
+    *,
+    country: str | None = None,
 ) -> list[dict[str, Any]]:
     from app.core import bos_lloyds_csv_import, natwest_csv_import
     from app.core.bank_csv import csv_layout, tx_type_label
     from app.core.categorize import category_code_set
     from app.core.excel_import import rows_to_transactions
 
-    registered = category_code_set()
+    if country:
+        from app.sql_catalog import category_codes_for_country
+
+        registered = category_codes_for_country(country)
+    else:
+        registered = category_code_set()
     source = filename or "upload"
     if fmt == "excel":
         return rows_to_transactions(rows, source=source, registered=registered)
@@ -2024,6 +2001,9 @@ def _records_for_upload_format(
 
 
 def _latest_upload_balance(fmt: str, rows: list[dict[str, Any]]) -> int | None:
+    """Latest ``Balance`` column for value-balance CSV files (excel has none)."""
+    if fmt == "excel":
+        return None
     from app.core.bank_csv import csv_layout
     from app.core.natwest_csv_import import _latest_balance_cents
 
@@ -2201,7 +2181,6 @@ async def upload_api(
 ) -> dict[str, Any]:
     """Identify a local file, write its rows into ``transaction_{country}`` for the person."""
     from app.core.bank_csv import identify_upload_format
-    from app.core.categorize import recategorize_transactions
     from app.runtime import bind_person, resolve_country_for_center
     from app.sql_replica import ingest_bound_transactions
     from app.yearpath import default_upload_year, parse_year
@@ -2225,7 +2204,9 @@ async def upload_api(
         raise HTTPException(status_code=400, detail="Unknown center")
     try:
         rows = await run_in_threadpool(_rows_for_upload_format, fmt, content)
-        records = await run_in_threadpool(_records_for_upload_format, fmt, rows, file.filename)
+        records = await run_in_threadpool(
+            _records_for_upload_format, fmt, rows, file.filename, country=country
+        )
         balance_cents = await run_in_threadpool(_latest_upload_balance, fmt, rows)
     except Exception as exc:  # noqa: BLE001
         if isinstance(exc, (ValueError, OSError, UnicodeDecodeError, zipfile.BadZipFile)):
@@ -2237,8 +2218,7 @@ async def upload_api(
         raise HTTPException(status_code=400, detail="No dated transaction rows found")
     pack = _upload_person_pack(identity["person"], identity["center"], country, y)
     with bind_person(pack):
-        inserted = ingest_bound_transactions(records)
-        recategorize_transactions()
+        inserted = ingest_bound_transactions(records, locked=True)
     _sync_uploaded_account(
         person=identity["person"],
         country=country,
