@@ -61,6 +61,39 @@ class AppConfigRedirectTests(unittest.TestCase):
                 "https://production.example/callback",
             )
 
+    def test_run_on_server_flag_false_by_default(self):
+        with mock.patch.object(app_config, "load", return_value={}):
+            self.assertFalse(app_config.running_on_server())
+
+    def test_run_on_server_flag_true_when_row_set(self):
+        for raw in ("True", "true", "1", "yes", "on"):
+            with mock.patch.object(app_config, "load", return_value={"RUN_ON_SERVER": raw}):
+                self.assertTrue(app_config.running_on_server(), raw)
+
+    def test_run_on_server_uses_production_row(self):
+        rows = {
+            "PRODUCTION_ENABLEBANKING_REDIRECT_URL": "https://production.example/callback",
+            "LOCAL_ENABLEBANKING_REDIRECT_URL": "https://local.example/callback",
+        }
+        with mock.patch.object(app_config, "load", return_value={**rows, "RUN_ON_SERVER": "True"}):
+            self.assertEqual(
+                app_config.enablebanking_redirect_url(),
+                "https://production.example/callback",
+            )
+            self.assertEqual(app_config.environment(), "production")
+
+    def test_local_mode_uses_local_row(self):
+        rows = {
+            "PRODUCTION_ENABLEBANKING_REDIRECT_URL": "https://production.example/callback",
+            "LOCAL_ENABLEBANKING_REDIRECT_URL": "https://local.example/callback",
+        }
+        with mock.patch.object(app_config, "load", return_value=rows):
+            self.assertEqual(
+                app_config.enablebanking_redirect_url(),
+                "https://local.example/callback",
+            )
+            self.assertEqual(app_config.environment(), "local")
+
     def test_returns_empty_when_no_rows(self):
         with mock.patch.object(app_config, "load", return_value={}):
             self.assertEqual(app_config.enablebanking_redirect_url(), "")

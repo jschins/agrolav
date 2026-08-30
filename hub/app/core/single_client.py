@@ -33,11 +33,16 @@ DEFAULT_REDIRECT = "https://deoudegracht.nl/banking-callback.html"
 
 
 def default_redirect_url() -> str:
-    """Return the configured callback used by Enable Banking redirects."""
+    """Return the configured callback used by Enable Banking redirects.
+
+    On the server the dbo.app_config rows win over the ``ENABLEBANKING_REDIRECT_URL``
+    env override; locally the env override wins (matching old behaviour).
+    """
     override = os.environ.get("ENABLEBANKING_REDIRECT_URL", "").strip()
-    if override:
-        return override
-    return app_config.enablebanking_redirect_url() or DEFAULT_REDIRECT
+    db_value = app_config.enablebanking_redirect_url()
+    if app_config.running_on_server():
+        return db_value or override or DEFAULT_REDIRECT
+    return override or db_value or DEFAULT_REDIRECT
 
 
 def _db_configured() -> bool:

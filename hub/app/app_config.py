@@ -15,6 +15,9 @@ import os
 
 PRODUCTION_ENABLEBANKING_REDIRECT_URL = "PRODUCTION_ENABLEBANKING_REDIRECT_URL"
 LOCAL_ENABLEBANKING_REDIRECT_URL = "LOCAL_ENABLEBANKING_REDIRECT_URL"
+PUBLIC_HUB_URL = "PUBLIC_HUB_URL"
+PUBLIC_CLIENT_URL = "PUBLIC_CLIENT_URL"
+RUN_ON_SERVER = "RUN_ON_SERVER"
 _ENABLEBANKING_REDIRECT_URL_ENV = "ENABLEBANKING_REDIRECT_URL"
 
 _CACHE: dict[str, str] | None = None
@@ -58,25 +61,53 @@ def reset_cache() -> None:
 
 
 def environment() -> str:
-    """``production`` or ``local``: explicit ``HUB_ENV`` wins, else ``local``.
+    """``production`` or ``local``: the ``RUN_ON_SERVER`` row, else ``HUB_ENV``.
 
     Used only when no request ``Host`` is bound (CLI / tests).
     """
+    if running_on_server():
+        return "production"
     raw = os.environ.get("HUB_ENV", "").strip().lower()
     if raw in ("production", "prod"):
         return "production"
     return "local"
 
 
-def enablebanking_redirect_url() -> str:
-    """Enable Banking callback: the ``LOCAL_ENABLEBANKING_REDIRECT_URL`` row.
+def running_on_server() -> bool:
+    """True when the ``RUN_ON_SERVER`` dbo.app_config row is truthy.
 
-    The value is read straight from ``dbo.app_config`` under that fieldName.
-    Falls back to the PRODUCTION row only when the LOCAL row is missing.
+    With no row (or SQL not configured / table missing) it is false, i.e. local.
+    """
+    value = load().get(RUN_ON_SERVER, "").strip().lower()
+    return value in ("1", "true", "yes", "on")
+
+
+def enablebanking_redirect_url() -> str:
+    """Enable Banking callback: the environment-matched row.
+
+    On the server the ``PRODUCTION_ENABLEBANKING_REDIRECT_URL`` row is used;
+    locally the ``LOCAL_ENABLEBANKING_REDIRECT_URL`` row. The other row is the
+    fallback either way.
     """
     rows = load()
+    if running_on_server():
+        return (
+            rows.get(PRODUCTION_ENABLEBANKING_REDIRECT_URL)
+            or rows.get(LOCAL_ENABLEBANKING_REDIRECT_URL)
+            or ""
+        )
     return (
         rows.get(LOCAL_ENABLEBANKING_REDIRECT_URL)
         or rows.get(PRODUCTION_ENABLEBANKING_REDIRECT_URL)
         or ""
     )
+
+
+def public_hub_url() -> str:
+    """Browser-facing hub base from the ``PUBLIC_HUB_URL`` row (the hub pages)."""
+    return get(PUBLIC_HUB_URL)
+
+
+def public_client_url() -> str:
+    """Browser-facing client base from the ``PUBLIC_CLIENT_URL`` row (return link)."""
+    return get(PUBLIC_CLIENT_URL)

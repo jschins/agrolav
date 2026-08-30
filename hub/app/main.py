@@ -19,7 +19,22 @@ API_KEY = os.environ.get("CENTRALE_API_KEY", "").strip()
 
 # The bookhouding client is where the beheer session lives; after the add-person
 # wizard (on the hub), return there rather than leaving the user on the hub page.
-CLIENT_RETURN_URL = os.environ.get("HUB_CLIENT_URL", "http://127.0.0.1:8300").rstrip("/")
+DEFAULT_CLIENT_RETURN_URL = "http://127.0.0.1:8300"
+
+
+def client_return_url() -> str:
+    """Browser-facing client base: dbo.app_config wins on the server.
+
+    Priority: ``PUBLIC_CLIENT_URL`` row (when running on the server) → env
+    ``HUB_CLIENT_URL`` → ``http://127.0.0.1:8300``.
+    """
+    from app import app_config
+
+    env_value = os.environ.get("HUB_CLIENT_URL", "").strip().rstrip("/")
+    db_value = app_config.public_client_url().strip().rstrip("/")
+    if app_config.running_on_server():
+        return db_value or env_value or DEFAULT_CLIENT_RETURN_URL
+    return env_value or db_value or DEFAULT_CLIENT_RETURN_URL
 
 
 @asynccontextmanager
@@ -1671,9 +1686,24 @@ def add_person_page() -> str:
     from app.core.single_client import default_redirect_url
 
     return (
-        _ADD_PERSON_HTML.replace("__CLIENT_RETURN_URL__", CLIENT_RETURN_URL)
+        _ADD_PERSON_HTML.replace("__CLIENT_RETURN_URL__", client_return_url())
         .replace("__REDIRECT_URL__", default_redirect_url())
     )
+
+
+@app.get("/api/public-links")
+def public_links() -> dict[str, str]:
+    """DB-driven browser-facing URLs, read by the client BFF.
+
+    ``PUBLIC_HUB_URL`` is where the Add person / Upload pages live;
+    ``PUBLIC_CLIENT_URL`` is where the wizard returns after finishing.
+    """
+    from app import app_config
+
+    return {
+        "public_hub_url": app_config.public_hub_url(),
+        "public_client_url": app_config.public_client_url(),
+    }
 
 
 _UPLOAD_HTML = """<!DOCTYPE html>
@@ -1925,7 +1955,7 @@ def upload_page() -> str:
 
     return (
         _UPLOAD_HTML.replace("__YEAR__", default_upload_year())
-        .replace("__CLIENT_RETURN_URL__", CLIENT_RETURN_URL)
+        .replace("__CLIENT_RETURN_URL__", client_return_url())
     )
 
 

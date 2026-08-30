@@ -52,6 +52,44 @@ class HubConfig:
     title: str = ""
     auth_required: bool = False
     country: str = ""
+    public_url: str = ""  # browser-facing hub base (falls back to url)
+
+
+_PUBLIC_LINKS_CACHE: dict[str, str] | None = None
+
+
+def _fetch_public_links(url: str, api_key: str) -> dict[str, str]:
+    """Browser-facing URLs from the hub's dbo.app_config (cached on success).
+
+    An empty/failed response falls back to env ``PUBLIC_HUB_URL``, then to the
+    internal ``url``.
+    """
+    global _PUBLIC_LINKS_CACHE
+    if _PUBLIC_LINKS_CACHE is not None:
+        return _PUBLIC_LINKS_CACHE
+    links: dict[str, str] = {}
+    headers = {"Accept": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        req = urllib.request.Request(
+            f"{url}/api/public-links", headers=headers, method="GET"
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode("utf-8")
+            parsed = json.loads(raw) if raw else {}
+            if isinstance(parsed, dict):
+                links = parsed
+    except Exception:  # noqa: BLE001
+        links = {}
+    if links.get("public_hub_url") or links.get("public_client_url"):
+        _PUBLIC_LINKS_CACHE = links
+    return links
+
+
+def public_hub_url() -> str:
+    """Browser-facing hub base: env override only (hub DB checked separately)."""
+    return os.environ.get("PUBLIC_HUB_URL", "").strip().rstrip("/")
 
 
 def load_base_settings(*, force_reload: bool = False) -> dict[str, Any]:
@@ -120,6 +158,11 @@ def _build_hub_config(
         [str(w).strip() for w in centers_allowlist if str(w).strip()]
         if centers_allowlist is not None
         else parse_centers(center_key)
+    )
+    public_url = (
+        _fetch_public_links(url, api_key).get("public_hub_url", "").strip().rstrip("/")
+        or public_hub_url()
+        or url
     )
 
     if access == ACCESS_PERSON:
@@ -192,6 +235,7 @@ def _build_hub_config(
         title=title,
         auth_required=auth_required,
         country=country,
+        public_url=public_url,
     )
 
 
@@ -274,6 +318,7 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
                 title=_file_profile_cache.title,
                 auth_required=False,
                 country=_file_profile_cache.country,
+                public_url=_file_profile_cache.public_url,
             )
         return _file_profile_cache
 
@@ -661,7 +706,7 @@ def sync_status() -> dict[str, Any]:
         "username": cfg.username,
         "title": sidebar_title_from_config(cfg),
         "auth_required": cfg.auth_required,
-        "centrale_url": cfg.url,
+        "centrale_url": cfg.public_url,
         "local_session_active": _hub_session_active,
         "error": _last_error,
         "last_event_id": _last_event_id,

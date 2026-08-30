@@ -10,6 +10,7 @@ class RedirectUrlTests(unittest.TestCase):
         with mock.patch(
             "app.core.single_client.app_config"
         ) as cfg:
+            cfg.running_on_server.return_value = False
             cfg.enablebanking_redirect_url.return_value = ""
             self.assertEqual(
                 single_client.default_redirect_url(),
@@ -20,6 +21,7 @@ class RedirectUrlTests(unittest.TestCase):
         with mock.patch(
             "app.core.single_client.app_config"
         ) as cfg:
+            cfg.running_on_server.return_value = False
             cfg.enablebanking_redirect_url.return_value = (
                 "https://127.0.0.1:8200/api/consent/callback"
             )
@@ -35,12 +37,34 @@ class RedirectUrlTests(unittest.TestCase):
             with mock.patch(
                 "app.core.single_client.app_config"
             ) as cfg:
+                cfg.running_on_server.return_value = False
                 cfg.enablebanking_redirect_url.return_value = (
                     "https://elsewhere.example/callback"
                 )
                 self.assertEqual(
                     single_client.default_redirect_url(),
                     "https://example.com/banking-callback",
+                )
+        finally:
+            if old is None:
+                os.environ.pop("ENABLEBANKING_REDIRECT_URL", None)
+            else:
+                os.environ["ENABLEBANKING_REDIRECT_URL"] = old
+
+    def test_server_mode_db_row_wins_over_env(self):
+        old = os.environ.get("ENABLEBANKING_REDIRECT_URL")
+        os.environ["ENABLEBANKING_REDIRECT_URL"] = "https://env.example/callback"
+        try:
+            with mock.patch(
+                "app.core.single_client.app_config"
+            ) as cfg:
+                cfg.running_on_server.return_value = True
+                cfg.enablebanking_redirect_url.return_value = (
+                    "https://db.example/callback"
+                )
+                self.assertEqual(
+                    single_client.default_redirect_url(),
+                    "https://db.example/callback",
                 )
         finally:
             if old is None:
