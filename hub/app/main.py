@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import os
 import time
+import zipfile
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app import store
@@ -1701,6 +1703,625 @@ def add_person_page() -> str:
     return (
         _ADD_PERSON_HTML.replace("__CLIENT_RETURN_URL__", CLIENT_RETURN_URL)
         .replace("__REDIRECT_URL__", default_redirect_url())
+    )
+
+
+_UPLOAD_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Upload data — hub</title>
+  <style>
+    :root { font-family: Georgia, "Times New Roman", serif; color: #1a1a1a; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+           background: linear-gradient(160deg, #e8eef5 0%, #f7f4ef 55%, #dde6f0 100%); }
+    main { width: min(40rem, 94vw); padding: 2rem; }
+    h1 { font-size: 1.6rem; margin: 0 0 0.35rem; }
+    p.lead { margin: 0 0 1rem; color: #444; line-height: 1.45; }
+    label { display: block; margin-top: 0.75rem; font-size: 0.9rem; color: #334155; font-weight: 600; }
+    select, input[type="file"] { width: 100%; box-sizing: border-box; font: inherit;
+      padding: 0.4rem 0.5rem; border: 1px solid #94a3b8; border-radius: 4px; background: #fff; margin-top: 0.25rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+    button {
+      font: inherit; cursor: pointer; padding: 0.5rem 0.9rem; border-radius: 6px;
+      border: 1px solid #2a5a8c; background: #c1f4ff; color: #0f172a; font-weight: 700;
+      text-decoration: none; display: inline-flex; align-items: center;
+    }
+    button.primary { background: #2a5a8c; color: #fff; }
+    .panel { margin-top: 1rem; padding: 0.85rem 1rem; background: rgba(255,255,255,0.85);
+             border-left: 4px solid #2a5a8c; border-radius: 0 6px 6px 0; }
+    .panel h2 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+    .err { color: #a33; margin-top: 0.75rem; min-height: 1.2em; white-space: pre-wrap; }
+    .ok { color: #166534; margin-top: 0.75rem; white-space: pre-wrap; font-weight: 700; }
+    .meta { font-size: 0.85rem; color: #666; margin-top: 1rem; }
+    code { font-size: 0.85em; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Upload data</h1>
+    <p class="lead">Pick a local file to import into the hub. The hub recognizes
+      <code>excel</code> (<code>.xlsx</code>) and the bank CSV formats registered in
+      <code>dbo.bank</code>; anything else is refused.</p>
+
+    <div id="grantBox" class="panel" style="display:none">
+      <h2 id="grantLabel"></h2>
+      <div>Your IP: <code id="yourIp"></code></div>
+      <label>Year
+        <select id="year"><option value="__YEAR__">__YEAR__</option></select>
+      </label>
+      <p class="meta">Accepted formats: <span id="formats"></span></p>
+      <p class="meta" id="detectedFormat"></p>
+      <label>File <span style="font-weight:400;color:#666">(max 32 MB)</span>
+        <input id="file" type="file"/>
+      </label>
+      <div class="actions">
+        <button type="button" id="btnUpload" class="primary">Upload</button>
+      </div>
+    </div>
+
+    <p id="err" class="err"></p>
+    <p id="ok" class="ok"></p>
+    <div id="doneBox" style="display:none" class="actions">
+      <button type="button" id="btnDone" class="primary">Done</button>
+    </div>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const errEl = document.getElementById("err");
+    const okEl = document.getElementById("ok");
+    const _STORAGE_KEY = "upload_token";
+    const urlToken = (params.get("t") || "").trim();
+    const urlPerson = (params.get("person") || "").trim();
+    const urlCenter = (params.get("center") || "").trim();
+    const _PERSON_KEY = "upload_person";
+    const _CENTER_KEY = "upload_center";
+    let _token = urlToken;
+    let _person = urlPerson;
+    let _center = urlCenter;
+    if (_token) {
+      try { localStorage.setItem(_STORAGE_KEY, _token); } catch (_) {}
+      try { localStorage.setItem(_PERSON_KEY, _person); } catch (_) {}
+      try { localStorage.setItem(_CENTER_KEY, _center); } catch (_) {}
+    } else {
+      try { _token = (localStorage.getItem(_STORAGE_KEY) || "").trim(); } catch (_) {}
+      try { _person = (localStorage.getItem(_PERSON_KEY) || "").trim(); } catch (_) {}
+      try { _center = (localStorage.getItem(_CENTER_KEY) || "").trim(); } catch (_) {}
+    }
+
+    function token() { return _token; }
+    function appendIdentityQuery(url) {
+      if (_person) url += "&person=" + encodeURIComponent(_person);
+      if (_center) url += "&center=" + encodeURIComponent(_center);
+      return url;
+    }
+    function appendIdentityForm(fd) {
+      if (_person) fd.append("person", _person);
+      if (_center) fd.append("center", _center);
+      if (_token) fd.append("token", _token);
+    }
+    const yearEl = document.getElementById("year");
+    let _detectedFormat = "";
+    function yearValue() { return (yearEl.value || yearEl.placeholder || "").trim(); }
+    function selectedFile() {
+      const fileInput = document.getElementById("file");
+      return fileInput.files && fileInput.files[0];
+    }
+    function selectedFileName() {
+      const file = selectedFile();
+      return file ? String(file.name || "").toLowerCase() : "";
+    }
+    function isPeekYearFormat() {
+      const name = selectedFileName();
+      return name.endsWith(".csv") || name.endsWith(".xlsx");
+    }
+
+    async function api(method, path, body, isForm) {
+      const opts = { method, headers: { "Accept": "application/json" } };
+      const t = token();
+      if (t) opts.headers["Authorization"] = "Bearer " + t;
+      if (isForm) {
+        opts.body = body;
+      } else if (body !== undefined) {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      const r = await fetch(path, opts);
+      const text = await r.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch (_) { data = { detail: text }; }
+      if (!r.ok) throw new Error(data.detail || text || r.statusText);
+      return data;
+    }
+
+    function ensureYearSelected(y) {
+      if (!y) return;
+      for (const opt of yearEl.options) {
+        if (opt.value === y) { yearEl.value = y; return; }
+      }
+      const opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      yearEl.appendChild(opt);
+      yearEl.value = y;
+    }
+
+    function showGrant(g) {
+      document.getElementById("grantBox").style.display = "block";
+      document.getElementById("grantLabel").textContent = g.scope || (g.person + " @ " + g.center);
+      if (g.year_options && g.year_options.length) {
+        const selected = g.year || g.default_year || "";
+        yearEl.innerHTML = "";
+        for (const y of g.year_options) {
+          const opt = document.createElement("option");
+          opt.value = y;
+          opt.textContent = y;
+          if (y === selected) opt.selected = true;
+          yearEl.appendChild(opt);
+        }
+      }
+      document.getElementById("yourIp").textContent = g.client_ip || "?";
+      const fmtEl = document.getElementById("formats");
+      if (fmtEl && g.formats && g.formats.length) fmtEl.textContent = g.formats.join(", ");
+      const detEl = document.getElementById("detectedFormat");
+      if (detEl) detEl.textContent = _detectedFormat ? ("Detected format: " + _detectedFormat) : "";
+    }
+
+    async function loadGrant() {
+      let url = "/upload/api/upload/grant?year=" + encodeURIComponent(yearValue());
+      url = appendIdentityQuery(url);
+      if (token()) url += "&t=" + encodeURIComponent(token());
+      const g = await api("GET", url);
+      showGrant(g);
+      return g;
+    }
+
+    yearEl.addEventListener("change", async () => {
+      if (document.getElementById("grantBox").style.display === "none") return;
+      errEl.textContent = "";
+      try {
+        await loadGrant();
+      } catch (e) {
+        errEl.textContent = String(e.message || e);
+      }
+    });
+
+    document.getElementById("file").addEventListener("change", async () => {
+      errEl.textContent = "";
+      okEl.textContent = "";
+      _detectedFormat = "";
+      const detEl = document.getElementById("detectedFormat");
+      if (detEl) detEl.textContent = "";
+      if (!isPeekYearFormat()) return;
+      const file = selectedFile();
+      if (!file) return;
+      try {
+        const fd = new FormData();
+        fd.append("file", file, file.name);
+        appendIdentityForm(fd);
+        const res = await api("POST", "/upload/api/upload/peek-year", fd, true);
+        _detectedFormat = res.format || "";
+        if (res.year) {
+          ensureYearSelected(String(res.year));
+          await loadGrant();
+        }
+      } catch (e) {
+        errEl.textContent = String(e.message || e);
+      }
+    });
+
+    function showDone() {
+      document.getElementById("doneBox").style.display = "flex";
+    }
+
+    document.getElementById("btnDone").onclick = () => {
+      location.assign("/upload");
+    };
+
+    document.getElementById("btnUpload").onclick = async () => {
+      errEl.textContent = "";
+      okEl.textContent = "";
+      document.getElementById("doneBox").style.display = "none";
+      const fileInput = document.getElementById("file");
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) { errEl.textContent = "Choose a file."; return; }
+      try {
+        const fd = new FormData();
+        fd.append("file", file, file.name);
+        fd.append("year", yearValue());
+        appendIdentityForm(fd);
+        const res = await api("POST", "/upload/api/upload", fd, true);
+        const count = res.transaction_count || 0;
+        if (res.new_rows) {
+          okEl.textContent = "Uploaded " + file.name + " via " + res.via + " — " + count + " transactions imported.";
+        } else {
+          okEl.textContent = "Uploaded " + file.name + " via " + res.via + " — no new rows (already on the hub).";
+        }
+        showDone();
+      } catch (e) {
+        errEl.textContent = String(e.message || e);
+      }
+    };
+
+    if (token()) {
+      loadGrant().catch((e) => { errEl.textContent = String(e.message || e); });
+    } else {
+      errEl.textContent = "No token provided. Add ?t=<token> to the URL.";
+    }
+  </script>
+</body>
+</html>
+"""
+
+
+@app.get("/upload", response_class=HTMLResponse)
+def upload_page() -> str:
+    from app.yearpath import default_upload_year
+
+    return _UPLOAD_HTML.replace("__YEAR__", default_upload_year())
+
+
+def _upload_token(authorization: str | None, form_token: str | None) -> str:
+    from urllib.parse import unquote
+
+    raw = ""
+    if form_token and form_token.strip():
+        raw = form_token.strip()
+    elif authorization and authorization.lower().startswith("bearer "):
+        raw = authorization[7:].strip()
+    if not raw:
+        return ""
+    decoded = unquote(raw).strip()
+    return decoded or raw
+
+
+def _resolve_upload_identity(token: str, person: str, center: str) -> dict[str, str]:
+    """Person/center from the shared upload token (SQL map)."""
+    from app import user_store
+
+    person = (person or "").strip()
+    center = (center or "").strip()
+    if not token or not person or not center:
+        raise HTTPException(status_code=401, detail="Invalid upload token")
+    tokens = user_store.upload_token_by_person_center()
+    if (person, center) not in tokens or tokens[(person, center)] != token:
+        raise HTTPException(status_code=401, detail="Invalid upload token")
+    return {"person": person, "center": center}
+
+
+def _rows_for_upload_format(fmt: str, content: bytes) -> list[dict[str, Any]]:
+    from app.core import bos_lloyds_csv_import, natwest_csv_import
+    from app.core.bank_csv import csv_layout
+    from app.core.excel_import import read_xlsx_rows_bytes
+
+    if fmt == "excel":
+        return read_xlsx_rows_bytes(content)
+    if csv_layout(fmt) == "debit_credit":
+        return bos_lloyds_csv_import.read_csv_rows_bytes(content)
+    return natwest_csv_import.read_csv_rows_bytes(content)
+
+
+def _records_for_upload_format(
+    fmt: str, rows: list[dict[str, Any]], filename: str | None
+) -> list[dict[str, Any]]:
+    from app.core import bos_lloyds_csv_import, natwest_csv_import
+    from app.core.bank_csv import csv_layout, tx_type_label
+    from app.core.categorize import category_code_set
+    from app.core.excel_import import rows_to_transactions
+
+    registered = category_code_set()
+    source = filename or "upload"
+    if fmt == "excel":
+        return rows_to_transactions(rows, source=source, registered=registered)
+    if csv_layout(fmt) == "debit_credit":
+        return bos_lloyds_csv_import.rows_to_transactions(
+            rows, source=source, registered=registered, tx_type=tx_type_label(fmt)
+        )
+    return natwest_csv_import.rows_to_transactions(
+        rows, source=source, registered=registered, tx_type=tx_type_label(fmt)
+    )
+
+
+def _latest_upload_balance(fmt: str, rows: list[dict[str, Any]]) -> int | None:
+    from app.core.bank_csv import csv_layout
+    from app.core.natwest_csv_import import _latest_balance_cents
+
+    if csv_layout(fmt) != "value_balance":
+        return None
+    return _latest_balance_cents(rows)
+
+
+def _max_uploaded_date(records: list[dict[str, Any]]):
+    from app.sql_replica import _booked_on
+
+    latest = None
+    for item in records:
+        booked = _booked_on(item.get("date")) if isinstance(item, dict) else None
+        if booked and (latest is None or booked > latest):
+            latest = booked
+    return latest
+
+
+def _upload_person_pack(person: str, center: str, country: str, year: str):
+    from pathlib import Path
+
+    from app.runtime import PersonPack, data_root
+
+    folder = data_root() / country / center / person
+    return PersonPack(
+        person_name=person,
+        folder=folder,
+        data_dir=folder / year,
+        secret_dir=folder / "secret",
+        profile_path=Path("."),
+        private_key_path=Path("."),
+        year=year,
+        country=country,
+        center=center,
+    )
+
+
+def _sync_uploaded_account(
+    *,
+    person: str,
+    country: str,
+    fmt: str,
+    last_booked,
+    balance_cents: int | None,
+) -> None:
+    """Record the upload format, latest booked date, and end balance on ``dbo.account``."""
+    from datetime import datetime
+    from decimal import Decimal
+
+    from app import user_store
+    from app.sql_replica import _transaction_table
+
+    if not user_store.database_url():
+        return
+    table = _transaction_table(country)
+    if table is None:
+        return
+    user_store.init_user_store()
+    conn = user_store._sql_connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+        (person,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return
+    person_id = int(row[0])
+    cursor.execute(f"SELECT MAX(booked_on) FROM {table} WHERE person_id = ?", (person_id,))
+    max_row = cursor.fetchone()
+    from_sql = max_row[0] if max_row else None
+    if isinstance(from_sql, datetime):
+        from_sql = from_sql.date()
+    effective = last_booked or from_sql
+    if from_sql and last_booked and from_sql > last_booked:
+        effective = from_sql
+    if effective:
+        cursor.execute(
+            "UPDATE dbo.account SET format = ?, last_booked = ? WHERE person_id = ?",
+            fmt,
+            effective,
+            person_id,
+        )
+    if balance_cents is not None:
+        cursor.execute(
+            "UPDATE dbo.account SET balance = ? WHERE person_id = ?",
+            Decimal(balance_cents) / Decimal("100"),
+            person_id,
+        )
+    conn.commit()
+
+
+@app.get("/upload/api/upload/grant")
+def upload_grant(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    year: str | None = Query(default=None),
+) -> dict[str, Any]:
+    from app.core.bank_csv import upload_format_options
+    from app.runtime import resolve_country_for_center
+    from app.sql_catalog import years_for_person
+    from app.yearpath import default_upload_year, parse_year
+
+    token = _upload_token(authorization, request.query_params.get("t"))
+    identity = _resolve_upload_identity(
+        token,
+        request.query_params.get("person"),
+        request.query_params.get("center"),
+    )
+    try:
+        y = parse_year(year) if year else default_upload_year()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    country = resolve_country_for_center(identity["center"]) or ""
+    default_y = default_upload_year()
+    year_options = sorted(
+        set(years_for_person(identity["person"]) + [default_y, str(int(default_y) + 1)])
+    )
+    return {
+        "person": identity["person"],
+        "center": identity["center"],
+        "country": country,
+        "scope": "/".join(part for part in (country, identity["center"], identity["person"]) if part),
+        "year": y,
+        "default_year": default_y,
+        "year_options": year_options,
+        "formats": upload_format_options(),
+        "client_ip": _request_client_host(request),
+    }
+
+
+@app.post("/upload/api/upload/peek-year")
+async def upload_peek_year(
+    request: Request,
+    file: UploadFile = File(...),
+    token: str | None = Form(None),
+    person: str | None = Form(None),
+    center: str | None = Form(None),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """Return the calendar year of the first dated row and the identified format."""
+    from app.core.bank_csv import identify_upload_format
+
+    auth_token = _upload_token(authorization, token)
+    identity = _resolve_upload_identity(auth_token, person, center)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > 32 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 32 MiB)")
+    fmt = identify_upload_format(content, file.filename)
+    if fmt is None:
+        raise HTTPException(status_code=400, detail="file refused due to unknown format")
+    year = _first_entry_year_for_format(fmt, content)
+    if not year:
+        raise HTTPException(status_code=400, detail="No dated transaction entry found")
+    return {
+        "year": year,
+        "format": fmt,
+        "person": identity["person"],
+        "center": identity["center"],
+    }
+
+
+@app.post("/upload/api/upload")
+async def upload_api(
+    request: Request,
+    file: UploadFile = File(...),
+    token: str | None = Form(None),
+    year: str | None = Form(None),
+    person: str | None = Form(None),
+    center: str | None = Form(None),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """Identify a local file, write its rows into ``transaction_{country}`` for the person."""
+    from app.core.bank_csv import identify_upload_format
+    from app.core.categorize import recategorize_transactions
+    from app.runtime import bind_person, resolve_country_for_center
+    from app.sql_replica import ingest_bound_transactions
+    from app.yearpath import default_upload_year, parse_year
+
+    auth_token = _upload_token(authorization, token)
+    identity = _resolve_upload_identity(auth_token, person, center)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > 32 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 32 MiB)")
+    fmt = identify_upload_format(content, file.filename)
+    if fmt is None:
+        raise HTTPException(status_code=400, detail="file refused due to unknown format")
+    try:
+        y = parse_year(year) if year else default_upload_year()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    country = resolve_country_for_center(identity["center"]) or ""
+    if not country:
+        raise HTTPException(status_code=400, detail="Unknown center")
+    try:
+        rows = await run_in_threadpool(_rows_for_upload_format, fmt, content)
+        records = await run_in_threadpool(_records_for_upload_format, fmt, rows, file.filename)
+        balance_cents = await run_in_threadpool(_latest_upload_balance, fmt, rows)
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, (ValueError, OSError, UnicodeDecodeError, zipfile.BadZipFile)):
+            raise HTTPException(
+                status_code=400, detail=f"file refused due to unknown format: {exc}"
+            ) from exc
+        raise
+    if not records:
+        raise HTTPException(status_code=400, detail="No dated transaction rows found")
+    pack = _upload_person_pack(identity["person"], identity["center"], country, y)
+    with bind_person(pack):
+        inserted = ingest_bound_transactions(records)
+        recategorize_transactions()
+    _sync_uploaded_account(
+        person=identity["person"],
+        country=country,
+        fmt=fmt,
+        last_booked=_max_uploaded_date(records),
+        balance_cents=balance_cents,
+    )
+    store.announce_mutation(identity["center"], [f"{identity['person']}/"], source="central")
+    return {
+        "via": fmt,
+        "year": y,
+        "person": identity["person"],
+        "center": identity["center"],
+        "bytes": len(content),
+        "transaction_count": len(records),
+        "new_rows": inserted > 0,
+        "inserted": inserted,
+    }
+
+
+def _first_entry_year_for_format(fmt: str, content: bytes) -> str | None:
+    from app.core import bos_lloyds_csv_import, natwest_csv_import
+    from app.core.bank_csv import csv_layout
+    from app.core.excel_import import first_entry_year_from_xlsx_bytes
+
+    if fmt == "excel":
+        return first_entry_year_from_xlsx_bytes(content)
+    if csv_layout(fmt) == "debit_credit":
+        return bos_lloyds_csv_import.first_entry_year_from_csv_bytes(content)
+    return natwest_csv_import.first_entry_year_from_csv_bytes(content)
+
+
+@app.get("/api/upload/grant")
+def api_upload_grant_proxy(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    year: str | None = Query(default=None),
+) -> dict[str, Any]:
+    """Upload endpoints variant under ``/api/upload`` (see the ``/upload`` routes)."""
+    return upload_grant(
+        request,
+        authorization=authorization,
+        year=year,
+    )
+
+
+@app.post("/api/upload/peek-year")
+async def api_upload_peek_year_proxy(
+    request: Request,
+    file: UploadFile = File(...),
+    token: str | None = Form(None),
+    person: str | None = Form(None),
+    center: str | None = Form(None),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    return await upload_peek_year(
+        request,
+        file=file,
+        token=token,
+        person=person,
+        center=center,
+        authorization=authorization,
+    )
+
+
+@app.post("/api/upload")
+async def api_upload_proxy(
+    request: Request,
+    file: UploadFile = File(...),
+    token: str | None = Form(None),
+    year: str | None = Form(None),
+    person: str | None = Form(None),
+    center: str | None = Form(None),
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    return await upload_api(
+        request,
+        file=file,
+        token=token,
+        year=year,
+        person=person,
+        center=center,
+        authorization=authorization,
     )
 
 

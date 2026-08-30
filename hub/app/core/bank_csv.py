@@ -184,6 +184,77 @@ def detect_csv_format_from_bytes(data: bytes) -> str | None:
     return None
 
 
+def bank_formats_from_sql() -> list[dict[str, str]]:
+    """The bank upload formats registered in ``dbo.bank`` (ordered by bank_id)."""
+    from app import user_store
+    from app.sql_catalog import _sql_retry
+
+    def _run() -> list[dict[str, str]]:
+        if not user_store.database_url():
+            return []
+        user_store.init_user_store()
+        cursor = user_store._sql_connect().cursor()
+        cursor.execute(
+            "SELECT bank_id, bank_name_official, file_format FROM dbo.bank ORDER BY bank_id"
+        )
+        return [
+            {
+                "bank_id": int(bank_id),
+                "bank_name_official": str(name or ""),
+                "file_format": str(fmt or ""),
+            }
+            for bank_id, name, fmt in cursor.fetchall()
+        ]
+
+    try:
+        return _sql_retry(_run)
+    except Exception as exc:  # noqa: BLE001
+        print(f"bank_csv: could not read dbo.bank: {exc}")
+        return []
+
+
+def upload_format_options() -> list[str]:
+    """The five upload formats: excel, then one per ``dbo.bank`` row."""
+    return ["excel"] + [
+        row["file_format"]
+        for row in bank_formats_from_sql()
+        if str(row["file_format"] or "").strip()
+    ]
+
+
+def identify_upload_format(data: bytes, filename: str | None = None) -> str | None:
+    """Return one of the five upload formats, or ``None`` (unknown → file refused).
+
+    ``excel`` for ``.xlsx``; a bank CSV for the layouts recognized by
+    ``dbo.bank`` (BoS/Lloyds debit-credit → ``bos-csv`` or ``lloyds-csv``,
+    RBS/NatWest value-balance → ``rbs-csv`` or ``natwest-csv``).
+    """
+    name = str(filename or "").lower()
+    if name.endswith(".xlsx"):
+        return "excel"
+    if not name.endswith(".csv"):
+        return None
+    fmt = detect_csv_format_from_bytes(data)
+    if not fmt:
+        return None
+    registered = [
+        str(row["file_format"] or "").strip()
+        for row in bank_formats_from_sql()
+    ]
+    if fmt in registered:
+        return fmt
+    layout = csv_layout(fmt)
+    siblings = (
+        ("bos-csv", "lloyds-csv")
+        if layout == "debit_credit"
+        else ("rbs-csv", "natwest-csv")
+    )
+    for candidate in siblings:
+        if candidate in registered:
+            return candidate
+    return None
+
+
 def infer_bank_folder_from_csv(data: bytes) -> str:
     """Guess bank subfolder from uploaded CSV headers when exactly one modality matches."""
     fmt = detect_csv_format_from_bytes(data)

@@ -850,19 +850,11 @@ function SyncNotifyShell({
   );
 }
 
-const AIB_HISTORICAL_YEARS = 2;
-
 function isoDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function historicalStartDate(ref: Date = new Date()): string {
-  const start = new Date(ref);
-  start.setFullYear(start.getFullYear() - AIB_HISTORICAL_YEARS);
-  return isoDate(start);
 }
 
 function previousMonthRange(): { from: string; to: string } {
@@ -1136,9 +1128,7 @@ function MainApp({
   const [detail, setDetail] = useState<TransactionsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [fetchingPerson, setfetchingPerson] = useState<string | null>(null);
   const [firstDownloading, setFirstDownloading] = useState(false);
-  const [personNewYear, setPersonNewYear] = useState<Record<string, boolean>>({});
   const [consentReady, setConsentReady] = useState<Record<string, boolean>>({});
   const [refreshScope, setRefreshScope] = useState<RefreshStatusScope | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<StoredRefreshStatus | null>(null);
@@ -1147,7 +1137,6 @@ function MainApp({
   const [addPersonUrl, setAddPersonUrl] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState(() => previousMonthRange().from);
   const [dateTo, setDateTo] = useState(() => previousMonthRange().to);
-  const prevMonth = previousMonthRange();
   const [termMenu, setTermMenu] = useState<{
     term: string;
     x: number;
@@ -1482,13 +1471,12 @@ function MainApp({
   }, []);
 
   function doRefresh() {
-    if (refreshing || fetchingPerson) return;
+    if (refreshing) return;
     beginRefreshBusy();
     flushSync(() => {
       setRefreshing(true);
       setError(null);
       setRefreshStatus(null);
-      setPersonNewYear({});
       setConsentReady({});
     });
     clearStoredRefreshStatus(refreshScope);
@@ -1530,49 +1518,8 @@ function MainApp({
     });
   }
 
-  function doRefreshPerson(person_name: string) {
-    if (refreshing || fetchingPerson) return;
-    beginRefreshBusy();
-    flushSync(() => {
-      setfetchingPerson(person_name);
-      setError(null);
-    });
-    afterPaint(() => {
-      refreshPerson(person_name, {
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
-        new_year: Boolean(personNewYear[person_name]),
-      })
-        .then((res) => {
-          setMatrix(res.matrix);
-          const nextResult = (res.results || [])[0];
-          const prev = refreshStatus || { results: [], warnings: [] };
-          const results = nextResult
-            ? [
-                ...prev.results.filter((r) => r.person_name !== person_name),
-                nextResult,
-              ]
-            : prev.results.filter((r) => r.person_name !== person_name);
-          const warnings = [
-            ...prev.warnings.filter((w) => !w.startsWith(`${person_name}:`) && !w.startsWith(`${person_name} (`)),
-            ...(res.warnings || []),
-          ];
-          const payload: StoredRefreshStatus = { results, warnings };
-          saveStoredRefreshStatus(payload, refreshScope);
-          setRefreshStatus(payload);
-          setSelection(null);
-          setDetail(null);
-        })
-        .catch((e: Error) => setError(e.message))
-        .finally(() => {
-          setfetchingPerson(null);
-          endRefreshBusy();
-        });
-    });
-  }
-
   function doFirstDownload(person_name: string) {
-    if (refreshing || fetchingPerson || firstDownloading) return;
+    if (refreshing || firstDownloading) return;
     beginRefreshBusy();
     flushSync(() => {
       setFirstDownloading(true);
@@ -1652,7 +1599,7 @@ function MainApp({
       items.push({
         id: "refresh",
         label: refreshing ? "Refreshing…" : "↻ Refresh all",
-        disabled: refreshing || Boolean(fetchingPerson),
+        disabled: refreshing,
         onClick: doRefresh,
       });
     }
@@ -1669,7 +1616,6 @@ function MainApp({
     hasSecrets,
     awaitingPostConsentFetch,
     refreshing,
-    fetchingPerson,
     canAddPerson,
     addPersonUrl,
     setHeaderActions,
@@ -1706,157 +1652,6 @@ function MainApp({
     <div className="app">
       <aside className="sidebar">
         {brandName ? <h1 className="app-heading">{brandName}</h1> : null}
-
-        <div
-          className={
-            awaitingPostConsentFetch ? "fetch-form fetch-form--person-scope" : "fetch-form"
-          }
-        >
-          {hasSecrets && (
-            <>
-              <label className="sidebar-field">
-                <span className="sidebar-field-legend">date-from</span>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  placeholder={prevMonth.from}
-                  min={historicalStartDate()}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                />
-              </label>
-              <label className="sidebar-field">
-                <span className="sidebar-field-legend">date-to</span>
-                <input
-                  type="date"
-                  value={dateTo}
-                  placeholder={prevMonth.to}
-                  min={historicalStartDate()}
-                  max={isoDate(new Date())}
-                  onChange={(e) => setDateTo(e.target.value)}
-                />
-              </label>
-              {refreshStatus && (
-                <div className="refresh-status">
-                  {(refreshStatus.results || [])
-                    .filter((r) => {
-                      if (!awaitingPostConsentFetch) return true;
-                      return (
-                        r.skipped &&
-                        r.reason === "needs_consent_renewal" &&
-                        Boolean(consentReady[r.person_name])
-                      );
-                    })
-                    .map((r) => (
-                    <div key={r.person_name} className="refresh-status-line">
-                      {r.skipped ? (
-                        r.reason === "needs_consent_renewal" ? (
-                          <>
-                            {!awaitingPostConsentFetch ? (
-                              <span>
-                                {r.person_name}: bank consent required
-                                {!r.authorization_url && !consentReady[r.person_name]
-                                  ? " (no authorization URL)"
-                                  : ""}
-                              </span>
-                            ) : null}
-                            {!consentReady[r.person_name] && r.authorization_url ? (
-                              <div className="sidebar-field">
-                                <span className="sidebar-field-legend" aria-hidden="true">
-                                  {"\u00a0"}
-                                </span>
-                                <a
-                                  className="sidebar-knob"
-                                  href={r.authorization_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  {`authorize ${r.person_name}`}
-                                </a>
-                              </div>
-                            ) : null}
-                            {consentReady[r.person_name] ? (
-                              <>
-                                <label className="refresh-person-newyear">
-                                  <input
-                                    type="checkbox"
-                                    checked={Boolean(personNewYear[r.person_name])}
-                                    disabled={Boolean(refreshing || fetchingPerson)}
-                                    onChange={(e) =>
-                                      setPersonNewYear((prev) => ({
-                                        ...prev,
-                                        [r.person_name]: e.target.checked,
-                                      }))
-                                    }
-                                  />
-                                  new year (overwrite {r.person_name} only)
-                                </label>
-                                <div className="sidebar-field">
-                                  <span className="sidebar-field-legend" aria-hidden="true">
-                                    {"\u00a0"}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    className="sidebar-knob"
-                                    disabled={Boolean(refreshing || fetchingPerson)}
-                                    onClick={() => doRefreshPerson(r.person_name)}
-                                  >
-                                    {fetchingPerson === r.person_name
-                                      ? `Fetching ${r.person_name}…`
-                                      : `fetch for ${r.person_name}`}
-                                  </button>
-                                </div>
-                              </>
-                            ) : null}
-                          </>
-                        ) : (
-                          <span>
-                            {r.person_name}: skipped
-                            {r.reason ? ` (${r.reason})` : ""}
-                          </span>
-                        )
-                      ) : (
-                        <span>
-                          {r.person_name}: {r.transaction_count ?? 0} transaction
-                          {(r.transaction_count ?? 0) === 1 ? "" : "s"}
-                          {r.date_from && r.date_to
-                            ? ` (${r.date_from} .. ${r.date_to})`
-                            : ""}
-                          {r.new_year ? " — new year overwrite" : ""}
-                        </span>
-                      )}
-                      {!awaitingPostConsentFetch
-                        ? (r.warnings || []).map((w) => (
-                            <div key={`${r.person_name}-w-${w}`} className="refresh-status-note">
-                              {r.person_name}: {w}
-                            </div>
-                          ))
-                        : null}
-                      {!awaitingPostConsentFetch
-                        ? (r.account_errors || []).map((w) => (
-                            <div key={`${r.person_name}-e-${w}`} className="refresh-status-note">
-                              {r.person_name}: {w}
-                            </div>
-                          ))
-                        : null}
-                    </div>
-                  ))}
-                  {!awaitingPostConsentFetch
-                    ? (refreshStatus.warnings || []).map((w) => (
-                        <div key={w} className="refresh-status-note">
-                          {w}
-                        </div>
-                      ))
-                    : null}
-                  {!awaitingPostConsentFetch &&
-                  !refreshStatus.results?.length &&
-                  !refreshStatus.warnings?.length ? (
-                    <div>Refreshed (no person results)</div>
-                  ) : null}
-                </div>
-              )}
-            </>
-          )}
-        </div>
 
         {inPView && matrix && (
           <>

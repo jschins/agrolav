@@ -154,6 +154,33 @@ def _seed_dim_category(cursor, country_id: int, categories_path: Path) -> None:
         )
 
 
+_BANK_FORMAT_ROWS: list[tuple[int, str, str]] = [
+    (1, "BoS", "bos-csv"),
+    (2, "LLOYDS", "lloyds-csv"),
+    (3, "RBS", "rbs-csv"),
+    (4, "Natwest", "natwest-csv"),
+]
+
+
+def _seed_bank_formats(cursor) -> None:
+    """Register the four bank upload formats in ``dbo.bank`` (idempotent).
+
+    The upload UI offers excel plus one entry per ``dbo.bank`` row, so the
+    table must be seeded exactly once (the four formats the file sniffers
+    recognize: BoS/Lloyds debit-credit and RBS/Natwest value-balance CSVs).
+    """
+    cursor.execute("SELECT COUNT(*) FROM dbo.bank")
+    if cursor.fetchone()[0]:
+        return
+    cursor.executemany(
+        """
+        INSERT INTO dbo.bank (bank_id, bank_name_official, file_format)
+        VALUES (?, ?, ?)
+        """,
+        _BANK_FORMAT_ROWS,
+    )
+
+
 def _txn_constraint_tag(table: str) -> str:
     name = table.split(".")[-1]
     prefix = "transaction_"
@@ -323,6 +350,7 @@ def create_country(*, name: str, currency: str, title: str = "") -> dict[str, An
     conn = user_store._sql_connect()
     cursor = conn.cursor()
     try:
+        _seed_bank_formats(cursor)
         _drop_orphan_transaction_tables(cursor)
         cursor.execute(
             """
@@ -413,6 +441,7 @@ def create_center(*, name: str, country: str, title: str = "") -> dict[str, Any]
     conn = user_store._sql_connect()
     cursor = conn.cursor()
     try:
+        _seed_bank_formats(cursor)
         if user_store._sql_username_taken(cursor, username):
             raise ValueError(f"Username already used: {username}")
         cursor.execute(
