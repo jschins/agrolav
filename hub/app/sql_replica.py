@@ -390,10 +390,23 @@ def load_bound_last_booked() -> str | None:
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to load last booked date: {exc}")
         return None
-    if not row or row[0] is None:
+    if row and row[0] is not None:
+        text = _json_date(row[0])
+        return text or None
+    try:
+        # Manual-upload persons have no bookings; fall back to the account's
+        # last_booked (opening-balance date) so the matrix shows a date.
+        bound.cursor.execute(
+            "SELECT MAX(a.last_booked) FROM dbo.account a WHERE a.person_id = ?",
+            (bound.person_id,),
+        )
+        fallback = bound.cursor.fetchone()
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql replica: failed to load account last booked date: {exc}")
         return None
-    text = _json_date(row[0])
-    return text or None
+    if not fallback or fallback[0] is None:
+        return None
+    return _json_date(fallback[0]) or None
 
 
 def load_center_year_matrix(
@@ -477,6 +490,24 @@ def load_center_year_matrix(
             for username, booked in cursor.fetchall()
             if str(username or "").strip() and booked is not None
         }
+
+        # Persons without bookings (manual upload) fall back to the account's
+        # last_booked (opening-balance date) so the matrix shows a date.
+        cursor.execute(
+            """
+            SELECT p.username, MAX(a.last_booked)
+            FROM dbo.account a
+            JOIN dbo.person p ON p.id = a.person_id
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.username = ? COLLATE Latin1_General_CI_AI
+            GROUP BY p.username
+            """,
+            (ws,),
+        )
+        for username, last_date in cursor.fetchall():
+            person = str(username or "").strip()
+            if person and last_date is not None and person not in last_booked:
+                last_booked[person] = _json_date(last_date) or ""
 
         cursor.execute(
             """

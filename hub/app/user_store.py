@@ -6,6 +6,7 @@ import re
 import threading
 import time
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -622,6 +623,76 @@ def upsert_personal_login(
         country=country_s,
         person=folder,
     )
+
+
+def create_manual_person(
+    *,
+    center: str,
+    person: str,
+    account_name: str,
+    account_number: str,
+    initial_balance: str = "0",
+    country: str = "",
+) -> dict[str, Any]:
+    """Create a manual-upload person with a single opening-balance account."""
+    name = (person or "").strip()
+    ws = (center or "").strip()
+    holder = (account_name or "").strip()
+    iban = (account_number or "").strip()
+    balance_s = (initial_balance or "0").strip().replace(",", ".")
+    if not name or not ws:
+        raise ValueError("center and person are required")
+    if not holder:
+        raise ValueError("account holder name is required")
+    if not iban:
+        raise ValueError("account number is required")
+    try:
+        balance = Decimal(balance_s)
+    except Exception:  # noqa: BLE001
+        balance = Decimal("0")
+    from app.runtime import active_country, resolve_country_for_center
+
+    country_s = (country or active_country() or resolve_country_for_center(ws) or "").strip()
+    today = _utc_today()
+    with _LOCK:
+        init_user_store()
+        cursor = _sql_connect().cursor()
+        country_id = _sql_country_id(cursor, country_s)
+        if country_id is None:
+            raise ValueError(f"Unknown country {country_s or name!r}")
+        center_id = _sql_center_id(cursor, country_id, ws)
+        if center_id is None:
+            raise ValueError(f"Unknown center {ws!r} for country_id={country_id}")
+        if _sql_username_taken(cursor, name):
+            raise ValueError(f"Username already used: {name}")
+        cursor.execute(
+            """
+            INSERT INTO dbo.person
+                (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
+            OUTPUT INSERTED.id
+            VALUES (?, ?, ?, ?, 1, ?, ?)
+            """,
+            (name, holder, country_id, center_id, today, today),
+        )
+        person_id = int(cursor.fetchone()[0])
+        cursor.execute(
+            """
+            INSERT INTO dbo.account
+                (person_id, iban, account_name, format, balance, last_booked, connection_id, uid)
+            VALUES (?, ?, ?, NULL, ?, ?, NULL, NULL)
+            """,
+            (person_id, iban, holder, balance, today),
+        )
+        _sql_connect().commit()
+    user = find_user(name)
+    return {
+        "person": name,
+        "center": ws,
+        "account_name": holder,
+        "account_number": iban,
+        "initial_balance": f"{balance:.2f}",
+        "login": _public_user(user) if user else None,
+    }
 
 
 def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:

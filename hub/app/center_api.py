@@ -693,7 +693,7 @@ def create_person(
     *,
     person: str,
     account_name: str = "",
-    mode: str = "pem",
+    mode: str = "periodic-consent",
     country: str = "NL",
     aspsp: str = "ING",
     initial_balance: str | None = None,
@@ -701,11 +701,11 @@ def create_person(
 ) -> dict[str, Any]:
     """Create a person in SQL Server (agrolav-sql)."""
     person_name = _valid_person_name(person)
-    mode_s = (mode or "pem").strip().lower()
-    if mode_s not in {"pem", "excel"}:
-        raise ValueError("mode must be 'pem' or 'excel'")
+    mode_s = (mode or "periodic-consent").strip().lower()
+    if mode_s not in {"periodic-consent", "manual-upload"}:
+        raise ValueError("mode must be 'periodic-consent' or 'manual-upload'")
     holder = (account_name or "").strip()
-    if mode_s == "excel" and not holder:
+    if mode_s == "manual-upload" and not holder:
         raise ValueError("account holder name is required")
     account_no = (account_number or "").strip()
     country_s = (country or "NL").strip().upper()
@@ -726,7 +726,7 @@ def create_person(
                 raise ValueError(f"Unknown center: {ws}")
             if person_name.lower() in {name.lower() for name in people_in_center(ws)}:
                 raise ValueError(f"Person already exists: {person_name}")
-            if mode_s == "pem":
+            if mode_s == "periodic-consent":
                 login = user_store.upsert_personal_login(
                     center=ws, person=person_name, country=country_name
                 )
@@ -735,15 +735,30 @@ def create_person(
                     "ok": True,
                     "center": ws,
                     "person": person_name,
-                    "mode": "pem",
+                    "mode": "periodic-consent",
                     "login": login,
                     "enable_banking_url": "https://enablebanking.com/cp/applications",
                 }
-            if mode_s == "excel":
-                raise ValueError(
-                    "Excel mode is not supported on SQL Server (agrolav-sql) yet — "
-                    "create the person with pem mode instead."
+            if mode_s == "manual-upload":
+                created = user_store.create_manual_person(
+                    center=ws,
+                    person=person_name,
+                    country=country_name,
+                    account_name=holder,
+                    account_number=account_no,
+                    initial_balance=initial_balance or "0",
                 )
+                store.announce_mutation(ws, [f"{person_name}/"], source="central")
+                return {
+                    "ok": True,
+                    "center": ws,
+                    "person": person_name,
+                    "mode": "manual-upload",
+                    "account_name": created.get("account_name"),
+                    "account_number": created.get("account_number"),
+                    "initial_balance": created.get("initial_balance"),
+                    "login": created.get("login"),
+                }
 
         raise RuntimeError(
             "SQL Server (agrolav-sql) is required — person creation is only supported via SQL."

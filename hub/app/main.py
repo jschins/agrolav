@@ -554,7 +554,7 @@ class PersonRefreshRequest(BaseModel):
 class CreatePersonRequest(BaseModel):
     person: str
     account_name: str = ""
-    mode: str = "pem"
+    mode: str = "periodic-consent"
     country: str = "NL"
     aspsp: str = "ING"
     initial_balance: str | None = None
@@ -1451,8 +1451,8 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
     </label>
     <label style="display:block;margin-top:0.5rem">Mode
       <select id="mode">
-        <option value="pem" selected>pem</option>
-        <option value="excel">excel</option>
+        <option value="periodic-consent" selected>periodic consent</option>
+        <option value="manual-upload">manual upload</option>
       </select>
     </label>
 
@@ -1567,15 +1567,15 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
     }
 
     function mode() {
-      return (document.getElementById("mode").value || "pem").trim().toLowerCase();
+      return (document.getElementById("mode").value || "periodic-consent").trim().toLowerCase();
     }
 
     function applyModeUi() {
-      const excel = mode() === "excel";
-      document.getElementById("rowHolder").style.display = excel ? "" : "none";
-      document.getElementById("rowAccountNumber").style.display = excel ? "" : "none";
-      document.getElementById("rowInitial").style.display = excel ? "" : "none";
-      document.getElementById("pemReference").style.display = excel ? "none" : "";
+      const manual = mode() === "manual-upload";
+      document.getElementById("rowHolder").style.display = manual ? "" : "none";
+      document.getElementById("rowAccountNumber").style.display = manual ? "" : "none";
+      document.getElementById("rowInitial").style.display = manual ? "" : "none";
+      document.getElementById("pemReference").style.display = manual ? "none" : "";
     }
 
     async function loadCenters() {
@@ -1622,16 +1622,16 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         person,
         mode: modeValue,
       };
-      if (modeValue === "excel") {
+      if (modeValue === "manual-upload") {
         body.account_name = document.getElementById("accountHolder").value.trim();
         body.initial_balance = document.getElementById("initialBalance").value;
         body.account_number = document.getElementById("accountNumber").value.trim();
       }
       try {
         created = await api("POST", `/api/local/${encodeURIComponent(center)}/people/create`, body);
-        if (modeValue === "excel") {
+        if (modeValue === "manual-upload") {
           document.getElementById("doneMsg").textContent =
-            `Excel person created: ${created.person} (${created.center}), opening balance ${created.initial_balance}.`;
+            `Manual-upload person created: ${created.person} (${created.center}), opening balance ${created.initial_balance}.`;
           showLoginHint(created);
           document.getElementById("fetchOut").textContent = JSON.stringify(created, null, 2);
           showStep("step3");
