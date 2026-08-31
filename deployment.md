@@ -17,7 +17,7 @@ SQL-only, JSON-write-free architecture (branch `sqlserver`).
 | hub | systemd `agrolav-hub` | `127.0.0.1:8200` | FastAPI: sync/merge/calculation, SQL Server (agrolav-sql) only |
 | client BFF | systemd `agrolav-client` | `127.0.0.1:8300` | Thin BFF: serves the frontend, proxies hub domain APIs, browser login |
 | SQL Server | Docker `SQLServer2022` | `0.0.0.0:1433` | the only data store (`dbo.country/center/person/...`, `dbo.app_config`) |
-| nginx | systemd | `80/443` | public site → client BFF; hub web pages → hub (see below) |
+| Caddy | systemd (`caddy`) | `80/443` | public site → client BFF; hub web pages → hub (see §14) |
 
 There is **no SQLite fallback** on this branch. If `HUB_DATABASE_URL` is unset the
 hub refuses to start:
@@ -27,6 +27,54 @@ RuntimeError: HUB_DATABASE_URL is not set — SQL Server (agrolav-sql) is requir
 ```
 
 No `.json` files are written anywhere; the database is authoritative.
+
+---
+
+## A. Local dev vs APSURT production — at a glance
+
+The same codebase drives both, but the environment-specific knobs are set in
+two different places and **must stay consistent per environment**. The single
+most important rule: **everything in `dbo.app_config` is resolved at runtime by
+the hub based on the `RUN_ON_SERVER` row**, so a value that is correct for one
+environment must not leak into the other.
+
+### A1. The two config layers
+
+| knob | local dev | APSURT production |
+|---|---|---|
+| repo branch | `sqlserver` (local working tree) | same branch, pulled on server |
+| `RUN_ON_SERVER` (`dbo.app_config`) | `False` / absent | `True` |
+| `dbo.app_config` rows (`PUBLIC_HUB_URL`, `PUBLIC_CLIENT_URL`, `*_ENABLEBANKING_REDIRECT_URL`, `CENTRALE_API_KEY`, …) | honoured only when they make sense for dev; local defaults otherwise | driven by the production rows |
+| `hub.env` / `client.env` (systemd `EnvironmentFile`) | not used | on `/opt/agrolav` server only |
+| reverse proxy | none (direct `127.0.0.1:8200/8300`) | Caddy on `80/443` → `8300` (client) + selected hub paths (see §14) |
+| SQL Server | optional / local copy | Docker `SQLServer2022`, the single source of truth |
+| Enable Banking callback | `https://deoudegracht.nl/banking-callback.html` relay (or your own test app) | must return to a **public** URL such as `https://expenses.apsurt.nl/api/consent/callback` |
+
+### A2. How the hub decides (the `RUN_ON_SERVER` gate)
+
+- `RUN_ON_SERVER` truthy → the hub reads the production rows and **public**
+  URLs; e.g. `public_hub_url()`/`public_client_url()` return non-empty and
+  `enablebanking_redirect_url()` returns `PRODUCTION_ENABLEBANKING_REDIRECT_URL`.
+- `RUN_ON_SERVER` falsy / absent → the same rows are **ignored for public URLs**
+  (they return `""`), and `enablebanking_redirect_url()` returns
+  `LOCAL_ENABLEBANKING_REDIRECT_URL`. Local dev therefore never points browsers
+  at production hostnames.
+
+See `hub/app/app_config.py` (`running_on_server`, `public_hub_url`,
+`public_client_url`, `enablebanking_redirect_url`, `centrale_api_key`).
+
+### A3. Redirect / API-key handling differs
+
+| concern | local dev | APSURT production |
+|---|---|---|
+| hub API key (`CENTRALE_API_KEY`) | often empty (key gate off) or a dev-only value | set identically in `hub.env` + `client.env` and, if the DB row is non-empty, overrides; Caddy injects it for the hub paths that browsers call (§14a) |
+| consent callback destination | the deoudegracht relay (or local test app) — browser must reach the hub at `:8200` | the **public** `https://expenses.apsurt.nl/api/consent/callback` (Caddy-proxied); loopback callbacks break prod |
+| `docker` pull / frontend build | `npm ci && npm run build` locally | same on server, then `systemctl restart agrolav-client` (§16) |
+
+**Practical check when something works in dev but not in prod:** confirm
+`RUN_ON_SERVER`, the `dbo.app_config` rows, and `hub.env`/`client.env` all point
+at the same target. A mismatch is the #1 cause of "works locally, 404/401 on the
+server".
 
 ---
 
@@ -274,14 +322,15 @@ sudo nano /etc/agrolav/hub.env
 Recommended contents:
 
 ```text
+# Comments must be on their own line. systemd EnvironmentFile does NOT
+# strip inline "# comment" text after a value — it becomes part of the value.
 HOST=127.0.0.1
 PORT=8200
-BOEKHOUDING_DATA_ROOT=/opt/agrolav/workspaces              # legacy, ignored
-AGROLAV_SQL_DISK=/opt/agrolav/workspaces                    # flat read paths
+AGROLAV_SQL_DISK=/opt/agrolav/workspaces
 HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=YOUR_ACTUAL_PASSWORD;Encrypt=yes;TrustServerCertificate=yes
-CENTRALE_API_KEY=SOME_LONG_RANDOM_SECRET                   # must match client.env
-# HUB_CLIENT_URL=https://expenses.apsurt.nl                # optional; DB row wins on the server
-# ENABLEBANKING_REDIRECT_URL=...                           # optional; DB rows win on the server
+CENTRALE_API_KEY=SOME_LONG_RANDOM_SECRET
+# HUB_CLIENT_URL=https://expenses.apsurt.nl
+# ENABLEBANKING_REDIRECT_URL=...
 ```
 
 Notes:
@@ -290,7 +339,22 @@ Notes:
   a few read-only paths now.
 - `HUB_CLIENT_URL` is overridden by the `PUBLIC_CLIENT_URL` dbo.app_config row
   when `RUN_ON_SERVER` is set.
+- `CENTRALE_API_KEY` must match `client.env` **byte for byte** (no quotes, no
+  trailing spaces). It can instead be managed in the database (see below) — then
+  `hub.env`/`client.env` can leave it out entirely.
 - Do not commit this file to Git.
+
+> **`CENTRALE_API_KEY` from the database (optional, single source of truth).**
+> The hub reads a non-empty `dbo.app_config` row named exactly `CENTRALE_API_KEY`
+> in preference to the environment variable; an empty row is ignored (env wins).
+> When the row is empty — as on a fresh deploy — the hub requires no key at all:
+>
+> ```sql
+> INSERT INTO dbo.app_config (fieldName, value) VALUES (N'CENTRALE_API_KEY', N'');
+> ```
+>
+> Whenever the row gate for the API is set later, `client.env` (and Caddy §14a)
+> must carry the same value; restart the hub to refresh the in-process cache.
 
 Edit the client BFF:
 
@@ -301,14 +365,15 @@ sudo nano /etc/agrolav/client.env
 Recommended contents:
 
 ```text
+# systemd EnvironmentFile keeps inline "# ..." text as part of the value.
 HOST=127.0.0.1
 PORT=8300
-SERVER_URL=http://127.0.0.1:8200                            # BFF → hub (internal!)
-CENTRALE_API_KEY=SOME_LONG_RANDOM_SECRET                    # must match hub.env
+SERVER_URL=http://127.0.0.1:8200
+CENTRALE_API_KEY=SOME_LONG_RANDOM_SECRET
 CLIENT_AUTH=1
-CLIENT_SESSION_SECRET=SOME_OTHER_LONG_RANDOM_SECRET        # required for real deploys
-CLIENT_COUNTRY=nederland                                    # a dbo.country key
-# PUBLIC_HUB_URL=https://...                                # optional override of the DB row
+CLIENT_SESSION_SECRET=SOME_OTHER_LONG_RANDOM_SECRET
+CLIENT_COUNTRY=nederland
+# PUBLIC_HUB_URL=https://...
 ```
 
 Notes:
@@ -487,9 +552,12 @@ The hub's wizard pages call hub API paths relative to the page origin
 (`/api/status`, `/api/local/...`, `/upload/api/...`, `/api/consent/callback`),
 so whatever public URL you choose must route those paths to `127.0.0.1:8200`.
 
-Choose one of the two options below.
+The deployed host runs **Caddy** (listening on 80/443, own TLS); nginx is an
+equivalent alternative where noted. Option B (Caddy) is the deployed setup;
+Option A (nginx, own subdomain) is kept as an alternative that requires an
+extra DNS record + certificate.
 
-## 13. Option A — own public host for the hub (recommended)
+## 13. Option A — own public host for the hub (nginx; alternative, not deployed)
 
 Give the hub its own nginx server block; every path proxies straight to the hub,
 and the wizard just works.
@@ -552,24 +620,27 @@ WHERE fieldName = N'PUBLIC_HUB_URL';
 `PUBLIC_CLIENT_URL` stays `https://expenses.apsurt.nl`. Restart both services so
 the cached `dbo.app_config` / public-links refresh.
 
-## 14. Option B — same domain, nginx path routing
+## 14. Option B — same domain, path routing (Caddy; deployed on this host)
 
-Requires no extra DNS/cert. The client BFF has **no** `/add-person`, `/upload`,
-`/api/status`, `/api/consent/callback`, or `/api/local/` routes, so these are
-safe to forward to the hub:
+Requires no extra DNS or certificate; Caddy (this host) terminates TLS itself.
+The client BFF has **no** `/add-person`, `/upload`, `/api/status`,
+`/api/consent/callback`, or `/api/local/` routes, so these are safe to forward
+to the hub. Inside the existing `expenses.apsurt.nl` site block add, **u.v.m.
+before** the catch-all `reverse_proxy 127.0.0.1:8300`:
 
-```nginx
-location = /add-person              { proxy_pass http://127.0.0.1:8200; }
-location /upload                    { proxy_pass http://127.0.0.1:8200; }   # page + /upload/api/*
-location = /api/status              { proxy_pass http://127.0.0.1:8200; }
-location = /api/consent/callback    { proxy_pass http://127.0.0.1:8200; }
-location /api/local/                { proxy_pass http://127.0.0.1:8200; }   # hub-only namespace
+```caddy
+handle /add-person*     { reverse_proxy 127.0.0.1:8200 }
+handle /upload*         { reverse_proxy 127.0.0.1:8200 }
+handle /api/status      { reverse_proxy 127.0.0.1:8200 }
+handle /api/consent/callback* { reverse_proxy 127.0.0.1:8200 }
+handle /api/local/*     { reverse_proxy 127.0.0.1:8200 }
 ```
 
-Add these to the existing `expenses.apsurt.nl` server block, then:
+`handle` forwards the original path (no prefix stripping), which the hub's pages
+need. Validate and reload:
 
 ```bash
-sudo nginx -t && sudo systemctl reload nginx
+sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
 ```
 
 `PUBLIC_HUB_URL` stays `https://expenses.apsurt.nl`. Verify:
@@ -579,6 +650,127 @@ curl -I https://expenses.apsurt.nl/add-person?center=nl_dkg
 ```
 
 → expect `HTTP/1.1 200`.
+
+nginx equivalent (only if the host used nginx instead of Caddy):
+
+```nginx
+location = /add-person              { proxy_pass http://127.0.0.1:8200; }
+location /upload                    { proxy_pass http://127.0.0.1:8200; }   # page + /upload/api/*
+location = /api/status              { proxy_pass http://127.0.0.1:8200; }
+location = /api/consent/callback    { proxy_pass http://127.0.0.1:8200; }
+location /api/local/                { proxy_pass http://127.0.0.1:8200; }   # hub-only namespace
+```
+
+### 14a. API key and the proxied hub paths
+
+When `CENTRALE_API_KEY` is **empty** (as on a fresh server deploy), the hub's
+`require_api_key` is a no-op and the plain block above works: the wizard pages
+call `/api/status` and `/api/local/*` from the browser without credentials, and
+the hub accepts them.
+
+If `CENTRALE_API_KEY` is set — in `hub.env` or as a non-empty `CENTRALE_API_KEY`
+`dbo.app_config` row (see §9 notes) — those browser calls would get 401. Caddy must
+then inject the key for the five hub paths (added server-side; the browser never
+sees it). The client BFF sends the key itself, and `/api/consent/callback`
+is unkeyed (the bank's browser hits it), so both are unaffected:
+
+```caddy
+# only when CENTRALE_API_KEY is non-empty
+# The { header_up ... } block MUST be on its own lines — Caddy's Caddyfile
+# adapter rejects an inline "{ ... }" on the same line as reverse_proxy.
+@hub_paths {
+    path /add-person*
+    path /upload*
+    path /api/status
+    path /api/consent/callback*
+    path /api/local/*
+}
+reverse_proxy @hub_paths 127.0.0.1:8200 {
+    header_up Authorization "Bearer <KEY>"
+}
+```
+
+If you later set the key, restart the hub **and** re-add the injection, or the
+wizard/upload pages break with 401.
+
+### 14b. Hub IP allowlist gotcha (404 instead of 403/200)
+
+The hub's `_HubIpAllowlistMiddleware` returns `Not Found` (404) — **not** 403 —
+when a request's client IP isn't on the `dbo.hub_ip` allowlist (`target = 'B'`).
+When the list is empty the gate is off and everything passes; when it is
+non-empty only listed IPs (plus `127.0.0.1`) get through.
+
+Behind Caddy/nginx the hub can see the **public** client IP rather than
+`127.0.0.1` (observed on this host as `209.38.39.105:0`), so a proxied request
+fails with a confusing `404 Not Found` even though the direct loopback request
+succeeds. If the hub gate is enabled and you see 404 on public hub paths, add the
+public IP to the allowlist:
+
+```sql
+INSERT INTO dbo.hub_ip (ip, target) VALUES (N'209.38.39.105', N'B');
+```
+
+(Better long-term: make the hub trust `X-Forwarded-For` from the local proxy and
+route by real remote IP — not yet implemented.)
+
+### 14c. Consent won't start — `REDIRECT_URI_NOT_ALLOWED`
+
+When a person's bank consent refresh fails, the hub returns
+`AUTH_URL: None` + a warning like:
+
+```
+juleon: consent renewal required — could not get authorization URL
+(POST /auth failed: 400 ... "REDIRECT_URI_NOT_ALLOWED" ... redirect_url
+ 'https://.../api/consent/callback' must exactly match a URL registered for this
+ app in the Enable Banking Control Panel ...)
+```
+
+The hub sends the Enable Banking `redirect_url` from `enablebanking_redirect_url()`
+(`dbo.app_config`):
+- **`PRODUCTION_ENABLEBANKING_REDIRECT_URL`** — used when `RUN_ON_SERVER` is truthy
+- **`LOCAL_ENABLEBANKING_REDIRECT_URL`** — used locally (and fallback the other way)
+
+The redirect the hub *sends* must match what the person's Enable Banking app
+(`dbo.enable_connection.app_id`) is *registered* with. When they differ, the bank
+returns `REDIRECT_URI_NOT_ALLOWED`. The env split keeps **local dev** and
+**production** each using their own registered callback.
+
+**Production must use the public Caddy callback.** The `deoudegracht.nl/banking-callback.html`
+relay page forwards the browser to the hub at `127.0.0.1:8200` — that only works
+when a hub runs locally on the browser's own machine, so it is **not** suitable for
+production. On production the callback must land on the public domain:
+
+```sql
+UPDATE dbo.app_config SET value = N'https://expenses.apsurt.nl/api/consent/callback'
+WHERE fieldName = N'PRODUCTION_ENABLEBANKING_REDIRECT_URL';
+-- local dev keeps the relay callback
+UPDATE dbo.app_config SET value = N'https://deoudegracht.nl/banking-callback.html'
+WHERE fieldName = N'LOCAL_ENABLEBANKING_REDIRECT_URL';
+```
+
+After changing a row, restart the hub to clear the cached `dbo.app_config`. The
+public URL must also be registered (exact, no trailing slash) in the Enable
+Banking Control Panel for the app:
+
+```
+https://expenses.apsurt.nl/api/consent/callback
+```
+
+Caddy already routes `/api/consent/callback*` → the hub, so the bank's browser
+hits the hub (the injected API key there is harmless — the callback is unkeyed).
+
+To verify the auth URL now comes back, run a refresh and inspect
+`results[0].authorization_url`, then confirm the browser is redirected to the
+**public** domain after consent (not `127.0.0.1`):
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $(sudo grep -oP '^CENTRALE_API_KEY=\K.*' /etc/agrolav/hub.env)" \
+  'http://127.0.0.1:8200/api/local/nl_dkg/refresh/juleon?country=nederland' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); r=(d.get('results') or [{}])[0]; print('AUTH_URL:', repr(r.get('authorization_url'))); print('WARNINGS:', d.get('warnings'))"
+```
+
+A successful start returns a real `https://...enablebanking.com/ais/start?...` URL
+and the bank redirect returns to `https://expenses.apsurt.nl/api/consent/callback`.
 
 ## 15. Hub IP allowlist
 
@@ -593,12 +785,13 @@ wizard and the callback, e.g.:
 INSERT INTO dbo.hub_ip (ip, target) VALUES (N'1.2.3.4', N'B');
 ```
 
-**Note when behind nginx:** the hub reads the peer IP from the TCP connection
-(`scope["client"][0]`), which is always `127.0.0.1` for nginx on the same host
-— the B allowlist is therefore **effectively bypassed** for real browser requests.
-If real-IP gating is needed, add `proxy_set_header X-Forwarded-For $remote_addr`
-to the nginx location block and process it in the middleware (Starlette's
-`ProxyHeadersMiddleware` or a custom reader).
+**Note when behind Caddy/nginx:** the hub reads the peer IP from the TCP
+connection (`scope["client"][0]`), which is always `127.0.0.1` for a same-host
+proxy — the B allowlist is therefore **effectively bypassed** for real browser
+requests. If real-IP gating is needed, forward `X-Forwarded-For`
+(Caddy: `header_up X-Forwarded-For {remote_host}`; nginx:
+`proxy_set_header X-Forwarded-For $remote_addr`) and process it in the
+middleware (Starlette's `ProxyHeadersMiddleware` or a custom reader).
 
 ---
 
@@ -675,10 +868,10 @@ SELECT * FROM dbo.person;
 
 ## 20. `add-person` returns `{"detail":"Not Found"}`
 
-That JSON answer is the **client BFF** (port 8300): nginx sent `/add-person` to
-the client, which has no such route. Route the hub's pages to `127.0.0.1:8200`
-(option A §13 or option B §14) and confirm the `PUBLIC_HUB_URL` row matches the
-URL the menu generates.
+That JSON answer is the **client BFF** (port 8300): the reverse proxy (nginx or
+Caddy) sent `/add-person` to the client, which has no such route. Route the hub's
+pages to `127.0.0.1:8200` (option A §13 or option B §14) and confirm the
+`PUBLIC_HUB_URL` row matches the URL the menu generates.
 
 ## 21. "edit categories" does not appear
 
@@ -688,3 +881,65 @@ The frontend build is stale — redo §16.
 
 Confirm with §8a, then create the table (see the `app_config` DDL in §8a) and
 seed the rows from §9a. Restart the hub afterwards (rows are cached).
+
+## 23. Login always says "invalid username or password", but the hub itself works
+
+Test the hub directly with the client's key first:
+
+```bash
+PID=$(sudo systemctl show agrolav-client -p MainPID --value)
+curl -s -X POST http://127.0.0.1:8200/api/auth/login \
+  -H "Authorization: Bearer $(sudo tr '\0' '\n' < /proc/$PID/environ | sed -n 's/^CENTRALE_API_KEY=//p')" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"beheer","password":"<pw>","client_ip":"127.0.0.1"}' | head -c 300
+```
+
+If that returns the user, check the env the client actually runs with:
+
+```bash
+PID=$(sudo systemctl show agrolav-client -p MainPID --value)
+sudo tr '\0' '\n' < /proc/$PID/environ | sed -n 's/^SERVER_URL=//p; s/^CENTRALE_API_KEY=//p'
+```
+
+Common causes, in order:
+
+- **Inline comment in an env value.** systemd `EnvironmentFile` does not strip
+  `# ...` after a value, so `SERVER_URL=http://127.0.0.1:8200   # BFF` becomes
+  literally `http://127.0.0.1:8200   # BFF`. The client then queries a broken
+  URL, the hub answers 4xx, and the client reports "invalid username or password".
+  Fix: comments only on their own lines, `sudo systemctl restart agrolav-client`.
+- **`CENTRALE_API_KEY` differs** between `hub.env` and `client.env` → hub returns
+  401 to the client. Make them identical and restart the client.
+- **`CENTRALE_SYNC=0|false|off|no`** in `client.env` → the client refuses logins
+  entirely (`authenticate` returns `None`).
+
+
+
+
+  ============================
+
+
+  Fix properly from the process (which is authoritative), normalizing both files to the hub's actual 65-char key:
+  
+```HKEY=$(sudo tr '\0' '\n' < /proc/$(sudo systemctl show agrolav-hub -p MainPID --value)/environ | sed -n 's/^CENTRALE_API_KEY=//p')
+export HKEY
+sudo -E python3 - <<'EOF'
+import os
+k = os.environ["HKEY"] + "\n"
+for p in ("/etc/agrolav/hub.env", "/etc/agrolav/client.env"):
+    keep = [l for l in open(p) if not l.startswith("CENTRALE_API_KEY=")]
+    keep.append("CENTRALE_API_KEY=" + k)
+    open(p, "w").writelines(keep)
+EOF
+sudo systemctl restart agrolav-hub agrolav-client
+HKEY=$(sudo tr '\0' '\n' < /proc/$(sudo systemctl show agrolav-hub -p MainPID --value)/environ | sed -n 's/^CENTRALE_API_KEY=//p')
+CKEY=$(sudo tr '\0' '\n' < /proc/$(sudo systemctl show agrolav-client -p MainPID --value)/environ | sed -n 's/^CENTRALE_API_KEY=//p')
+echo "hub len=${#HKEY} sha=$(printf %s "$HKEY" | sha256sum | cut -c1-16)"
+echo "cli len=${#CKEY} sha=$(printf %s "$CKEY" | sha256sum | cut -c1-16)"
+[ "$HKEY" = "$CKEY" ] && echo MATCH || echo MISMATCH
+curl -s -X POST http://127.0.0.1:8300/api/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"beheer","password":"!@#$%^&*()_beheer"}' | head -c 200```
+
+This removes every old CENTRALE_API_KEY= line from both files, writes the one true key, and restarts both — expect MATCH and a login JSON.
+

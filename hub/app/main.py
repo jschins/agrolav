@@ -15,8 +15,6 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app import store
 
-API_KEY = os.environ.get("CENTRALE_API_KEY", "").strip()
-
 # The bookhouding client is where the beheer session lives; after the add-person
 # wizard (on the hub), return there rather than leaving the user on the hub page.
 DEFAULT_CLIENT_RETURN_URL = "http://127.0.0.1:8300"
@@ -114,10 +112,12 @@ app.add_middleware(_HubIpAllowlistMiddleware)
 
 
 def require_api_key(authorization: str | None = Header(default=None)) -> None:
-    if not API_KEY:
+    from app import app_config
+
+    key = app_config.centrale_api_key()
+    if not key:
         return
-    expected = f"Bearer {API_KEY}"
-    if authorization != expected:
+    if authorization != f"Bearer {key}":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 

@@ -691,6 +691,16 @@ def _fill_transaction_fields(
     return filled
 
 
+def _is_excel_row(transaction: dict[str, Any]) -> bool:
+    """True when the transaction was imported from an Excel (.xlsx) sheet.
+
+    Excel rows carry ``type == "Excel"`` (see ``excel_import.rows_to_transactions``)
+    and their category is authoritative from the user's sheet, so categorization
+    must not re-run the keyword matcher over them.
+    """
+    return str(transaction.get("type") or "").strip() == "Excel"
+
+
 def _categorize_transactions(
     records: list[dict[str, Any]],
     general: dict[str, list[str]],
@@ -706,7 +716,7 @@ def _categorize_transactions(
         if match_sources is not None:
             source = match_sources.get(record.get("id"), record)
         flag = _modification_of(updated)
-        if not _user_set_category(flag):
+        if not _user_set_category(flag) and not _is_excel_row(source):
             code, hit = categorize_with_hit(source, general, personal)
             updated["category"] = code
             updated["hit"] = hit

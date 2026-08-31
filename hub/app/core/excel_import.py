@@ -441,8 +441,18 @@ def list_xlsx_files(folder: Path) -> list[Path]:
 
 def _public_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
     record = {key: value for key, value in transaction.items() if not str(key).startswith("_")}
-    record["category"] = DEFAULT_CATEGORY
-    record["modification"] = -1
+    category = record.get("category")
+    try:
+        has_sheet_category = category is not None and int(category) != DEFAULT_CATEGORY
+    except (TypeError, ValueError):
+        has_sheet_category = False
+    if not has_sheet_category:
+        record["category"] = DEFAULT_CATEGORY
+        record["modification"] = -1
+        record["hit"] = None
+        return record
+    record["category"] = int(category)
+    record["modification"] = 1
     record["hit"] = None
     return record
 

@@ -25,6 +25,6 @@ workspaces/
 *.pem
 users.db
 upload.log
-database_pw.md
+*.md
 agrolav.bak
 legacy/**/*

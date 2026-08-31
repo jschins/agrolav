@@ -18,6 +18,7 @@ LOCAL_ENABLEBANKING_REDIRECT_URL = "LOCAL_ENABLEBANKING_REDIRECT_URL"
 PUBLIC_HUB_URL = "PUBLIC_HUB_URL"
 PUBLIC_CLIENT_URL = "PUBLIC_CLIENT_URL"
 RUN_ON_SERVER = "RUN_ON_SERVER"
+CENTRALE_API_KEY = "CENTRALE_API_KEY"
 _ENABLEBANKING_REDIRECT_URL_ENV = "ENABLEBANKING_REDIRECT_URL"
 
 _CACHE: dict[str, str] | None = None
@@ -126,3 +127,14 @@ def public_client_url() -> str:
     if not running_on_server():
         return ""
     return get(PUBLIC_CLIENT_URL)
+
+
+def centrale_api_key() -> str:
+    """Hub API key: the non-empty ``CENTRALE_API_KEY`` row, else the env var
+    ``CENTRALE_API_KEY``.
+
+    ``load()`` filters out blank rows, so leaving the row at ``''`` keeps
+    whatever the environment provides; a non-empty row overrides it. This lets
+    the key be managed in the database without touching ``hub.env``.
+    """
+    return get(CENTRALE_API_KEY) or os.environ.get("CENTRALE_API_KEY", "").strip()
