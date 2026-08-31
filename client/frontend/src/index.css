@@ -513,6 +513,9 @@ th {
   white-space: nowrap;
   line-height: 1.15;
   text-transform: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .totals-table {
