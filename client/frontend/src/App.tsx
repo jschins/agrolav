@@ -55,7 +55,18 @@ function matrixFooterNames(matrix: MatrixResponse): { balance: string; last_book
 }
 
 function isBookingCategoryName(name: string): boolean {
-  return /^\d{2}/.test(name);
+  return /^\d{4}/.test(name);
+}
+
+function shownLabel(localCode: number, label: string): string {
+  const pad = localCode < 100 ? 2 : 4;
+  return `${String(localCode).padStart(pad, "0")} ${label}`;
+}
+
+function displayCategoryName(name: string): string {
+  const match = String(name).match(/^(\d{4}) (.*)$/);
+  if (!match) return name;
+  return shownLabel(parseInt(match[1], 10), match[2]);
 }
 
 function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
@@ -64,7 +75,7 @@ function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
 }
 
 function categoryCodeFromName(name: string): number | null {
-  const match = String(name).match(/^(\d{2})/);
+  const match = String(name).match(/^(\d{4})/);
   if (!match) return null;
   return parseInt(match[1], 10);
 }
@@ -878,7 +889,7 @@ function formatTermMatchHint(typerules: { type: string; category: string }[]): s
   const rules =
     typerules.length === 0
       ? ""
-      : ` Typerules: ${typerules.map((rule) => `${rule.type} → ${rule.category}`).join("; ")}.`;
+      : ` Typerules: ${typerules.map((rule) => `${rule.type} → ${displayCategoryName(rule.category)}`).join("; ")}.`;
   return `${wildcards} ${priority}${rules}`;
 }
 
@@ -1865,8 +1876,8 @@ function catalogToDraft(rows: CatalogCategory[]): CatalogDraft[] {
   return rows.map((row, index) => ({
     key: row.category_id != null ? `id-${row.category_id}` : `new-${index}`,
     category_id: row.category_id ?? null,
-    local_code: String(row.local_code).padStart(2, "0"),
-    label: row.label,
+    local_code: String(row.local_code).padStart(4, "0"),
+    label: String(row.label ?? "").trim(),
     is_remainder: Boolean(row.is_remainder),
   }));
 }
@@ -1943,18 +1954,19 @@ function CategoriesApp() {
   function addRow() {
     setSaved(false);
     const key = `new-${nextKey.current++}`;
+    const maxCode = 9999;
     setDraft((rows) => {
       const used = new Set(
         rows.map((row) => Number.parseInt(row.local_code, 10)).filter((n) => n >= 1)
       );
       let code = 1;
-      while (used.has(code) && code < 97) code += 1;
+      while (used.has(code) && code <= maxCode) code += 1;
       return [
         ...rows,
         {
           key,
           category_id: null,
-          local_code: String(code).padStart(2, "0"),
+          local_code: String(code).padStart(4, "0"),
           label: "",
           is_remainder: rows.length === 0,
         },
@@ -2055,7 +2067,7 @@ function CategoriesApp() {
                       <input
                         className="catalog-code"
                         inputMode="numeric"
-                        maxLength={2}
+                        maxLength={4}
                         value={row.local_code}
                         onChange={(e) => patchRow(row.key, { local_code: e.target.value })}
                       />
@@ -2307,7 +2319,7 @@ function MatrixTable({
             key={cat}
             className={`${selection?.category === cat ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}`}
           >
-            <td className="cat">{cat}</td>
+            <td className="cat">{displayCategoryName(cat)}</td>
             {people.map((p) => {
               const amount = cells[cat]?.[p.person_name] ?? "";
               const isActive =
@@ -2357,7 +2369,7 @@ function PersonColumnTable({
             key={cat}
             className={`${cat === selectedCategory ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}`}
           >
-            <td className="cat">{cat}</td>
+            <td className="cat">{displayCategoryName(cat)}</td>
             {(() => {
               const amount = cells[cat]?.[person_name] ?? "";
               const clickable = !isMatrixFooter(matrix, cat) && amount !== "";
@@ -2732,7 +2744,7 @@ function PTable({
     <div className="p-panel">
       <div className="p-heading">
         <strong>
-          {detail.person} / {categoryName}
+          {detail.person} / {displayCategoryName(categoryName)}
         </strong>
       </div>
       {transactions.length === 0 ? (
@@ -2884,7 +2896,7 @@ function TermContextMenu({
             <tbody>
               {categories.map((name) => (
                 <tr key={name}>
-                  <td className="term-context-cat">{name}</td>
+                  <td className="term-context-cat">{displayCategoryName(name)}</td>
                   <td className="term-context-gp">
                     <input
                       type="checkbox"
@@ -3077,7 +3089,7 @@ function TermsColumnTable({
         <tr>
           {columns.map((name) => (
             <th key={name} title={name}>
-              {name}
+              {displayCategoryName(name)}
             </th>
           ))}
         </tr>

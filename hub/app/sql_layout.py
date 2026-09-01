@@ -1,18 +1,15 @@
 """Create dbo.country / dbo.center rows. Does not create on-disk country/center directories."""
 from __future__ import annotations
 
-import json
 import re
-from pathlib import Path
 from typing import Any
 
 from app.core.categorize import DEFAULT_CATEGORY
-from app.runtime import country_folder, data_root
+from app.runtime import country_folder
 from app.sql_replica import _sql_ident, _transaction_table
 
 _FOLDER_NAME_MAX = 32
 _CURRENCY = re.compile(r"^[A-Za-z]{3}$")
-_LOCAL_CODE = re.compile(r"^(\d{2})\b")
 
 
 def _valid_name(name: str) -> str:
@@ -35,28 +32,9 @@ def _valid_currency(currency: str) -> str:
     return text
 
 
-def _local_code(label: str) -> int | None:
-    match = _LOCAL_CODE.match(str(label).strip())
-    if match:
-        return int(match.group(1))
-    try:
-        return int(str(label)[:2])
-    except ValueError:
-        return None
-
-
-def _donor_categories() -> Path | None:
-    root = data_root()
-    for folder in ("nederland", "united_kingdom", "uk"):
-        path = root / folder / "categories.json"
-        if path.is_file():
-            return path
-    return None
-
-
 def _seed_system_categories(cursor, country_id: int) -> None:
-    """Balance, Updated, and unclassified 18 UFO (local codes 98, 99, 18)."""
-    base = country_id * 100
+    """Balance, Updated, and unclassified entry (local codes 98, 99, 18)."""
+    base = country_id * 10000
     cursor.execute(
         """
         INSERT INTO dbo.dim_category
@@ -92,66 +70,10 @@ def _seed_system_categories(cursor, country_id: int) -> None:
         base + 2,
         country_id,
         DEFAULT_CATEGORY,
-        "18 UFO",
+        "Unclassified",
         1,
         None,
     )
-
-
-def _seed_dim_category(cursor, country_id: int, categories_path: Path) -> None:
-    payload = json.loads(categories_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"Invalid categories.json: {categories_path}")
-    categories = payload.get("categories")
-    if not isinstance(categories, dict) or not categories:
-        raise ValueError(f"No categories in {categories_path}")
-    term_rows: list[tuple[int, str, int]] = []
-    abbr_rows: list[tuple[int, str, str]] = []
-    booking_index = 0
-    for label, terms in categories.items():
-        code = _local_code(str(label))
-        if code is None or code in (DEFAULT_CATEGORY, 97, 98, 99):
-            continue
-        category_id = country_id * 100 + 3 + booking_index
-        booking_index += 1
-        cursor.execute(
-            """
-            INSERT INTO dbo.dim_category
-                (category_id, country_id, local_code, label, is_remainder, matrix_role)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            category_id,
-            country_id,
-            code,
-            str(label),
-            0,
-            None,
-        )
-        if isinstance(terms, list):
-            for sort_order, term in enumerate(terms):
-                text = str(term).strip()
-                if text:
-                    term_rows.append((category_id, text, sort_order))
-    abbreviations = payload.get("abbreviations") or {}
-    if isinstance(abbreviations, dict):
-        for bank_type, abbreviation in abbreviations.items():
-            abbr_rows.append((country_id, str(bank_type), str(abbreviation)[:16]))
-    if term_rows:
-        cursor.executemany(
-            """
-            INSERT INTO dbo.category_term (category_id, person_id, term, sort_order)
-            VALUES (?, NULL, ?, ?)
-            """,
-            term_rows,
-        )
-    if abbr_rows:
-        cursor.executemany(
-            """
-            INSERT INTO dbo.type_abbreviation (country_id, bank_type, abbreviation)
-            VALUES (?, ?, ?)
-            """,
-            abbr_rows,
-        )
 
 
 _BANK_FORMAT_ROWS: list[tuple[int, str, str]] = [
@@ -226,11 +148,12 @@ def _drop_orphan_transaction_tables(cursor) -> None:
 
 def _create_transaction_table(cursor, *, country: str, country_id: int) -> str:
     """Create empty ``dbo.transaction_{country}`` with the standard booking columns."""
+    from app.sql_catalog import category_id_bounds
+
     table = _transaction_table(country)
     if table is None:
         raise ValueError(f"Cannot derive transaction table for {country!r}")
-    lo = country_id * 100
-    hi = lo + 99
+    lo, hi = category_id_bounds(country_id)
     tag = _txn_constraint_tag(table)
     cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
     if cursor.fetchone()[0] is not None:
@@ -400,9 +323,6 @@ def create_country(*, name: str, currency: str, title: str = "") -> dict[str, An
             currency_s,
         )
         _seed_system_categories(cursor, country_id)
-        donor = _donor_categories()
-        if donor is not None:
-            _seed_dim_category(cursor, country_id, donor)
         table = _create_transaction_table(cursor, country=username, country_id=country_id)
         conn.commit()
     except Exception:

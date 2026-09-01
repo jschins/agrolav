@@ -943,3 +943,10 @@ curl -s -X POST http://127.0.0.1:8300/api/login \
 
 This removes every old CENTRALE_API_KEY= line from both files, writes the one true key, and restarts both — expect MATCH and a login JSON.
 
+========================
+
+172.24.48.1 is a private IP (RFC 1918 range), and it's the gateway address on your current LAN — not your public egress IP. The hub behind Caddy sees your public/NAT IP, not this private one.
+See public egress IP following the output in
+
+sudo journalctl -u agrolav-hub -f
+

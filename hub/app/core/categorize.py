@@ -254,11 +254,14 @@ def _booking_date(transaction: dict[str, Any]) -> str:
     return raw
 
 
+_CATEGORY_CODE = re.compile(r"^(\d{2,4})(?=\D|$)")
+
+
 def _category_code(name: str) -> int | None:
-    try:
-        return int(str(name)[:2])
-    except ValueError:
+    match = _CATEGORY_CODE.match(str(name).strip())
+    if not match:
         return None
+    return int(match.group(1))
 
 
 # Letters, dots, and ``*`` (common in merchant names like ``BCK*Praxis229``).
@@ -1399,7 +1402,7 @@ def remainder_category_name() -> str:
     for name in category_names():
         if _category_code(name) == DEFAULT_CATEGORY:
             return name
-    return f"{DEFAULT_CATEGORY:02d} Unclassified expenses"
+    return f"{DEFAULT_CATEGORY:04d} Unclassified expenses"
 
 
 def _validate_category_code(code: Any) -> int:

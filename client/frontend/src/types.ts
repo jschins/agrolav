@@ -88,6 +88,7 @@ export interface CatalogResponse {
   country_id?: number | null;
   remainder_id?: number | null;
   center?: string;
+  digits?: number;
   categories: CatalogCategory[];
 }
 

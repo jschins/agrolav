@@ -55,6 +55,16 @@ def list_country_usernames() -> list[str]:
         return []
 
 
+def category_id_bounds(country_id: int) -> tuple[int, int]:
+    """Inclusive ``(lo, hi)`` category_id range for a country's local codes.
+
+    Category codes are uniformly four digits, ``local_code`` 1..9999, and
+    ``category_id = country_id * 10000 + local_code``.
+    """
+    base = int(country_id) * 10000
+    return base, base + 9999
+
+
 def list_center_usernames(country: str) -> list[str]:
     name = (country or "").strip()
     if not name or not _sql_ready():
@@ -371,12 +381,18 @@ def categories_payload(country: str) -> dict[str, Any]:
         )
         categories: dict[str, list[str]] = {}
         id_to_label: dict[int, str] = {}
-        for category_id, _code, label, _role in cursor.fetchall():
+        for category_id, code, label, role in cursor.fetchall():
             text = str(label or "").strip()
             if not text:
                 continue
-            categories[text] = []
-            id_to_label[int(category_id)] = text
+            if str(role or "").strip():
+                cat_name = text
+            elif code is not None:
+                cat_name = f"{int(code):04d} {text}"
+            else:
+                continue
+            categories[cat_name] = []
+            id_to_label[int(category_id)] = cat_name
 
         cursor.execute(
             """
@@ -410,7 +426,7 @@ def categories_payload(country: str) -> dict[str, Any]:
 
         cursor.execute(
             """
-            SELECT r.bank_type, d.label
+            SELECT r.bank_type, d.local_code, d.label
             FROM dbo.type_rule r
             JOIN dbo.dim_category d ON d.category_id = r.category_id
             WHERE r.country_id = ?
@@ -418,11 +434,12 @@ def categories_payload(country: str) -> dict[str, Any]:
             (country_id,),
         )
         typerules = []
-        for bank_type, label in cursor.fetchall():
+        for bank_type, local_code, label in cursor.fetchall():
             t = str(bank_type or "").strip()
-            cat = str(label or "").strip()
-            if t and cat:
-                typerules.append({"type": t, "category": cat})
+            plain = str(label or "").strip()
+            if t and plain:
+                rule_cat = f"{int(local_code):04d} {plain}"
+                typerules.append({"type": t, "category": rule_cat})
 
         return {
             "categories": categories,
@@ -486,10 +503,6 @@ def save_category_terms(
     if not label or not _sql_ready():
         return
     cleaned = [str(item).strip().lower() for item in terms if str(item or "").strip()]
-    try:
-        code = int(label[:2])
-    except ValueError:
-        code = None
     person_name = (person or "").strip() or None
     country = ""
     if person_name:
@@ -501,6 +514,10 @@ def save_category_terms(
         country = (active_country() or country_for_center(active_center() or "") or "").strip()
     if not country:
         raise ValueError(f"Cannot save terms for {label!r}: no country")
+    try:
+        code = int(label[:4])
+    except ValueError:
+        code = None
 
     def _run() -> None:
         from app import user_store
@@ -581,6 +598,16 @@ def _country_id_for(cursor, country: str) -> int | None:
     return int(row[0]) if row else None
 
 
+def display_digits(rows: list[dict[str, Any]]) -> int:
+    """Frontend code-padding width for a country's local codes.
+
+    Uniform backend storage is four digits; only ``beheer`` actually uses
+    codes >= 100. This lets the frontend pad to 2 for everyone else.
+    """
+    codes = [int(row.get("local_code") or 0) for row in rows]
+    return 4 if any(code >= 100 for code in codes) else 2
+
+
 def booking_categories_payload(country: str) -> dict[str, Any]:
     """Booking rows in ``dbo.dim_category`` (excludes Balance / Updated footers)."""
     name = (country or "").strip()
@@ -588,6 +615,7 @@ def booking_categories_payload(country: str) -> dict[str, Any]:
         "country": name,
         "country_id": None,
         "remainder_id": None,
+        "digits": 2,
         "categories": [],
     }
     if not name or not _sql_ready():
@@ -628,6 +656,7 @@ def booking_categories_payload(country: str) -> dict[str, Any]:
             "country": name,
             "country_id": country_id,
             "remainder_id": remainder_id,
+            "digits": display_digits(rows),
             "categories": rows,
         }
 
@@ -656,8 +685,7 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
             country_id = _country_id_for(cursor, name)
             if country_id is None:
                 raise ValueError(f"Unknown country: {name}")
-            lo = country_id * 100
-            hi = lo + 99
+            lo, hi = category_id_bounds(country_id)
             cursor.execute(
                 """
                 SELECT category_id, local_code, label, is_remainder, matrix_role
@@ -786,9 +814,13 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
     return _sql_retry(_run)
 
 
-def _parse_catalog_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _parse_catalog_items(
+    items: list[dict[str, Any]], digits: int = 4
+) -> list[dict[str, Any]]:
     if not isinstance(items, list) or not items:
         raise ValueError("At least one category is required")
+    width = max(1, int(digits or 4))
+    max_code = 10**width - 1
     parsed: list[dict[str, Any]] = []
     codes: set[int] = set()
     labels: set[str] = set()
@@ -802,13 +834,13 @@ def _parse_catalog_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             code = int(raw.get("local_code"))
         except (TypeError, ValueError) as exc:
             raise ValueError("Each category needs a numeric code") from exc
-        if code < 1 or code > 97:
-            raise ValueError(f"Category code must be 01–97, not {code}")
+        if code < 1 or code > max_code or code in (98, 99):
+            raise ValueError(f"Category code must be 1–{max_code} (98/99 are system), not {code}")
         label = str(raw.get("label") or "").strip()
         if not label:
             raise ValueError("Each category needs a label")
         if code in codes:
-            raise ValueError(f"Duplicate category code {code:02d}")
+            raise ValueError(f"Duplicate category code {code:0{width}d}")
         key = label.casefold()
         if key in labels:
             raise ValueError(f"Duplicate category label {label!r}")

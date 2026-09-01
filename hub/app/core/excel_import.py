@@ -188,7 +188,7 @@ def category_name_map(categories_path: Path) -> dict[int, str]:
         return mapping
     for name in categories:
         try:
-            mapping[int(str(name)[:2])] = str(name)
+            mapping[int(str(name)[:4])] = str(name)
         except ValueError:
             continue
     return mapping

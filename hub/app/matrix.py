@@ -1,8 +1,6 @@
 """Build category × person matrix and orchestrate multi-person operations."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 from app.runtime import PersonPack, bind_person
@@ -13,41 +11,16 @@ FOOTER_BALANCE = "saldo"
 FOOTER_DATUM = "datum"
 
 
-def _read_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def _category_map(data: dict[str, Any]) -> dict[str, list[str]]:
     nested = data.get("categories")
     return nested if isinstance(nested, dict) else data
 
 
-def general_categories_source(people: list[PersonPack] | None = None) -> Path:
-    from app.runtime import shared_categories_path
-
-    path = shared_categories_path()
-    if path.is_file():
-        return path
-    raise FileNotFoundError(
-        f"No categories.json found beside the admin root ({path})."
-    )
-
-
 def load_general_file(people: list[PersonPack] | None = None) -> dict[str, Any]:
-    from app import user_store
     from app.runtime import active_center, active_country
     from app.sql_catalog import categories_payload, country_for_center
 
     del people
-    if user_store.database_url():
-        country = active_country() or country_for_center(active_center() or "") or ""
-        return categories_payload(country)
-    from app.runtime import shared_categories_path
-
-    path = shared_categories_path()
-    if path.is_file():
-        data = _read_json(path)
-        return data if isinstance(data, dict) else {}
     country = active_country() or country_for_center(active_center() or "") or ""
     return categories_payload(country)
 
