@@ -950,6 +950,13 @@ function openView(target: "main" | "terms" | "categories" | "ip") {
   window.open(viewUrl(target), name)?.focus();
 }
 
+function clearViewParam() {
+  if (!new URLSearchParams(window.location.search).has("view")) return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("view");
+  window.history.replaceState({}, "", url.toString());
+}
+
 function isPlainAlt(e: KeyboardEvent): boolean {
   if (!e.altKey || e.ctrlKey || e.metaKey) return false;
   const el = e.target as HTMLElement | null;
@@ -1004,6 +1011,10 @@ export default function App() {
           setHeading(title);
           setAuthenticated(true);
           setWsEpoch((n) => n + 1);
+          // A fresh login always starts on the matrix-of-totals view, not on a
+          // leftover ?view=terms|categories|ip|split tab that a previous session
+          // may have left open (or a stale URL the user reused).
+          clearViewParam();
         }}
       />
     );
