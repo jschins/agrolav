@@ -52,18 +52,37 @@ def _category_map(data: dict[str, Any]) -> dict[str, list[str]]:
     return nested if isinstance(nested, dict) else data
 
 
+def _tx_field(transaction: dict[str, Any], *names: str) -> Any:
+    for name in names:
+        if name in transaction and transaction.get(name) not in (None, ""):
+            return transaction.get(name)
+    return None
+
+
 def _amount(transaction: dict[str, Any]) -> str:
-    amount = str((transaction.get("transaction_amount") or {}).get("amount", "")).strip()
-    sign = "+" if transaction.get("credit_debit_indicator") == "CRDT" else "-"
+    block = _tx_field(transaction, "transaction_amount", "transactionAmount") or {}
+    if not isinstance(block, dict):
+        block = {}
+    amount = str(block.get("amount") or transaction.get("amount") or "").strip()
+    indicator = str(
+        _tx_field(transaction, "credit_debit_indicator", "creditDebitIndicator") or ""
+    ).strip().upper()
+    sign = "+" if indicator == "CRDT" else "-"
     return f"{sign}{amount}" if amount else ""
 
 
 def _currency(transaction: dict[str, Any]) -> str:
-    return str((transaction.get("transaction_amount") or {}).get("currency", "")).strip()
+    block = _tx_field(transaction, "transaction_amount", "transactionAmount") or {}
+    if not isinstance(block, dict):
+        block = {}
+    return str(block.get("currency") or transaction.get("currency") or "").strip()
 
 
 def _type(transaction: dict[str, Any]) -> str:
-    return str((transaction.get("bank_transaction_code") or {}).get("description") or "").strip()
+    block = _tx_field(transaction, "bank_transaction_code", "bankTransactionCode") or {}
+    if not isinstance(block, dict):
+        block = {}
+    return str(block.get("description") or "").strip()
 
 
 _DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -198,17 +217,35 @@ def _structured_remittance_fields(transaction: dict[str, Any]) -> dict[str, str]
 
 
 def _naam(transaction: dict[str, Any]) -> str:
-    party_key = "creditor" if transaction.get("credit_debit_indicator") == "DBIT" else "debtor"
+    indicator = str(
+        _tx_field(transaction, "credit_debit_indicator", "creditDebitIndicator") or ""
+    ).strip().upper()
+    party_key = "creditor" if indicator == "DBIT" else "debtor"
     party = transaction.get(party_key) or {}
+    if not isinstance(party, dict):
+        party = {}
     return str(party.get("name") or "").strip()
 
 
 def _booking_date(transaction: dict[str, Any]) -> str:
-    raw = str(transaction.get("booking_date") or "").strip()
+    raw = str(
+        _tx_field(
+            transaction,
+            "booking_date",
+            "bookingDate",
+            "value_date",
+            "valueDate",
+            "transaction_date",
+            "transactionDate",
+        )
+        or ""
+    ).strip()
+    if len(raw) >= 10 and raw[4] == "-" and raw[7] == "-":
+        return f"{raw[8:10]}-{raw[5:7]}-{raw[0:4]}"
     parts = raw.split("-")
-    if len(parts) == 3:
+    if len(parts) == 3 and len(parts[0]) == 4:
         year, month, day = parts
-        return f"{day}-{month}-{year}"
+        return f"{day[:2]}-{month}-{year}"
     return raw
 
 
@@ -444,11 +481,17 @@ def _account_index(transaction: dict[str, Any]) -> int:
 
 
 def _categorized_transaction_id(transaction: dict[str, Any]) -> str:
-    ref = transaction.get("entry_reference")
+    ref = _tx_field(
+        transaction,
+        "entry_reference",
+        "entryReference",
+        "transaction_id",
+        "transactionId",
+        "id",
+    )
     if ref is not None and str(ref).strip():
         return f"{str(ref).strip()}_{_account_index(transaction)}"
-    tid = transaction.get("id")
-    return str(tid).strip() if tid is not None else ""
+    return ""
 
 
 def _tx_sort_key(transaction: Any) -> int:
@@ -463,15 +506,17 @@ def _tx_sort_key(transaction: Any) -> int:
 
 def simplify_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
     remittance = _structured_remittance_fields(transaction)
+    uid = str(transaction.get("_account_uid") or "").strip()
     return {
         "id": _categorized_transaction_id(transaction),
         "amount": _amount(transaction),
         "currency": _currency(transaction),
-        "type": remittance["type"],
+        "type": _type(transaction) or remittance["type"],
         "name": _naam(transaction),
         "iban": remittance["iban"],
         "description": remittance["description"],
         "date": _booking_date(transaction),
+        "account_uid": uid,
     }
 
 

@@ -112,9 +112,12 @@ type HeaderAction = {
   id: string;
   label: string;
   disabled?: boolean;
-  href?: string;
   onClick?: () => void;
 };
+
+type AppView = "main" | "terms" | "categories" | "ip" | "split";
+
+const VIEW_CHANGE_EVENT = "boekhouding-view";
 
 const HeaderActionsContext = createContext<(items: HeaderAction[]) => void>(() => {});
 
@@ -480,31 +483,18 @@ function ActionsMenu({ items }: { items: HeaderAction[] }) {
         <ul className="center-switcher-menu" role="menu">
           {items.map((item) => (
             <li key={item.id}>
-              {item.href ? (
-                <a
-                  role="menuitem"
-                  className="center-switcher-link"
-                  href={item.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setOpen(false)}
-                >
-                  {item.label}
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={item.disabled}
-                  onClick={() => {
-                    if (item.disabled) return;
-                    setOpen(false);
-                    item.onClick?.();
-                  }}
-                >
-                  {item.label}
-                </button>
-              )}
+              <button
+                type="button"
+                role="menuitem"
+                disabled={item.disabled}
+                onClick={() => {
+                  if (item.disabled) return;
+                  setOpen(false);
+                  item.onClick?.();
+                }}
+              >
+                {item.label}
+              </button>
             </li>
           ))}
         </ul>
@@ -779,7 +769,11 @@ function SyncNotifyShell({
       onClick: () => openView("ip"),
     });
     if (uploadUrl) {
-      items.push({ id: "upload", label: "upload", href: uploadUrl });
+      items.push({
+        id: "upload",
+        label: "upload",
+        onClick: () => window.location.assign(uploadUrl),
+      });
     }
     return items;
   }, [headerActions, uploadUrl, access]);
@@ -922,6 +916,14 @@ function abbreviate(map: Record<string, string>, type: unknown): string {
   return t;
 }
 
+function parseAppView(search = window.location.search): AppView {
+  const view = new URLSearchParams(search).get("view");
+  if (view === "terms" || view === "categories" || view === "ip" || view === "split") {
+    return view;
+  }
+  return "main";
+}
+
 function viewUrl(target: "main" | "terms" | "categories" | "ip"): string {
   if (target === "terms") return `${window.location.pathname}?view=terms`;
   if (target === "categories") return `${window.location.pathname}?view=categories`;
@@ -929,16 +931,17 @@ function viewUrl(target: "main" | "terms" | "categories" | "ip"): string {
   return window.location.pathname;
 }
 
+function showInThisWindow(url: string) {
+  const next = new URL(url, window.location.href);
+  const there = `${next.pathname}${next.search}`;
+  const here = `${window.location.pathname}${window.location.search}`;
+  if (here === there) return;
+  window.history.pushState({}, "", there);
+  window.dispatchEvent(new Event(VIEW_CHANGE_EVENT));
+}
+
 function openView(target: "main" | "terms" | "categories" | "ip") {
-  const name =
-    target === "terms"
-      ? "boekhouding-terms"
-      : target === "categories"
-        ? "boekhouding-categories"
-        : target === "ip"
-          ? "boekhouding-ip"
-          : "boekhouding-main";
-  window.open(viewUrl(target), name)?.focus();
+  showInThisWindow(viewUrl(target));
 }
 
 function clearViewParam() {
@@ -958,17 +961,27 @@ function isPlainAlt(e: KeyboardEvent): boolean {
 }
 
 export default function App() {
-  const isTerms = new URLSearchParams(window.location.search).get("view") === "terms";
-  const isCategories =
-    new URLSearchParams(window.location.search).get("view") === "categories";
-  const isIp = new URLSearchParams(window.location.search).get("view") === "ip";
-  const isSplit = new URLSearchParams(window.location.search).get("view") === "split";
+  const [appView, setAppView] = useState<AppView>(parseAppView);
+  const isTerms = appView === "terms";
+  const isCategories = appView === "categories";
+  const isIp = appView === "ip";
+  const isSplit = appView === "split";
   const [wsEpoch, setWsEpoch] = useState(0);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [heading, setHeading] = useState("");
   const bumpCenterEpoch = useCallback(() => setWsEpoch((n) => n + 1), []);
+
+  useEffect(() => {
+    const sync = () => setAppView(parseAppView());
+    window.addEventListener(VIEW_CHANGE_EVENT, sync);
+    window.addEventListener("popstate", sync);
+    return () => {
+      window.removeEventListener(VIEW_CHANGE_EVENT, sync);
+      window.removeEventListener("popstate", sync);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1006,6 +1019,7 @@ export default function App() {
           // leftover ?view=terms|categories|ip|split tab that a previous session
           // may have left open (or a stale URL the user reused).
           clearViewParam();
+          setAppView("main");
         }}
       />
     );
@@ -1317,7 +1331,6 @@ function MainApp({
   }
 
   useEffect(() => {
-    window.name = "boekhouding-main";
     if (!year) return;
     if (!viewInitRef.current) {
       viewInitRef.current = true;
@@ -1603,7 +1616,7 @@ function MainApp({
     if (hasSecrets && !awaitingPostConsentFetch) {
       items.push({
         id: "refresh",
-        label: refreshing ? "Refreshing…" : "↻ Refresh all",
+        label: refreshing ? "Downloading…" : "Download transactions",
         disabled: refreshing,
         onClick: doRefresh,
       });
@@ -1612,7 +1625,7 @@ function MainApp({
       items.push({
         id: "add-person",
         label: "Add person",
-        href: addPersonUrl,
+        onClick: () => window.location.assign(addPersonUrl),
       });
     }
     setHeaderActions(items);
@@ -1719,7 +1732,6 @@ function TermsApp() {
   const channelRef = useRef<BroadcastChannel | null>(null);
 
   useEffect(() => {
-    window.name = "boekhouding-terms";
     let cancelled = false;
     function load() {
       getSettings()
@@ -1887,7 +1899,6 @@ function CategoriesApp() {
   const nextKey = useRef(1);
 
   useEffect(() => {
-    window.name = "boekhouding-categories";
     let cancelled = false;
     getCatalog()
       .then((data) => {
@@ -2128,7 +2139,6 @@ function IpAccessApp() {
   }
 
   useEffect(() => {
-    window.name = "boekhouding-ip";
     let cancelled = false;
     getIpAccess()
       .then((payload) => {
@@ -2423,12 +2433,7 @@ function displayMatrixCell(matrix: MatrixResponse, category: string, raw: string
 }
 
 function closeSplitPage() {
-  window.close();
-  window.setTimeout(() => {
-    if (!window.closed) {
-      window.location.assign(window.location.pathname);
-    }
-  }, 50);
+  openView("main");
 }
 
 function SplitApp() {
@@ -2451,7 +2456,6 @@ function SplitApp() {
   const nextKey = useRef(1);
 
   useEffect(() => {
-    window.name = "boekhouding-split";
     let cancelled = false;
     if (!person || !sourceId) {
       setError("Missing person or transaction.");
@@ -2684,7 +2688,7 @@ function PTable({
     params.set("id", id);
     if (year) params.set("year", year);
     if (bank && bank !== "consolidated") params.set("bank", bank);
-    window.open(`${window.location.pathname}?${params.toString()}`, "boekhouding-split")?.focus();
+    showInThisWindow(`${window.location.pathname}?${params.toString()}`);
   }
 
   function renderCell(t: Transaction, column: string) {

@@ -82,7 +82,6 @@ CREATE TABLE dbo.person (
     center_id INT NOT NULL,
     number_of_accounts INT NOT NULL CONSTRAINT df_person_accounts DEFAULT (0),
     created_at DATE NOT NULL,
-    updated_at DATE NOT NULL,
     CONSTRAINT fk_person_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
     CONSTRAINT fk_person_center FOREIGN KEY (center_id) REFERENCES dbo.center (center_id),
     CONSTRAINT ck_person_accounts CHECK (number_of_accounts >= 0)

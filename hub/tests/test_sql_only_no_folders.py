@@ -265,13 +265,33 @@ class MonthlyRefreshPeriodTests(unittest.TestCase):
             (date(2026, 8, 1), date(2026, 8, 31)),
         )
 
-    def test_skips_when_updated_within_the_last_month(self):
+    def test_skips_when_already_through_previous_month_end(self):
         from datetime import date
 
         from app.matrix import monthly_refresh_period
 
         self.assertIsNone(
             monthly_refresh_period(date(2026, 8, 31), today=date(2026, 9, 2))
+        )
+
+    def test_july_date_refreshes_through_august_end(self):
+        from datetime import date
+
+        from app.matrix import monthly_refresh_period
+
+        self.assertEqual(
+            monthly_refresh_period(date(2026, 7, 27), today=date(2026, 9, 2)),
+            (date(2026, 7, 27), date(2026, 8, 31)),
+        )
+
+    def test_mid_august_still_fetches_rest_of_month(self):
+        from datetime import date
+
+        from app.matrix import monthly_refresh_period
+
+        self.assertEqual(
+            monthly_refresh_period(date(2026, 8, 15), today=date(2026, 9, 2)),
+            (date(2026, 8, 15), date(2026, 8, 31)),
         )
 
     def test_refreshes_from_updated_through_previous_month_end(self):

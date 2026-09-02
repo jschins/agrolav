@@ -558,16 +558,15 @@ def _insert_person(
     cursor.execute(
         """
         INSERT INTO dbo.person
-            (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
+            (username, title, country_id, center_id, number_of_accounts, created_at)
         OUTPUT INSERTED.id
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         username,
         (title or display_title(username) or username).strip(),
         country_id,
         center_id,
         number_of_accounts,
-        today,
         today,
     )
     return int(cursor.fetchone()[0])

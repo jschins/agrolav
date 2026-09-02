@@ -144,11 +144,13 @@ def is_single_bank_format(fmt: str | None) -> bool:
 
 def as_date_only(value: str | None) -> str | None:
     """Normalize a date/datetime string to ``YYYY-MM-DD``, or ``None`` if unusable."""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
     text = str(value or "").strip()
     if not text:
         return None
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value.isoformat()
     if len(text) >= 10 and text[4] == "-" and text[7] == "-":
         candidate = text[:10]
         try:
@@ -549,7 +551,7 @@ def upsert_user(
     country: str = "",
     person: str = "",
 ) -> dict[str, Any]:
-    """Insert or update a user. Does not change ``format`` or ``updated_at`` on update."""
+    """Insert or update a user. Does not change ``format`` on update."""
     name = (username or "").strip()
     if not name:
         raise ValueError("username is required")
@@ -601,10 +603,10 @@ def upsert_user(
             cursor.execute(
                 """
                 INSERT INTO dbo.person
-                    (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 0, ?, ?)
+                    (username, title, country_id, center_id, number_of_accounts, created_at)
+                VALUES (?, ?, ?, ?, 0, ?)
                 """,
-                (name, title_value, country_id, center_id, today, today),
+                (name, title_value, country_id, center_id, today),
             )
         _sql_connect().commit()
     user = find_user(name)
@@ -683,11 +685,11 @@ def create_manual_person(
         cursor.execute(
             """
             INSERT INTO dbo.person
-                (username, title, country_id, center_id, number_of_accounts, created_at, updated_at)
+                (username, title, country_id, center_id, number_of_accounts, created_at)
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, 1, ?, ?)
+            VALUES (?, ?, ?, ?, 1, ?)
             """,
-            (name, display_name, country_id, center_id, today, today),
+            (name, display_name, country_id, center_id, today),
         )
         person_id = int(cursor.fetchone()[0])
         cursor.execute(
@@ -734,15 +736,20 @@ def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:
     return _public_user(user) if user else None
 
 
-def user_updated_at(username: str) -> date | None:
-    """``dbo.person.updated_at`` as a date, or ``None`` if missing."""
+def account_last_booked(username: str) -> date | None:
+    """Latest ``dbo.account.last_booked`` for the person, or ``None``."""
     name = (username or "").strip()
     if not name:
         return None
     init_user_store()
     cursor = _sql_connect().cursor()
     cursor.execute(
-        "SELECT updated_at FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+        """
+        SELECT MAX(a.last_booked)
+        FROM dbo.account a
+        JOIN dbo.person p ON p.id = a.person_id
+        WHERE p.username = ? COLLATE Latin1_General_CI_AI
+        """,
         (name,),
     )
     row = cursor.fetchone()
@@ -752,7 +759,8 @@ def user_updated_at(username: str) -> date | None:
     return date.fromisoformat(iso) if iso else None
 
 
-def set_user_updated_at(*, username: str, date: str | None) -> dict[str, Any] | None:
+def set_account_last_booked(*, username: str, date: str | None) -> dict[str, Any] | None:
+    """Stamp ``dbo.account.last_booked`` on every account for this person."""
     name = (username or "").strip()
     iso = as_date_only(date)
     if not name or not iso:
@@ -768,7 +776,7 @@ def set_user_updated_at(*, username: str, date: str | None) -> dict[str, Any] | 
         if not row:
             return None
         cursor.execute(
-            "UPDATE dbo.person SET updated_at = ? WHERE id = ?",
+            "UPDATE dbo.account SET last_booked = ? WHERE person_id = ?",
             (iso, int(row[0])),
         )
         _sql_connect().commit()

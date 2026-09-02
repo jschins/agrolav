@@ -1,7 +1,6 @@
 """Build category × person matrix and orchestrate multi-person operations."""
 from __future__ import annotations
 
-import calendar
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -14,13 +13,6 @@ FOOTER_BALANCE = "saldo"
 FOOTER_DATUM = "datum"
 
 
-def _add_calendar_months(day: date, months: int) -> date:
-    month_index = day.month - 1 + months
-    year = day.year + month_index // 12
-    month = month_index % 12 + 1
-    return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
-
-
 def _last_day_of_previous_month(today: date) -> date:
     return date(today.year, today.month, 1) - timedelta(days=1)
 
@@ -30,13 +22,13 @@ def monthly_refresh_period(
 ) -> tuple[date, date] | None:
     """Bank fetch window for a Refresh click, or ``None`` to skip.
 
-    Skip when ``updated_at`` is newer than one calendar month ago. Otherwise
-    read from ``updated_at`` (or the first of last month if never updated)
+    Skip when ``last_booked`` already covers the last closed month. Otherwise
+    read from ``last_booked`` (or the first of last month if never updated)
     through the last day of the previous month.
     """
     today = today or date.today()
     date_to = _last_day_of_previous_month(today)
-    if updated_at is not None and updated_at > _add_calendar_months(today, -1):
+    if updated_at is not None and updated_at >= date_to:
         return None
     date_from = updated_at if updated_at is not None else date(date_to.year, date_to.month, 1)
     if date_from > date_to:
@@ -143,8 +135,13 @@ def person_current_balance(pack: PersonScope) -> str | None:
     return None
 
 
+def person_updated_display(pack: PersonScope) -> str | None:
+    """``dbo.account.last_booked`` as ``DD-MM-YYYY``."""
+    return person_last_booked(pack)
+
+
 def person_last_booked(pack: PersonScope) -> str | None:
-    """Latest transaction ``date`` as ``DD-MM-YYYY``, or None if none."""
+    """``dbo.account.last_booked`` as ``DD-MM-YYYY``, or None if unset."""
     from app.sql_replica import load_bound_last_booked
 
     with bind_scope(pack):
@@ -226,7 +223,7 @@ def build_matrix(
             for name in booking:
                 cells[name][pack.person_name] = _amount_for_category(totals, name)
             cells[balance_name][pack.person_name] = person_current_balance(view_pack) or ""
-            cells[date_name][pack.person_name] = person_last_booked(view_pack) or ""
+            cells[date_name][pack.person_name] = person_updated_display(view_pack) or ""
     payload: dict[str, Any] = {
         "categories": category_list,
         "people": columns,
@@ -346,7 +343,6 @@ def _bank_refresh_one(
 ) -> tuple[dict[str, Any], list[str]]:
     from app.core.categorize import process_transactions
     from app.core.single_client import (
-        account_index_by_uid,
         enabled_bank_accounts,
         fetch_transactions,
         get_authorization_url,
@@ -390,18 +386,7 @@ def _bank_refresh_one(
             [acc for acc in accounts if isinstance(acc, dict)],
         )
 
-    if len(accounts) <= 1:
-        process_transactions(fetched.transactions, new_year=bool(new_year))
-    else:
-        index_by_uid = account_index_by_uid()
-        for acc in accounts:
-            uid = str(acc.get("uid") or "")
-            batch = _txs_for_account(
-                fetched.transactions,
-                uid=uid,
-                account_index=index_by_uid.get(uid, -1),
-            )
-            process_transactions(batch, new_year=bool(new_year))
+    process_transactions(fetched.transactions, new_year=bool(new_year))
 
     if fetched.warnings:
         for w in fetched.warnings:
@@ -424,17 +409,22 @@ def _bank_refresh_one(
     return result, warnings
 
 
-def _record_user_updated_at(person: str, result: dict[str, Any]) -> None:
-    """Persist ``users.updated_at`` after a successful refresh (date only)."""
+def _record_account_last_booked(
+    person: str, result: dict[str, Any], *, stamp: str | None = None
+) -> None:
+    """Persist ``dbo.account.last_booked`` after a successful refresh (date only)."""
     if result.get("skipped"):
         return
     from app import user_store
 
+    if stamp:
+        user_store.set_account_last_booked(username=person, date=stamp)
+        return
     source = str(result.get("source") or "")
     if source == "bank":
-        user_store.set_user_updated_at(username=person, date=result.get("date_to"))
+        user_store.set_account_last_booked(username=person, date=result.get("date_to"))
     else:
-        user_store.set_user_updated_at(username=person, date=result.get("last_date"))
+        user_store.set_account_last_booked(username=person, date=result.get("last_date"))
 
 
 def _refresh_one_person(
@@ -447,10 +437,11 @@ def _refresh_one_person(
     from app.core.single_client import EnableBankingError
 
     try:
+        stamp: str | None = None
         if pack.has_pem and not new_year:
             from app import user_store
 
-            updated = user_store.user_updated_at(pack.person_name)
+            updated = user_store.account_last_booked(pack.person_name)
             period = monthly_refresh_period(updated)
             if period is None:
                 return (
@@ -463,6 +454,7 @@ def _refresh_one_person(
                     [],
                 )
             date_from, date_to = period[0].isoformat(), period[1].isoformat()
+            stamp = date_to
         if pack.has_pem:
             result, extra = _bank_refresh_one(
                 pack, date_from=date_from, date_to=date_to, new_year=new_year
@@ -475,7 +467,7 @@ def _refresh_one_person(
                 if str(err).strip()
             ]
             result = excel
-        _record_user_updated_at(pack.person_name, result)
+        _record_account_last_booked(pack.person_name, result, stamp=stamp)
         return result, extra
     except EnableBankingError as exc:
         return (
@@ -501,7 +493,7 @@ def refresh_all(
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> dict[str, Any]:
-    """Bank fetch for secret packs; Excel conversion for everyone else."""
+    """Bank fetch for periodic-consent people only. Manual-upload people are ignored."""
     from app.runtime import CALC_LOCK
 
     with CALC_LOCK:
@@ -510,6 +502,8 @@ def refresh_all(
         results: list[dict[str, Any]] = []
 
         for pack in packs:
+            if not pack.has_pem:
+                continue
             with bind_scope(pack):
                 result, extra = _refresh_one_person(
                     pack, date_from=date_from, date_to=date_to, new_year=False

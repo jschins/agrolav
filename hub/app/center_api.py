@@ -575,7 +575,7 @@ def refresh(
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> dict[str, Any]:
-    """Refresh all people (append-only). No new-year overwrite."""
+    """Bank fetch for every periodic-consent person (append-only). Manual-upload people are skipped."""
     from app.matrix import refresh_all
 
     with _center_scope(center) as ws:

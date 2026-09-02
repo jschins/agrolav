@@ -335,7 +335,7 @@ def load_bound_category_totals(general_names: list[str]) -> dict[str, str] | Non
 
 
 def load_bound_last_booked() -> str | None:
-    """Latest booking date as ``DD-MM-YYYY``, or ``None`` if SQL is unused."""
+    """``dbo.account.last_booked`` as ``DD-MM-YYYY``, or ``None`` if unset."""
     from app import user_store
 
     if not user_store.database_url():
@@ -344,32 +344,17 @@ def load_bound_last_booked() -> str | None:
         bound = _open_bound_scope()
         if bound is None:
             return None
-        where_sql, where_params = _bound_where(bound)
-        bound.cursor.execute(
-            f"SELECT MAX(t.booked_on) FROM {bound.table} t WHERE {where_sql}",
-            tuple(where_params),
-        )
-        row = bound.cursor.fetchone()
-    except Exception as exc:  # noqa: BLE001
-        print(f"sql replica: failed to load last booked date: {exc}")
-        return None
-    if row and row[0] is not None:
-        text = _json_date(row[0])
-        return text or None
-    try:
-        # Manual-upload persons have no bookings; fall back to the account's
-        # last_booked (opening-balance date) so the matrix shows a date.
         bound.cursor.execute(
             "SELECT MAX(a.last_booked) FROM dbo.account a WHERE a.person_id = ?",
             (bound.person_id,),
         )
-        fallback = bound.cursor.fetchone()
+        row = bound.cursor.fetchone()
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to load account last booked date: {exc}")
         return None
-    if not fallback or fallback[0] is None:
+    if not row or row[0] is None:
         return None
-    return _json_date(fallback[0]) or None
+    return _json_date(row[0]) or None
 
 
 def load_center_year_matrix(
@@ -379,7 +364,7 @@ def load_center_year_matrix(
     year: int,
     general_names: list[str],
 ) -> tuple[dict[str, dict[str, str]], dict[str, str], dict[str, str]] | None:
-    """Totals, last booked date, and IBAN balances for every person in a center/year.
+    """Totals, ``dbo.account.last_booked``, and IBAN balances for every person in a center/year.
 
     One connection, three grouped queries. Does not download booking rows.
     """
@@ -437,26 +422,6 @@ def load_center_year_matrix(
         }
 
         cursor.execute(
-            f"""
-            SELECT p.username, MAX(t.booked_on)
-            FROM {table} t
-            JOIN dbo.person p ON p.id = t.person_id
-            JOIN dbo.center n ON n.center_id = p.center_id
-            WHERE n.username = ? COLLATE Latin1_General_CI_AI AND t.year = ?
-              AND t.bank_id IS NULL
-            GROUP BY p.username
-            """,
-            (ws, int(year)),
-        )
-        last_booked = {
-            str(username or "").strip(): _json_date(booked)
-            for username, booked in cursor.fetchall()
-            if str(username or "").strip() and booked is not None
-        }
-
-        # Persons without bookings (manual upload) fall back to the account's
-        # last_booked (opening-balance date) so the matrix shows a date.
-        cursor.execute(
             """
             SELECT p.username, MAX(a.last_booked)
             FROM dbo.account a
@@ -467,10 +432,11 @@ def load_center_year_matrix(
             """,
             (ws,),
         )
-        for username, last_date in cursor.fetchall():
-            person = str(username or "").strip()
-            if person and last_date is not None and person not in last_booked:
-                last_booked[person] = _json_date(last_date) or ""
+        last_booked = {
+            str(username or "").strip(): _json_date(last_date) or ""
+            for username, last_date in cursor.fetchall()
+            if str(username or "").strip() and last_date is not None
+        }
 
         cursor.execute(
             """
@@ -742,16 +708,30 @@ def _resolve_account_id(
     person_id: int,
     source_id: str,
     account_id: int | None,
+    uid: str | None = None,
 ) -> int | None:
     if account_id is not None:
         return account_id
+    uid_s = str(uid or "").strip()
+    if uid_s:
+        cursor.execute(
+            """
+            SELECT TOP 1 account_id FROM dbo.account
+            WHERE person_id = ? AND uid = ?
+            ORDER BY account_id
+            """,
+            (person_id, uid_s),
+        )
+        row = cursor.fetchone()
+        if row:
+            return int(row[0])
     cursor.execute(
         """
         SELECT account_id FROM dbo.account
         WHERE person_id = ?
         ORDER BY account_id
         """,
-        person_id,
+        (person_id,),
     )
     ids = [int(row[0]) for row in cursor.fetchall()]
     if not ids:
@@ -791,11 +771,9 @@ def ingest_bound_transactions(
             print(f"sql replica: no remainder category for {bound.username!r}")
             return 0
         bank_id = bound.bank_key if (bound.bank_key or 0) >= 0 else None
-        where_sql, where_params = _bound_where(bound)
-        where_sql = where_sql.replace("t.", "")
         bound.cursor.execute(
-            f"SELECT source_id FROM {bound.table} WHERE {where_sql}",
-            *where_params,
+            f"SELECT source_id FROM {bound.table} WHERE person_id = ? AND bank_id IS NULL",
+            (bound.person_id,),
         )
         existing = {str(row[0]) for row in bound.cursor.fetchall()}
         sql = f"""
@@ -809,7 +787,7 @@ def ingest_bound_transactions(
         for item in records:
             if not isinstance(item, dict):
                 continue
-            source_id = str(item.get("id") or "").strip()
+            source_id = str(item.get("id") or "").strip()[:128]
             if not source_id or source_id in existing:
                 continue
             amount = _decimal_amount(item.get("amount"))
@@ -821,6 +799,7 @@ def ingest_bound_transactions(
                 person_id=bound.person_id,
                 source_id=source_id,
                 account_id=None,
+                uid=str(item.get("account_uid") or "").strip() or None,
             )
             if acc_id is None:
                 print(f"sql replica: no account for {bound.username!r} id={source_id}")
@@ -835,7 +814,7 @@ def ingest_bound_transactions(
                 (
                     bound.person_id,
                     acc_id,
-                    bound.year,
+                    booked.year,
                     bank_id,
                     source_id,
                     amount,
