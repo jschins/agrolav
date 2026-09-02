@@ -686,6 +686,7 @@ def create_person(
     center: str,
     *,
     person: str,
+    title: str = "",
     account_name: str = "",
     mode: str = "periodic-consent",
     country: str = "NL",
@@ -699,6 +700,9 @@ def create_person(
     if mode_s not in {"periodic-consent", "manual-upload"}:
         raise ValueError("mode must be 'periodic-consent' or 'manual-upload'")
     holder = (account_name or "").strip()
+    display_name = (title or "").strip()
+    if mode_s == "manual-upload" and not display_name:
+        raise ValueError("Name is required")
     if mode_s == "manual-upload" and not holder:
         raise ValueError("account holder name is required")
     account_no = (account_number or "").strip()
@@ -722,7 +726,7 @@ def create_person(
                 raise ValueError(f"Person already exists: {person_name}")
             if mode_s == "periodic-consent":
                 login = user_store.upsert_personal_login(
-                    center=ws, person=person_name, country=country_name
+                    center=ws, person=person_name, country=country_name, title=""
                 )
                 user_store.set_user_format(username=person_name, format=aspsp_s)
                 return {
@@ -737,6 +741,7 @@ def create_person(
                 created = user_store.create_manual_person(
                     center=ws,
                     person=person_name,
+                    title=display_name,
                     country=country_name,
                     account_name=holder,
                     account_number=account_no,

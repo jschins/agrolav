@@ -389,6 +389,22 @@ def delete_consent_pending(state: str) -> None:
         pass
 
 
+def person_title_from_bank_accounts(accounts: list[dict[str, Any]]) -> str:
+    """Person title from Enable Banking account-holder name (not the login username)."""
+    for account in accounts:
+        if not isinstance(account, dict):
+            continue
+        iban = str(account.get("iban") or "").strip()
+        nested = account.get("account_id")
+        if isinstance(nested, dict) and not iban:
+            iban = str(nested.get("iban") or "").strip()
+        for key in ("name", "holder", "title", "account_name"):
+            text = str(account.get(key) or "").strip()
+            if text and text != iban:
+                return text[:256]
+    return ""
+
+
 def upsert_person_accounts(username: str, accounts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Persist every account returned by Enable Banking for a person."""
     cursor = _cursor()
@@ -411,7 +427,15 @@ def upsert_person_accounts(username: str, accounts: list[dict[str, Any]]) -> lis
         if not uid:
             continue
         iban = str(account.get("iban") or "Credit Card").strip()[:64] or "Credit Card"
-        name = str(account.get("name") or iban).strip()[:64] or iban
+        name = (
+            str(
+                account.get("name")
+                or account.get("holder")
+                or account.get("title")
+                or iban
+            ).strip()[:64]
+            or iban
+        )
         balance = str(account.get("balance") or "0").strip().replace(",", ".") or "0"
         cursor.execute(
             """
@@ -461,6 +485,12 @@ def upsert_person_accounts(username: str, accounts: list[dict[str, Any]]) -> lis
                 ),
             )
         result.append({"account_id": account_id, "uid": uid, "iban": iban, "account_name": name})
+    title = person_title_from_bank_accounts(accounts)
+    if title:
+        cursor.execute(
+            "UPDATE dbo.person SET title = ? WHERE id = ?",
+            (title, person_id),
+        )
     cursor.execute(
         "UPDATE dbo.person SET number_of_accounts = (SELECT COUNT(*) FROM dbo.account WHERE person_id = ?) WHERE id = ?",
         (person_id, person_id),

@@ -570,6 +570,7 @@ class PersonRefreshRequest(BaseModel):
 
 class CreatePersonRequest(BaseModel):
     person: str
+    title: str = ""
     account_name: str = ""
     mode: str = "periodic-consent"
     country: str = "NL"
@@ -1160,7 +1161,8 @@ def api_create_person(
     try:
         return center_api.create_person(
             center,
-          person=body.person,
+            person=body.person,
+            title=body.title,
             account_name=body.account_name,
             mode=body.mode,
             country=body.country,
@@ -1476,6 +1478,7 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
     <div id="step1" class="step active">
       <table>
         <tr><th>person name</th><td><input id="person" type="text"/></td></tr>
+        <tr id="rowTitle"><th>Name</th><td><input id="displayName" type="text"/></td></tr>
         <tr id="rowHolder"><th>account holder name</th><td><input id="accountHolder" type="text"/></td></tr>
         <tr id="rowAccountNumber" style="display:none"><th>account number</th><td><input id="accountNumber" type="text"/></td></tr>
         <tr id="rowInitial" style="display:none"><th>initial balance</th><td><input id="initialBalance" type="text" value="0.00"/></td></tr>
@@ -1575,6 +1578,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
 
     function applyModeUi() {
       const manual = mode() === "manual-upload";
+      document.getElementById("rowTitle").style.display = manual ? "" : "none";
       document.getElementById("rowHolder").style.display = manual ? "" : "none";
       document.getElementById("rowAccountNumber").style.display = manual ? "" : "none";
       document.getElementById("rowInitial").style.display = manual ? "" : "none";
@@ -1618,6 +1622,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         mode: modeValue,
       };
       if (modeValue === "manual-upload") {
+        body.title = document.getElementById("displayName").value.trim();
         body.account_name = document.getElementById("accountHolder").value.trim();
         body.initial_balance = document.getElementById("initialBalance").value;
         body.account_number = document.getElementById("accountNumber").value.trim();

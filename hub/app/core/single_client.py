@@ -523,11 +523,16 @@ def _extract_account_balance(acc: dict[str, Any]) -> tuple[str, str]:
 def _normalize_account(acc: dict[str, Any], *, enabled: bool | None = None) -> dict[str, Any]:
     uid = acc.get("uid")
     balance, balance_currency = _extract_account_balance(acc)
+    holder = str(acc.get("holder") or "").strip() or None
+    name = str(acc.get("name") or "").strip() or holder
+    title = str(acc.get("title") or "").strip() or None
     normalized = {
         "uid": uid,
         "iban": _account_id_for_consent(acc),
         "identification_hash": acc.get("identification_hash"),
-        "name": acc.get("name"),
+        "title": title,
+        "name": name,
+        "holder": holder,
         "currency": acc.get("currency"),
         "balance": balance,
         "balance_currency": balance_currency,

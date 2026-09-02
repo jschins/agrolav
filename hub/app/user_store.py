@@ -577,16 +577,26 @@ def upsert_user(
         person_id = int(row[0]) if row else None
         if _sql_username_taken(cursor, name, except_person_id=person_id):
             raise ValueError(f"Username already used: {name}")
-        title_value = title_s or display_title(name) or name
+        title_value = (title_s or "").strip()
         if person_id is not None:
-            cursor.execute(
-                """
-                UPDATE dbo.person
-                SET title = ?, country_id = ?, center_id = ?
-                WHERE id = ?
-                """,
-                (title_value, country_id, center_id, person_id),
-            )
+            if title_value:
+                cursor.execute(
+                    """
+                    UPDATE dbo.person
+                    SET title = ?, country_id = ?, center_id = ?
+                    WHERE id = ?
+                    """,
+                    (title_value, country_id, center_id, person_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE dbo.person
+                    SET country_id = ?, center_id = ?
+                    WHERE id = ?
+                    """,
+                    (country_id, center_id, person_id),
+                )
         else:
             cursor.execute(
                 """
@@ -608,6 +618,7 @@ def upsert_personal_login(
     center: str,
     person: str,
     country: str = "",
+    title: str = "",
 ) -> dict[str, Any]:
     folder = (person or "").strip()
     ws = (center or "").strip()
@@ -618,6 +629,7 @@ def upsert_personal_login(
     country_s = (country or active_country() or resolve_country_for_center(ws) or "").strip()
     return upsert_user(
         username=folder,
+        title=title,
         center=ws,
         country=country_s,
         person=folder,
@@ -628,6 +640,7 @@ def create_manual_person(
     *,
     center: str,
     person: str,
+    title: str,
     account_name: str,
     account_number: str,
     initial_balance: str = "0",
@@ -637,10 +650,13 @@ def create_manual_person(
     name = (person or "").strip()
     ws = (center or "").strip()
     holder = (account_name or "").strip()
+    display_name = (title or "").strip()
     iban = (account_number or "").strip()
     balance_s = (initial_balance or "0").strip().replace(",", ".")
     if not name or not ws:
         raise ValueError("center and person are required")
+    if not display_name:
+        raise ValueError("Name is required")
     if not holder:
         raise ValueError("account holder name is required")
     if not iban:
@@ -671,7 +687,7 @@ def create_manual_person(
             OUTPUT INSERTED.id
             VALUES (?, ?, ?, ?, 1, ?, ?)
             """,
-            (name, holder, country_id, center_id, today, today),
+            (name, display_name, country_id, center_id, today, today),
         )
         person_id = int(cursor.fetchone()[0])
         cursor.execute(
