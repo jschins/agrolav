@@ -669,3 +669,24 @@ FROM dbo.person;
 ## 19. If "edit categories" does not appear
 
 The frontend code
+
+
+
+
+
+
+
+
+
+================================
+
+
+Verified: url stays internal (http://127.0.0.1:8200) for BFF→hub calls, while public_url becomes https://expenses.apsurt.nl and is what the status endpoint now reports as centrale_url — so the frontend "Add person" and "Upload" links come out public.
+Changes in client/app/centrale_sync.py:
+- HubConfig gains public_url (falls back to url), public_hub_url() reads PUBLIC_HUB_URL.
+- _build_hub_config sets public_url = PUBLIC_HUB_URL or url; both HubConfig(...) constructions carry it.
+- /api/centrale/status returns "centrale_url": cfg.public_url — App.tsx needed no change (it builds ${centrale_url}/add-person already).
+Deploy on the server:
+1. client.env: add PUBLIC_HUB_URL=https://expenses.apsurt.nl, and keep SERVER_URL=http://127.0.0.1:8200 (internal BFF→hub, no longer has to be public).
+2. Commit + push to sqlserver, pull on the box (git fetch; git reset --hard origin/sqlserver), cd client && uv sync, rebuild frontend (npm ci && npm run build), then sudo systemctl restart agrolav-client.
+3. Nginx must still route the hub's web pages (/add-person, /upload, and the hub /api/... paths) from https://expenses.apsurt.nl to 127.0.0.1:8200 — PUBLIC_HUB_URL only makes the browser links point at that host.

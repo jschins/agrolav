@@ -950,3 +950,58 @@ See public egress IP following the output in
 
 sudo journalctl -u agrolav-hub -f
 
+=========================copy code
+
+agrolav@agrolav:/opt/agrolav/client$ git fetch origin
+agrolav@agrolav:/opt/agrolav$ git reset --hard origin/sqlserver
+agrolav@agrolav:/opt/agrolav$ git clean -fd
+agrolav@agrolav:/opt/agrolav$ cd shared
+agrolav@agrolav:/opt/agrolav/shared$ uv sync
+agrolav@agrolav:/opt/agrolav/shared$ cd ..
+agrolav@agrolav:/opt/agrolav$ cd hub
+agrolav@agrolav:/opt/agrolav/hub$ uv sync
+agrolav@agrolav:/opt/agrolav/hub$ cd ..
+agrolav@agrolav:/opt/agrolav$ cd client
+agrolav@agrolav:/opt/agrolav/client$ uv sync
+agrolav@agrolav:/opt/agrolav/client$ cd frontend
+agrolav@agrolav:/opt/agrolav/client/frontend$ npm ci
+agrolav@agrolav:/opt/agrolav/client/frontend$ npm run build
+agrolav@agrolav:/opt/agrolav/client/frontend$ cd ..
+agrolav@agrolav:/opt/agrolav/client$ sudo systemctl restart agrolav-hub
+agrolav@agrolav:/opt/agrolav/client$ sudo systemctl restart agrolav-client
+
+
+==================copy database
+
+1. in SSMS, right-click agrolav, click "tasks > backup" and save to disk via docker-mapping
+2. see ## SQL #6-8 above:
+3. powershell: scp -P 4523 C:/SQLBackups/agrolav20.bak agrolav@209.38.39.105:/tmp/
+4. check on server (ssh agrolav@209.38.39.105 -p 4523): ls -lh /tmp/agrolav19.bak (NB server may lags 2 hours in summer, 1 in winter)
+5. make folder [sudo docker exec SQLServer2022 mkdir -p /var/opt/mssql/backup] only if there is no folder
+6. copy from server to docker
+   sudo docker cp \
+  /tmp/agrolav20.bak \
+  MSSQL2022:/var/opt/mssql/backup/agrolav20.bak
+7. Verify:
+sudo docker exec SQLServer2022 \
+  ls -lh /var/opt/mssql/backup/agrolav19.bak
+8. Use SSMS connected to `209.38.39.105,1433` (`sa` login). First determine the logical file names:
+```sql
+USE MASTER
+RESTORE FILELISTONLY
+FROM DISK = '/var/opt/mssql/backup/agrolav19.bak';
+```
+Then restore (logical names `agrolav` / `agrolav_log`):
+```sql
+USE master;
+ALTER DATABASE [agrolav]
+SET SINGLE_USER
+WITH ROLLBACK IMMEDIATE;
+RESTORE DATABASE [agrolav]
+FROM DISK = '/var/opt/mssql/backup/agrolav19.bak'
+WITH
+    REPLACE,
+    RECOVERY;
+ALTER DATABASE [agrolav]
+SET MULTI_USER;
+```

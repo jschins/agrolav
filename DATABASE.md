@@ -408,3 +408,68 @@ WHERE country_id = @country_id AND matrix_role IS NOT NULL;
 ```
 
 
+adapt table
+
+INSERT INTO dbo.table_header_term (country_id, term_key, label)
+SELECT 3, term_key, label
+FROM dbo.table_header_term 
+WHERE country_id = 1;
+
+INSERT INTO dbo.table_header_term (country_id, term_key, label)
+SELECT 4, term_key, label
+FROM dbo.table_header_term 
+WHERE country_id = 1;
+
+ALTER TABLE dbo.transaction_beheer
+DROP CONSTRAINT ck_txn_beheer_cat;
+
+ALTER TABLE dbo.transaction_beheer
+ADD CONSTRAINT ck_txn_beheer_cat
+CHECK ([category_id] >= 1000 AND [category_id] < 10000);
+
+ALTER TABLE dbo.country ADD digits INT NOT NULL CONSTRAINT DF_num_digits DEFAULT 2;
+UPDATE dbo.country SET digits = 4 WHERE country_id = 4;
+
+UPDATE dbo.dim_category
+SET label = SUBSTRING(label, 4, LEN(label))
+WHERE matrix_role NOT IN ('balance', 'last_booked');
+
+INSERT INTO dbo.dim_category
+VALUES (3997, 4, 3110, 'Overige kosten', 'True', NULL),
+(3001, 4, 3001, 'Kleine inventaris', 'False', NULL),
+(3002, 4, 3002, 'Onderhoud / verbouwing', 'False', NULL),
+(3005, 4, 3005, 'Gemeentebelastingen', 'False', NULL),
+(3010, 4, 3010, 'Verzekeringen', 'False', NULL),
+(3015, 4, 3015, 'Energie / water', 'False', NULL),
+(3020, 4, 3020, 'Telefoon / TV / internet', 'False', NULL),
+(3025, 4, 3025, 'Kantoor', 'False', NULL),
+(3026, 4, 3026, 'Kapel', 'False', NULL),
+(3027, 4, 3027, 'Kosten activiteiten', 'False', NULL),
+(3035, 4, 3035, 'Levensmiddelen', 'False', NULL),
+(3040, 4, 3040, 'Salarissen', 'False', NULL),
+(3045, 4, 3045, 'Auto', 'False', NULL),
+(3050, 4, 3050, 'Betaalde rente particulieren', 'False', NULL),
+(3055, 4, 3055, 'Bankkosten', 'False', NULL),
+(3070, 4, 3070, 'Steun aan derden', 'False', NULL),
+(3080, 4, 3080, 'Afschrijving gebouwen', 'False', NULL),
+(3100, 4, 3100, 'Afschrijving verbouwingen', 'False', NULL),
+(3101, 4, 3101, 'Afschrijving inventaris', 'False', NULL),
+(3102, 4, 3102, 'Afschrijving autos', 'False', NULL),
+(3210, 4, 3210, 'Onkosten derden t.b.v. fondsen', 'False', NULL),
+(3220, 4, 3220, 'Bankkosten fondsen', 'False', NULL),
+(3240, 4, 3240, 'Steun ontwikkelingsprojecten', 'False', NULL),
+(3250, 4, 3250, 'Overige uitgaven fondsen', 'False', NULL),
+(4000, 4, 4000, 'Bijdragen activiteiten', 'False', NULL),
+(4004, 4, 4004, 'Aktes', 'False', NULL),
+(4005, 4, 4005, '4005-L Aktes t.l.v. lening', 'False', NULL),
+(4006, 4, 4006, 'Giften algemeen', 'False', NULL),
+(4020, 4, 4020, 'Huuropbrengsten OCTR', 'False', NULL),
+(4021, 4, 4021, 'Huuropbrengsten residentie', 'False', NULL),
+(4050, 4, 4050, 'Ontvangen rente', 'False', NULL),
+(4055, 4, 4055, 'Overige baten', 'False', NULL),
+(4200, 4, 4200, 'Aktes FPU', 'False', NULL),
+(4220, 4, 4220, 'Overige giften FPU', 'False', NULL),
+(4225, 4, 4225, 'Overige giften ontwikkelingsfondsen', 'False', NULL)
+
+
+
