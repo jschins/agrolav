@@ -868,15 +868,6 @@ function isoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function previousMonthRange(): { from: string; to: string } {
-  const today = new Date();
-  const firstThisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const lastPrev = new Date(firstThisMonth);
-  lastPrev.setDate(0);
-  const firstPrev = new Date(lastPrev.getFullYear(), lastPrev.getMonth(), 1);
-  return { from: isoDate(firstPrev), to: isoDate(lastPrev) };
-}
-
 function formatTermMatchHint(typerules: { type: string; category: string }[]): string {
   const priority =
     "Priority (highest first): (1) typerules beat all keywords; " +
@@ -1157,8 +1148,6 @@ function MainApp({
   const [hasSecrets, setHasSecrets] = useState(false);
   const [canAddPerson, setCanAddPerson] = useState(false);
   const [addPersonUrl, setAddPersonUrl] = useState<string | null>(null);
-  const [dateFrom, setDateFrom] = useState(() => previousMonthRange().from);
-  const [dateTo, setDateTo] = useState(() => previousMonthRange().to);
   const [termMenu, setTermMenu] = useState<{
     term: string;
     x: number;
@@ -1190,9 +1179,6 @@ function MainApp({
         const scope =
           scoped && ws && person ? { center: ws, person } : null;
         setRefreshScope(scope);
-        const defaults = previousMonthRange();
-        setDateFrom(defaults.from);
-        setDateTo(defaults.to);
         const stored = loadStoredRefreshStatus(scope);
         const scopedStored =
           scope?.person ? filterRefreshStatusForPerson(stored, scope.person) : stored;
@@ -1503,10 +1489,7 @@ function MainApp({
     });
     clearStoredRefreshStatus(refreshScope);
     afterPaint(() => {
-      refreshAll({
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
-      })
+      refreshAll()
         .then((res) => {
           setMatrix(res.matrix);
           const payload: StoredRefreshStatus = {

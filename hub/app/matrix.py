@@ -1,6 +1,8 @@
 """Build category × person matrix and orchestrate multi-person operations."""
 from __future__ import annotations
 
+import calendar
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,36 @@ from app.settings import get_people, refresh_people
 
 FOOTER_BALANCE = "saldo"
 FOOTER_DATUM = "datum"
+
+
+def _add_calendar_months(day: date, months: int) -> date:
+    month_index = day.month - 1 + months
+    year = day.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def _last_day_of_previous_month(today: date) -> date:
+    return date(today.year, today.month, 1) - timedelta(days=1)
+
+
+def monthly_refresh_period(
+    updated_at: date | None, *, today: date | None = None
+) -> tuple[date, date] | None:
+    """Bank fetch window for a Refresh click, or ``None`` to skip.
+
+    Skip when ``updated_at`` is newer than one calendar month ago. Otherwise
+    read from ``updated_at`` (or the first of last month if never updated)
+    through the last day of the previous month.
+    """
+    today = today or date.today()
+    date_to = _last_day_of_previous_month(today)
+    if updated_at is not None and updated_at > _add_calendar_months(today, -1):
+        return None
+    date_from = updated_at if updated_at is not None else date(date_to.year, date_to.month, 1)
+    if date_from > date_to:
+        return None
+    return date_from, date_to
 
 
 def _category_map(data: dict[str, Any]) -> dict[str, list[str]]:
@@ -415,6 +447,22 @@ def _refresh_one_person(
     from app.core.single_client import EnableBankingError
 
     try:
+        if pack.has_pem and not new_year:
+            from app import user_store
+
+            updated = user_store.user_updated_at(pack.person_name)
+            period = monthly_refresh_period(updated)
+            if period is None:
+                return (
+                    {
+                        "person_name": pack.person_name,
+                        "skipped": True,
+                        "reason": "updated_recently",
+                        "updated_at": updated.isoformat() if updated else None,
+                    },
+                    [],
+                )
+            date_from, date_to = period[0].isoformat(), period[1].isoformat()
         if pack.has_pem:
             result, extra = _bank_refresh_one(
                 pack, date_from=date_from, date_to=date_to, new_year=new_year

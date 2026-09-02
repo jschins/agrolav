@@ -254,5 +254,46 @@ class UploadGrantAndIngestTests(unittest.TestCase):
             )
 
 
+class MonthlyRefreshPeriodTests(unittest.TestCase):
+    def test_never_updated_uses_previous_month(self):
+        from datetime import date
+
+        from app.matrix import monthly_refresh_period
+
+        self.assertEqual(
+            monthly_refresh_period(None, today=date(2026, 9, 2)),
+            (date(2026, 8, 1), date(2026, 8, 31)),
+        )
+
+    def test_skips_when_updated_within_the_last_month(self):
+        from datetime import date
+
+        from app.matrix import monthly_refresh_period
+
+        self.assertIsNone(
+            monthly_refresh_period(date(2026, 8, 31), today=date(2026, 9, 2))
+        )
+
+    def test_refreshes_from_updated_through_previous_month_end(self):
+        from datetime import date
+
+        from app.matrix import monthly_refresh_period
+
+        self.assertEqual(
+            monthly_refresh_period(date(2026, 7, 31), today=date(2026, 9, 2)),
+            (date(2026, 7, 31), date(2026, 8, 31)),
+        )
+
+    def test_next_month_picks_up_from_last_closed_period(self):
+        from datetime import date
+
+        from app.matrix import monthly_refresh_period
+
+        self.assertEqual(
+            monthly_refresh_period(date(2026, 8, 31), today=date(2026, 10, 2)),
+            (date(2026, 8, 31), date(2026, 9, 30)),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

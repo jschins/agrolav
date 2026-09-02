@@ -718,6 +718,24 @@ def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:
     return _public_user(user) if user else None
 
 
+def user_updated_at(username: str) -> date | None:
+    """``dbo.person.updated_at`` as a date, or ``None`` if missing."""
+    name = (username or "").strip()
+    if not name:
+        return None
+    init_user_store()
+    cursor = _sql_connect().cursor()
+    cursor.execute(
+        "SELECT updated_at FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+        (name,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    iso = as_date_only(row[0])
+    return date.fromisoformat(iso) if iso else None
+
+
 def set_user_updated_at(*, username: str, date: str | None) -> dict[str, Any] | None:
     name = (username or "").strip()
     iso = as_date_only(date)
