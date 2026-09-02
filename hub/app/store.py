@@ -259,15 +259,8 @@ def ircft_center(
         set_active_center(ws)
         init_app()
         packs = refresh_people()
-        sql = _use_sql()
         to_run = [pack for pack in packs if wanted is None or pack.person_name in wanted]
         for pack in to_run:
-            if (
-                not sql
-                and not pack.categorized_path.is_file()
-                and not pack.totals_path.is_file()
-            ):
-                continue
             with bind_person(pack):
                 apply_ircft_terms(
                     added=added,
@@ -792,19 +785,20 @@ def list_events(
 
 
 def read_center_files(center: str) -> dict[str, Any]:
-    root = center_dir(center)
-    categories = _read_json_or_none(merged_categories_path())
+    """People come from SQL; categorized JSON is not the live store."""
     people: dict[str, Any] = {}
     for name in list_person_folders(center):
-        data = root / name / parse_year(None)
-        secret = root / name / "secret"
         people[name] = {
-            "categorized_transactions": _read_json_or_none(data / CATEGORIZED),
-            "personal_categories": _read_json_or_none(secret / PERSONAL_CATEGORIES),
-            "category_totals": _read_json_or_none(data / CATEGORY_TOTALS),
-            "downloaded_transactions": _read_json_or_none(data / DOWNLOADED),
+            "categorized_transactions": None,
+            "personal_categories": None,
+            "category_totals": None,
+            "downloaded_transactions": None,
         }
-    return {"center": _clean_center(center), "categories": categories, "people": people}
+    return {
+        "center": _clean_center(center),
+        "categories": None,
+        "people": people,
+    }
 
 
 def write_center_files(

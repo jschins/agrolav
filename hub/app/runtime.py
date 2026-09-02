@@ -207,12 +207,10 @@ class PersonPack:
 
     @property
     def has_secret_folder(self) -> bool:
-        """True when Enable Banking credentials are present (SQL PEM, else a .pem file)."""
+        """True when Enable Banking credentials are present in SQL."""
         from app.enable_sql import person_has_pem
 
-        if person_has_pem(self.person_name):
-            return True
-        return self.secret_dir.is_dir() and any(self.secret_dir.glob("*.pem"))
+        return person_has_pem(self.person_name)
 
 
 DATA_DIR: Path = Path(current_year())

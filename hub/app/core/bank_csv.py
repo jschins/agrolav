@@ -271,26 +271,18 @@ def infer_bank_folder_from_csv(data: bytes) -> str:
 
 
 def discover_person_banks(person: str, center: str) -> tuple[str, ...]:
-    """Bank subfolder names already present under ``YYYY/`` (directory names only)."""
-    from app.yearpath import list_year_names
+    """Account identifiers from ``dbo.account`` (no year-folder scan)."""
+    del center
+    from app import user_store
 
-    from app.runtime import resolve_country_for_center
-
-    country = resolve_country_for_center(center)
-    person_folder = (
-        data_root() / country / center / person if country else data_root() / center / person
-    )
-    if not person_folder.is_dir():
-        return ()
-    modalities = bank_modalities()
-    found: set[str] = set()
-    for year in list_year_names(person_folder):
-        year_path = person_folder / year
-        for sub in list_year_bank_folders(year_path):
-            # CSV modality folders, or PEM multi-account ``BANK_accountNumber``.
-            if _matches_modality_folder(sub, modalities) or "_" in sub:
-                found.add(sub)
-    return tuple(sorted(found))
+    found: list[str] = []
+    seen: set[str] = set()
+    for acc in user_store.list_accounts_for_username(person):
+        iban = str(acc.get("iban") or "").strip()
+        if iban and iban not in seen:
+            seen.add(iban)
+            found.append(iban)
+    return tuple(found)
 
 
 def person_csv_banks(person: str, center: str) -> list[str]:

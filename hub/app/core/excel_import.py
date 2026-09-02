@@ -572,7 +572,6 @@ def write_outputs(
     categories_path: Path,
 ) -> tuple[Path, Path, dict[str, Any]]:
     folder = data
-    folder.mkdir(parents=True, exist_ok=True)
     categorized, totals, info = convert_excel_files(folder, categories_path=categories_path)
     categorized_path = folder / "categorized_transactions.json"
     totals_path = folder / "category_totals.json"

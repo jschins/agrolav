@@ -29,14 +29,13 @@ def _sql_packs(*, center: str, country: str, year: str | None) -> list[PersonPac
             y = current_year()
         folder = root / country / center / username
         secret = folder / "secret"
-        profile = secret / "profile.json"
         packs.append(
             PersonPack(
                 person_name=username,
                 folder=folder,
                 data_dir=folder / y,
                 secret_dir=secret,
-                profile_path=profile.resolve() if profile.is_file() else _MISSING,
+                profile_path=_MISSING,
                 private_key_path=_MISSING,
                 year=y,
                 country=country,

@@ -20,11 +20,11 @@ client/frontend/node_modules/
 client/frontend/**/*.tsbuildinfo
 client/frontend/vite.config.js
 client/frontend/vite.config.d.ts
-workspaces/
+
 **/secret/
 *.pem
 users.db
 upload.log
-*.md
-agrolav.bak
-legacy/**/*
+
+documentation/
+legacy/

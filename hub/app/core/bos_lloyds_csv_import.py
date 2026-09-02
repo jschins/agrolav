@@ -20,6 +20,7 @@ from app.core.excel_import import (
     category_name_map,
     cell_amount_cents,
     format_amount,
+    transaction_id,
 )
 
 BOS_LLOYDS_HEADERS = frozenset(
@@ -334,7 +335,6 @@ def write_outputs(
     tx_type: str = TX_TYPE_DEFAULT,
 ) -> tuple[Path, Path, dict[str, Any]]:
     folder = data
-    folder.mkdir(parents=True, exist_ok=True)
     categorized, totals, info = convert_csv_files(
         folder, categories_path=categories_path, tx_type=tx_type
     )

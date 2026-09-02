@@ -1754,6 +1754,7 @@ _UPLOAD_HTML = """<!DOCTYPE html>
         <select id="year"><option value="__YEAR__">__YEAR__</option></select>
       </label>
       <p class="meta">Accepted formats: <span id="formats"></span></p>
+      <p class="meta" id="uploadedFiles"></p>
       <p class="meta" id="detectedFormat"></p>
       <label>File <span style="font-weight:400;color:#666">(max 32 MB)</span>
         <input id="file" type="file"/>
@@ -1864,6 +1865,13 @@ _UPLOAD_HTML = """<!DOCTYPE html>
       document.getElementById("yourIp").textContent = g.client_ip || "?";
       const fmtEl = document.getElementById("formats");
       if (fmtEl && g.formats && g.formats.length) fmtEl.textContent = g.formats.join(", ");
+      const filesEl = document.getElementById("uploadedFiles");
+      if (filesEl) {
+        const files = g.files || [];
+        filesEl.textContent = files.length
+          ? ("Uploaded files: " + files.map(function (f) { return f.file_name; }).join(", "))
+          : "No files uploaded yet.";
+      }
       const detEl = document.getElementById("detectedFormat");
       if (detEl) detEl.textContent = _detectedFormat ? ("Detected format: " + _detectedFormat) : "";
     }
@@ -2136,7 +2144,7 @@ def upload_grant(
 ) -> dict[str, Any]:
     from app.core.bank_csv import upload_format_options
     from app.runtime import resolve_country_for_center
-    from app.sql_catalog import years_for_person
+    from app.sql_catalog import list_account_balance_files, years_for_person
     from app.yearpath import default_upload_year, parse_year
 
     token = _upload_token(authorization, request.query_params.get("t"))
@@ -2163,6 +2171,7 @@ def upload_grant(
         "default_year": default_y,
         "year_options": year_options,
         "formats": upload_format_options(),
+        "files": list_account_balance_files(identity["person"]),
         "client_ip": _request_client_host(request),
     }
 
@@ -2213,6 +2222,7 @@ async def upload_api(
     """Identify a local file, write its rows into ``transaction_{country}`` for the person."""
     from app.core.bank_csv import identify_upload_format
     from app.runtime import bind_person, resolve_country_for_center
+    from app.sql_catalog import record_account_balance_file
     from app.sql_replica import ingest_bound_transactions
     from app.yearpath import default_upload_year, parse_year
 
@@ -2250,6 +2260,7 @@ async def upload_api(
     pack = _upload_person_pack(identity["person"], identity["center"], country, y)
     with bind_person(pack):
         inserted = ingest_bound_transactions(records, locked=True)
+    record_account_balance_file(identity["person"], file.filename or "upload", fmt)
     _sync_uploaded_account(
         person=identity["person"],
         country=country,

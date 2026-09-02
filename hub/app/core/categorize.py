@@ -65,16 +65,11 @@ def _personal_category_map() -> dict[str, list[str]]:
 
 
 def _load_categorized_store() -> dict[str, Any]:
-    """Bookings for the bound person/year(/bank): SQL when configured, else JSON."""
+    """Bookings for the bound person/year(/bank) from ``transaction_*``."""
     from app.sql_replica import load_bound_transactions
 
-    if _use_sql():
-        rows = load_bound_transactions()
-        return {"transactions": [dict(item) for item in (rows or [])]}
     rows = load_bound_transactions()
-    if rows is not None:
-        return {"transactions": [dict(item) for item in rows]}
-    return _migrate_categorized_store(_load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH))
+    return {"transactions": [dict(item) for item in (rows or [])]}
 
 
 def _persist_categorized_store(data: dict[str, Any]) -> dict[str, Any]:
@@ -816,27 +811,15 @@ def refresh_category_totals_balances() -> dict[str, str]:
 
 
 def load_category_totals() -> dict[str, str]:
-    from app.sql_replica import load_bound_transactions
+    from app.sql_replica import load_bound_category_totals, load_bound_transactions
 
-    if _use_sql():
-        from app.sql_replica import load_bound_category_totals
-
-        general = _category_map(_categories_file())
-        names = list(general.keys())
-        totals = load_bound_category_totals(names)
-        if totals is not None:
-            return totals
-        rows = load_bound_transactions() or []
-        return build_category_totals({"transactions": rows}, names)
-    rows = load_bound_transactions()
-    if rows is not None:
-        general = _category_map(_categories_file())
-        return build_category_totals({"transactions": rows}, list(general.keys()))
-    data = _load_json_object(paths.CATEGORY_TOTALS_PATH)
-    categories = data.get("categories")
-    if not isinstance(categories, dict):
-        return {}
-    return {str(name): str(amount) for name, amount in categories.items()}
+    general = _category_map(_categories_file())
+    names = list(general.keys())
+    totals = load_bound_category_totals(names)
+    if totals is not None:
+        return totals
+    rows = load_bound_transactions() or []
+    return build_category_totals({"transactions": rows}, names)
 
 
 def _load_raw_transactions() -> list[dict[str, Any]]:
@@ -1107,50 +1090,18 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
         log("filter.abort", reason="category_name_has_no_numeric_prefix")
         return []
 
-    if _use_sql():
-        from app.sql_replica import load_bound_transactions
+    from app.sql_replica import load_bound_transactions
 
-        rows = load_bound_transactions(category_code=code) or []
-        log(
-            "filter.done",
-            category_name=category_name,
-            parsed_code=code,
-            raw_transactions=len(rows),
-            matched=len(rows),
-            source="sql",
-        )
-        return [_public_transaction(_canonical_transaction(item)) for item in rows if isinstance(item, dict)]
-
-    payload = _load_categorized_store()
-    raw_list = payload.get("transactions")
-    raw_count = len(raw_list) if isinstance(raw_list, list) else 0
-
-    code_counts: dict[int | str, int] = {}
-    transactions: list[dict[str, Any]] = []
-    for transaction in raw_list if isinstance(raw_list, list) else []:
-        if not isinstance(transaction, dict):
-            continue
-        effective = _canonical_transaction(transaction)
-        effective_code = _as_category_code(effective.get("category"))
-        bucket: int | str = effective_code if effective_code is not None else repr(effective.get("category"))
-        code_counts[bucket] = code_counts.get(bucket, 0) + 1
-        if effective_code == code:
-            transactions.append(_public_transaction(effective))
-
+    rows = load_bound_transactions(category_code=code) or []
     log(
         "filter.done",
         category_name=category_name,
         parsed_code=code,
-        raw_transactions=raw_count,
-        modifications=sum(
-            1
-            for item in (raw_list if isinstance(raw_list, list) else [])
-            if isinstance(item, dict) and _modification_of(item) > 0
-        ),
-        matched=len(transactions),
-        code_histogram=dict(sorted(code_counts.items(), key=lambda item: str(item[0]))),
+        raw_transactions=len(rows),
+        matched=len(rows),
+        source="sql",
     )
-    return transactions
+    return [_public_transaction(_canonical_transaction(item)) for item in rows if isinstance(item, dict)]
 
 
 _HIDDEN_TABLE_COLUMNS = frozenset({"id", "currency", "modification", "hit"})
@@ -1474,12 +1425,9 @@ def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
     else:
         stored["modification"] = _modification_of(base)
 
-    if _use_sql():
-        from app.sql_replica import sync_bound_transactions
+    from app.sql_replica import sync_bound_transactions
 
-        sync_bound_transactions([stored])
-    else:
-        data = _persist_categorized_store(data)
+    sync_bound_transactions([stored])
     general = _category_map(_categories_file())
     _write_category_totals(data, general)
     return _public_transaction(_canonical_transaction(stored))
@@ -1514,34 +1462,9 @@ def process_transactions(raw_transactions: list[dict[str, Any]], new_year: bool)
 
 def load_transaction_split(source_id: str) -> dict[str, Any]:
     """Load the original booking and its split lines for the bound person."""
-    from app.sql_replica import (
-        _root_source_id,
-        _split_payload,
-        load_bound_split,
-    )
+    from app.sql_replica import load_bound_split
 
-    if _use_sql():
-        return load_bound_split(source_id)
-    needle = str(source_id or "").strip()
-    if not needle:
-        raise ValueError("Transaction id is required")
-    data = _load_categorized_store()
-    rows = [item for item in (data.get("transactions") or []) if isinstance(item, dict)]
-    parent_id = _root_source_id(needle)
-    by_id = {str(item.get("id") or ""): item for item in rows}
-    parent = by_id.get(parent_id)
-    if parent is None:
-        raise ValueError(f"Transaction not found: {parent_id}")
-    prefix = f"{parent_id}~s"
-    children = [
-        item
-        for item in rows
-        if str(item.get("id") or "").startswith(prefix)
-        and _root_source_id(str(item.get("id") or "")) == parent_id
-    ]
-    children.sort(key=lambda item: str(item.get("id") or ""))
-    payload = _split_payload(parent_id=parent_id, parent=parent, children=children)
-    return payload
+    return load_bound_split(source_id)
 
 
 def save_transaction_split(

@@ -1,7 +1,7 @@
 """SQL Server bookings for the person/year(/bank) bound in ``app.runtime``.
 
 Reads return JSON-shaped rows. Writes INSERT/UPDATE ``transaction_*`` rows.
-JSON files remain a write-through cache for imports and file publish.
+The live path is SQL; categorized JSON is not written or read.
 """
 from __future__ import annotations
 

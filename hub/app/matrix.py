@@ -1,6 +1,7 @@
 """Build category × person matrix and orchestrate multi-person operations."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from app.runtime import PersonPack, bind_person
@@ -251,56 +252,30 @@ def recalculate_all(person_folders: list[str] | None = None) -> dict[str, Any]:
     from app.runtime import CALC_LOCK
 
     with CALC_LOCK:
-        from app import user_store
-
         packs = refresh_people()
         if person_folders:
             wanted = {Path(name).name for name in person_folders}
             to_run = [p for p in packs if p.person_name in wanted]
         else:
             to_run = packs
-        sql = bool(user_store.database_url())
         for pack in to_run:
-            # Recategorize anyone with year data — not only Enable Banking (.pem) packs.
-            if (
-                not sql
-                and not pack.categorized_path.is_file()
-                and not pack.totals_path.is_file()
-            ):
-                continue
             with bind_person(pack):
                 recategorize_transactions()
         return build_matrix(packs)
 
 
 def recalculate_pack_from_scratch(pack: PersonPack) -> None:
-    """Wipe hit/modification, then recategorize every year (and bank folder) for ``pack``."""
+    """Wipe hit/modification, then recategorize every SQL year for ``pack``."""
     from dataclasses import replace
 
-    from app import user_store
-    from app.core.bank_csv import list_year_bank_folders
     from app.core.categorize import recategorize_transactions
     from app.yearpath import list_year_names
 
     years = list_year_names(pack.folder)
-    if user_store.database_url():
-        for year in years:
-            year_pack = replace(pack, data_dir=pack.folder / year, year=year)
-            with bind_person(year_pack):
-                recategorize_transactions(from_scratch=True)
-        return
-
     for year in years:
-        year_path = pack.folder / year
-        targets = [year_path]
-        for bank in list_year_bank_folders(year_path):
-            targets.append(year_path / bank)
-        for data_dir in targets:
-            if not (data_dir / "categorized_transactions.json").is_file():
-                continue
-            year_pack = replace(pack, data_dir=data_dir.resolve(), year=year)
-            with bind_person(year_pack):
-                recategorize_transactions(from_scratch=True)
+        year_pack = replace(pack, data_dir=pack.folder / year, year=year)
+        with bind_person(year_pack):
+            recategorize_transactions(from_scratch=True)
 
 
 def recalculate_all_from_scratch(person_folders: list[str] | None = None) -> dict[str, Any]:
@@ -320,88 +295,22 @@ def recalculate_all_from_scratch(person_folders: list[str] | None = None) -> dic
 
 
 def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
-    from app.core.bank_csv import person_csv_banks, refresh_bank_csv_year
-    from app.core.excel_import import import_person_excel, list_xlsx_files
-    from app.runtime import shared_categories_path
+    """Recategorize SQL bookings for upload people (no year-folder scan)."""
+    from app.core.categorize import recategorize_transactions
+    from app.sql_catalog import list_account_balance_files
+    from app.sql_replica import load_bound_transactions
 
-    categories_path = shared_categories_path()
-    center = pack.folder.parent.name
-    person = pack.person_name
-    banks = person_csv_banks(person, center)
-    if banks:
-        refreshed = refresh_bank_csv_year(
-            pack.folder,
-            year=pack.year,
-            person=person,
-            center=center,
-            categories_path=categories_path,
-        )
-        if refreshed.get("skipped"):
-            return {
-                "person_name": pack.person_name,
-                "skipped": True,
-                "source": "bank-csv",
-                "reason": refreshed.get("reason") or "no csv bank data",
-            }
-        bank_results = refreshed.get("banks") or []
-        consolidation = refreshed.get("consolidation") or {}
-        total_tx = sum(int(item.get("transaction_count") or 0) for item in bank_results)
-        all_files: list[str] = []
-        all_new: list[str] = []
-        all_errors: list[str] = []
-        last_dates: list[str] = []
-        for item in bank_results:
-            all_files.extend(item.get("files") or [])
-            all_new.extend(item.get("new_files") or [])
-            all_errors.extend(item.get("file_errors") or [])
-            ld = str(item.get("last_date") or "").strip()
-            if ld:
-                last_dates.append(ld)
-        from dataclasses import replace as _replace
-
-        from app.core.bank_csv import list_year_bank_folders, person_uses_bank_subfolders
-        from app.core.categorize import finalize_imported_bookings
-
-        year_path = pack.folder / pack.year
-        if person_uses_bank_subfolders(person, center):
-            for bank in list_year_bank_folders(year_path):
-                with bind_person(_replace(pack, data_dir=(year_path / bank).resolve())):
-                    finalize_imported_bookings()
-        finalize_imported_bookings()
-        return {
-            "person_name": pack.person_name,
-            "skipped": False,
-            "source": "bank-csv",
-            "transaction_count": total_tx,
-            "banks": [item.get("bank") for item in bank_results if item.get("bank")],
-            "consolidated": bool(consolidation.get("consolidated")),
-            "files": all_files,
-            "new_files": all_new,
-            "file_errors": all_errors,
-            "last_date": max(last_dates) if last_dates else None,
-        }
-    if not list_xlsx_files(pack.data_dir):
-        return {
-            "person_name": pack.person_name,
-            "skipped": True,
-            "source": "excel",
-            "reason": "no xlsx or csv files",
-        }
-    info = import_person_excel(data_dir=pack.data_dir, categories_path=categories_path)
-    from app.core.categorize import finalize_imported_bookings
-
-    finalize_imported_bookings()
+    files = list_account_balance_files(pack.person_name)
+    recategorize_transactions()
+    rows = load_bound_transactions() or []
     return {
         "person_name": pack.person_name,
         "skipped": False,
-        "source": "excel",
-        "transaction_count": info.get("transaction_count", 0),
-        "files": info.get("files") or [],
-        "new_files": info.get("new_files") or [],
-        "balance_updated": bool(info.get("balance_updated")),
-        "balance": info.get("balance"),
-        "file_errors": info.get("file_errors") or [],
-        "last_date": info.get("last_date"),
+        "source": "sql",
+        "transaction_count": len(rows),
+        "files": [item.get("file_name") or "" for item in files],
+        "new_files": [],
+        "file_errors": [],
     }
 
 

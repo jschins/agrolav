@@ -172,6 +172,93 @@ def people_in_center(center: str) -> list[str]:
         return []
 
 
+def list_account_balance_files(username: str) -> list[dict[str, str]]:
+    """Uploaded filenames recorded on ``dbo.account_balance_file`` for this person."""
+    name = (username or "").strip()
+    if not name or not _sql_ready():
+        return []
+
+    def _run() -> list[dict[str, str]]:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            SELECT f.file_name, f.format
+            FROM dbo.account_balance_file f
+            JOIN dbo.account a ON a.account_id = f.account_id
+            JOIN dbo.person p ON p.id = a.person_id
+            WHERE p.username = ? COLLATE Latin1_General_CI_AI
+            ORDER BY f.account_balance_file_id
+            """,
+            (name,),
+        )
+        out: list[dict[str, str]] = []
+        for file_name, fmt in cursor.fetchall():
+            stored = str(file_name or "").strip()
+            if stored:
+                out.append({"file_name": stored, "format": str(fmt or "").strip()})
+        return out
+
+    try:
+        return _sql_retry(_run)
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def record_account_balance_file(username: str, file_name: str, fmt: str | None) -> None:
+    """INSERT one upload filename for the person's first account (skip duplicates)."""
+    name = (username or "").strip()
+    stored = str(file_name or "").strip()[:256]
+    if not name or not stored or not _sql_ready():
+        return
+
+    def _run() -> None:
+        from app import user_store
+
+        cursor = _cursor()
+        cursor.execute(
+            "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (name,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return
+        person_id = int(row[0])
+        cursor.execute(
+            """
+            SELECT TOP 1 account_id FROM dbo.account
+            WHERE person_id = ?
+            ORDER BY account_id
+            """,
+            (person_id,),
+        )
+        acc = cursor.fetchone()
+        if acc is None:
+            return
+        account_id = int(acc[0])
+        cursor.execute(
+            """
+            SELECT 1 FROM dbo.account_balance_file
+            WHERE account_id = ? AND file_name = ?
+            """,
+            (account_id, stored),
+        )
+        if cursor.fetchone():
+            return
+        cursor.execute(
+            """
+            INSERT INTO dbo.account_balance_file (account_id, file_name, format)
+            VALUES (?, ?, ?)
+            """,
+            (account_id, stored, (str(fmt or "").strip()[:64] or None)),
+        )
+        user_store._sql_connect().commit()
+
+    try:
+        _sql_retry(_run)
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql catalog: could not record upload file: {exc}")
+
+
 def person_country_center(username: str) -> tuple[str, str] | None:
     name = (username or "").strip()
     if not name or not _sql_ready():
