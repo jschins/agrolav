@@ -1,5 +1,5 @@
 -- Add dbo.country.title and dbo.center.title (sidebar heading).
--- Idempotent. Run after migrate_person.sql (username columns exist).
+-- Idempotent. Username columns already exist on dbo.country / dbo.center.
 --
 -- SSMS: connect to database agrolav, then execute this file.
 -- CLI:  cd hub && uv run python scripts/add_login_title.py

@@ -36,7 +36,7 @@ class DbCountryIsoTests(unittest.TestCase):
 class LoadProfileDbTests(unittest.TestCase):
     def test_profile_built_from_sql_when_configured(self):
         with _db_enabled(), mock.patch.object(
-            single_client.paths, "PERSON_NAME", "janpiet"
+            single_client.paths, "BOUND_PERSON", "janpiet"
         ), mock.patch.object(
             single_client.paths, "BOUND_COUNTRY", ""
         ), mock.patch(
@@ -55,7 +55,7 @@ class LoadProfileDbTests(unittest.TestCase):
 
     def test_aspsp_from_account_format(self):
         with _db_enabled(), mock.patch.object(
-            single_client.paths, "PERSON_NAME", "janpiet"
+            single_client.paths, "BOUND_PERSON", "janpiet"
         ), mock.patch(
             "app.enable_sql.credentials_for_person",
             return_value=("APP2", "KEY"),
@@ -69,7 +69,7 @@ class LoadProfileDbTests(unittest.TestCase):
 
     def test_country_iso_prefers_sql_over_bound(self):
         with _db_enabled(), mock.patch.object(
-            single_client.paths, "PERSON_NAME", "janpiet"
+            single_client.paths, "BOUND_PERSON", "janpiet"
         ), mock.patch.object(
             single_client.paths, "BOUND_COUNTRY", "nederland"
         ), mock.patch(
@@ -87,7 +87,7 @@ class LoadProfileDbTests(unittest.TestCase):
 
     def test_no_database_falls_back_to_legacy(self):
         with mock.patch("app.user_store.database_url", return_value=""), mock.patch.object(
-            single_client.paths, "PERSON_NAME", ""
+            single_client.paths, "BOUND_PERSON", ""
         ), mock.patch.object(
             single_client.paths, "BOUND_COUNTRY", ""
         ):
@@ -106,7 +106,7 @@ class SaveConsentDbTests(unittest.TestCase):
             "app.enable_sql.upsert_person_accounts", self.upsert
         )
         self.cm_db = _db_enabled()
-        self.cm_person = mock.patch.object(single_client.paths, "PERSON_NAME", "janpiet")
+        self.cm_person = mock.patch.object(single_client.paths, "BOUND_PERSON", "janpiet")
         self.cm_country = mock.patch.object(single_client.paths, "BOUND_COUNTRY", "nederland")
         self.cm_db.start()
         self.cm_person.start()

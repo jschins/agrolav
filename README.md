@@ -1,71 +1,35 @@
-# agrolav — household bookkeeping
+# Agrolav
 
-Hub + client for `https://boekhouding.agrolav.nl` (Caddy on AWS Lightsail → Tailscale → home server).
+Household bookkeeping: hub `:8200`, client `:8300`, SQL Server database `agrolav`.
+Logins are `dbo.country` / `dbo.center` / `dbo.person`. Bookings live in `dbo.transaction_*`.
 
-```text
-agrolav/
-  hub/          :8200 — data API, refresh, upload, add-person
-  client/       :8300 — BFF + React UI
-  shared/       login access helpers (user_access)
-  agrolav-sql   SQL Server — all data (persons, centers, countries, transactions, categories)
-  deploy/       optional ops notes / Caddyfile samples
-```
+Start locally with `uv run hub` (from `hub/`) and `uv run client` (from `client/`).
 
-## Run (home server)
+## Local vs server environment
 
-```powershell
-cd C:\Coding\agrolav\hub
-uv sync
-uv run hub
+Which URLs and disk paths the processes use is decided by **`dbo.app_config.RUN_ON_SERVER`** (truthy = server) plus a few environment variables. With no row, the hub is local.
 
-# other terminal
-cd C:\Coding\agrolav\client
-uv sync
-cd frontend
-npm install
-npm run build
-cd ..
-# production: set a real secret once on the machine
-# [System.Environment]::SetEnvironmentVariable("CLIENT_SESSION_SECRET","…","Machine")
-uv run client
-```
+### Process and disk paths
 
-Open `http://127.0.0.1:8300` (or `https://boekhouding.agrolav.nl` via Lightsail).
+| | Local (`uv run`) | Server (frozen exe / production) |
+|---|---|---|
+| Hub project root | `hub/` (source tree) | Directory of the executable |
+| Client project root | `client/` | PyInstaller `_MEIPASS` (bundled files) or the exe directory |
+| Hub `data_root()` | `AGROLAV_SQL_DISK` if set, else the process **cwd** | Same rule; production usually sets `AGROLAV_SQL_DISK` |
+| SQL backup volume | `AGROLAV_SQL_DISK` (default `C:/SQLBackups`) mounted at `/var/opt/mssql/backup` | Same env on the host that runs Docker SQL |
+| Hub `.env` | `hub/.env`, then the repo `.env` | Same lookup; `HUB_DATABASE_URL` is required |
 
-## Client config — none
+SQL Server is the live store. `data_root()` is only a leftover virtual root (ACL / logs). It is not a country/center/person folder tree.
 
-There is **no** `client_config.json`. Defaults are hardcoded; override only with env vars:
+### Network paths
 
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `SERVER_URL` | `http://127.0.0.1:8200` | Hub URL |
-| `PORT` | `8300` | Client listen port |
-| `CLIENT_AUTH` | on | Browser login |
-| `CLIENT_SESSION_SECRET` | insecure dev string | **Set in production** |
-| `CENTRALE_API_KEY` | empty | Optional hub Bearer |
-| `CENTRALE_SYNC` | on | Hub sync |
-| `ENABLEBANKING_REDIRECT_URL` | `http://127.0.0.1:8200/api/consent/callback` | Exact callback registered with Enable Banking; set to the public HTTPS callback in production |
+| | Local | Server |
+|---|---|---|
+| Hub listen | `HOST` (default `0.0.0.0`) port `8200` | Same defaults unless systemd/env overrides |
+| Client listen | `0.0.0.0:8300` (frozen laptop exe without auth: `127.0.0.1`) | `0.0.0.0:8300` behind Caddy |
+| Client → hub | `SERVER_URL` or `http://127.0.0.1:8200` | `SERVER_URL` to the hub on localhost; browsers use the public URLs |
+| Public hub / client URLs | `PUBLIC_HUB_URL` / `PUBLIC_CLIENT_URL` rows are **ignored**; links stay `http://127.0.0.1:8200` and `:8300` (`HUB_CLIENT_URL` can override the client return URL) | Those `dbo.app_config` rows are used |
+| Enable Banking callback | env `ENABLEBANKING_REDIRECT_URL` wins, else `LOCAL_ENABLEBANKING_REDIRECT_URL` | `PRODUCTION_ENABLEBANKING_REDIRECT_URL` wins over env |
+| SQL connection | `HUB_DATABASE_URL` in `hub/.env` → `127.0.0.1,1433` | Same variable pointing at the production SQL instance |
 
-Logins live in SQL Server (dbo.country / dbo.center / dbo.person); the hub requires SQL.
-
-## Public front door (already set up)
-
-```text
-Browser → https://boekhouding.agrolav.nl
-       → Lightsail Caddy
-       → Tailscale → 100.116.99.89:8300 (client)
-                   → 127.0.0.1:8200 (hub → SQL agrolav-sql)
-```
-
-Bank data and PEMs stay on the home server. Lightsail only proxies HTTPS.
-
-## Build frontend after UI changes
-
-`client/frontend/dist/` is gitignored. On every machine that serves `:8300`:
-
-```powershell
-cd C:\Coding\agrolav\client\frontend
-npm run build
-```
-
-Then restart the client.
+On the server, Caddy (`client/Caddyfile`) publishes the client on the public host and only forwards `/api/consent/callback*` and `/upload*` to the hub.

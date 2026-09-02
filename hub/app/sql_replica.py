@@ -1,4 +1,4 @@
-"""SQL Server bookings for the person/year(/bank) bound in ``app.runtime``.
+"""SQL Server bookings for the person/year(/account) bound in ``app.runtime``.
 
 Reads return JSON-shaped rows. Writes INSERT/UPDATE ``transaction_*`` rows.
 The live path is SQL; categorized JSON is not written or read.
@@ -9,10 +9,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 from typing import Any
-
-from app.yearpath import is_year_name
 
 _IDENT = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _ENABLE_BANKING_ID = re.compile(r"^(\d+)_(\d+)$")
@@ -36,22 +33,6 @@ def _transaction_table(country_name: str) -> str | None:
     if not ident:
         return None
     return f"dbo.transaction_{ident}"
-
-
-def _layout(data_dir: Path) -> tuple[str, str, int, str | None] | None:
-    """country folder, person username, year, bank folder or None."""
-    if is_year_name(data_dir.name):
-        year_dir = data_dir
-        bank_folder = None
-    elif is_year_name(data_dir.parent.name):
-        year_dir = data_dir.parent
-        bank_folder = data_dir.name
-    else:
-        return None
-    person_dir = year_dir.parent
-    center_dir = person_dir.parent
-    country_dir = center_dir.parent
-    return country_dir.name, person_dir.name, int(year_dir.name), bank_folder
 
 
 def _local_code(raw: Any) -> int | None:
@@ -168,7 +149,7 @@ def _bound_where(bound: _BoundScope, alias: str = "t") -> tuple[str, list[Any]]:
 
 
 def _open_bound_scope() -> _BoundScope | None:
-    """Resolve the bound person/year(/bank) against SQL, or None if SQL is unused."""
+    """Resolve the bound person/year(/account) against SQL, or None if SQL is unused."""
     from app import runtime as paths, user_store
 
     if not user_store.database_url():
@@ -176,12 +157,9 @@ def _open_bound_scope() -> _BoundScope | None:
     country_name = str(paths.BOUND_COUNTRY or "").strip()
     username = str(paths.BOUND_PERSON or "").strip()
     year = paths.BOUND_YEAR
-    bank_folder = paths.BOUND_BANK
+    account_iban = str(paths.BOUND_ACCOUNT or "").strip() or None
     if not (country_name and username and year is not None):
-        layout = _layout(paths.DATA_DIR)
-        if layout is None:
-            return None
-        country_name, username, year, bank_folder = layout
+        return None
     table = _transaction_table(country_name)
     if table is None:
         return None
@@ -205,34 +183,19 @@ def _open_bound_scope() -> _BoundScope | None:
         return None
     person_id = int(row[0])
 
-    bank_id: int | None = None
     account_id: int | None = None
-    if bank_folder:
-        account_id = _account_id_for_folder(cursor, person_id, bank_folder)
+    if account_iban:
+        account_id = _account_id_for_folder(cursor, person_id, account_iban)
         if account_id is None:
-            try:
-                from app.core.bank_csv import format_for_bank
-
-                fmt = format_for_bank(bank_folder)
-                cursor.execute(
-                    "SELECT bank_id FROM dbo.bank WHERE file_format = ?",
-                    (fmt,),
-                )
-                bank_row = cursor.fetchone()
-                if bank_row is None:
-                    print(f"sql replica: no bank for folder {bank_folder!r} format {fmt!r}")
-                    return None
-                bank_id = int(bank_row[0])
-            except ValueError:
-                print(f"sql replica: no account for folder {bank_folder!r}")
-                return None
+            print(f"sql replica: no account {account_iban!r} for {username!r}")
+            return None
 
     return _BoundScope(
         table=table,
         username=username,
         person_id=person_id,
         year=int(year),
-        bank_key=bank_id,
+        bank_key=None,
         account_id=account_id,
         cursor=cursor,
         conn=conn,

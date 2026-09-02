@@ -972,7 +972,7 @@ def consent_callback(
         complete_authorization,
         default_redirect_url,
     )
-    from app.runtime import CALC_LOCK, bind_person
+    from app.runtime import CALC_LOCK, bind_scope
     from app.people import get_person
     from app.runtime import set_active_center
     from app.settings import init_app
@@ -1038,7 +1038,7 @@ def consent_callback(
             set_active_center(ws)
             init_app()
             pack = get_person(person_name)
-            with bind_person(pack):
+            with bind_scope(pack):
                 complete_authorization(raw_code)
             consent_flow.mark_ready(center=ws, person_name=person_name)
     except (EnableBankingError, KeyError, FileNotFoundError, ValueError) as exc:
@@ -2062,22 +2062,15 @@ def _max_uploaded_date(records: list[dict[str, Any]]):
     return latest
 
 
-def _upload_person_pack(person: str, center: str, country: str, year: str):
-    from pathlib import Path
+def _upload_person_scope(person: str, center: str, country: str, year: str):
+    from app.runtime import PersonScope
 
-    from app.runtime import PersonPack, data_root
-
-    folder = data_root() / country / center / person
-    return PersonPack(
-        person_name=person,
-        folder=folder,
-        data_dir=folder / year,
-        secret_dir=folder / "secret",
-        profile_path=Path("."),
-        private_key_path=Path("."),
-        year=year,
+    return PersonScope(
         country=country,
         center=center,
+        person=person,
+        year=year,
+        account=None,
     )
 
 
@@ -2221,7 +2214,7 @@ async def upload_api(
 ) -> dict[str, Any]:
     """Identify a local file, write its rows into ``transaction_{country}`` for the person."""
     from app.core.bank_csv import identify_upload_format
-    from app.runtime import bind_person, resolve_country_for_center
+    from app.runtime import bind_scope, resolve_country_for_center
     from app.sql_catalog import record_account_balance_file
     from app.sql_replica import ingest_bound_transactions
     from app.yearpath import default_upload_year, parse_year
@@ -2257,8 +2250,8 @@ async def upload_api(
         raise
     if not records:
         raise HTTPException(status_code=400, detail="No dated transaction rows found")
-    pack = _upload_person_pack(identity["person"], identity["center"], country, y)
-    with bind_person(pack):
+    pack = _upload_person_scope(identity["person"], identity["center"], country, y)
+    with bind_scope(pack):
         inserted = ingest_bound_transactions(records, locked=True)
     record_account_balance_file(identity["person"], file.filename or "upload", fmt)
     _sync_uploaded_account(

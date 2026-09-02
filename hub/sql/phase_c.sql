@@ -1,9 +1,7 @@
 -- Phase C: country / categories / transactions.
 -- Drops and recreates these tables inside database agrolav (does not DROP
--- DATABASE). Hub writes stay on JSON until cutover.
+-- DATABASE). Do not run on a live database — it wipes bookings.
 -- Run via hub/scripts/load_phase_c.py.
--- Live databases already loaded: run hub/sql/migrate_person.sql instead
--- (load_phase_c.py would wipe bookings).
 -- To empty tables in SSMS without dropping the database: empty_agrolav.sql.
 --
 -- Logins:
@@ -27,7 +25,6 @@ IF OBJECT_ID(N'dbo.transaction_stichtingen', N'U') IS NOT NULL DROP TABLE dbo.tr
 IF OBJECT_ID(N'dbo.category_term', N'U') IS NOT NULL DROP TABLE dbo.category_term;
 IF OBJECT_ID(N'dbo.type_abbreviation', N'U') IS NOT NULL DROP TABLE dbo.type_abbreviation;
 IF OBJECT_ID(N'dbo.account', N'U') IS NOT NULL DROP TABLE dbo.account;
-IF OBJECT_ID(N'dbo.app_user', N'U') IS NOT NULL DROP TABLE dbo.app_user;
 IF OBJECT_ID(N'dbo.person', N'U') IS NOT NULL DROP TABLE dbo.person;
 IF OBJECT_ID(N'dbo.center', N'U') IS NOT NULL DROP TABLE dbo.center;
 IF OBJECT_ID(N'dbo.type_rule', N'U') IS NOT NULL DROP TABLE dbo.type_rule;

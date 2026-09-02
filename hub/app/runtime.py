@@ -1,9 +1,7 @@
 """Runtime state + bound identity for the always-on hub (SQL Server only).
 
-No on-disk country/center/person folders exist. ``data_root()`` points at the
-only on-disk files (the two flat JSON scratch files under ``AGROLAV_SQL_DISK``).
-Person identity is bound as plain state (``apply_person``/``bind_person``) so
-the SQL replica knows which person/year(/bank) is active.
+Person identity is ``country`` / ``center`` / ``person`` / ``year`` / ``account``
+from SQL (``apply_scope`` / ``bind_scope``).
 """
 from __future__ import annotations
 
@@ -17,8 +15,6 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY
-
-from app.yearpath import current_year, is_year_name
 
 _active_center: str | None = None
 _active_country: str | None = None
@@ -158,7 +154,7 @@ def country_root() -> Path:
 
 
 def app_root() -> Path:
-    """Virtual active center path (person packs) for calc; never created on disk."""
+    """Virtual active center path for diagnostic logs; never created on disk."""
     root = data_root()
     if _active_country and _active_center:
         return (root / _active_country / _active_center).resolve()
@@ -178,55 +174,36 @@ def is_central_admin() -> bool:
 
 
 @dataclass(frozen=True)
-class PersonPack:
-    person_name: str
-    folder: Path
-    data_dir: Path
-    secret_dir: Path
-    profile_path: Path
-    private_key_path: Path
+class PersonScope:
+    """SQL identity for one person in a center.
+
+    ``account`` is ``dbo.account.iban`` when the view is one account;
+    ``None`` means every account (consolidated).
+    """
+
+    country: str
+    center: str
+    person: str
     year: str
-    country: str = ""
-    center: str = ""
+    account: str | None = None
 
     @property
-    def consent_path(self) -> Path:
-        return self.secret_dir / "consent.json"
+    def person_name(self) -> str:
+        return self.person
 
     @property
-    def personal_categories_path(self) -> Path:
-        return self.secret_dir / "personal_categories.json"
-
-    @property
-    def categorized_path(self) -> Path:
-        return self.data_dir / "categorized_transactions.json"
-
-    @property
-    def totals_path(self) -> Path:
-        return self.data_dir / "category_totals.json"
-
-    @property
-    def has_secret_folder(self) -> bool:
+    def has_pem(self) -> bool:
         """True when Enable Banking credentials are present in SQL."""
         from app.enable_sql import person_has_pem
 
-        return person_has_pem(self.person_name)
+        return person_has_pem(self.person)
 
 
-DATA_DIR: Path = Path(current_year())
-PERSON_NAME: str = ""
 BOUND_COUNTRY: str = ""
+BOUND_CENTER: str = ""
 BOUND_PERSON: str = ""
 BOUND_YEAR: int | None = None
-BOUND_BANK: str | None = None
-PROFILE_PATH: Path = Path("profile.json")
-PRIVATE_KEY_PATH: Path = Path("key.pem")
-CONSENT_PATH: Path = Path("secret") / "consent.json"
-CATEGORIES_PATH: Path = Path("categories.json")
-PERSONAL_CATEGORIES_PATH: Path = Path("secret") / "personal_categories.json"
-CATEGORIZED_TRANSACTIONS_PATH: Path = DATA_DIR / "categorized_transactions.json"
-RAW_TRANSACTIONS_PATH: Path = DATA_DIR / "downloaded_transactions.json"
-CATEGORY_TOTALS_PATH: Path = DATA_DIR / "category_totals.json"
+BOUND_ACCOUNT: str | None = None
 
 
 def shared_categories_path(root: Path | None = None) -> Path:
@@ -266,95 +243,49 @@ def app_id_from_profile_data(data: dict[str, Any]) -> str:
     return str(data.get("app_id") or "").strip()
 
 
-def _set_bound_identity(pack: PersonPack) -> None:
-    global BOUND_COUNTRY, BOUND_PERSON, BOUND_YEAR, BOUND_BANK
+def apply_scope(scope: PersonScope) -> None:
+    """Bind SQL identity for categorize / replica / Enable Banking."""
+    global BOUND_COUNTRY, BOUND_CENTER, BOUND_PERSON, BOUND_YEAR, BOUND_ACCOUNT
 
-    country = str(pack.country or "").strip()
-    if not country:
-        try:
-            country = pack.folder.parent.parent.name
-        except Exception:
-            country = ""
-    BOUND_COUNTRY = country
-    BOUND_PERSON = pack.person_name
+    BOUND_COUNTRY = str(scope.country or "").strip()
+    BOUND_CENTER = str(scope.center or "").strip()
+    BOUND_PERSON = scope.person
     try:
-        BOUND_YEAR = int(pack.year)
+        BOUND_YEAR = int(scope.year)
     except (TypeError, ValueError):
         BOUND_YEAR = None
-    BOUND_BANK = None
-    if not is_year_name(pack.data_dir.name) and is_year_name(pack.data_dir.parent.name):
-        BOUND_BANK = pack.data_dir.name
-
-
-def apply_person(pack: PersonPack) -> None:
-    """Bind module-level paths at one person pack (used by categorize/single_client)."""
-    global DATA_DIR, PERSON_NAME, PROFILE_PATH, PRIVATE_KEY_PATH, CONSENT_PATH
-    global CATEGORIES_PATH, PERSONAL_CATEGORIES_PATH, CATEGORIZED_TRANSACTIONS_PATH
-    global RAW_TRANSACTIONS_PATH, CATEGORY_TOTALS_PATH
-
-    DATA_DIR = pack.data_dir
-    PERSON_NAME = pack.person_name
-    PROFILE_PATH = pack.profile_path
-    PRIVATE_KEY_PATH = pack.private_key_path
-    CONSENT_PATH = pack.consent_path
-    CATEGORIES_PATH = shared_categories_path()
-    PERSONAL_CATEGORIES_PATH = pack.personal_categories_path
-    CATEGORIZED_TRANSACTIONS_PATH = pack.categorized_path
-    RAW_TRANSACTIONS_PATH = pack.data_dir / "downloaded_transactions.json"
-    CATEGORY_TOTALS_PATH = pack.totals_path
-    _set_bound_identity(pack)
+    BOUND_ACCOUNT = str(scope.account or "").strip() or None
 
 
 @contextmanager
-def bind_person(pack: PersonPack) -> Iterator[PersonPack]:
-    """Temporarily bind path globals to ``pack``, then restore previous values."""
-    global DATA_DIR, PERSON_NAME, PROFILE_PATH, PRIVATE_KEY_PATH, CONSENT_PATH
-    global CATEGORIES_PATH, PERSONAL_CATEGORIES_PATH, CATEGORIZED_TRANSACTIONS_PATH
-    global RAW_TRANSACTIONS_PATH, CATEGORY_TOTALS_PATH
-    global BOUND_COUNTRY, BOUND_PERSON, BOUND_YEAR, BOUND_BANK
+def bind_scope(scope: PersonScope) -> Iterator[PersonScope]:
+    """Temporarily bind identity globals to ``scope``, then restore them."""
+    global BOUND_COUNTRY, BOUND_CENTER, BOUND_PERSON, BOUND_YEAR, BOUND_ACCOUNT
 
     with CALC_LOCK:
         snapshot = {
-            "DATA_DIR": DATA_DIR,
-            "PERSON_NAME": PERSON_NAME,
-            "PROFILE_PATH": PROFILE_PATH,
-            "PRIVATE_KEY_PATH": PRIVATE_KEY_PATH,
-            "CONSENT_PATH": CONSENT_PATH,
-            "CATEGORIES_PATH": CATEGORIES_PATH,
-            "PERSONAL_CATEGORIES_PATH": PERSONAL_CATEGORIES_PATH,
-            "CATEGORIZED_TRANSACTIONS_PATH": CATEGORIZED_TRANSACTIONS_PATH,
-            "RAW_TRANSACTIONS_PATH": RAW_TRANSACTIONS_PATH,
-            "CATEGORY_TOTALS_PATH": CATEGORY_TOTALS_PATH,
             "BOUND_COUNTRY": BOUND_COUNTRY,
+            "BOUND_CENTER": BOUND_CENTER,
             "BOUND_PERSON": BOUND_PERSON,
             "BOUND_YEAR": BOUND_YEAR,
-            "BOUND_BANK": BOUND_BANK,
+            "BOUND_ACCOUNT": BOUND_ACCOUNT,
         }
-        apply_person(pack)
+        apply_scope(scope)
         try:
-            yield pack
+            yield scope
         finally:
-            DATA_DIR = snapshot["DATA_DIR"]
-            PERSON_NAME = snapshot["PERSON_NAME"]
-            PROFILE_PATH = snapshot["PROFILE_PATH"]
-            PRIVATE_KEY_PATH = snapshot["PRIVATE_KEY_PATH"]
-            CONSENT_PATH = snapshot["CONSENT_PATH"]
-            CATEGORIES_PATH = snapshot["CATEGORIES_PATH"]
-            PERSONAL_CATEGORIES_PATH = snapshot["PERSONAL_CATEGORIES_PATH"]
-            CATEGORIZED_TRANSACTIONS_PATH = snapshot["CATEGORIZED_TRANSACTIONS_PATH"]
-            RAW_TRANSACTIONS_PATH = snapshot["RAW_TRANSACTIONS_PATH"]
-            CATEGORY_TOTALS_PATH = snapshot["CATEGORY_TOTALS_PATH"]
             BOUND_COUNTRY = snapshot["BOUND_COUNTRY"]
+            BOUND_CENTER = snapshot["BOUND_CENTER"]
             BOUND_PERSON = snapshot["BOUND_PERSON"]
             BOUND_YEAR = snapshot["BOUND_YEAR"]
-            BOUND_BANK = snapshot["BOUND_BANK"]
+            BOUND_ACCOUNT = snapshot["BOUND_ACCOUNT"]
 
 
-def configure() -> list[PersonPack]:
-    """Discover person packs for the active center (SQL; empty center is allowed)."""
+def configure() -> list[PersonScope]:
+    """Discover person scopes for the active center (SQL; empty center is allowed)."""
     from app.people import list_people
 
     people = list_people()
     if people:
-        apply_person(people[0])
+        apply_scope(people[0])
     return people

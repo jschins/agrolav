@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.runtime import data_root
-from app.yearpath import is_year_name, list_year_names, parse_year
+from app.yearpath import is_year_name, parse_year
 
 
 def _use_sql() -> bool:
@@ -249,7 +249,7 @@ def ircft_center(
     """Apply iRCfT for one center; publish derived files; return the matrix."""
     from app.core.categorize import apply_ircft_terms
     from app.matrix import build_matrix
-    from app.runtime import CALC_LOCK, bind_person
+    from app.runtime import CALC_LOCK, bind_scope
     from app.runtime import set_active_center
     from app.settings import init_app, refresh_people
 
@@ -261,7 +261,7 @@ def ircft_center(
         packs = refresh_people()
         to_run = [pack for pack in packs if wanted is None or pack.person_name in wanted]
         for pack in to_run:
-            with bind_person(pack):
+            with bind_scope(pack):
                 apply_ircft_terms(
                     added=added,
                     removed=removed,
@@ -273,11 +273,12 @@ def ircft_center(
 
 def derived_paths_for_center(center: str, *, all_years: bool = False) -> list[str]:
     """categorized_transactions + category_totals for every person in ``center``."""
+    from app.sql_catalog import years_for_person
+
     ws = _clean_center(center)
     paths: list[str] = []
-    root = center_dir(ws)
     for name in list_person_folders(ws):
-        years = list_year_names(root / name) if all_years else [parse_year(None)]
+        years = years_for_person(name) if all_years else [parse_year(None)]
         for year in years:
             paths.append(f"{ws}/{person_year_rel(name, CATEGORIZED, year=year)}")
             paths.append(f"{ws}/{person_year_rel(name, CATEGORY_TOTALS, year=year)}")

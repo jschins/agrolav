@@ -484,9 +484,8 @@ def init_user_store() -> str:
         cursor.execute("SELECT OBJECT_ID(N'dbo.person', N'U')")
         if cursor.fetchone()[0] is None:
             raise RuntimeError(
-                "dbo.person missing. Stop the hub and run "
-                "`uv run python scripts/migrate_person.py` from hub/ "
-                "(fresh empty DB: load_phase_c.py)."
+                "dbo.person is missing. Stop the hub; a live agrolav database "
+                "already has this table (fresh empty DB: load_phase_c.py)."
             )
         _ensure_login_titles(cursor)
         _ensure_consent_pending(cursor)

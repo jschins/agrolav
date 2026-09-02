@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import re
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from app import runtime as paths
@@ -12,38 +10,6 @@ DEFAULT_CATEGORY = 18
 CATEGORIZE_LOGIC_VERSION = "2026-08-26-ircft-personal-and-last-stick"
 _TERM_AND_SEP = " && "
 _ACCOUNT_INDEX_FIELD = "_account_index"
-
-
-def _use_sql() -> bool:
-    from app import user_store
-
-    return bool(user_store.database_url())
-
-
-def _under_data_root(path: Path) -> bool:
-    from app.runtime import data_root
-
-    try:
-        path.resolve().relative_to(data_root().resolve())
-        return True
-    except (ValueError, OSError):
-        return False
-
-
-def _read_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _load_json_object(path: Path) -> dict[str, Any]:
-    if _use_sql() and _under_data_root(path):
-        return {}
-    if not path.exists():
-        return {}
-    try:
-        data = _read_json(path)
-    except (OSError, json.JSONDecodeError, FileNotFoundError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 def _sql_categories() -> dict[str, Any]:
@@ -55,13 +21,10 @@ def _sql_categories() -> dict[str, Any]:
 
 
 def _personal_category_map() -> dict[str, list[str]]:
-    if _use_sql():
-        from app.sql_catalog import personal_categories_payload
+    from app.sql_catalog import personal_categories_payload
 
-        name = str(paths.BOUND_PERSON or paths.PERSON_NAME or "").strip()
-        return personal_categories_payload(name)
-    data = _load_json_object(paths.PERSONAL_CATEGORIES_PATH)
-    return _category_map(data)
+    name = str(paths.BOUND_PERSON or "").strip()
+    return personal_categories_payload(name)
 
 
 def _load_categorized_store() -> dict[str, Any]:
@@ -332,16 +295,6 @@ def _haystack_for_categorization(record: dict[str, Any]) -> str:
 
 
 def _categories_file() -> dict[str, Any]:
-    if _use_sql():
-        return _sql_categories()
-    path = paths.CATEGORIES_PATH
-    if path.is_file():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and data:
-                return data
-        except (OSError, json.JSONDecodeError, UnicodeError):
-            pass
     return _sql_categories()
 
 
@@ -737,16 +690,7 @@ def _simplify_uncategorized(raw_transactions: list[dict[str, Any]]) -> list[dict
 
 
 def finalize_imported_bookings(*, recategorize: bool = True) -> dict[str, str]:
-    """INSERT bound JSON bookings as uncategorized, then categorize them."""
-    from app.sql_replica import ensure_bound_accounts, ingest_bound_transactions
-
-    totals = _load_json_object(paths.CATEGORY_TOTALS_PATH)
-    accounts = totals.get("account_balances")
-    if isinstance(accounts, list) and accounts:
-        ensure_bound_accounts(accounts, default_format=None)
-    rows = _load_json_object(paths.CATEGORIZED_TRANSACTIONS_PATH).get("transactions") or []
-    if isinstance(rows, list):
-        ingest_bound_transactions(rows)
+    """Recategorize bound SQL bookings. JSON files are not a live ingest path."""
     if recategorize:
         return recategorize_transactions()
     return {}
@@ -823,20 +767,7 @@ def load_category_totals() -> dict[str, str]:
 
 
 def _load_raw_transactions() -> list[dict[str, Any]]:
-    if _use_sql():
-        return []
-    if not paths.RAW_TRANSACTIONS_PATH.exists():
-        return []
-    try:
-        raw = _read_json(paths.RAW_TRANSACTIONS_PATH)
-    except (OSError, json.JSONDecodeError):
-        return []
-    if isinstance(raw, list):
-        return [item for item in raw if isinstance(item, dict)]
-    if isinstance(raw, dict):
-        items = raw.get("transactions")
-        if isinstance(items, list):
-            return [item for item in items if isinstance(item, dict)]
+    """Bank JSON scratch files are gone; categorized rows live in SQL."""
     return []
 
 
@@ -1083,8 +1014,8 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
         "filter.start",
         category_name=category_name,
         parsed_code=code,
-        store=paths.CATEGORIZED_TRANSACTIONS_PATH,
-        store_exists=paths.CATEGORIZED_TRANSACTIONS_PATH.exists(),
+        store="transaction_*",
+        store_exists=True,
     )
     if code is None:
         log("filter.abort", reason="category_name_has_no_numeric_prefix")
@@ -1207,7 +1138,7 @@ def _save_personal_category_terms(category_name: str, terms: list[str]) -> None:
     cleaned = _cleaned_terms(terms)
     from app.sql_catalog import save_category_terms
 
-    name = str(paths.BOUND_PERSON or paths.PERSON_NAME or "").strip()
+    name = str(paths.BOUND_PERSON or "").strip()
     if not name:
         raise ValueError("personal terms need a bound person")
     save_category_terms(category_name, cleaned, person=name)

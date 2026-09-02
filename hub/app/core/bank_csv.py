@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.excel_import import build_category_totals, category_name_map
-from app.runtime import PersonPack
+from app.runtime import PersonScope
 from app.runtime import data_root
 
 CONSOLIDATED_VIEW = "consolidated"
@@ -336,14 +336,10 @@ def migrate_year_root_json_into_folder(year_path: Path, folder_name: str) -> lis
 
 
 def person_bank_folder_options(
-    person_folder: Path,
-    year: str,
     *,
     person: str,
-    center: str,
 ) -> dict[str, Any]:
     """IBANs from ``dbo.account`` for the personal account switcher."""
-    del person_folder, year, center
     from app import user_store
 
     folders: list[str] = []
@@ -372,15 +368,15 @@ def _optional_text(value: Any) -> str:
     return str(value).strip()
 
 
-def pack_for_bank_view(
-    pack: PersonPack, bank: str | None, *, center: str
-) -> PersonPack:
-    """Bind ``YYYY/<iban>/`` so SQL replica can filter ``dbo.account``."""
+def scope_for_account_view(
+    scope: PersonScope, bank: str | None, *, center: str
+) -> PersonScope:
+    """Bind one ``dbo.account.iban`` so SQL replica can filter that account."""
     del center
     view = _optional_text(bank)
     if not view or view.lower() == CONSOLIDATED_VIEW:
-        return pack
-    return replace(pack, data_dir=(pack.data_dir / view).resolve())
+        return scope
+    return replace(scope, account=view)
 
 
 def person_uses_bank_subfolders(person: str, center: str) -> bool:

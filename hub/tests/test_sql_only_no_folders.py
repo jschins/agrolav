@@ -44,33 +44,50 @@ def _layout_dirs(root: Path) -> list[str]:
 
 
 class PeopleFromSqlTests(unittest.TestCase):
-    def test_list_people_does_not_create_or_require_folders(self):
+    def test_list_people_is_sql_identity_without_paths(self):
         from app.people import list_people
 
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            with mock.patch("app.runtime.data_root", return_value=root), mock.patch(
-                "app.people.active_center", return_value="dkg"
-            ), mock.patch(
-                "app.people.active_country", return_value="nederland"
-            ), mock.patch(
-                "app.people.country_folder", side_effect=lambda name: (name or "").strip()
-            ), mock.patch(
-                "app.people.country_for_center", return_value="nederland"
-            ), mock.patch(
-                "app.people.people_in_center", return_value=["janpiet"]
-            ), mock.patch(
-                "app.people.years_by_person_in_center",
-                return_value={"janpiet": ["2026"]},
-            ):
-                packs = list_people()
-            self.assertEqual([pack.person_name for pack in packs], ["janpiet"])
-            self.assertEqual(packs[0].country, "nederland")
-            self.assertEqual(packs[0].center, "dkg")
-            self.assertEqual(packs[0].year, "2026")
-            self.assertFalse(packs[0].folder.is_dir())
-            self.assertFalse(packs[0].data_dir.is_dir())
-            self.assertEqual(_layout_dirs(root), [])
+        with mock.patch("app.people.active_center", return_value="dkg"), mock.patch(
+            "app.people.active_country", return_value="nederland"
+        ), mock.patch(
+            "app.people.country_folder", side_effect=lambda name: (name or "").strip()
+        ), mock.patch(
+            "app.people.country_for_center", return_value="nederland"
+        ), mock.patch(
+            "app.people.people_in_center", return_value=["janpiet"]
+        ), mock.patch(
+            "app.people.years_by_person_in_center",
+            return_value={"janpiet": ["2026"]},
+        ):
+            packs = list_people()
+        self.assertEqual([pack.person for pack in packs], ["janpiet"])
+        pack = packs[0]
+        self.assertEqual(pack.country, "nederland")
+        self.assertEqual(pack.center, "dkg")
+        self.assertEqual(pack.year, "2026")
+        self.assertIsNone(pack.account)
+        self.assertFalse(hasattr(pack, "folder"))
+        self.assertFalse(hasattr(pack, "data_dir"))
+
+    def test_bind_scope_sets_account_not_paths(self):
+        from app.runtime import PersonScope, bind_scope
+        from app import runtime as paths
+
+        pack = PersonScope(
+            country="nederland",
+            center="dkg",
+            person="janpiet",
+            year="2026",
+            account="NL00TEST0123456789",
+        )
+        with bind_scope(pack):
+            self.assertEqual(paths.BOUND_COUNTRY, "nederland")
+            self.assertEqual(paths.BOUND_CENTER, "dkg")
+            self.assertEqual(paths.BOUND_PERSON, "janpiet")
+            self.assertEqual(paths.BOUND_YEAR, 2026)
+            self.assertEqual(paths.BOUND_ACCOUNT, "NL00TEST0123456789")
+            self.assertFalse(hasattr(paths, "PERSON_NAME"))
+            self.assertFalse(hasattr(paths, "DATA_DIR"))
 
 
 class CategorizedSqlPersistTests(unittest.TestCase):

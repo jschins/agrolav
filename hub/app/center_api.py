@@ -98,14 +98,11 @@ def person_banks(center: str, person_name: str, *, year: str | None = None) -> d
         year_name = _optional_text(year) or current_year()
         try:
             pack = get_person(person_name, year=year_name)
-            person_name = pack.person_name
+            person_name = pack.person
             year_name = pack.year
-            folder = pack.folder
         except KeyError:
-            folder = store.center_dir(ws) / person_name
-        opts = person_bank_folder_options(
-            folder, year_name, person=person_name, center=ws
-        )
+            pass
+        opts = person_bank_folder_options(person=person_name)
         token = ""
         first_download = False
         needs_initial_authorization = False
@@ -145,7 +142,7 @@ def transactions(
     bank: str | None = None,
 ) -> dict[str, Any]:
     with _center_scope(center) as ws:
-        from app.core.bank_csv import _optional_text, pack_for_bank_view
+        from app.core.bank_csv import _optional_text, scope_for_account_view
         from app.core.categorize import (
             _categories_file,
             category_code_set,
@@ -155,12 +152,12 @@ def transactions(
             transaction_display_column_keys as column_keys,
             transactions_for_category as load_transactions,
         )
-        from app.runtime import bind_person
+        from app.runtime import bind_scope
         from app.people import get_person
 
         pack = get_person(person_name, year=_optional_text(year) or None)
-        pack = pack_for_bank_view(pack, bank, center=ws)
-        with bind_person(pack):
+        pack = scope_for_account_view(pack, bank, center=ws)
+        with bind_scope(pack):
             rows = load_transactions(category_name)
             cat_data = _categories_file()
             description_modified_ids, category_modified_ids = modification_style_ids()
@@ -192,11 +189,11 @@ def record_modification(
 ) -> dict[str, Any]:
     with _center_scope(center) as ws:
         from app.core.categorize import record_modification as _record
-        from app.runtime import bind_person
+        from app.runtime import bind_scope
         from app.people import get_person
 
         pack = get_person(person_name)
-        with bind_person(pack):
+        with bind_scope(pack):
             modified = _record(transaction)
         from app import user_store
 
@@ -261,14 +258,14 @@ def transaction_split(
     bank: str | None = None,
 ) -> dict[str, Any]:
     with _center_scope(center) as ws:
-        from app.core.bank_csv import _optional_text, pack_for_bank_view
+        from app.core.bank_csv import _optional_text, scope_for_account_view
         from app.core.categorize import load_transaction_split
-        from app.runtime import bind_person
+        from app.runtime import bind_scope
         from app.people import get_person
 
         pack = get_person(person_name, year=_optional_text(year) or None)
-        pack = pack_for_bank_view(pack, bank, center=ws)
-        with bind_person(pack):
+        pack = scope_for_account_view(pack, bank, center=ws)
+        with bind_scope(pack):
             payload = load_transaction_split(source_id)
         return {
             "center": ws,
@@ -289,14 +286,14 @@ def save_transaction_split(
     bank: str | None = None,
 ) -> dict[str, Any]:
     with _center_scope(center) as ws:
-        from app.core.bank_csv import _optional_text, pack_for_bank_view
+        from app.core.bank_csv import _optional_text, scope_for_account_view
         from app.core.categorize import save_transaction_split as _save
-        from app.runtime import bind_person
+        from app.runtime import bind_scope
         from app.people import get_person
 
         pack = get_person(person_name, year=_optional_text(year) or None)
-        pack = pack_for_bank_view(pack, bank, center=ws)
-        with bind_person(pack):
+        pack = scope_for_account_view(pack, bank, center=ws)
+        with bind_scope(pack):
             payload = _save(source_id, description=description, lines=lines)
         return {
             "center": ws,
@@ -317,7 +314,7 @@ def settings(center: str) -> dict[str, Any]:
             type_rules_payload,
         )
         from app.matrix import category_names, load_general_file, table_header_terms
-        from app.runtime import bind_person
+        from app.runtime import bind_scope
         from app.settings import get_people
 
         if user_store.database_url():
@@ -332,7 +329,7 @@ def settings(center: str) -> dict[str, Any]:
         codes: list[int] = []
         remainder = ""
         for pack in people_list:
-            with bind_person(pack):
+            with bind_scope(pack):
                 personal[pack.person_name] = _personal_category_map()
                 if not typerules:
                     typerules = type_rules_payload()
@@ -392,7 +389,7 @@ def update_settings(
     )
     from app.matrix import build_matrix, save_general_terms, save_personal_terms
     from app.people import get_person
-    from app.runtime import bind_person
+    from app.runtime import bind_scope
 
     sql = bool(user_store.database_url())
     with _center_scope(center) as ws:
@@ -406,7 +403,7 @@ def update_settings(
             personal = False
         else:
             pack = get_person(group)
-            with bind_person(pack):
+            with bind_scope(pack):
                 old_terms = list(_personal_category_map().get(category_name, []) or [])
             cleaned = save_personal_terms(pack.person_name, category_name, terms)
             rel = store.person_secret_rel(pack.person_name, store.PERSONAL_CATEGORIES)
@@ -477,7 +474,7 @@ def add_term(
         from app.matrix import (
             build_matrix,
         )
-        from app.runtime import bind_person
+        from app.runtime import bind_scope
         from app.people import get_person
         from app.settings import get_people
 
@@ -485,7 +482,7 @@ def add_term(
         people_list = get_people()
         if general:
             pack = people_list[0]
-            with bind_person(pack):
+            with bind_scope(pack):
                 old_terms = list(
                     _category_map(_categories_file()).get(category_name, []) or []
                 )
@@ -535,7 +532,7 @@ def add_term(
         if not person_name:
             raise ValueError("person is required when general=false")
         pack = get_person(person_name)
-        with bind_person(pack):
+        with bind_scope(pack):
             old_terms = list(_personal_category_map().get(category_name, []) or [])
             terms = append_category_term(
                 category_name,

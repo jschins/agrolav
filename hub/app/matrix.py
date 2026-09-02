@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from app.runtime import PersonPack, bind_person
+from app.runtime import PersonScope, bind_scope
 from app.people import get_person, list_people
 from app.settings import get_people, refresh_people
 
@@ -17,7 +17,7 @@ def _category_map(data: dict[str, Any]) -> dict[str, list[str]]:
     return nested if isinstance(nested, dict) else data
 
 
-def load_general_file(people: list[PersonPack] | None = None) -> dict[str, Any]:
+def load_general_file(people: list[PersonScope] | None = None) -> dict[str, Any]:
     from app.runtime import active_center, active_country
     from app.sql_catalog import categories_payload, country_for_center
 
@@ -26,12 +26,12 @@ def load_general_file(people: list[PersonPack] | None = None) -> dict[str, Any]:
     return categories_payload(country)
 
 
-def category_names(people: list[PersonPack] | None = None) -> list[str]:
+def category_names(people: list[PersonScope] | None = None) -> list[str]:
     general = _category_map(load_general_file(people))
     return list(general.keys())
 
 
-def table_header_terms(people: list[PersonPack] | None = None) -> dict[str, str]:
+def table_header_terms(people: list[PersonScope] | None = None) -> dict[str, str]:
     """English key → display label from ``categories.json`` ``table_header_terms``."""
     raw = load_general_file(people).get("table_header_terms")
     if not isinstance(raw, dict):
@@ -64,11 +64,11 @@ def _amount_for_category(totals: dict[str, str], catalog_name: str) -> str:
     return "0.00"
 
 
-def person_totals(pack: PersonPack) -> dict[str, str]:
+def person_totals(pack: PersonScope) -> dict[str, str]:
     from app import user_store
     from app.core.categorize import load_category_totals, recategorize_transactions
 
-    with bind_person(pack):
+    with bind_scope(pack):
         try:
             totals = load_category_totals()
         except Exception:  # noqa: BLE001
@@ -80,14 +80,14 @@ def person_totals(pack: PersonPack) -> dict[str, str]:
         return recategorize_transactions()
 
 
-def person_current_balance(pack: PersonPack) -> str | None:
+def person_current_balance(pack: PersonScope) -> str | None:
     """Sum of ``dbo.account.balance`` for this person (one IBAN when that view is selected)."""
     from app import user_store
 
-    accounts = user_store.list_accounts_for_username(pack.person_name)
+    accounts = user_store.list_accounts_for_username(pack.person)
     if accounts:
-        view = pack.data_dir.name
-        if view != pack.year:
+        view = (pack.account or "").strip()
+        if view:
             compact = view.replace(" ", "")
             accounts = [
                 acc
@@ -108,53 +108,15 @@ def person_current_balance(pack: PersonPack) -> str | None:
         if found:
             return f"{cents / 100:.2f}"
         return None
-
-    from app.core.categorize import _load_json_object
-    from app import runtime as paths
-
-    with bind_person(pack):
-        data = _load_json_object(paths.CATEGORY_TOTALS_PATH)
-    json_accounts = data.get("account_balances")
-    if not isinstance(json_accounts, list) or not json_accounts:
-        return None
-    cents = 0
-    found = False
-    for acc in json_accounts:
-        if not isinstance(acc, dict):
-            continue
-        text = str(acc.get("balance") or "").strip()
-        if not text:
-            continue
-        try:
-            cents += round(float(text) * 100)
-        except ValueError:
-            continue
-        found = True
-    if not found:
-        return None
-    return f"{cents / 100:.2f}"
+    return None
 
 
-def person_last_booked(pack: PersonPack) -> str | None:
+def person_last_booked(pack: PersonScope) -> str | None:
     """Latest transaction ``date`` as ``DD-MM-YYYY``, or None if none."""
-    from app import user_store
     from app.sql_replica import load_bound_last_booked
 
-    if user_store.database_url():
-        with bind_person(pack):
-            return load_bound_last_booked()
-    from app.core.categorize import _load_categorized_store
-    from app.user_store import latest_transaction_date
-
-    with bind_person(pack):
-        data = _load_categorized_store()
-    txs = data.get("transactions") if isinstance(data, dict) else None
-    if not isinstance(txs, list):
-        return None
-    iso = latest_transaction_date(txs)
-    if not iso or len(iso) < 10:
-        return None
-    return f"{iso[8:10]}-{iso[5:7]}-{iso[0:4]}"
+    with bind_scope(pack):
+        return load_bound_last_booked()
 
 
 def _footer_labels(categories: list[str]) -> tuple[str, str]:
@@ -168,12 +130,12 @@ def _footer_labels(categories: list[str]) -> tuple[str, str]:
 
 
 def build_matrix(
-    people: list[PersonPack] | None = None,
+    people: list[PersonScope] | None = None,
     *,
     year: str | None = None,
     bank: str | None = None,
 ) -> dict[str, Any]:
-    from app.core.bank_csv import pack_for_bank_view
+    from app.core.bank_csv import scope_for_account_view
     from app.runtime import active_center
 
     if people is not None:
@@ -224,7 +186,7 @@ def build_matrix(
             cells[date_name][pack.person_name] = dates.get(key) or ""
     else:
         for pack in packs:
-            view_pack = pack_for_bank_view(pack, bank, center=ws) if bank else pack
+            view_pack = scope_for_account_view(pack, bank, center=ws) if bank else pack
             try:
                 totals = person_totals(view_pack)
             except Exception:  # noqa: BLE001
@@ -259,22 +221,22 @@ def recalculate_all(person_folders: list[str] | None = None) -> dict[str, Any]:
         else:
             to_run = packs
         for pack in to_run:
-            with bind_person(pack):
+            with bind_scope(pack):
                 recategorize_transactions()
         return build_matrix(packs)
 
 
-def recalculate_pack_from_scratch(pack: PersonPack) -> None:
+def recalculate_pack_from_scratch(pack: PersonScope) -> None:
     """Wipe hit/modification, then recategorize every SQL year for ``pack``."""
     from dataclasses import replace
 
     from app.core.categorize import recategorize_transactions
-    from app.yearpath import list_year_names
+    from app.sql_catalog import years_for_person
 
-    years = list_year_names(pack.folder)
+    years = years_for_person(pack.person)
     for year in years:
-        year_pack = replace(pack, data_dir=pack.folder / year, year=year)
-        with bind_person(year_pack):
+        year_pack = replace(pack, year=year)
+        with bind_scope(year_pack):
             recategorize_transactions(from_scratch=True)
 
 
@@ -294,13 +256,13 @@ def recalculate_all_from_scratch(person_folders: list[str] | None = None) -> dic
         return build_matrix(packs)
 
 
-def _excel_refresh_result(pack: PersonPack) -> dict[str, Any]:
+def _excel_refresh_result(pack: PersonScope) -> dict[str, Any]:
     """Recategorize SQL bookings for upload people (no year-folder scan)."""
     from app.core.categorize import recategorize_transactions
     from app.sql_catalog import list_account_balance_files
     from app.sql_replica import load_bound_transactions
 
-    files = list_account_balance_files(pack.person_name)
+    files = list_account_balance_files(pack.person)
     recategorize_transactions()
     rows = load_bound_transactions() or []
     return {
@@ -344,7 +306,7 @@ def _txs_for_account(
 
 
 def _bank_refresh_one(
-    pack: PersonPack,
+    pack: PersonScope,
     *,
     date_from: str | None,
     date_to: str | None,
@@ -444,7 +406,7 @@ def _record_user_updated_at(person: str, result: dict[str, Any]) -> None:
 
 
 def _refresh_one_person(
-    pack: PersonPack,
+    pack: PersonScope,
     *,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -453,7 +415,7 @@ def _refresh_one_person(
     from app.core.single_client import EnableBankingError
 
     try:
-        if pack.has_secret_folder:
+        if pack.has_pem:
             result, extra = _bank_refresh_one(
                 pack, date_from=date_from, date_to=date_to, new_year=new_year
             )
@@ -500,7 +462,7 @@ def refresh_all(
         results: list[dict[str, Any]] = []
 
         for pack in packs:
-            with bind_person(pack):
+            with bind_scope(pack):
                 result, extra = _refresh_one_person(
                     pack, date_from=date_from, date_to=date_to, new_year=False
                 )
@@ -527,7 +489,7 @@ def refresh_person(
         warnings: list[str] = []
         results: list[dict[str, Any]] = []
 
-        with bind_person(pack):
+        with bind_scope(pack):
             result, extra = _refresh_one_person(
                 pack, date_from=date_from, date_to=date_to, new_year=new_year
             )
@@ -550,7 +512,7 @@ def save_personal_terms(person_name: str, category_name: str, terms: list[str]) 
     from app.core.categorize import _cleaned_terms, _save_personal_category_terms
 
     pack = get_person(person_name)
-    with bind_person(pack):
+    with bind_scope(pack):
         cleaned = _cleaned_terms(terms)
         _save_personal_category_terms(category_name, cleaned)
         return cleaned
