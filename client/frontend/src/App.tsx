@@ -2342,7 +2342,7 @@ function MatrixTable({
                   className={`num${clickable ? " clickable" : ""}${isActive ? " active-cell" : ""}`}
                   onClick={clickable ? () => onPick(p.person_name, cat) : undefined}
                 >
-                  {amount}
+                  {displayMatrixCell(matrix, cat, amount)}
                 </td>
               );
             })}
@@ -2389,7 +2389,7 @@ function PersonColumnTable({
                   className={`num${clickable ? " clickable" : ""}`}
                   onClick={clickable ? () => onPick(cat) : undefined}
                 >
-                  {amount}
+                  {displayMatrixCell(matrix, cat, amount)}
                 </td>
               );
             })()}
@@ -2411,6 +2411,32 @@ function centsFromInput(text: string): number {
 function formatCents(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   return `${sign}${(Math.abs(cents) / 100).toFixed(2)}`;
+}
+
+function formatUnity(n: number): string {
+  const rounded = Math.sign(n) * Math.round(Math.abs(n));
+  const sign = rounded < 0 ? "-" : "";
+  const grouped = String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${sign}${grouped}`;
+}
+
+function formatDisplayNumber(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? formatUnity(value) : "";
+  }
+  const text = String(value).trim();
+  if (!text) return "";
+  if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(text)) return text;
+  const normalized = text.replace(/\s/g, "").replace(",", ".");
+  if (!/^[+-]?\d+(\.\d+)?$/.test(normalized)) return text;
+  const n = Number(normalized);
+  return Number.isFinite(n) ? formatUnity(n) : text;
+}
+
+function displayMatrixCell(matrix: MatrixResponse, category: string, raw: string): string {
+  if (category === matrixFooterNames(matrix).last_booked) return raw;
+  return formatDisplayNumber(raw);
 }
 
 function closeSplitPage() {
@@ -2484,7 +2510,7 @@ function SplitApp() {
 
   const lineCents = lines.reduce((sum, line) => sum + centsFromInput(line.amountText), 0);
   const parentCents = originalCents - lineCents;
-  const parentAmount = formatCents(parentCents);
+  const parentAmount = formatDisplayNumber(parentCents / 100);
 
   function addLine() {
     const key = `new-${nextKey.current}`;
@@ -2529,7 +2555,7 @@ function SplitApp() {
         </div>
         <p className="win-hint">
           Split this booking into extra lines. The original amount is the remainder,
-          so the total always stays {formatCents(originalCents)}.
+          so the total always stays {formatDisplayNumber(originalCents / 100)}.
         </p>
         <div className="sidebar-field">
           <span className="sidebar-field-legend" aria-hidden="true">
@@ -2576,8 +2602,7 @@ function SplitApp() {
                   <td />
                 </tr>
                 {lines.map((line) => {
-                  const shown = formatCents(centsFromInput(line.amountText));
-                  const negative = shown.trim().startsWith("-");
+                  const negative = centsFromInput(line.amountText) < 0;
                   return (
                     <tr key={line.key}>
                       <td>
@@ -2681,8 +2706,8 @@ function PTable({
 
   function renderCell(t: Transaction, column: string) {
     if (column === "amount") {
-      const amount = formatCell(t.amount);
-      const negative = amount.trim().startsWith("-");
+      const amount = formatDisplayNumber(t.amount);
+      const negative = String(t.amount ?? "").trim().startsWith("-") || Number(t.amount) < 0;
       return (
         <td
           key={column}
