@@ -1,12 +1,17 @@
 """Country/center login allowlists on ``egress_ip``, plus ``dbo.visitor_ip`` logs.
 
-Country and center logins (one-step) are allowed only from IPs listed in
-``dbo.country.egress_ip`` / ``dbo.center.egress_ip`` (comma-separated). Empty
-or NULL means unrestricted. Person logins are not IP-gated.
+Country and center logins (one-step) are allowed from IPs listed in
+``dbo.administrator`` or in their own ``dbo.country.egress_ip`` /
+``dbo.center.egress_ip`` column (comma-separated). The allowed set is the sum
+of those two tables; an empty or NULL column admits nothing, so a database
+with no addresses listed anywhere refuses every country and center login.
+Person logins are not IP-gated.
 
 ``dbo.visitor_ip`` records attempted client IPs. Successful login stores the
 username; a refused attempt stores ``''`` (not NULL) so
-``UNIQUE (egress_ip, username)`` collapses repeats from the same IP.
+``UNIQUE (egress_ip, username)`` collapses repeats from the same IP. Addresses
+listed in ``dbo.administrator`` are not logged; every other visitor is, whether
+or not a country or center lists it.
 """
 from __future__ import annotations
 
@@ -66,9 +71,7 @@ def format_egress_list(ips: list[str]) -> str | None:
 
 
 def ip_in_allowlist(client_ip: str | None, allow: list[str]) -> bool:
-    """Empty allowlist → unrestricted."""
-    if not allow:
-        return True
+    """Membership test. An empty allowlist admits nothing."""
     ip = normalize_ip(client_ip)
     return bool(ip) and ip in allow
 
@@ -98,13 +101,44 @@ def _has_visitor_table(cursor) -> bool:
     return bool(row and row[0])
 
 
+def administrator_ip_allowed(client_ip: str | None) -> bool:
+    """Whether ``client_ip`` occurs in ``dbo.administrator``.
+
+    A missing table means no administrator bypass, allowing the code to be
+    deployed before the database migration.
+    """
+    ip = normalize_ip(client_ip)
+    if not ip:
+        return False
+    cursor = _cursor()
+    if cursor is None:
+        return False
+    cursor.execute("SELECT OBJECT_ID(N'dbo.administrator', N'U')")
+    row = cursor.fetchone()
+    if not row or not row[0]:
+        return False
+    cursor.execute(
+        """
+        SELECT TOP 1 1
+        FROM dbo.administrator
+        WHERE egress_ip = ?
+        """,
+        (ip,),
+    )
+    return cursor.fetchone() is not None
+
+
 def hub_b_ips() -> frozenset[str]:
     """Hub :8200 allowlist is no longer stored in SQL. Empty → unrestricted."""
     return frozenset()
 
 
 def _egress_raw_for_user(user: dict[str, Any]) -> str | None:
-    """Comma-separated allowlist, or ``None`` if this login is not IP-gated."""
+    """This login's own comma-separated allowlist, or ``None`` if it has none.
+
+    ``None`` covers a NULL column, a missing row and a missing ``egress_ip``
+    column alike: none of them list an address, so none of them admit one.
+    """
     ident = int(user.get("id") or 0)
     if ident <= 0 or str(user.get("person") or "").strip():
         return None
@@ -113,22 +147,20 @@ def _egress_raw_for_user(user: dict[str, Any]) -> str | None:
         return None
     center = str(user.get("center") or "").strip()
     country = str(user.get("country") or "").strip()
-    if center:
-        if not _has_egress_column(cursor, "center"):
-            return None
-        cursor.execute(
-            "SELECT egress_ip FROM dbo.center WHERE center_id = ?",
-            (ident,),
-        )
-    elif country:
-        if not _has_egress_column(cursor, "country"):
-            return None
-        cursor.execute(
-            "SELECT egress_ip FROM dbo.country WHERE country_id = ?",
-            (ident,),
-        )
-    else:
+    table = "center" if center else "country" if country else ""
+    if not table:
         return None
+    if not _has_egress_column(cursor, table):
+        print(
+            f"egress_ip: dbo.{table}.egress_ip is missing — run "
+            f"hub/sql/visitor_ip.sql; no {table} login can be allowed"
+        )
+        return None
+    key = "center_id" if table == "center" else "country_id"
+    cursor.execute(
+        f"SELECT egress_ip FROM dbo.{table} WHERE {key} = ?",
+        (ident,),
+    )
     row = cursor.fetchone()
     if not row:
         return None
@@ -136,16 +168,32 @@ def _egress_raw_for_user(user: dict[str, Any]) -> str | None:
 
 
 def login_ip_allowed(user: dict[str, Any], client_ip: str | None) -> bool:
-    """Person: always True. Country/center: ``egress_ip`` list, empty = allow all."""
+    """Whether this login may proceed from ``client_ip``.
+
+    A country or center login needs its address listed in
+    ``dbo.administrator`` or in its own ``egress_ip`` column; the allowed set
+    is the sum of the two. An address listed in neither is refused, so no
+    listed address anywhere means no such login at all. Person logins carry
+    their own password (and optional OTP) and stay ungated.
+    """
     if str(user.get("person") or "").strip():
         return True
+    ip = normalize_ip(client_ip)
+    if not ip or ip == "unknown":
+        return False
+    try:
+        if administrator_ip_allowed(ip):
+            return True
+    except Exception as exc:  # noqa: BLE001
+        # Falling through to the login's own list is never more permissive
+        # than the sum of both, so a failed lookup here cannot open a door.
+        print(f"administrator: could not check egress IP {ip!r}: {exc}")
     try:
         raw = _egress_raw_for_user(user)
-    except Exception:
-        return True
-    if raw is None:
-        return True
-    return ip_in_allowlist(client_ip, parse_egress_list(raw))
+    except Exception as exc:  # noqa: BLE001
+        print(f"egress_ip: could not read the allowlist for {ip!r}: {exc}")
+        return False
+    return ip_in_allowlist(ip, parse_egress_list(raw))
 
 
 def record_visit(client_ip: str | None, username: str | None = None) -> None:
@@ -153,11 +201,19 @@ def record_visit(client_ip: str | None, username: str | None = None) -> None:
 
     Refused login uses ``username = ''`` so ``UNIQUE (egress_ip, username)``
     blocks a second row for the same IP. Only a public address is stored
-    (the router WAN as seen by Caddy), never loopback or LAN.
+    (the router WAN as seen by Caddy), never loopback or LAN. An address in
+    ``dbo.administrator`` is ours and is skipped; anything else is logged,
+    whether or not a country or center lists it.
     """
     ip_s = normalize_ip(client_ip)
     if not is_public_egress_ip(ip_s):
         return
+    try:
+        if administrator_ip_allowed(ip_s):
+            return
+    except Exception as exc:  # noqa: BLE001
+        # Rather log one of our own addresses than lose a real visitor.
+        print(f"visitor_ip: could not read dbo.administrator for {ip_s!r}: {exc}")
     ip_s = ip_s[:32]
     name = str(username or "").strip()[:64]
     cursor = _cursor()

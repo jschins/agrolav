@@ -3,7 +3,9 @@
 --
 -- SSMS: connect to database agrolav, then execute this file.
 --
--- egress_ip is the "egress-IP" allowlist (comma-separated). Empty/NULL = unrestricted.
+-- egress_ip is the "egress-IP" allowlist (comma-separated). Empty/NULL admits
+-- nothing: a country/center login needs its address here or in dbo.administrator
+-- (see administrator.sql), and the allowed set is the sum of the two.
 -- dbo.hub_ip is replaced by dbo.visitor_ip (login attempts). Drop hub_ip yourself
 -- after this succeeds, when you are ready.
 
