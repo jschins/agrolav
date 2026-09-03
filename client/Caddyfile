@@ -1,13 +1,22 @@
-boekhouding.agrolav.nl {
+boekhouding.agrolav.nl, expenses.apsurt.nl {
     encode gzip
 
     handle /api/consent/callback* {
-        reverse_proxy 127.0.0.1:8200
+        reverse_proxy 127.0.0.1:8200 {
+            header_up X-Forwarded-For {http.request.remote.host}
+            header_up X-Real-IP {http.request.remote.host}
+        }
     }
 
     handle /upload* {
-        reverse_proxy 127.0.0.1:8200
+        reverse_proxy 127.0.0.1:8200 {
+            header_up X-Forwarded-For {http.request.remote.host}
+            header_up X-Real-IP {http.request.remote.host}
+        }
     }
 
-    reverse_proxy 127.0.0.1:8300
+    reverse_proxy 127.0.0.1:8300 {
+        header_up X-Forwarded-For {http.request.remote.host}
+        header_up X-Real-IP {http.request.remote.host}
+    }
 }

@@ -77,3 +77,25 @@ class RecordVisitTests(unittest.TestCase):
             hub_ip.record_visit("127.0.0.1", None)
             hub_ip.record_visit("::1", "beheer")
         cursor_fn.assert_not_called()
+
+    def test_skips_lan_addresses(self):
+        from app import hub_ip
+
+        with mock.patch.object(hub_ip, "_cursor") as cursor_fn:
+            hub_ip.record_visit("192.168.1.50", None)
+            hub_ip.record_visit("10.0.0.8", "beheer")
+            hub_ip.record_visit("172.16.0.4", None)
+        cursor_fn.assert_not_called()
+
+
+class PublicEgressTests(unittest.TestCase):
+    def test_router_wan_is_public_lan_is_not(self):
+        from shared.net import first_public_egress, is_public_egress_ip
+
+        self.assertTrue(is_public_egress_ip("80.12.34.56"))
+        self.assertFalse(is_public_egress_ip("192.168.1.50"))
+        self.assertFalse(is_public_egress_ip("127.0.0.1"))
+        self.assertEqual(
+            first_public_egress("127.0.0.1", "192.168.1.50", "80.12.34.56"),
+            "80.12.34.56",
+        )

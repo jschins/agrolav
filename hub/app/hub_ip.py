@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from shared.net import is_public_egress_ip
 from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON
 
 BEHEER_USERNAME = "beheer"
@@ -151,11 +152,11 @@ def record_visit(client_ip: str | None, username: str | None = None) -> None:
     """Insert ``dbo.visitor_ip`` if this (ip, username) pair is new.
 
     Refused login uses ``username = ''`` so ``UNIQUE (egress_ip, username)``
-    blocks a second row for the same IP. ``ISNULL`` treats leftover NULL
-    usernames as the same refused-login key.
+    blocks a second row for the same IP. Only a public address is stored
+    (the router WAN as seen by Caddy), never loopback or LAN.
     """
     ip_s = normalize_ip(client_ip)
-    if not ip_s or ip_s == "unknown" or ip_s == "127.0.0.1":
+    if not is_public_egress_ip(ip_s):
         return
     ip_s = ip_s[:32]
     name = str(username or "").strip()[:64]

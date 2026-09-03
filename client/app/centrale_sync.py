@@ -909,13 +909,12 @@ def _session_body(*, session: dict[str, Any] | None = None, client_ip: str | Non
 
 
 def remote_client_ip(request: Any) -> str:
-    """Best-effort IP of the browser (or API caller) hitting this BFF."""
+    """Public egress IP of the browser, as forwarded by Caddy."""
+    from app.client_ip import request_client_ip
+
     if request is None:
         return "unknown"
-    client = getattr(request, "client", None)
-    if client is not None and getattr(client, "host", None):
-        return str(client.host).strip()
-    return "unknown"
+    return request_client_ip(request)
 
 
 def _browser_session_key(session: dict[str, Any], client_ip: str) -> str:

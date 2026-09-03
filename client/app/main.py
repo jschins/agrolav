@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.client_ip import request_client_ip
+
 
 _AUTH_PUBLIC_PREFIXES = (
     "/api/login",
@@ -147,15 +149,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-def _request_ip(request: Request) -> str:
-    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    if forwarded:
-        return forwarded
-    if request.client is not None and request.client.host:
-        return request.client.host
-    return "unknown"
-
-
 def _unwrap_hub_detail(msg: str) -> str:
     text = str(msg or "").strip()
     for _ in range(8):
@@ -254,7 +247,7 @@ def api_login(body: LoginRequest, request: Request, response: Response) -> dict[
     if not auth_enabled():
         raise HTTPException(status_code=400, detail="auth is disabled on this client")
     try:
-        result = authenticate(body.username, body.password, client_ip=_request_ip(request))
+        result = authenticate(body.username, body.password, client_ip=request_client_ip(request))
     except (PermissionError, RuntimeError) as exc:
         raise _hub_error(exc) from exc
     if result is None:
@@ -293,7 +286,7 @@ def api_login_otp(body: OtpVerifyRequest, request: Request, response: Response) 
             body={
                 "otp_token": body.otp_token,
                 "code": body.code,
-                "client_ip": _request_ip(request),
+                "client_ip": request_client_ip(request),
             },
             timeout=15.0,
         )
