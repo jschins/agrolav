@@ -290,11 +290,20 @@ def _insert_person(cursor, *, country_id: int, center_id: int, n_accounts: int) 
     cursor.execute(
         """
         INSERT INTO dbo.person
-            (username, title, country_id, center_id, number_of_accounts, created_at)
+            (username, title, country_id, center_id, number_of_accounts,
+             created_at, password_hash)
         OUTPUT INSERTED.id
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (PERSON_USERNAME, PERSON_TITLE, country_id, center_id, n_accounts, today),
+        (
+            PERSON_USERNAME,
+            PERSON_TITLE,
+            country_id,
+            center_id,
+            n_accounts,
+            today,
+            user_store.default_password_hash(PERSON_USERNAME),
+        ),
     )
     return int(cursor.fetchone()[0])
 

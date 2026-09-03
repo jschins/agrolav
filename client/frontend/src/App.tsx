@@ -20,6 +20,11 @@ import {
   getYears,
   login,
   logout,
+  verifyLoginOtp,
+  resendLoginOtp,
+  getPersonSecurity,
+  setPersonPassword,
+  type OtpChallenge,
   recalculate,
   recalculateFromScratch,
   recordModification,
@@ -115,7 +120,7 @@ type HeaderAction = {
   onClick?: () => void;
 };
 
-type AppView = "main" | "terms" | "categories" | "ip" | "split";
+type AppView = "main" | "terms" | "categories" | "ip" | "split" | "password";
 
 const VIEW_CHANGE_EVENT = "boekhouding-view";
 
@@ -510,6 +515,7 @@ function SyncNotifyShell({
   categoriesView = false,
   ipView = false,
   splitView = false,
+  passwordView = false,
   onLogout,
   initialTitle = "",
 }: {
@@ -525,6 +531,7 @@ function SyncNotifyShell({
   categoriesView?: boolean;
   ipView?: boolean;
   splitView?: boolean;
+  passwordView?: boolean;
   onLogout?: () => void;
   initialTitle?: string;
 }) {
@@ -636,8 +643,10 @@ function SyncNotifyShell({
         ? `${brandName} — Categories`
         : ipView
           ? `${brandName} — IP access`
-          : brandName;
-  }, [brandName, termsView, categoriesView, ipView]);
+          : passwordView
+            ? `${brandName} — Password`
+            : brandName;
+  }, [brandName, termsView, categoriesView, ipView, passwordView]);
 
   useEffect(() => {
     let cancelled = false;
@@ -762,12 +771,19 @@ function SyncNotifyShell({
         label: "edit categories",
         onClick: () => openView("categories"),
       });
+      items.push({
+        id: "ip-access",
+        label: "restrict IP access",
+        onClick: () => openView("ip"),
+      });
     }
-    items.push({
-      id: "ip-access",
-      label: "restrict IP access",
-      onClick: () => openView("ip"),
-    });
+    if (access === "personal") {
+      items.push({
+        id: "set-password",
+        label: "Set password",
+        onClick: () => openView("password"),
+      });
+    }
     if (uploadUrl) {
       items.push({
         id: "upload",
@@ -791,7 +807,7 @@ function SyncNotifyShell({
                 onSelect={handleSelect}
               />
             ) : null}
-            {!termsView && !categoriesView && !ipView && !splitView && activeYear ? (
+            {!termsView && !categoriesView && !ipView && !splitView && !passwordView && activeYear ? (
               <YearSwitcher
                 year={activeYear}
                 years={yearOptions}
@@ -801,7 +817,7 @@ function SyncNotifyShell({
                 }}
               />
             ) : null}
-            {showBankSwitcher && !termsView && !categoriesView && !ipView && !splitView ? (
+            {showBankSwitcher && !termsView && !categoriesView && !ipView && !splitView && !passwordView ? (
               <BankSwitcher
                 view={bankView}
                 folders={bankOptions}
@@ -918,16 +934,23 @@ function abbreviate(map: Record<string, string>, type: unknown): string {
 
 function parseAppView(search = window.location.search): AppView {
   const view = new URLSearchParams(search).get("view");
-  if (view === "terms" || view === "categories" || view === "ip" || view === "split") {
+  if (
+    view === "terms" ||
+    view === "categories" ||
+    view === "ip" ||
+    view === "split" ||
+    view === "password"
+  ) {
     return view;
   }
   return "main";
 }
 
-function viewUrl(target: "main" | "terms" | "categories" | "ip"): string {
+function viewUrl(target: "main" | "terms" | "categories" | "ip" | "password"): string {
   if (target === "terms") return `${window.location.pathname}?view=terms`;
   if (target === "categories") return `${window.location.pathname}?view=categories`;
   if (target === "ip") return `${window.location.pathname}?view=ip`;
+  if (target === "password") return `${window.location.pathname}?view=password`;
   return window.location.pathname;
 }
 
@@ -940,7 +963,7 @@ function showInThisWindow(url: string) {
   window.dispatchEvent(new Event(VIEW_CHANGE_EVENT));
 }
 
-function openView(target: "main" | "terms" | "categories" | "ip") {
+function openView(target: "main" | "terms" | "categories" | "ip" | "password") {
   showInThisWindow(viewUrl(target));
 }
 
@@ -966,6 +989,7 @@ export default function App() {
   const isCategories = appView === "categories";
   const isIp = appView === "ip";
   const isSplit = appView === "split";
+  const isPassword = appView === "password";
   const [wsEpoch, setWsEpoch] = useState(0);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -1032,6 +1056,7 @@ export default function App() {
       categoriesView={isCategories}
       ipView={isIp}
       splitView={isSplit}
+      passwordView={isPassword}
       onLogout={
         authRequired
           ? () => {
@@ -1056,6 +1081,8 @@ export default function App() {
           <CategoriesApp key={wsEpoch} />
         ) : isIp ? (
           <IpAccessApp key={wsEpoch} />
+        ) : isPassword ? (
+          <SetPasswordApp key={wsEpoch} />
         ) : isSplit ? (
           <SplitApp key={wsEpoch} />
         ) : (
@@ -1078,26 +1105,60 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [otp, setOtp] = useState<OtpChallenge | null>(null);
+  const [code, setCode] = useState("");
+
+  function fail(err: Error) {
+    const text = err.message || "";
+    if (text.includes("401")) {
+      setError(otp ? "Invalid or expired code" : "Invalid username or password");
+    } else if (text.includes("403")) {
+      setError("This login is not allowed from your IP address");
+    } else if (text.includes("429")) {
+      setError(text.replace(/^\d+\s+\w+:\s*/, ""));
+    } else {
+      setError(text);
+    }
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    if (otp) {
+      verifyLoginOtp(otp.otp_token, code.trim())
+        .then((status) => {
+          clearStoredRefreshStatus();
+          onSuccess((status.title || "").trim());
+        })
+        .catch(fail)
+        .finally(() => setBusy(false));
+      return;
+    }
     login(username.trim(), password)
       .then((status) => {
-        clearStoredRefreshStatus();
-        onSuccess((status.title || "").trim());
-      })
-      .catch((err: Error) => {
-        const text = err.message || "";
-        if (text.includes("401")) {
-          setError("Invalid username or password");
-        } else if (text.includes("403")) {
-          setError("This login is not allowed from your IP address");
-        } else {
-          setError(text);
+        if (status && "otp_required" in status && status.otp_required) {
+          setOtp(status);
+          setCode("");
+          return;
         }
+        clearStoredRefreshStatus();
+        onSuccess(((status as CentraleSyncStatus).title || "").trim());
       })
+      .catch(fail)
+      .finally(() => setBusy(false));
+  }
+
+  function resend() {
+    if (!otp) return;
+    setBusy(true);
+    setError(null);
+    resendLoginOtp(otp.otp_token)
+      .then((next) => {
+        setOtp(next);
+        setCode("");
+      })
+      .catch(fail)
       .finally(() => setBusy(false));
   }
 
@@ -1105,33 +1166,81 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
     <div className="login-screen">
       <form className="login-card" onSubmit={submit}>
         <h1 className="login-title">Expenses</h1>
-        <label className="login-label">
-          Username
-          <input
-            className="login-input"
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            disabled={busy}
-            required
-          />
-        </label>
-        <label className="login-label">
-          Password
-          <input
-            className="login-input"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={busy}
-            required
-          />
-        </label>
-        {error ? <p className="login-error">{error}</p> : null}
-        <button className="login-submit" type="submit" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
+        {otp ? (
+          <>
+            <p className="login-muted">
+              Enter the code sent to {otp.phone_hint || "your mobile phone"}.
+            </p>
+            <label className="login-label">
+              Code
+              <input
+                className="login-input"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                disabled={busy}
+                required
+              />
+            </label>
+            {error ? <p className="login-error">{error}</p> : null}
+            <button className="login-submit" type="submit" disabled={busy}>
+              {busy ? "Checking…" : "Verify"}
+            </button>
+            <button
+              className="login-submit"
+              type="button"
+              disabled={busy}
+              onClick={resend}
+              style={{ background: "#fff", color: "#0e7490" }}
+            >
+              Resend code
+            </button>
+            <button
+              className="login-submit"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setOtp(null);
+                setCode("");
+                setError(null);
+              }}
+              style={{ background: "#fff", color: "#0e7490" }}
+            >
+              Back
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="login-label">
+              Username
+              <input
+                className="login-input"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={busy}
+                required
+              />
+            </label>
+            <label className="login-label">
+              Password
+              <input
+                className="login-input"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={busy}
+                required
+              />
+            </label>
+            {error ? <p className="login-error">{error}</p> : null}
+            <button className="login-submit" type="submit" disabled={busy}>
+              {busy ? "Signing in…" : "Sign in"}
+            </button>
+          </>
+        )}
       </form>
     </div>
   );
@@ -2123,6 +2232,141 @@ function kindCaption(kind: string): string {
   return kind || "Login";
 }
 
+function SetPasswordApp() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPersonSecurity()
+      .then((row) => {
+        if (!cancelled) setMobile(row.mobile_phone || "");
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(reviewSubmissionMessage(e.message));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!isPlainAlt(e)) return;
+      if (e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        openView("main");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setOk(null);
+    setBusy(true);
+    setPersonPassword({
+      current,
+      new_password: next,
+      confirm,
+      mobile_phone: mobile.trim(),
+    })
+      .then(() => {
+        setOk("Password saved.");
+        setCurrent("");
+        setNext("");
+        setConfirm("");
+      })
+      .catch((err: Error) => setError(reviewSubmissionMessage(err.message)))
+      .finally(() => setBusy(false));
+  }
+
+  return (
+    <div className="app terms-app">
+      <aside className="sidebar">
+        <div className="winbar">
+          <div className="sidebar-field">
+            <span className="sidebar-field-legend" aria-hidden="true">
+              {"\u00a0"}
+            </span>
+            <button type="button" className="sidebar-knob" onClick={() => openView("main")}>
+              Matrix (Alt+M)
+            </button>
+          </div>
+        </div>
+        <p className="win-hint">
+          Person login only. Country and center keep the default formula password.
+          A mobile number (E.164, e.g. +31612345678) turns on SMS login.
+        </p>
+      </aside>
+      <main className="terms-main">
+        <h1>Set password</h1>
+        <form onSubmit={submit} className="login-card" style={{ margin: "1rem 0", boxShadow: "none" }}>
+          <label className="login-label">
+            Current password
+            <input
+              className="login-input"
+              type="password"
+              autoComplete="current-password"
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              disabled={busy}
+              required
+            />
+          </label>
+          <label className="login-label">
+            New password
+            <input
+              className="login-input"
+              type="password"
+              autoComplete="new-password"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              disabled={busy}
+              required
+            />
+          </label>
+          <label className="login-label">
+            Confirm new password
+            <input
+              className="login-input"
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              disabled={busy}
+              required
+            />
+          </label>
+          <label className="login-label">
+            Mobile phone (optional)
+            <input
+              className="login-input"
+              type="tel"
+              placeholder="+31612345678"
+              value={mobile}
+              onChange={(e) => setMobile(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+          {error ? <p className="login-error">{error}</p> : null}
+          {ok ? <p className="ok">{ok}</p> : null}
+          <button className="login-submit" type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </form>
+      </main>
+    </div>
+  );
+}
+
 function IpAccessApp() {
   const [data, setData] = useState<IpAccessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -2201,8 +2445,9 @@ function IpAccessApp() {
           </div>
         </div>
         <p className="win-hint">
-          Empty list for a login means that login is not IP-restricted. Hub 8200
-          rows (target B) can only be edited by beheer.
+          Allowed client IPs for country and center logins (stored as a
+          comma-separated list on egress_ip). Empty list means that login is
+          not IP-restricted. Person logins are not IP-gated.
         </p>
         <div className="sidebar-field">
           <span className="sidebar-field-legend">Login</span>

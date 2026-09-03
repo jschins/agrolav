@@ -133,7 +133,9 @@ def api_auth_login(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app import hub_ip, user_store
+    from app.person_otp import OtpError, issue_and_send
 
+    hub_ip.record_visit(body.client_ip, None)
     user = user_store.authenticate_public(body.username, body.password)
     if user is None:
         raise HTTPException(status_code=401, detail="invalid username or password")
@@ -143,7 +145,114 @@ def api_auth_login(
             status_code=403,
             detail="This login is not allowed from your IP address",
         )
+    name = str(user.get("username") or "").strip()
+    if str(user.get("access") or "") == "personal":
+        phone = user_store.person_mobile_phone(name)
+        if phone:
+            try:
+                return issue_and_send(name, phone)
+            except OtpError as exc:
+                raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    hub_ip.record_visit(body.client_ip, name)
     return {"user": user}
+
+
+class AuthOtpRequest(BaseModel):
+    otp_token: str
+    code: str = ""
+    client_ip: str | None = None
+
+
+@app.post("/api/auth/otp/verify")
+def api_auth_otp_verify(
+    body: AuthOtpRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import hub_ip, user_store
+    from app.person_otp import verify_otp_token
+
+    hub_ip.record_visit(body.client_ip, None)
+    username = verify_otp_token(body.otp_token, body.code)
+    if username is None:
+        raise HTTPException(status_code=401, detail="invalid or expired code")
+    raw = user_store.find_user(username)
+    if raw is None:
+        raise HTTPException(status_code=401, detail="invalid or expired code")
+    if not hub_ip.login_ip_allowed(raw, body.client_ip):
+        raise HTTPException(
+            status_code=403,
+            detail="This login is not allowed from your IP address",
+        )
+    hub_ip.record_visit(body.client_ip, username)
+    return {"user": user_store._public_user(raw)}
+
+
+@app.post("/api/auth/otp/resend")
+def api_auth_otp_resend(
+    body: AuthOtpRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import user_store
+    from app.person_otp import OtpError, issue_and_send, username_from_otp_token
+
+    username = username_from_otp_token(body.otp_token)
+    if username is None:
+        raise HTTPException(status_code=401, detail="invalid or expired code")
+    phone = user_store.person_mobile_phone(username)
+    if not phone:
+        raise HTTPException(status_code=400, detail="no mobile phone on this person")
+    try:
+        return issue_and_send(username, phone)
+    except OtpError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+
+class AuthPasswordRequest(BaseModel):
+    username: str
+    current: str
+    new_password: str
+    confirm: str
+    mobile_phone: str | None = None
+
+
+@app.post("/api/auth/password")
+def api_auth_password(
+    body: AuthPasswordRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import user_store
+
+    try:
+        result = user_store.set_person_password(
+            username=body.username,
+            current=body.current,
+            new=body.new_password,
+            confirm=body.confirm,
+        )
+        if body.mobile_phone is not None:
+            user_store.set_person_mobile(
+                username=body.username, mobile_phone=body.mobile_phone
+            )
+            result["mobile_phone"] = user_store.person_mobile_phone(body.username) or ""
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/auth/person-security")
+def api_auth_person_security(
+    username: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import user_store
+
+    user = user_store.find_user(username)
+    if user is None or not str(user.get("person") or "").strip():
+        raise HTTPException(status_code=403, detail="person login required")
+    return {
+        "username": str(user.get("username") or ""),
+        "mobile_phone": user_store.person_mobile_phone(username) or "",
+    }
 
 
 @app.get("/api/auth/user")
@@ -577,6 +686,7 @@ class CreatePersonRequest(BaseModel):
     aspsp: str = "ING"
     initial_balance: str | None = None
     account_number: str | None = None
+    mobile_phone: str | None = None
 
 
 class BootstrapFetchRequest(BaseModel):
@@ -1169,6 +1279,7 @@ def api_create_person(
             aspsp=body.aspsp,
             initial_balance=body.initial_balance,
             account_number=body.account_number,
+            mobile_phone=body.mobile_phone,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -1478,6 +1589,7 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
     <div id="step1" class="step active">
       <table>
         <tr><th>person name</th><td><input id="person" type="text"/></td></tr>
+        <tr><th>mobile phone</th><td><input id="mobilePhone" type="tel" placeholder="+31612345678"/></td></tr>
         <tr id="rowTitle"><th>Name</th><td><input id="displayName" type="text"/></td></tr>
         <tr id="rowHolder"><th>account holder name</th><td><input id="accountHolder" type="text"/></td></tr>
         <tr id="rowAccountNumber" style="display:none"><th>account number</th><td><input id="accountNumber" type="text"/></td></tr>
@@ -1621,6 +1733,8 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         person,
         mode: modeValue,
       };
+      const mobile = document.getElementById("mobilePhone").value.trim();
+      if (mobile) body.mobile_phone = mobile;
       if (modeValue === "manual-upload") {
         body.title = document.getElementById("displayName").value.trim();
         body.account_name = document.getElementById("accountHolder").value.trim();

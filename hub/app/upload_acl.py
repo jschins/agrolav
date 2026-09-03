@@ -37,9 +37,9 @@ def _normalize_ip(raw: str) -> str:
 def hub_allowed_ips() -> frozenset[str]:
     """IPs allowed to reach the hub at all.
 
-    ``dbo.hub_ip`` rows with ``target = 'B'`` are the :8200 allowlist.
-    Empty → no hub-wide gate. ``127.0.0.1`` is always included when the
-    list is non-empty so the local client can still reach the hub.
+    Hub-wide SQL allowlist is gone. Empty → no hub-wide gate.
+    Optional leftover: ``upload_acl.json`` ``hub_ips``. ``127.0.0.1`` is
+    always included when that file list is non-empty.
     """
     from app.hub_ip import hub_b_ips
 

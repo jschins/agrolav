@@ -11,7 +11,7 @@
 --   categories.json table_header_terms  -> dbo.table_header_term
 --   categories.json typerules           -> dbo.type_rule
 --   upload_acl.json bank modalities     -> dbo.bank_modality
---   upload_acl.json hub_ips             -> dbo.hub_ip
+--   upload_acl.json hub_ips             -> (removed; country/center.egress_ip + dbo.visitor_ip)
 --   secret/profile.json + consent.json  -> dbo.enable_connection
 --                                         dbo.account (uid, hash, connection_id, format=aspsp)
 --                                         dbo.enable_redirect
@@ -54,11 +54,12 @@ CREATE TABLE dbo.bank_modality (
 )
 GO
 
-IF OBJECT_ID(N'dbo.hub_ip', N'U') IS NULL
-CREATE TABLE dbo.hub_ip (
-    ip NVARCHAR(64) NOT NULL,
-    target NVARCHAR(32) NOT NULL,
-    CONSTRAINT pk_hub_ip PRIMARY KEY (ip, target)
+IF OBJECT_ID(N'dbo.visitor_ip', N'U') IS NULL
+CREATE TABLE dbo.visitor_ip (
+    visitor_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    egress_ip VARCHAR(32) NOT NULL,
+    username VARCHAR(64) NULL,
+    CONSTRAINT ux_visitor_ip_ip_user UNIQUE (egress_ip, username)
 )
 GO
 

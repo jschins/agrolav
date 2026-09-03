@@ -76,10 +76,16 @@ def authenticate(
         )
     except RuntimeError as exc:
         text = str(exc)
-        if text.startswith("hub 403"):
+        if text.startswith("hub 403") or text.startswith("hub 429"):
             raise PermissionError(text) from exc
+        if text.startswith("hub 401"):
+            return None
+        raise
+    if not isinstance(data, dict):
         return None
-    user = data.get("user") if isinstance(data, dict) else None
+    if data.get("otp_required"):
+        return data
+    user = data.get("user")
     return user if isinstance(user, dict) else None
 
 

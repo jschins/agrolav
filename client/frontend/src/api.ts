@@ -232,8 +232,40 @@ export function getAuthMe(): Promise<AuthMeResponse> {
   return getJson("/api/auth/me");
 }
 
-export function login(username: string, password: string): Promise<CentraleSyncStatus> {
+export function login(username: string, password: string): Promise<CentraleSyncStatus | OtpChallenge> {
   return sendJson("/api/login", "POST", { username, password });
+}
+
+export interface OtpChallenge {
+  otp_required: true;
+  otp_token: string;
+  phone_hint: string;
+}
+
+export function verifyLoginOtp(otp_token: string, code: string): Promise<CentraleSyncStatus> {
+  return sendJson("/api/login/otp", "POST", { otp_token, code });
+}
+
+export function resendLoginOtp(otp_token: string): Promise<OtpChallenge> {
+  return sendJson("/api/login/otp/resend", "POST", { otp_token, code: "" });
+}
+
+export interface PersonSecurity {
+  username: string;
+  mobile_phone: string;
+}
+
+export function getPersonSecurity(): Promise<PersonSecurity> {
+  return getJson("/api/auth/person-security");
+}
+
+export function setPersonPassword(body: {
+  current: string;
+  new_password: string;
+  confirm: string;
+  mobile_phone?: string;
+}): Promise<{ ok: boolean; mobile_phone?: string }> {
+  return sendJson("/api/auth/password", "POST", body);
 }
 
 export function logout(): Promise<{ ok: boolean; auth_required: boolean; authenticated: boolean }> {

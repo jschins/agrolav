@@ -181,6 +181,10 @@ def _hub_error(exc: Exception) -> HTTPException:
     raw = str(exc)
     if raw.startswith("hub 403"):
         return HTTPException(status_code=403, detail=msg)
+    if raw.startswith("hub 401"):
+        return HTTPException(status_code=401, detail=msg)
+    if raw.startswith("hub 429"):
+        return HTTPException(status_code=429, detail=msg)
     if raw.startswith("hub 404"):
         return HTTPException(status_code=404, detail=msg)
     if raw.startswith("hub 400"):
@@ -211,26 +215,18 @@ def api_auth_me(request: Request) -> dict[str, Any]:
     }
 
 
-@app.post("/api/login")
-def api_login(body: LoginRequest, request: Request, response: Response) -> dict[str, Any]:
-    from app.auth import (
-        authenticate,
-        auth_enabled,
-        cookie_kwargs,
-        encode_session,
-        profile_from_user,
-    )
+class OtpVerifyRequest(BaseModel):
+    otp_token: str
+    code: str
+
+
+def _session_from_hub_user(
+    user: dict[str, Any], request: Request, response: Response
+) -> dict[str, Any]:
+    from app.auth import cookie_kwargs, encode_session, profile_from_user
     from app.centrale_sync import apply_session_profile, browser_session_start, sync_status
     from app.runtime import is_country
 
-    if not auth_enabled():
-        raise HTTPException(status_code=400, detail="auth is disabled on this client")
-    try:
-        user = authenticate(body.username, body.password, client_ip=_request_ip(request))
-    except PermissionError as exc:
-        raise _hub_error(exc) from exc
-    if user is None:
-        raise HTTPException(status_code=401, detail="invalid username or password")
     profile = profile_from_user(user)
     try:
         cfg = apply_session_profile(profile)
@@ -249,6 +245,125 @@ def api_login(body: LoginRequest, request: Request, response: Response) -> dict[
     status["authenticated"] = True
     status["auth_required"] = True
     return status
+
+
+@app.post("/api/login")
+def api_login(body: LoginRequest, request: Request, response: Response) -> dict[str, Any]:
+    from app.auth import authenticate, auth_enabled
+
+    if not auth_enabled():
+        raise HTTPException(status_code=400, detail="auth is disabled on this client")
+    try:
+        result = authenticate(body.username, body.password, client_ip=_request_ip(request))
+    except (PermissionError, RuntimeError) as exc:
+        raise _hub_error(exc) from exc
+    if result is None:
+        raise HTTPException(status_code=401, detail="invalid username or password")
+    if result.get("otp_required"):
+        return {
+            "otp_required": True,
+            "otp_token": result.get("otp_token"),
+            "phone_hint": result.get("phone_hint") or "",
+        }
+    return _session_from_hub_user(result, request, response)
+
+
+@app.post("/api/login/otp")
+def api_login_otp(body: OtpVerifyRequest, request: Request, response: Response) -> dict[str, Any]:
+    from app.auth import auth_enabled
+    from app.centrale_sync import hub_request, load_base_settings
+
+    if not auth_enabled():
+        raise HTTPException(status_code=400, detail="auth is disabled on this client")
+    base = load_base_settings()
+    if not base.get("enabled"):
+        raise HTTPException(status_code=503, detail="hub sync disabled")
+    try:
+        data = hub_request(
+            "POST",
+            "/api/auth/otp/verify",
+            body={
+                "otp_token": body.otp_token,
+                "code": body.code,
+                "client_ip": _request_ip(request),
+            },
+            timeout=15.0,
+        )
+    except RuntimeError as exc:
+        raise _hub_error(exc) from exc
+    user = data.get("user") if isinstance(data, dict) else None
+    if not isinstance(user, dict):
+        raise HTTPException(status_code=401, detail="invalid or expired code")
+    return _session_from_hub_user(user, request, response)
+
+
+@app.post("/api/login/otp/resend")
+def api_login_otp_resend(body: OtpVerifyRequest) -> dict[str, Any]:
+    from app.auth import auth_enabled
+    from app.centrale_sync import hub_request, load_base_settings
+
+    if not auth_enabled():
+        raise HTTPException(status_code=400, detail="auth is disabled on this client")
+    base = load_base_settings()
+    if not base.get("enabled"):
+        raise HTTPException(status_code=503, detail="hub sync disabled")
+    try:
+        data = hub_request(
+            "POST",
+            "/api/auth/otp/resend",
+            body={"otp_token": body.otp_token, "code": ""},
+            timeout=20.0,
+        )
+    except RuntimeError as exc:
+        raise _hub_error(exc) from exc
+    if not isinstance(data, dict) or not data.get("otp_required"):
+        raise HTTPException(status_code=502, detail="could not resend code")
+    return {
+        "otp_required": True,
+        "otp_token": data.get("otp_token"),
+        "phone_hint": data.get("phone_hint") or "",
+    }
+
+
+class PasswordChangeRequest(BaseModel):
+    current: str
+    new_password: str
+    confirm: str
+    mobile_phone: str | None = None
+
+
+@app.get("/api/auth/person-security")
+def api_person_security(request: Request) -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+    import urllib.parse
+
+    username = _session_username(request)
+    try:
+        return hub_request(
+            "GET",
+            f"/api/auth/person-security?{urllib.parse.urlencode({'username': username})}",
+        )
+    except Exception as err:
+        raise _hub_error(err) from err
+
+
+@app.post("/api/auth/password")
+def api_person_password(body: PasswordChangeRequest, request: Request) -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+
+    username = _session_username(request)
+    payload: dict[str, Any] = {
+        "username": username,
+        "current": body.current,
+        "new_password": body.new_password,
+        "confirm": body.confirm,
+    }
+    if body.mobile_phone is not None:
+        payload["mobile_phone"] = body.mobile_phone
+    try:
+        return hub_request("POST", "/api/auth/password", body=payload)
+    except Exception as err:
+        raise _hub_error(err) from err
 
 
 @app.post("/api/logout")

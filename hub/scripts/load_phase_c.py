@@ -552,15 +552,16 @@ def _insert_person(
     number_of_accounts: int,
     title: str | None = None,
 ) -> int:
-    from app.user_store import display_title
+    from app.user_store import default_password_hash, display_title
 
     today = date.today()
     cursor.execute(
         """
         INSERT INTO dbo.person
-            (username, title, country_id, center_id, number_of_accounts, created_at)
+            (username, title, country_id, center_id, number_of_accounts,
+             created_at, password_hash)
         OUTPUT INSERTED.id
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         username,
         (title or display_title(username) or username).strip(),
@@ -568,6 +569,7 @@ def _insert_person(
         center_id,
         number_of_accounts,
         today,
+        default_password_hash(username),
     )
     return int(cursor.fetchone()[0])
 

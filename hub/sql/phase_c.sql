@@ -30,6 +30,7 @@ IF OBJECT_ID(N'dbo.center', N'U') IS NOT NULL DROP TABLE dbo.center;
 IF OBJECT_ID(N'dbo.type_rule', N'U') IS NOT NULL DROP TABLE dbo.type_rule;
 IF OBJECT_ID(N'dbo.table_header_term', N'U') IS NOT NULL DROP TABLE dbo.table_header_term;
 IF OBJECT_ID(N'dbo.bank_modality', N'U') IS NOT NULL DROP TABLE dbo.bank_modality;
+IF OBJECT_ID(N'dbo.visitor_ip', N'U') IS NOT NULL DROP TABLE dbo.visitor_ip;
 IF OBJECT_ID(N'dbo.hub_ip', N'U') IS NOT NULL DROP TABLE dbo.hub_ip;
 IF OBJECT_ID(N'dbo.dim_category', N'U') IS NOT NULL DROP TABLE dbo.dim_category;
 IF OBJECT_ID(N'dbo.bank', N'U') IS NOT NULL DROP TABLE dbo.bank;
@@ -40,6 +41,7 @@ CREATE TABLE dbo.country (
     username NVARCHAR(32) NOT NULL,
     title NVARCHAR(256) NOT NULL,
     currency_default CHAR(3) NOT NULL,
+    egress_ip VARCHAR(256) NULL,
     CONSTRAINT ux_country_username UNIQUE (username)
 );
 
@@ -70,6 +72,7 @@ CREATE TABLE dbo.center (
     country_id INT NOT NULL,
     username NVARCHAR(64) NOT NULL,
     title NVARCHAR(256) NOT NULL,
+    egress_ip VARCHAR(256) NULL,
     CONSTRAINT fk_center_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
     CONSTRAINT ux_center_username UNIQUE (username)
 );
@@ -82,6 +85,8 @@ CREATE TABLE dbo.person (
     center_id INT NOT NULL,
     number_of_accounts INT NOT NULL CONSTRAINT df_person_accounts DEFAULT (0),
     created_at DATE NOT NULL,
+    password_hash NVARCHAR(256) NULL,
+    mobile_phone NVARCHAR(32) NULL,
     CONSTRAINT fk_person_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
     CONSTRAINT fk_person_center FOREIGN KEY (center_id) REFERENCES dbo.center (center_id),
     CONSTRAINT ck_person_accounts CHECK (number_of_accounts >= 0)
@@ -261,3 +266,13 @@ CREATE TABLE dbo.account_balance_file (
     format NVARCHAR(64) NULL,
     CONSTRAINT fk_abf_balance FOREIGN KEY (account_id) REFERENCES dbo.account (account_id)
 );
+
+CREATE TABLE dbo.visitor_ip (
+    visitor_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    egress_ip VARCHAR(32) NOT NULL,
+    username VARCHAR(64) NULL,
+    CONSTRAINT ux_visitor_ip_ip_user UNIQUE (egress_ip, username)
+);
+CREATE UNIQUE INDEX ux_visitor_ip_anon
+    ON dbo.visitor_ip (egress_ip)
+    WHERE username IS NULL;

@@ -10,6 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable
 
+from shared.passwords import hash_password, verify_password
 from shared.user_access import ACCESS_COUNTRY, deduce_access, enrich_user_record, parse_centers
 
 _LOCK = threading.RLock()
@@ -116,6 +117,79 @@ def password_for_username(username: str) -> str:
     if not name:
         return ""
     return PASSWORD_PREFIX + name
+
+
+def default_password_hash(username: str) -> str:
+    """Scrypt of the formula password for a newly created person."""
+    return hash_password(password_for_username(username))
+
+
+_E164 = re.compile(r"^\+[1-9]\d{7,14}$")
+
+
+def normalize_mobile_phone(value: str | None) -> str | None:
+    """E.164 (``+`` then 8–15 digits) or ``None`` if empty. Raises ``ValueError``."""
+    text = str(value or "").strip().replace(" ", "").replace("-", "")
+    if not text:
+        return None
+    if not _E164.fullmatch(text):
+        raise ValueError("Mobile phone must be international, e.g. +31612345678")
+    return text
+
+
+def credentials_match(
+    password: str,
+    *,
+    username: str,
+    is_person: bool,
+    password_hash: str | None,
+) -> bool:
+    """Person: stored scrypt hash, or formula if hash is still NULL. Others: formula only."""
+    plain = str(password or "")
+    name = str(username or "").strip()
+    if not name:
+        return False
+    formula = password_for_username(name)
+    if not is_person:
+        return plain == formula
+    stored = str(password_hash or "").strip()
+    if stored:
+        return verify_password(plain, stored)
+    return plain == formula
+
+
+def _is_person_user(user: dict[str, Any] | None) -> bool:
+    if not user:
+        return False
+    return bool(str(user.get("person") or "").strip())
+
+
+def _person_column(username: str, column: str) -> Any:
+    name = (username or "").strip()
+    if not name:
+        return None
+    init_user_store()
+    cursor = _sql_connect().cursor()
+    cursor.execute(
+        f"SELECT {column} FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+        (name,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return row[0]
+
+
+def person_password_hash(username: str) -> str | None:
+    raw = _person_column(username, "password_hash")
+    text = str(raw or "").strip()
+    return text or None
+
+
+def person_mobile_phone(username: str) -> str | None:
+    raw = _person_column(username, "mobile_phone")
+    text = str(raw or "").strip()
+    return text or None
 
 
 def display_title(username: str) -> str:
@@ -521,8 +595,12 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
     user = find_user(username)
     if user is None:
         return None
-    expected = password_for_username(str(user.get("username") or ""))
-    if str(password or "") != expected:
+    name = str(user.get("username") or "").strip()
+    is_person = _is_person_user(user)
+    stored = person_password_hash(name) if is_person else None
+    if not credentials_match(
+        password, username=name, is_person=is_person, password_hash=stored
+    ):
         return None
     return user
 
@@ -550,8 +628,9 @@ def upsert_user(
     center: str = "",
     country: str = "",
     person: str = "",
+    mobile_phone: str | None = None,
 ) -> dict[str, Any]:
-    """Insert or update a user. Does not change ``format`` on update."""
+    """Insert or update a user. Does not change ``format`` or ``password_hash`` on update."""
     name = (username or "").strip()
     if not name:
         raise ValueError("username is required")
@@ -560,6 +639,7 @@ def upsert_user(
     country_s = _empty_to_null(country)
     person_s = _empty_to_null(person)
     today = _utc_today()
+    mobile = normalize_mobile_phone(mobile_phone)
     with _LOCK:
         init_user_store()
         cursor = _sql_connect().cursor()
@@ -603,10 +683,19 @@ def upsert_user(
             cursor.execute(
                 """
                 INSERT INTO dbo.person
-                    (username, title, country_id, center_id, number_of_accounts, created_at)
-                VALUES (?, ?, ?, ?, 0, ?)
+                    (username, title, country_id, center_id, number_of_accounts,
+                     created_at, password_hash, mobile_phone)
+                VALUES (?, ?, ?, ?, 0, ?, ?, ?)
                 """,
-                (name, title_value, country_id, center_id, today),
+                (
+                    name,
+                    title_value,
+                    country_id,
+                    center_id,
+                    today,
+                    default_password_hash(name),
+                    mobile,
+                ),
             )
         _sql_connect().commit()
     user = find_user(name)
@@ -621,6 +710,7 @@ def upsert_personal_login(
     person: str,
     country: str = "",
     title: str = "",
+    mobile_phone: str | None = None,
 ) -> dict[str, Any]:
     folder = (person or "").strip()
     ws = (center or "").strip()
@@ -635,6 +725,7 @@ def upsert_personal_login(
         center=ws,
         country=country_s,
         person=folder,
+        mobile_phone=mobile_phone,
     )
 
 
@@ -647,6 +738,7 @@ def create_manual_person(
     account_number: str,
     initial_balance: str = "0",
     country: str = "",
+    mobile_phone: str | None = None,
 ) -> dict[str, Any]:
     """Create a manual-upload person with a single opening-balance account."""
     name = (person or "").strip()
@@ -671,6 +763,7 @@ def create_manual_person(
 
     country_s = (country or active_country() or resolve_country_for_center(ws) or "").strip()
     today = _utc_today()
+    mobile = normalize_mobile_phone(mobile_phone)
     with _LOCK:
         init_user_store()
         cursor = _sql_connect().cursor()
@@ -685,11 +778,20 @@ def create_manual_person(
         cursor.execute(
             """
             INSERT INTO dbo.person
-                (username, title, country_id, center_id, number_of_accounts, created_at)
+                (username, title, country_id, center_id, number_of_accounts,
+                 created_at, password_hash, mobile_phone)
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, 1, ?)
+            VALUES (?, ?, ?, ?, 1, ?, ?, ?)
             """,
-            (name, display_name, country_id, center_id, today),
+            (
+                name,
+                display_name,
+                country_id,
+                center_id,
+                today,
+                default_password_hash(name),
+                mobile,
+            ),
         )
         person_id = int(cursor.fetchone()[0])
         cursor.execute(
@@ -710,6 +812,67 @@ def create_manual_person(
         "initial_balance": f"{balance:.2f}",
         "login": _public_user(user) if user else None,
     }
+
+
+def set_person_password(
+    *,
+    username: str,
+    current: str,
+    new: str,
+    confirm: str,
+) -> dict[str, Any]:
+    """Replace ``dbo.person.password_hash``. Person logins only."""
+    name = (username or "").strip()
+    user = find_user(name)
+    if user is None or not _is_person_user(user):
+        raise ValueError("Only a person login can set a password")
+    if str(new or "") != str(confirm or ""):
+        raise ValueError("New password and confirmation do not match")
+    if not str(new or "").strip():
+        raise ValueError("New password is required")
+    stored = person_password_hash(name)
+    if not credentials_match(
+        current, username=name, is_person=True, password_hash=stored
+    ):
+        raise ValueError("Current password is incorrect")
+    hashed = hash_password(str(new))
+    with _LOCK:
+        init_user_store()
+        cursor = _sql_connect().cursor()
+        cursor.execute(
+            """
+            UPDATE dbo.person SET password_hash = ?
+            WHERE username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (hashed, name),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError("Unknown person")
+        _sql_connect().commit()
+    return {"ok": True}
+
+
+def set_person_mobile(*, username: str, mobile_phone: str | None) -> dict[str, Any]:
+    """Store or clear ``dbo.person.mobile_phone``. Person logins only."""
+    name = (username or "").strip()
+    user = find_user(name)
+    if user is None or not _is_person_user(user):
+        raise ValueError("Only a person login can set a mobile phone")
+    mobile = normalize_mobile_phone(mobile_phone)
+    with _LOCK:
+        init_user_store()
+        cursor = _sql_connect().cursor()
+        cursor.execute(
+            """
+            UPDATE dbo.person SET mobile_phone = ?
+            WHERE username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (mobile, name),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError("Unknown person")
+        _sql_connect().commit()
+    return {"ok": True, "mobile_phone": mobile or ""}
 
 
 def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:
