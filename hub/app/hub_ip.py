@@ -4,8 +4,9 @@ Country and center logins (one-step) are allowed only from IPs listed in
 ``dbo.country.egress_ip`` / ``dbo.center.egress_ip`` (comma-separated). Empty
 or NULL means unrestricted. Person logins are not IP-gated.
 
-``dbo.visitor_ip`` records attempted client IPs; ``username`` is set when login
-succeeds.
+``dbo.visitor_ip`` records attempted client IPs. Successful login stores the
+username; a refused attempt stores ``''`` (not NULL) so
+``UNIQUE (egress_ip, username)`` collapses repeats from the same IP.
 """
 from __future__ import annotations
 
@@ -147,32 +148,28 @@ def login_ip_allowed(user: dict[str, Any], client_ip: str | None) -> bool:
 
 
 def record_visit(client_ip: str | None, username: str | None = None) -> None:
-    """Insert ``dbo.visitor_ip`` if this (ip, username) pair is new."""
+    """Insert ``dbo.visitor_ip`` if this (ip, username) pair is new.
+
+    Refused login uses ``username = ''`` so ``UNIQUE (egress_ip, username)``
+    blocks a second row for the same IP. ``ISNULL`` treats leftover NULL
+    usernames as the same refused-login key.
+    """
     ip_s = normalize_ip(client_ip)
-    if not ip_s or ip_s == "unknown":
+    if not ip_s or ip_s == "unknown" or ip_s == "127.0.0.1":
         return
     ip_s = ip_s[:32]
-    name = str(username or "").strip()[:64] or None
+    name = str(username or "").strip()[:64]
     cursor = _cursor()
     if cursor is None or not _has_visitor_table(cursor):
         return
     try:
-        if name is None:
-            cursor.execute(
-                """
-                SELECT TOP 1 visitor_id FROM dbo.visitor_ip
-                WHERE egress_ip = ? AND username IS NULL
-                """,
-                (ip_s,),
-            )
-        else:
-            cursor.execute(
-                """
-                SELECT TOP 1 visitor_id FROM dbo.visitor_ip
-                WHERE egress_ip = ? AND username = ?
-                """,
-                (ip_s, name),
-            )
+        cursor.execute(
+            """
+            SELECT TOP 1 visitor_id FROM dbo.visitor_ip
+            WHERE egress_ip = ? AND ISNULL(username, '') = ?
+            """,
+            (ip_s, name),
+        )
         if cursor.fetchone():
             return
         cursor.execute(
