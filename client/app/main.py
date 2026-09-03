@@ -259,12 +259,20 @@ def api_login(body: LoginRequest, request: Request, response: Response) -> dict[
         raise _hub_error(exc) from exc
     if result is None:
         raise HTTPException(status_code=401, detail="invalid username or password")
-    if result.get("otp_required"):
-        return {
+    if result.get("otp_required") or result.get("otp_token"):
+        token = str(result.get("otp_token") or "").strip()
+        if not token:
+            raise HTTPException(status_code=502, detail="login requires a code but none was issued")
+        challenge = {
             "otp_required": True,
-            "otp_token": result.get("otp_token"),
+            "otp_token": token,
             "phone_hint": result.get("phone_hint") or "",
         }
+        if result.get("dev_code"):
+            challenge["dev_code"] = str(result.get("dev_code") or "").strip()
+        return challenge
+    if not str(result.get("username") or "").strip():
+        raise HTTPException(status_code=401, detail="invalid username or password")
     return _session_from_hub_user(result, request, response)
 
 
@@ -318,11 +326,19 @@ def api_login_otp_resend(body: OtpVerifyRequest) -> dict[str, Any]:
         raise _hub_error(exc) from exc
     if not isinstance(data, dict) or not data.get("otp_required"):
         raise HTTPException(status_code=502, detail="could not resend code")
-    return {
+    challenge = {
         "otp_required": True,
         "otp_token": data.get("otp_token"),
         "phone_hint": data.get("phone_hint") or "",
     }
+    if data.get("dev_code"):
+        challenge["dev_code"] = str(data.get("dev_code") or "").strip()
+        print(
+            f"person otp: Twilio unset; code for {challenge['phone_hint'] or 'mobile'} "
+            f"is {challenge['dev_code']}",
+            flush=True,
+        )
+    return challenge
 
 
 class PasswordChangeRequest(BaseModel):

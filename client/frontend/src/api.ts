@@ -207,6 +207,7 @@ export interface CentraleSyncStatus {
   username?: string;
   title?: string;
   auth_required?: boolean;
+  authenticated?: boolean;
   centrale_url: string;
   local_session_active: boolean;
   error: string | null;
@@ -240,6 +241,8 @@ export interface OtpChallenge {
   otp_required: true;
   otp_token: string;
   phone_hint: string;
+  /** Present only when the hub has no Twilio config (local testing). */
+  dev_code?: string;
 }
 
 export function verifyLoginOtp(otp_token: string, code: string): Promise<CentraleSyncStatus> {

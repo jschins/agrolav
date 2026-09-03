@@ -83,10 +83,22 @@ def authenticate(
         raise
     if not isinstance(data, dict):
         return None
-    if data.get("otp_required"):
-        return data
+    if data.get("otp_required") or data.get("otp_token"):
+        challenge: dict[str, Any] = {
+            "otp_required": True,
+            "otp_token": data.get("otp_token"),
+            "phone_hint": data.get("phone_hint") or "",
+        }
+        if data.get("dev_code"):
+            challenge["dev_code"] = str(data.get("dev_code") or "").strip()
+            print(
+                f"person otp: Twilio unset; code for {challenge['phone_hint'] or 'mobile'} "
+                f"is {challenge['dev_code']}",
+                flush=True,
+            )
+        return challenge
     user = data.get("user")
-    return user if isinstance(user, dict) else None
+    return user if isinstance(user, dict) and str(user.get("username") or "").strip() else None
 
 
 def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:

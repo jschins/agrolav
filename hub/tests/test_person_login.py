@@ -1,7 +1,7 @@
 """Person password hashing, formula fallback, OTP tokens."""
 import unittest
 
-from app.person_otp import encode_otp_token, mask_phone, verify_otp_token
+from app.person_otp import encode_otp_token, issue_and_send, mask_phone, verify_otp_token
 from app.user_store import (
     PASSWORD_PREFIX,
     credentials_match,
@@ -74,10 +74,12 @@ class MobilePhoneTests(unittest.TestCase):
     def test_e164(self):
         self.assertEqual(normalize_mobile_phone("+31612345678"), "+31612345678")
         self.assertEqual(normalize_mobile_phone("+31 6 1234 5678"), "+31612345678")
+        self.assertEqual(normalize_mobile_phone("0612345678"), "+31612345678")
+        self.assertEqual(normalize_mobile_phone("0031612345678"), "+31612345678")
 
     def test_rejects_local(self):
         with self.assertRaises(ValueError):
-            normalize_mobile_phone("0612345678")
+            normalize_mobile_phone("12345")
 
 
 class OtpTokenTests(unittest.TestCase):
@@ -91,3 +93,10 @@ class OtpTokenTests(unittest.TestCase):
         self.assertTrue(hint.startswith("+316"))
         self.assertTrue(hint.endswith("678"))
         self.assertNotIn("12345", hint)
+
+    def test_unset_twilio_returns_dev_code(self):
+        payload = issue_and_send("juleon_schins", "+31612345678")
+        self.assertTrue(payload["otp_required"])
+        self.assertTrue(payload["otp_token"])
+        self.assertEqual(len(payload["dev_code"]), 6)
+        self.assertTrue(payload["dev_code"].isdigit())

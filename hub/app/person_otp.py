@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import threading
@@ -18,6 +19,7 @@ import jwt
 OTP_TTL_SEC = 300
 OTP_RESEND_SEC = 45
 _DEFAULT_OTP_SECRET = "dev-insecure-hub-otp-secret-32b!"
+_log = logging.getLogger(__name__)
 
 _LOCK = threading.Lock()
 _last_send: dict[str, float] = {}
@@ -106,13 +108,18 @@ def _check_rate(username: str) -> None:
         _last_send[name] = now
 
 
-def send_sms(phone: str, code: str) -> None:
-    """Send the login code via Twilio, or print it when Twilio is not configured."""
+def send_sms(phone: str, code: str) -> bool:
+    """Send the login code via Twilio.
+
+    Returns ``True`` when Twilio accepted the message. Returns ``False`` when
+    Twilio is not configured (the code is logged for local testing).
+    """
     cfg = twilio_config()
     body = f"Your Agrolav login code is {code}. It expires in {OTP_TTL_SEC // 60} minutes."
     if cfg is None:
-        print(f"person otp: Twilio unset; code for {mask_phone(phone)} is {code}")
-        return
+        _log.warning("person otp: Twilio unset; code for %s is %s", mask_phone(phone), code)
+        print(f"person otp: Twilio unset; code for {mask_phone(phone)} is {code}", flush=True)
+        return False
     sid, token, sender = cfg
     try:
         import requests
@@ -131,6 +138,7 @@ def send_sms(phone: str, code: str) -> None:
     if response.status_code >= 300:
         detail = (response.text or response.reason)[:300]
         raise OtpError(f"Twilio rejected the SMS ({response.status_code}): {detail}")
+    return True
 
 
 def issue_and_send(username: str, phone: str) -> dict[str, Any]:
@@ -141,9 +149,12 @@ def issue_and_send(username: str, phone: str) -> dict[str, Any]:
         raise OtpError("username and mobile phone are required")
     _check_rate(name)
     code = _generate_code()
-    send_sms(number, code)
-    return {
+    sent = send_sms(number, code)
+    payload: dict[str, Any] = {
         "otp_required": True,
         "otp_token": encode_otp_token(name, code),
         "phone_hint": mask_phone(number),
     }
+    if not sent:
+        payload["dev_code"] = code
+    return payload

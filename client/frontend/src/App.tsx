@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import {
   ackCentralWinsRefusal,
@@ -1100,6 +1100,16 @@ export default function App() {
   );
 }
 
+function isOtpChallenge(
+  status: CentraleSyncStatus | OtpChallenge | null | undefined
+): status is OtpChallenge {
+  if (!status || typeof status !== "object") return false;
+  const token = "otp_token" in status ? String(status.otp_token || "").trim() : "";
+  if (!token) return false;
+  if ("username" in status && String(status.username || "").trim()) return false;
+  return true;
+}
+
 function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -1137,13 +1147,13 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
     }
     login(username.trim(), password)
       .then((status) => {
-        if (status && "otp_required" in status && status.otp_required) {
+        if (isOtpChallenge(status)) {
           setOtp(status);
           setCode("");
           return;
         }
         clearStoredRefreshStatus();
-        onSuccess(((status as CentraleSyncStatus).title || "").trim());
+        onSuccess((status.title || "").trim());
       })
       .catch(fail)
       .finally(() => setBusy(false));
@@ -1169,7 +1179,9 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
         {otp ? (
           <>
             <p className="login-muted">
-              Enter the code sent to {otp.phone_hint || "your mobile phone"}.
+              {otp.dev_code
+                ? `SMS is not configured on the hub. Use code ${otp.dev_code}.`
+                : `Enter the code sent to ${otp.phone_hint || "your mobile phone"}.`}
             </p>
             <label className="login-label">
               Code
@@ -1243,6 +1255,42 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
         )}
       </form>
     </div>
+  );
+}
+
+const HEADING_MIN_PX = 11;
+
+function FitSidebarTitle({ text }: { text: string }) {
+  const ref = useRef<HTMLHeadingElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const fit = () => {
+      el.style.fontSize = "";
+      const maxPx = parseFloat(getComputedStyle(el).fontSize);
+      if (!Number.isFinite(maxPx) || maxPx <= 0) return;
+      const avail = el.clientWidth;
+      if (avail <= 0 || el.scrollWidth <= avail) return;
+      let size = Math.max(HEADING_MIN_PX, Math.floor((maxPx * avail) / el.scrollWidth));
+      el.style.fontSize = `${size}px`;
+      while (el.scrollWidth > el.clientWidth && size > HEADING_MIN_PX) {
+        size -= 1;
+        el.style.fontSize = `${size}px`;
+      }
+    };
+
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text]);
+
+  return (
+    <h1 ref={ref} className="app-heading">
+      {text}
+    </h1>
   );
 }
 
@@ -1778,7 +1826,7 @@ function MainApp({
   return (
     <div className="app">
       <aside className="sidebar">
-        {brandName ? <h1 className="app-heading">{brandName}</h1> : null}
+        {brandName ? <FitSidebarTitle text={brandName} /> : null}
 
         {inPView && matrix && (
           <>

@@ -145,8 +145,9 @@ def api_auth_login(
             status_code=403,
             detail="This login is not allowed from your IP address",
         )
-    name = str(user.get("username") or "").strip()
-    if str(user.get("access") or "") == "personal":
+    name = str((user.get("username") if user else None) or body.username or "").strip()
+    person_row = raw if raw is not None else None
+    if person_row is not None and user_store._is_person_user(person_row):
         phone = user_store.person_mobile_phone(name)
         if phone:
             try:

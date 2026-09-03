@@ -507,6 +507,7 @@ th {
 
 .app-heading {
   margin: 0 0 0.35rem;
+  width: 100%;
   font-size: clamp(1.15rem, 2.8vw, 1.85rem);
   font-weight: 700;
   color: #0f172a;
@@ -515,7 +516,6 @@ th {
   text-transform: none;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .totals-table {

@@ -128,10 +128,17 @@ _E164 = re.compile(r"^\+[1-9]\d{7,14}$")
 
 
 def normalize_mobile_phone(value: str | None) -> str | None:
-    """E.164 (``+`` then 8–15 digits) or ``None`` if empty. Raises ``ValueError``."""
+    """E.164 (``+`` then 8–15 digits) or ``None`` if empty. Raises ``ValueError``.
+
+    Also accepts ``0031…`` and a Dutch national ``06…`` (stored as ``+316…``).
+    """
     text = str(value or "").strip().replace(" ", "").replace("-", "")
     if not text:
         return None
+    if text.startswith("00"):
+        text = "+" + text[2:]
+    elif text.startswith("06") and text[2:].isdigit() and 8 <= len(text) <= 10:
+        text = "+31" + text[1:]
     if not _E164.fullmatch(text):
         raise ValueError("Mobile phone must be international, e.g. +31612345678")
     return text
