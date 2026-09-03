@@ -270,10 +270,8 @@ CREATE TABLE dbo.uploaded_files (
 
 CREATE TABLE dbo.visitor_ip (
     visitor_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
-    egress_ip VARCHAR(32) NOT NULL,
-    username VARCHAR(64) NULL,
+    egress_ip VARCHAR(45) NOT NULL,
+    username VARCHAR(64) NOT NULL
+        CONSTRAINT df_visitor_ip_username DEFAULT '',
     CONSTRAINT ux_visitor_ip_ip_user UNIQUE (egress_ip, username)
 );
-CREATE UNIQUE INDEX ux_visitor_ip_anon
-    ON dbo.visitor_ip (egress_ip)
-    WHERE username IS NULL;

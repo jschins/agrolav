@@ -11,10 +11,17 @@
 USE agrolav;
 GO
 
+-- 45 characters holds a compressed IPv6 address (39) with room to spare.
+-- No dotted-quad CHECK constraint here on purpose: IPv6 stays usable, and the
+-- hub validates every address with Python's ipaddress before querying.
 IF OBJECT_ID(N'dbo.administrator', N'U') IS NULL
 CREATE TABLE dbo.administrator (
-    egress_ip VARCHAR(32) NOT NULL PRIMARY KEY
+    egress_ip VARCHAR(45) NOT NULL PRIMARY KEY
 );
+GO
+
+IF COL_LENGTH(N'dbo.administrator', N'egress_ip') < 45
+    ALTER TABLE dbo.administrator ALTER COLUMN egress_ip VARCHAR(45) NOT NULL;
 GO
 
 -- Put your own router WAN address here before you rely on the allowlists,

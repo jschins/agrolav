@@ -17,6 +17,23 @@ def normalize_ip_text(raw: str | None) -> str:
     return text.strip()
 
 
+def canonical_ip(raw: str | None) -> str:
+    """One spelling per address, so equality means the same host.
+
+    IPv6 writes one address many ways (``2001:DB8::1`` and
+    ``2001:0db8:0000:0000:0000:0000:0000:0001``), and an allowlist compared as
+    text would miss the client that spelled it differently. IPv4 is unchanged.
+    Anything unparsable is returned as-is for the caller to reject.
+    """
+    text = normalize_ip_text(raw)
+    if not text:
+        return ""
+    try:
+        return ipaddress.ip_address(text).compressed
+    except ValueError:
+        return text
+
+
 def is_public_egress_ip(raw: str | None) -> bool:
     """True for a globally routable unicast address (home router WAN, not LAN)."""
     text = normalize_ip_text(raw)

@@ -451,12 +451,14 @@ def upsert_person_accounts(username: str, accounts: list[dict[str, Any]]) -> lis
         )
         row = cursor.fetchone()
         if row is None and not placeholder_iban:
+            # Unique key is (person_id, iban). Match even when the row already
+            # has a uid — a new Enable Banking uid for the same IBAN must
+            # update, not insert.
             cursor.execute(
                 """
                 SELECT TOP 1 account_id
                 FROM dbo.account
                 WHERE person_id = ? AND iban = ?
-                  AND (uid IS NULL OR LTRIM(RTRIM(CAST(uid AS NVARCHAR(128)))) = N'')
                 ORDER BY account_id
                 """,
                 (person_id, iban),

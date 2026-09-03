@@ -24,9 +24,9 @@ There are three kinds of login. The username is the login name of that row:
 | **Person** | Your own column only. |
 
 If a mobile number is stored on a person login, the next step is a **6-digit
-SMS code**. Enter it, or use **Resend**. Country and center logins can also be
-limited to listed IP addresses; from a blocked address you get *This login is
-not allowed from your IP address*.
+SMS code**. Enter it, or use **Resend**. Country and center logins are allowed
+only from listed IP addresses; from anywhere else you get *This login is not
+allowed from your IP address*. Person logins are not IP-gated.
 
 ---
 
@@ -207,9 +207,13 @@ and moves leftover bookings to unclassified. **Submit** writes the list.
 **menu → Restrict IP access** (country or center login). Person logins are
 never IP-gated.
 
-Pick a **Login** (a country or a center), type an IPv4 address, **Add IP**.
-The table lists current addresses; remove one with its button. An empty list
-means that login is not restricted.
+Pick a **Login** (a country or a center), type an IPv4 or IPv6 address,
+**Add IP**. The table lists current addresses; remove one with its button.
+
+An empty list on this page means **no** address is allowed for that login,
+unless the same address is also on the administrator list (edited in SSMS,
+not here). The allowed set is the sum of the two lists. If both are empty,
+no country or center login works at all.
 
 ---
 

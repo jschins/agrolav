@@ -57,8 +57,9 @@ GO
 IF OBJECT_ID(N'dbo.visitor_ip', N'U') IS NULL
 CREATE TABLE dbo.visitor_ip (
     visitor_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
-    egress_ip VARCHAR(32) NOT NULL,
-    username VARCHAR(64) NULL,
+    egress_ip VARCHAR(45) NOT NULL,
+    username VARCHAR(64) NOT NULL
+        CONSTRAINT df_visitor_ip_username DEFAULT '',
     CONSTRAINT ux_visitor_ip_ip_user UNIQUE (egress_ip, username)
 )
 GO

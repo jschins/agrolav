@@ -7,6 +7,10 @@ of those two tables; an empty or NULL column admits nothing, so a database
 with no addresses listed anywhere refuses every country and center login.
 Person logins are not IP-gated.
 
+A development hub (``HUB_DEV_LOGIN`` set, caller on loopback) skips the gate
+entirely and writes no visitor rows: browser, client and hub share one machine
+there, so no public address exists to list or to record.
+
 ``dbo.visitor_ip`` records attempted client IPs. Successful login stores the
 username; a refused attempt stores ``''`` (not NULL) so
 ``UNIQUE (egress_ip, username)`` collapses repeats from the same IP. Addresses
@@ -15,16 +19,15 @@ or not a country or center lists it.
 """
 from __future__ import annotations
 
+import ipaddress
+import os
 import re
 from typing import Any
 
-from shared.net import is_public_egress_ip
+from shared.net import canonical_ip, is_public_egress_ip
 from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON
 
 BEHEER_USERNAME = "beheer"
-_IPV4_RE = re.compile(
-    r"^(?:25[0-5]|2[0-4]\d|[01]?\d\d?)(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)){3}$"
-)
 _TARGET_RE = re.compile(r"^(C_[1-9]\d*|L_[1-9]\d*)$")
 
 
@@ -35,18 +38,24 @@ class HubIpError(ValueError):
 def normalize_ip(raw: str | None) -> str:
     from app.upload_acl import _normalize_ip
 
-    return _normalize_ip(raw or "")
+    return canonical_ip(_normalize_ip(raw or ""))
 
 
 def validate_ip(raw: str | None) -> str:
+    """Normalized address, or raise.
+
+    ``ipaddress`` is the sole arbiter, so wildcards (``192.168.1.x``) and
+    sentinels (the client's ``"unknown"``) fail here rather than reaching a
+    table and matching a row by accident.
+    """
     ip = normalize_ip(raw)
-    if not ip or ip == "unknown" or "x" in ip.lower():
+    if not ip:
         raise HubIpError("IP address is required")
-    if _IPV4_RE.fullmatch(ip):
-        return ip
-    if ":" in ip:
-        return ip
-    raise HubIpError(f"Invalid IP address: {ip}")
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError as exc:
+        raise HubIpError(f"Invalid IP address: {ip}") from exc
+    return ip
 
 
 def parse_egress_list(raw: str | None) -> list[str]:
@@ -78,6 +87,29 @@ def ip_in_allowlist(client_ip: str | None, allow: list[str]) -> bool:
 
 def is_beheer(username: str | None) -> bool:
     return str(username or "").strip().casefold() == BEHEER_USERNAME
+
+
+def development_hub() -> bool:
+    """Whether this hub is a developer's own machine, per ``HUB_DEV_LOGIN``.
+
+    Deliberately opt-in and unset by default, so a server is IP-gated without
+    having to configure anything. It is not derived from
+    ``app_config.environment()``, which reports ``local`` whenever
+    ``dbo.app_config`` is absent and would hand a server the developer rules.
+    """
+    flag = os.environ.get("HUB_DEV_LOGIN", "").strip().lower()
+    return flag in ("1", "true", "yes", "on")
+
+
+def development_login(client_ip: str | None) -> bool:
+    """Whether to skip the IP gate for this request.
+
+    Requires the flag *and* a loopback caller: on a development machine the
+    browser, client and hub share the host, so there is no public address to
+    list. Demanding both means a flag left on by mistake still cannot admit
+    anyone who is not already on the box.
+    """
+    return development_hub() and normalize_ip(client_ip) == "127.0.0.1"
 
 
 def _cursor():
@@ -178,8 +210,16 @@ def login_ip_allowed(user: dict[str, Any], client_ip: str | None) -> bool:
     """
     if str(user.get("person") or "").strip():
         return True
-    ip = normalize_ip(client_ip)
-    if not ip or ip == "unknown":
+    name = str(user.get("username") or "")
+    if development_login(client_ip):
+        print(f"login allowed: {name!r} on a development hub (HUB_DEV_LOGIN)")
+        return True
+    try:
+        # A sentinel such as the client's "unknown" must never reach the
+        # tables: dbo.administrator is hand-filled and would match it.
+        ip = validate_ip(client_ip)
+    except HubIpError:
+        print(f"login refused: no usable client IP for {name!r} ({client_ip!r})")
         return False
     try:
         if administrator_ip_allowed(ip):
@@ -193,7 +233,13 @@ def login_ip_allowed(user: dict[str, Any], client_ip: str | None) -> bool:
     except Exception as exc:  # noqa: BLE001
         print(f"egress_ip: could not read the allowlist for {ip!r}: {exc}")
         return False
-    return ip_in_allowlist(ip, parse_egress_list(raw))
+    allowed = ip_in_allowlist(ip, parse_egress_list(raw))
+    if not allowed:
+        print(
+            f"login refused: {name!r} from {ip!r} is listed in neither "
+            f"dbo.administrator nor its own egress_ip ({raw or 'NULL'})"
+        )
+    return allowed
 
 
 def record_visit(client_ip: str | None, username: str | None = None) -> None:
@@ -203,8 +249,11 @@ def record_visit(client_ip: str | None, username: str | None = None) -> None:
     blocks a second row for the same IP. Only a public address is stored
     (the router WAN as seen by Caddy), never loopback or LAN. An address in
     ``dbo.administrator`` is ours and is skipped; anything else is logged,
-    whether or not a country or center lists it.
+    whether or not a country or center lists it. A development hub records
+    nothing at all.
     """
+    if development_hub():
+        return
     ip_s = normalize_ip(client_ip)
     if not is_public_egress_ip(ip_s):
         return
@@ -214,7 +263,9 @@ def record_visit(client_ip: str | None, username: str | None = None) -> None:
     except Exception as exc:  # noqa: BLE001
         # Rather log one of our own addresses than lose a real visitor.
         print(f"visitor_ip: could not read dbo.administrator for {ip_s!r}: {exc}")
-    ip_s = ip_s[:32]
+    # 45 matches the column: a compressed IPv6 address runs to 39 characters,
+    # so the old cap of 32 stored a truncated, wrong address.
+    ip_s = ip_s[:45]
     name = str(username or "").strip()[:64]
     cursor = _cursor()
     if cursor is None or not _has_visitor_table(cursor):
@@ -223,7 +274,7 @@ def record_visit(client_ip: str | None, username: str | None = None) -> None:
         cursor.execute(
             """
             SELECT TOP 1 visitor_id FROM dbo.visitor_ip
-            WHERE egress_ip = ? AND ISNULL(username, '') = ?
+            WHERE egress_ip = ? AND username = ?
             """,
             (ip_s, name),
         )

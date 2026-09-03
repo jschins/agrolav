@@ -1,4 +1,5 @@
 """Country/center egress_ip allowlists."""
+import os
 import unittest
 from unittest import mock
 
@@ -83,7 +84,10 @@ class AdministratorEgressTests(unittest.TestCase):
         user = {"id": 7, "center": "dkg", "country": "nederland", "person": ""}
         with mock.patch.object(hub_ip, "administrator_ip_allowed") as admin:
             self.assertFalse(hub_ip.login_ip_allowed(user, None))
+            self.assertFalse(hub_ip.login_ip_allowed(user, ""))
             self.assertFalse(hub_ip.login_ip_allowed(user, "unknown"))
+            self.assertFalse(hub_ip.login_ip_allowed(user, "192.168.1.x"))
+            self.assertFalse(hub_ip.login_ip_allowed(user, "not-an-ip"))
         admin.assert_not_called()
 
     def test_unreadable_allowlist_is_refused(self):
@@ -136,6 +140,11 @@ class RecordVisitTests(unittest.TestCase):
         )
         self.is_administrator = patcher.start()
         self.addCleanup(patcher.stop)
+        # hub/.env is loaded on import, so say explicitly that these cases
+        # describe a server; a development hub records nothing.
+        server = mock.patch.object(hub_ip, "development_hub", return_value=False)
+        server.start()
+        self.addCleanup(server.stop)
 
     def test_refused_login_inserts_empty_username(self):
         from app import hub_ip
@@ -235,6 +244,98 @@ class RecordVisitTests(unittest.TestCase):
         insert_sql, insert_params = cursor.execute.call_args_list[-1][0]
         self.assertIn("INSERT INTO dbo.visitor_ip", insert_sql)
         self.assertEqual(insert_params, ("80.12.34.56", ""))
+
+
+class DevelopmentHubTests(unittest.TestCase):
+    USER = {"id": 7, "center": "dkg", "country": "nederland", "person": ""}
+
+    def test_loopback_login_is_allowed_when_the_flag_is_set(self):
+        from app import hub_ip
+
+        with mock.patch.dict(os.environ, {"HUB_DEV_LOGIN": "1"}), mock.patch.object(
+            hub_ip, "administrator_ip_allowed"
+        ) as admin:
+            self.assertTrue(hub_ip.login_ip_allowed(self.USER, "127.0.0.1"))
+            self.assertTrue(hub_ip.login_ip_allowed(self.USER, "::1"))
+        admin.assert_not_called()
+
+    def test_flag_unset_keeps_loopback_gated(self):
+        from app import hub_ip
+
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
+            hub_ip, "administrator_ip_allowed", return_value=False
+        ), mock.patch.object(hub_ip, "_egress_raw_for_user", return_value=None):
+            self.assertFalse(hub_ip.login_ip_allowed(self.USER, "127.0.0.1"))
+
+    def test_flag_does_not_admit_a_remote_caller(self):
+        # A flag left on by accident must not open the gate to the internet.
+        from app import hub_ip
+
+        with mock.patch.dict(os.environ, {"HUB_DEV_LOGIN": "1"}), mock.patch.object(
+            hub_ip, "administrator_ip_allowed", return_value=False
+        ), mock.patch.object(hub_ip, "_egress_raw_for_user", return_value=None):
+            self.assertFalse(hub_ip.login_ip_allowed(self.USER, "80.12.34.56"))
+
+    def test_development_hub_records_no_visitors(self):
+        from app import hub_ip
+
+        with mock.patch.dict(os.environ, {"HUB_DEV_LOGIN": "1"}), mock.patch.object(
+            hub_ip, "_cursor"
+        ) as cursor_fn:
+            hub_ip.record_visit("80.12.34.56", "beheer")
+            hub_ip.record_visit("127.0.0.1", None)
+        cursor_fn.assert_not_called()
+
+
+class IPv6Tests(unittest.TestCase):
+    # 39 characters, longer than the old VARCHAR(32) column.
+    ADDRESS = "2a02:1810:1234:5600:abcd:ef01:2345:6789"
+
+    def test_canonical_form_collapses_spellings(self):
+        from shared.net import canonical_ip
+
+        self.assertEqual(canonical_ip("2001:0DB8:0000::0001"), "2001:db8::1")
+        self.assertEqual(canonical_ip("2001:db8::1"), "2001:db8::1")
+        self.assertEqual(canonical_ip("80.12.34.56"), "80.12.34.56")
+
+    def test_a_different_spelling_still_matches_the_allowlist(self):
+        from app import hub_ip
+
+        user = {"id": 7, "center": "dkg", "country": "nederland", "person": ""}
+        with mock.patch.object(
+            hub_ip, "administrator_ip_allowed", return_value=False
+        ), mock.patch.object(
+            hub_ip, "_egress_raw_for_user", return_value="2001:db8::1"
+        ):
+            self.assertTrue(
+                hub_ip.login_ip_allowed(user, "2001:0DB8:0000:0000:0000:0000:0000:0001")
+            )
+
+    def test_validate_ip_accepts_v6_and_rejects_wildcards(self):
+        from app import hub_ip
+
+        self.assertEqual(hub_ip.validate_ip(self.ADDRESS.upper()), self.ADDRESS)
+        for bad in ("unknown", "192.168.1.x", "not-an-ip", ""):
+            with self.assertRaises(hub_ip.HubIpError):
+                hub_ip.validate_ip(bad)
+
+    def test_visitor_ip_is_stored_untruncated(self):
+        from app import hub_ip
+
+        cursor = mock.Mock()
+        cursor.fetchone.side_effect = [(1,), None]
+        conn = mock.Mock()
+        with mock.patch.object(
+            hub_ip, "administrator_ip_allowed", return_value=False
+        ), mock.patch.object(
+            hub_ip, "development_hub", return_value=False
+        ), mock.patch.object(hub_ip, "_cursor", return_value=cursor), mock.patch(
+            "app.user_store._sql_connect", return_value=conn
+        ):
+            hub_ip.record_visit(self.ADDRESS, "beheer")
+        _, insert_params = cursor.execute.call_args_list[-1][0]
+        self.assertEqual(insert_params, (self.ADDRESS, "beheer"))
+        self.assertEqual(len(self.ADDRESS), 39)
 
 
 class PublicEgressTests(unittest.TestCase):

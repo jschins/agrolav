@@ -1,6 +1,8 @@
 # boekhouding-client
 
 Thin BFF + frontend. All data comes from the hub (no local center copies).
+Frontend user guide: [`../README.md`](../README.md). Production:
+[`../documentation/deployment.md`](../documentation/deployment.md).
 
 ## Configuration (no config file)
 
@@ -12,7 +14,7 @@ Defaults are hardcoded. Override only via environment variables when needed.
 | `PORT` | `8300` | Client listen port |
 | `CLIENT_AUTH` | on (`true`) | Browser login; set `0`/`false` to disable |
 | `CLIENT_SESSION_SECRET` | insecure dev string | Cookie signing secret — **set in production** |
-| `CENTRALE_API_KEY` | empty | Optional hub Bearer token |
+| `CENTRALE_API_KEY` | empty | Optional hub Bearer token (must match the hub) |
 | `CENTRALE_SYNC` | on | Set `0`/`false` to disable hub sync |
 | `CLIENT_BOOTSTRAP_CENTER` | first hub center / `dkg` | Center used before login (auth on) |
 | `CLIENT_ACCESS` | `local` | Only when auth off |
@@ -23,9 +25,13 @@ There is **no** `client_config.json`.
 
 ### Multi-user login (default)
 
-The client listens on **`0.0.0.0`** when auth is on. On the same machine as the hub, leave `SERVER_URL` at `http://127.0.0.1:8200`.
+The client listens on **`0.0.0.0`** when auth is on. On the same machine as
+the hub, leave `SERVER_URL` at `http://127.0.0.1:8200`.
 
-Users live in SQL Server (`dbo.person` / `dbo.center` / `dbo.country`). Login password equals the username.
+Users live in SQL Server (`dbo.person` / `dbo.center` / `dbo.country`).
+Person logins use a scrypt hash (`dbo.person.password_hash`) and an SMS
+code when `mobile_phone` is set. Country and center use the derived
+formula password and are IP-gated (see the hub README).
 
 ```powershell
 cd ..\hub
@@ -51,8 +57,13 @@ uv sync --group build
 uv run python scripts/build_onefile.py
 ```
 
-Output: `dist/boekhouding-client.exe`. Set `CLIENT_SESSION_SECRET` when running the exe.
+Output: `dist/boekhouding-client.exe`. Set `CLIENT_SESSION_SECRET` when
+running the exe.
 
-## Production (Caddy / Tailscale / Lightsail)
+## Production
 
-Caddy on Lightsail terminates HTTPS for `boekhouding.agrolav.nl` and proxies to this client on `:8300` over Tailscale. Hub stays at `127.0.0.1:8200` on the home server. Set `CLIENT_SESSION_SECRET` on that host.
+Caddy terminates HTTPS for `expenses.apsurt.nl` and proxies to this client
+on `:8300`. Hub stays at `127.0.0.1:8200` on the same host. Caddy must
+forward `X-Forwarded-For` (see `Caddyfile`) so the hub sees the caller’s
+public egress IP. Set `CLIENT_SESSION_SECRET` and match
+`CENTRALE_API_KEY` to the hub.
