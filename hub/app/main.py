@@ -2673,6 +2673,7 @@ def run() -> None:
         _MUTE = (
             "GET /api/events",
             "GET /api/status",
+            "GET /api/public-links",
             "/capabilities",
             "/consent-ready",
             "/session/heartbeat",
