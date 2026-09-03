@@ -1141,6 +1141,55 @@ textarea.cell-edit {
   letter-spacing: -0.02em;
 }
 
+.password-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+}
+
+.password-knob {
+  flex: 1;
+  height: 2.35rem;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 0.75rem;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.password-knob:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.password-knob-cancel {
+  border: 1px solid #cbd5e1;
+  background: #c1f4ff;
+  color: #0f172a;
+}
+
+.password-knob-cancel:hover:not(:disabled) {
+  background: #eef2ff;
+  border-color: #2563eb;
+}
+
+.password-knob-save {
+  border: 1px solid #0e7490;
+  background: #0e7490;
+  color: #fff;
+}
+
+.password-knob-save:hover:not(:disabled) {
+  background: #0f766e;
+}
+
 .auth-user-label {
   color: #475569;
   font-size: 0.8rem;

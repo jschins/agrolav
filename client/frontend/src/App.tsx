@@ -883,7 +883,7 @@ function SyncNotifyShell({
                 }}
               />
             ) : null}
-            <ActionsMenu items={menuItems} />
+            {!passwordView ? <ActionsMenu items={menuItems} /> : null}
             {switching ? <span className="center-switcher-busy">switching…</span> : null}
             {scratchError ? <span> · {scratchError}</span> : null}
             {wipeError ? <span> · {wipeError}</span> : null}
@@ -2449,9 +2449,19 @@ function SetPasswordApp() {
           </label>
           {error ? <p className="login-error">{error}</p> : null}
           {ok ? <p className="ok">{ok}</p> : null}
-          <button className="login-submit" type="submit" disabled={busy}>
-            {busy ? "Saving…" : "Save"}
-          </button>
+          <div className="password-actions">
+            <button
+              className="password-knob password-knob-cancel"
+              type="button"
+              disabled={busy}
+              onClick={() => openView("main")}
+            >
+              Cancel
+            </button>
+            <button className="password-knob password-knob-save" type="submit" disabled={busy}>
+              {busy ? "Saving…" : "Save"}
+            </button>
+          </div>
         </form>
       </main>
     </div>
