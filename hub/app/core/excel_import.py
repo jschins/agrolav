@@ -448,11 +448,15 @@ def _public_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
         has_sheet_category = False
     if not has_sheet_category:
         record["category"] = DEFAULT_CATEGORY
+    else:
+        record["category"] = int(category)
+    # Spreadsheet category is authoritative (bidarra / palacios and any excel upload).
+    if str(record.get("type") or "").strip() == "Excel":
+        record["modification"] = 1
+    elif not has_sheet_category:
         record["modification"] = -1
-        record["hit"] = None
-        return record
-    record["category"] = int(category)
-    record["modification"] = 1
+    else:
+        record["modification"] = 1
     record["hit"] = None
     return record
 

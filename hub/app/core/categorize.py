@@ -843,8 +843,8 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
 
     ``from_scratch`` clears ``hit`` and sets ``modification`` to -1 first, so
     every row is treated as uncalculated (user category/description locks
-    are dropped). The algorithm then fills ``category``, ``hit``, and sets
-    ``modification`` to 0.
+    are dropped). Excel rows stay at ``modification`` 1. The algorithm then
+    fills ``category``, ``hit``, and sets ``modification`` to 0.
     """
     general = _category_map(_categories_file())
     personal = _personal_category_map()
@@ -860,7 +860,10 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
     if from_scratch:
         for record in records:
             record["hit"] = None
-            record["modification"] = MOD_UNCALCULATED
+            if _is_excel_row(record):
+                record["modification"] = MOD_CATEGORY
+            else:
+                record["modification"] = MOD_UNCALCULATED
 
     categorized = _categorize_transactions(records, general, personal)
 

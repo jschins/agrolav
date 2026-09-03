@@ -121,11 +121,12 @@ export function getTransactions(
   bank?: string
 ): Promise<TransactionsResponse> {
   const params = new URLSearchParams();
+  params.set("category", category);
   if (year) params.set("year", year);
   if (bank) params.set("bank", bank);
-  const q = params.toString();
-  const base = `/api/transactions/${encodeURIComponent(person_name)}/${encodeURIComponent(category)}`;
-  return getJson(q ? `${base}?${q}` : base);
+  return getJson(
+    `/api/transactions/${encodeURIComponent(person_name)}?${params.toString()}`
+  );
 }
 
 export function getCatalog(): Promise<CatalogResponse> {
@@ -147,8 +148,10 @@ export function updateSettings(
   category: string,
   terms: string[]
 ): Promise<TermsUpdateResponse> {
+  const params = new URLSearchParams();
+  params.set("category", category);
   return sendJson(
-    `/api/settings/${encodeURIComponent(group)}/${encodeURIComponent(category)}`,
+    `/api/settings/${encodeURIComponent(group)}?${params.toString()}`,
     "PUT",
     { terms }
   );

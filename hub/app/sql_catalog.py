@@ -4,6 +4,7 @@ Used when on-disk center folders are absent. Bookings stay in ``sql_replica``.
 """
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -63,6 +64,76 @@ def category_id_bounds(country_id: int) -> tuple[int, int]:
     """
     base = int(country_id) * 10000
     return base, base + 9999
+
+
+_CK_GE = re.compile(r"category_id\s*>=\s*(\d+)", re.I)
+_CK_LE = re.compile(r"category_id\s*<=\s*(\d+)", re.I)
+_CK_LT = re.compile(r"category_id\s*<\s*(\d+)", re.I)
+
+
+def _parse_txn_cat_check(definition: str) -> tuple[int, int] | None:
+    """Inclusive bounds from ``ck_txn_*_cat`` (BETWEEN / >= / <)."""
+    text = (
+        str(definition or "")
+        .replace("[", "")
+        .replace("]", "")
+        .replace("(", "")
+        .replace(")", "")
+    )
+    ge = _CK_GE.search(text)
+    if not ge:
+        return None
+    lo = int(ge.group(1))
+    le = _CK_LE.search(text)
+    if le:
+        return lo, int(le.group(1))
+    lt = _CK_LT.search(text)
+    if lt:
+        return lo, int(lt.group(1)) - 1
+    return None
+
+
+def _txn_cat_check_bounds(cursor, table: str) -> tuple[int, int] | None:
+    if not table:
+        return None
+    ident = table.split(".")[-1]
+    cursor.execute(
+        """
+        SELECT cc.definition
+        FROM sys.check_constraints cc
+        INNER JOIN sys.tables t ON t.object_id = cc.parent_object_id
+        INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+        WHERE s.name = N'dbo' AND t.name = ? AND cc.name LIKE N'ck_txn_%_cat'
+        """,
+        (ident,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    return _parse_txn_cat_check(str(row[0] or ""))
+
+
+def _alloc_category_id_bounds(
+    cursor,
+    table: str,
+    country_id: int,
+    used_ids: set[int],
+) -> tuple[int, int]:
+    """Range a new ``category_id`` may use (must satisfy the booking-table CHECK)."""
+    checked = _txn_cat_check_bounds(cursor, table)
+    if checked:
+        return checked
+    if used_ids:
+        return min(used_ids), max(used_ids)
+    return category_id_bounds(country_id)
+
+
+def _new_booking_category_id(used: set[int], local_code: int, lo: int, hi: int) -> int:
+    """Prefer ``local_code`` when that id is free and inside the table CHECK."""
+    code = int(local_code)
+    if lo <= code <= hi and code not in used:
+        return code
+    return _next_booking_category_id(used, lo, hi)
 
 
 def list_center_usernames(country: str) -> list[str]:
@@ -888,7 +959,9 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
             country_id = _country_id_for(cursor, name)
             if country_id is None:
                 raise ValueError(f"Unknown country: {name}")
-            lo, hi = category_id_bounds(country_id)
+            table = _transaction_table(name)
+            if table is None:
+                raise ValueError(f"Cannot derive transaction table for {name!r}")
             cursor.execute(
                 """
                 SELECT category_id, local_code, label, is_remainder, matrix_role
@@ -910,11 +983,14 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
                     "is_remainder": bool(int(is_remainder or 0)),
                 }
             used_ids = set(existing) | footer_ids
+            lo, hi = _alloc_category_id_bounds(cursor, table, country_id, used_ids)
             allocated: list[dict[str, Any]] = []
             for item in parsed:
                 cid = item["category_id"]
                 if cid is None:
-                    cid = _next_booking_category_id(used_ids, lo, hi)
+                    cid = _new_booking_category_id(
+                        used_ids, int(item["local_code"]), lo, hi
+                    )
                     used_ids.add(cid)
                     item = {**item, "category_id": cid, "is_new": True}
                 else:
@@ -929,10 +1005,6 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
             remainder_id = next(
                 int(item["category_id"]) for item in allocated if item["is_remainder"]
             )
-            table = _transaction_table(name)
-            if table is None:
-                raise ValueError(f"Cannot derive transaction table for {name!r}")
-
             remainder_item = next(item for item in allocated if item["is_remainder"])
             if remainder_item["is_new"]:
                 _insert_dim_category(

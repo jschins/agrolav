@@ -806,10 +806,12 @@ def ingest_bound_transactions(
                 continue
             iban = str(item.get("iban") or "").strip()[:64] or None
             code = _local_code(item.get("category"))
+            excel = str(item.get("type") or "").strip().casefold() == "excel"
+            lock = locked or excel
             category_id = (
-                by_code.get(code, remainder_id) if locked and code is not None else remainder_id
+                by_code.get(code, remainder_id) if lock and code is not None else remainder_id
             )
-            modification = _mod_bits(0, category=True) if locked else -1
+            modification = _mod_bits(0, category=True) if lock else -1
             params.append(
                 (
                     bound.person_id,

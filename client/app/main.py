@@ -744,33 +744,37 @@ def api_refresh_person(person_name: str, body: PersonRefreshRequest | None = Non
         raise _hub_error(exc) from exc
 
 
-@app.get("/api/transactions/{person_name}/{category_name}")
-def api_transactions(
+def _hub_transactions(
     person_name: str,
-    category_name: str,
-    year: str | None = Query(default=None),
-    bank: str | None = Query(default=None),
+    category: str,
+    year: str | None,
+    bank: str | None,
 ) -> dict[str, Any]:
     from app.centrale_sync import hub_get, load_config, require_person
     from shared.user_access import ACCESS_PERSON
     import urllib.parse
 
+    require_person(person_name)
+    cfg = load_config()
+    personal = cfg.access == ACCESS_PERSON
+    params = [f"category={urllib.parse.quote(category, safe='')}"]
+    if year:
+        params.append(f"year={urllib.parse.quote(year)}")
+    if personal and bank:
+        params.append(f"bank={urllib.parse.quote(bank)}")
+    suffix = f"/transactions/{urllib.parse.quote(person_name)}?{'&'.join(params)}"
+    return hub_get(suffix)
+
+
+@app.get("/api/transactions/{person_name}")
+def api_transactions(
+    person_name: str,
+    category: str = Query(),
+    year: str | None = Query(default=None),
+    bank: str | None = Query(default=None),
+) -> dict[str, Any]:
     try:
-        require_person(person_name)
-        cfg = load_config()
-        personal = cfg.access == ACCESS_PERSON
-        params: list[str] = []
-        if year:
-            params.append(f"year={urllib.parse.quote(year)}")
-        if personal and bank:
-            params.append(f"bank={urllib.parse.quote(bank)}")
-        suffix = (
-            f"/transactions/{urllib.parse.quote(person_name)}/"
-            f"{urllib.parse.quote(category_name)}"
-        )
-        if params:
-            suffix += "?" + "&".join(params)
-        return hub_get(suffix)
+        return _hub_transactions(person_name, category, year, bank)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:
@@ -860,26 +864,32 @@ def api_settings() -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
-@app.put("/api/settings/{group}/{category_name}")
-def api_update_settings(
-    group: str, category_name: str, body: SettingsTermsRequest
-) -> dict[str, Any]:
+def _hub_update_settings(group: str, category: str, body: SettingsTermsRequest) -> dict[str, Any]:
     from app.centrale_sync import hub_put, person_allowed, require_person, scope_matrix, scope_settings
     import urllib.parse
 
+    if group not in ("general", "shared", "categories") and not person_allowed(group):
+        require_person(group)
+    result = hub_put(
+        f"/settings/{urllib.parse.quote(group)}"
+        f"?category={urllib.parse.quote(category, safe='')}",
+        {"terms": body.terms, "source": _source()},
+    )
+    if isinstance(result, dict):
+        if isinstance(result.get("matrix"), dict):
+            result = {**result, "matrix": scope_matrix(result["matrix"])}
+        result = scope_settings(result)
+    return result
+
+
+@app.put("/api/settings/{group}")
+def api_update_settings(
+    group: str,
+    body: SettingsTermsRequest,
+    category: str = Query(),
+) -> dict[str, Any]:
     try:
-        # Personal term groups are named by person name; general/shared stay open.
-        if group not in ("general", "shared", "categories") and not person_allowed(group):
-            require_person(group)
-        result = hub_put(
-            f"/settings/{urllib.parse.quote(group)}/{urllib.parse.quote(category_name)}",
-            {"terms": body.terms, "source": _source()},
-        )
-        if isinstance(result, dict):
-            if isinstance(result.get("matrix"), dict):
-                result = {**result, "matrix": scope_matrix(result["matrix"])}
-            result = scope_settings(result)
-        return result
+        return _hub_update_settings(group, category, body)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:

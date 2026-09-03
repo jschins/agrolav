@@ -876,21 +876,31 @@ def api_transaction_split_save(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@app.get("/api/local/{center}/transactions/{person_name}/{category_name}")
+def _center_transactions(
+    center: str,
+    person_name: str,
+    category: str,
+    year: str | None,
+    bank: str | None,
+) -> dict[str, Any]:
+    from app import center_api
+
+    return center_api.transactions(
+        center, person_name, category, year=year, bank=bank
+    )
+
+
+@app.get("/api/local/{center}/transactions/{person_name}")
 def api_transactions(
     center: str,
     person_name: str,
-    category_name: str,
+    category: str = Query(),
     year: str | None = Query(default=None),
     bank: str | None = Query(default=None),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import center_api
-
     try:
-        return center_api.transactions(
-            center, person_name, category_name, year=year, bank=bank
-        )
+        return _center_transactions(center, person_name, category, year, bank)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -976,19 +986,19 @@ def api_update_catalog(
         ) from err
 
 
-@app.put("/api/local/{center}/settings/{group}/{category_name}")
+@app.put("/api/local/{center}/settings/{group}")
 def api_update_settings(
     center: str,
     group: str,
-    category_name: str,
     body: SettingsTermsRequest,
+    category: str = Query(),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app import center_api
 
     try:
         return center_api.update_settings(
-            center, group, category_name, body.terms, source=body.source
+            center, group, category, body.terms, source=body.source
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
