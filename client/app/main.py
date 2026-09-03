@@ -676,6 +676,27 @@ def api_recalculate_from_scratch() -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+class WipeYearRequest(BaseModel):
+    year: str
+
+
+@app.post("/api/wipe-year")
+def api_wipe_year(body: WipeYearRequest) -> dict[str, Any]:
+    from app.centrale_sync import hub_post, scope_matrix
+    from app.runtime import is_country
+
+    if not is_country():
+        raise HTTPException(status_code=403, detail="Wipe year requires country login")
+    try:
+        result = hub_post("/wipe-year", {"year": body.year}, timeout=600.0)
+        matrix = result.get("matrix")
+        if isinstance(matrix, dict):
+            result = {**result, "matrix": scope_matrix(matrix)}
+        return result
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 @app.post("/api/refresh")
 def api_refresh(body: RefreshRequest | None = None) -> dict[str, Any]:
     from app.centrale_sync import configured_person, hub_post, scope_refresh

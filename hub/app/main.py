@@ -622,6 +622,10 @@ class RecalculateScratchRequest(BaseModel):
     person: str | None = None
 
 
+class WipeYearRequest(BaseModel):
+    year: str
+
+
 @app.post("/api/local/{center}/recalculate-from-scratch")
 def api_recalculate_from_scratch(
     center: str,
@@ -631,6 +635,22 @@ def api_recalculate_from_scratch(
     req = body or RecalculateScratchRequest()
     try:
         return store.recalculate_from_scratch_all(center, person=req.person)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/local/{center}/wipe-year")
+def api_wipe_year(
+    center: str,
+    body: WipeYearRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    try:
+        return store.wipe_year(center, body.year)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -2263,7 +2283,7 @@ def upload_grant(
 ) -> dict[str, Any]:
     from app.core.bank_csv import upload_format_options
     from app.runtime import resolve_country_for_center
-    from app.sql_catalog import list_account_balance_files, years_for_person
+    from app.sql_catalog import list_uploaded_files, years_for_person
     from app.yearpath import default_upload_year, parse_year
 
     token = _upload_token(authorization, request.query_params.get("t"))
@@ -2290,7 +2310,7 @@ def upload_grant(
         "default_year": default_y,
         "year_options": year_options,
         "formats": upload_format_options(),
-        "files": list_account_balance_files(identity["person"]),
+        "files": list_uploaded_files(identity["person"]),
         "client_ip": _request_client_host(request),
     }
 
@@ -2341,7 +2361,7 @@ async def upload_api(
     """Identify a local file, write its rows into ``transaction_{country}`` for the person."""
     from app.core.bank_csv import identify_upload_format
     from app.runtime import bind_scope, resolve_country_for_center
-    from app.sql_catalog import record_account_balance_file
+    from app.sql_catalog import record_uploaded_file
     from app.sql_replica import ingest_bound_transactions
     from app.yearpath import default_upload_year, parse_year
 
@@ -2379,7 +2399,7 @@ async def upload_api(
     pack = _upload_person_scope(identity["person"], identity["center"], country, y)
     with bind_scope(pack):
         inserted = ingest_bound_transactions(records, locked=True)
-    record_account_balance_file(identity["person"], file.filename or "upload", fmt)
+    record_uploaded_file(identity["person"], file.filename or "upload", fmt)
     _sync_uploaded_account(
         person=identity["person"],
         country=country,

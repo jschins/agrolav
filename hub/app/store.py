@@ -536,6 +536,54 @@ def recalculate_from_scratch_all(
     }
 
 
+def wipe_year(center: str, year: str) -> dict[str, Any]:
+    """Delete one year's bookings for every account in this center's country."""
+    from app.matrix import build_matrix
+    from app.runtime import CALC_LOCK
+    from app.runtime import (
+        active_country,
+        resolve_country_for_center,
+        set_active_center,
+        set_request_country,
+    )
+    from app.settings import init_app
+    from app.sql_catalog import coerce_center, country_for_center, wipe_country_year
+    from app.yearpath import parse_year
+
+    primary = _clean_center(center)
+    y = parse_year(year)
+    country = (
+        country_for_center(coerce_center(primary))
+        or resolve_country_for_center(primary)
+        or active_country()
+    )
+    if not country:
+        raise ValueError(f"Unknown country for center {primary!r}")
+    with CALC_LOCK:
+        set_request_country(country)
+        set_active_center(primary, country=country)
+        init_app()
+        stats = wipe_country_year(country, y)
+        announced = announce_mutation(
+            primary,
+            derived_paths_for_center(primary, all_years=True),
+            source="central",
+        )
+        matrix_payload = build_matrix()
+    if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
+        matrix_payload = {**matrix_payload, "center": primary}
+    return {
+        "ok": True,
+        "center": primary,
+        "country": stats.get("country") or country,
+        "year": stats.get("year") or y,
+        "transactions": int(stats.get("transactions") or 0),
+        "files": int(stats.get("files") or 0),
+        "affected_files": announced,
+        "matrix": matrix_payload,
+    }
+
+
 def mutate_and_ircft(
     center: str,
     input_paths: list[str],

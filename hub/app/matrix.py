@@ -288,10 +288,10 @@ def recalculate_all_from_scratch(person_folders: list[str] | None = None) -> dic
 def _excel_refresh_result(pack: PersonScope) -> dict[str, Any]:
     """Recategorize SQL bookings for upload people (no year-folder scan)."""
     from app.core.categorize import recategorize_transactions
-    from app.sql_catalog import list_account_balance_files
+    from app.sql_catalog import list_uploaded_files
     from app.sql_replica import load_bound_transactions
 
-    files = list_account_balance_files(pack.person)
+    files = list_uploaded_files(pack.person)
     recategorize_transactions()
     rows = load_bound_transactions() or []
     return {

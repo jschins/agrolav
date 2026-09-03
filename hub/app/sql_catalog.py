@@ -172,8 +172,8 @@ def people_in_center(center: str) -> list[str]:
         return []
 
 
-def list_account_balance_files(username: str) -> list[dict[str, str]]:
-    """Uploaded filenames recorded on ``dbo.account_balance_file`` for this person."""
+def list_uploaded_files(username: str) -> list[dict[str, str]]:
+    """Uploaded filenames recorded on ``dbo.uploaded_files`` for this person."""
     name = (username or "").strip()
     if not name or not _sql_ready():
         return []
@@ -183,11 +183,11 @@ def list_account_balance_files(username: str) -> list[dict[str, str]]:
         cursor.execute(
             """
             SELECT f.file_name, f.format
-            FROM dbo.account_balance_file f
+            FROM dbo.uploaded_files f
             JOIN dbo.account a ON a.account_id = f.account_id
             JOIN dbo.person p ON p.id = a.person_id
             WHERE p.username = ? COLLATE Latin1_General_CI_AI
-            ORDER BY f.account_balance_file_id
+            ORDER BY f.uploaded_file_id
             """,
             (name,),
         )
@@ -204,7 +204,7 @@ def list_account_balance_files(username: str) -> list[dict[str, str]]:
         return []
 
 
-def record_account_balance_file(username: str, file_name: str, fmt: str | None) -> None:
+def record_uploaded_file(username: str, file_name: str, fmt: str | None) -> None:
     """INSERT one upload filename for the person's first account (skip duplicates)."""
     name = (username or "").strip()
     stored = str(file_name or "").strip()[:256]
@@ -237,7 +237,7 @@ def record_account_balance_file(username: str, file_name: str, fmt: str | None) 
         account_id = int(acc[0])
         cursor.execute(
             """
-            SELECT 1 FROM dbo.account_balance_file
+            SELECT 1 FROM dbo.uploaded_files
             WHERE account_id = ? AND file_name = ?
             """,
             (account_id, stored),
@@ -246,7 +246,7 @@ def record_account_balance_file(username: str, file_name: str, fmt: str | None) 
             return
         cursor.execute(
             """
-            INSERT INTO dbo.account_balance_file (account_id, file_name, format)
+            INSERT INTO dbo.uploaded_files (account_id, file_name, format)
             VALUES (?, ?, ?)
             """,
             (account_id, stored, (str(fmt or "").strip()[:64] or None)),
@@ -257,6 +257,122 @@ def record_account_balance_file(username: str, file_name: str, fmt: str | None) 
         _sql_retry(_run)
     except Exception as exc:  # noqa: BLE001
         print(f"sql catalog: could not record upload file: {exc}")
+
+
+def wipe_country_year(country: str, year: str) -> dict[str, Any]:
+    """Delete one year's bookings for every person in ``country``.
+
+    Removes rows from ``dbo.transaction_{country}`` and ``dbo.category_total``
+    for that year, then all ``dbo.uploaded_files`` for accounts in the country
+    (that table has no year column). Recomputes ``dbo.account.last_booked``.
+    """
+    from app import user_store
+    from app.sql_replica import _transaction_table
+    from app.yearpath import parse_year
+
+    name = (country or "").strip()
+    y = int(parse_year(year))
+    table = _transaction_table(name)
+    if not name or not table:
+        raise ValueError(f"Unknown country {country!r}")
+    if not _sql_ready():
+        raise RuntimeError("SQL is not configured")
+
+    def _run() -> dict[str, Any]:
+        cursor = _cursor()
+        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+        if cursor.fetchone()[0] is None:
+            raise ValueError(f"Missing transaction table {table}")
+        cursor.execute(
+            """
+            SELECT country_id FROM dbo.country
+            WHERE username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (name,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise ValueError(f"Unknown country {country!r}")
+        country_id = int(row[0])
+
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) FROM {table}
+            WHERE year = ?
+              AND person_id IN (SELECT id FROM dbo.person WHERE country_id = ?)
+            """,
+            (y, country_id),
+        )
+        tx_count = int(cursor.fetchone()[0])
+        cursor.execute(
+            f"""
+            DELETE FROM {table}
+            WHERE year = ?
+              AND person_id IN (SELECT id FROM dbo.person WHERE country_id = ?)
+            """,
+            (y, country_id),
+        )
+        cursor.execute(
+            """
+            DELETE FROM dbo.category_total
+            WHERE year = ?
+              AND person_id IN (SELECT id FROM dbo.person WHERE country_id = ?)
+            """,
+            (y, country_id),
+        )
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM dbo.uploaded_files
+            WHERE account_id IN (
+                SELECT a.account_id
+                FROM dbo.account a
+                JOIN dbo.person p ON p.id = a.person_id
+                WHERE p.country_id = ?
+            )
+            """,
+            (country_id,),
+        )
+        file_count = int(cursor.fetchone()[0])
+        cursor.execute(
+            """
+            DELETE FROM dbo.uploaded_files
+            WHERE account_id IN (
+                SELECT a.account_id
+                FROM dbo.account a
+                JOIN dbo.person p ON p.id = a.person_id
+                WHERE p.country_id = ?
+            )
+            """,
+            (country_id,),
+        )
+        cursor.execute(
+            f"""
+            UPDATE a
+            SET last_booked = x.mx
+            FROM dbo.account a
+            INNER JOIN dbo.person p ON p.id = a.person_id
+            LEFT JOIN (
+                SELECT account_id, MAX(booked_on) AS mx
+                FROM {table}
+                GROUP BY account_id
+            ) x ON x.account_id = a.account_id
+            WHERE p.country_id = ?
+            """,
+            (country_id,),
+        )
+        user_store._sql_connect().commit()
+        return {
+            "country": name,
+            "year": str(y),
+            "transactions": tx_count,
+            "files": file_count,
+        }
+
+    return _sql_retry(_run)
+
+
+list_account_balance_files = list_uploaded_files
+record_account_balance_file = record_uploaded_file
 
 
 def person_country_center(username: str) -> tuple[str, str] | None:

@@ -86,6 +86,16 @@ export function recalculateFromScratch(): Promise<MatrixResponse> {
   return sendJson("/api/recalculate-from-scratch", "POST", {});
 }
 
+export function wipeYear(year: string): Promise<{
+  ok: boolean;
+  year: string;
+  country?: string;
+  transactions: number;
+  files: number;
+}> {
+  return sendJson("/api/wipe-year", "POST", { year });
+}
+
 export function refreshAll(body: {
   date_from?: string;
   date_to?: string;

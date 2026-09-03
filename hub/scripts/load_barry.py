@@ -265,7 +265,7 @@ def _wipe_person(cursor, person_id: int, table: str) -> None:
     cursor.execute("DELETE FROM dbo.category_term WHERE person_id = ?", (person_id,))
     cursor.execute(
         """
-        DELETE FROM dbo.account_balance_file
+        DELETE FROM dbo.uploaded_files
         WHERE account_id IN (SELECT account_id FROM dbo.account WHERE person_id = ?)
         """,
         (person_id,),

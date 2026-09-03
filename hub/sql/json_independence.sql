@@ -5,7 +5,7 @@
 --   country, bank, dim_category, center, person, account,
 --   category_term (catalog person_id NULL + personal person_id set),
 --   type_abbreviation, transaction_nederland, transaction_uk,
---   category_total, account_balance_file
+--   category_total, uploaded_files
 --
 -- JSON / files these tables replace:
 --   categories.json table_header_terms  -> dbo.table_header_term

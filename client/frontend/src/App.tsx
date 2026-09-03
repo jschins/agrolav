@@ -27,6 +27,7 @@ import {
   type OtpChallenge,
   recalculate,
   recalculateFromScratch,
+  wipeYear,
   recordModification,
   refreshAll,
   refreshPerson,
@@ -548,6 +549,8 @@ function SyncNotifyShell({
   const [headerActions, setHeaderActions] = useState<HeaderAction[]>([]);
   const [scratchBusy, setScratchBusy] = useState(false);
   const [scratchError, setScratchError] = useState<string | null>(null);
+  const [wipeBusy, setWipeBusy] = useState(false);
+  const [wipeError, setWipeError] = useState<string | null>(null);
   const [dataRev, setDataRev] = useState(0);
   const dataEpochRef = useRef<number | null>(null);
 
@@ -732,7 +735,7 @@ function SyncNotifyShell({
   }
 
   function doRecalculateFromScratch() {
-    if (scratchBusy) return;
+    if (scratchBusy || wipeBusy) return;
     beginRefreshBusy("please wait... recalculating categories");
     flushSync(() => {
       setScratchBusy(true);
@@ -746,6 +749,38 @@ function SyncNotifyShell({
         .catch((e: Error) => setScratchError(e.message))
         .finally(() => {
           setScratchBusy(false);
+          endRefreshBusy();
+        });
+    });
+  }
+
+  function doWipeYear() {
+    if (scratchBusy || wipeBusy) return;
+    const suggested = activeYear || String(new Date().getFullYear());
+    const raw = window.prompt("Year to wipe (YYYY)", suggested);
+    if (raw == null) return;
+    const year = raw.trim();
+    if (!/^\d{4}$/.test(year) || Number(year) < 1990 || Number(year) > 2100) {
+      setWipeError("Enter a four-digit year between 1990 and 2100");
+      return;
+    }
+    const ok = window.confirm(
+      `Delete every ${year} transaction for all accounts in this country? Uploaded file names for those accounts will also be removed. This cannot be undone.`
+    );
+    if (!ok) return;
+    beginRefreshBusy(`please wait... wiping ${year}`);
+    flushSync(() => {
+      setWipeBusy(true);
+      setWipeError(null);
+    });
+    afterPaint(() => {
+      wipeYear(year)
+        .then(() => {
+          onCenterChanged?.();
+        })
+        .catch((e: Error) => setWipeError(e.message))
+        .finally(() => {
+          setWipeBusy(false);
           endRefreshBusy();
         });
     });
@@ -768,18 +803,26 @@ function SyncNotifyShell({
     items.push({
       id: "recalculate-categories",
       label: scratchBusy ? "Recalculating…" : "Recalculate categories",
-      disabled: scratchBusy,
+      disabled: scratchBusy || wipeBusy,
       onClick: doRecalculateFromScratch,
     });
+    if (access === "country") {
+      items.push({
+        id: "wipe-year",
+        label: wipeBusy ? "Wiping…" : "Wipe year",
+        disabled: scratchBusy || wipeBusy,
+        onClick: doWipeYear,
+      });
+    }
     if (access === "country" || access === "local") {
       items.push({
         id: "categories",
-        label: "edit categories",
+        label: "Edit categories",
         onClick: () => openView("categories"),
       });
       items.push({
         id: "ip-access",
-        label: "restrict IP access",
+        label: "Restrict IP access",
         onClick: () => openView("ip"),
       });
     }
@@ -793,12 +836,19 @@ function SyncNotifyShell({
     if (uploadUrl) {
       items.push({
         id: "upload",
-        label: "upload",
+        label: "Upload",
         onClick: () => window.location.assign(uploadUrl),
       });
     }
+    if (onLogout) {
+      items.push({
+        id: "logout",
+        label: "Logout",
+        onClick: onLogout,
+      });
+    }
     return items;
-  }, [headerActions, uploadUrl, access, scratchBusy]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear]);
 
   return (
     <HeaderActionsContext.Provider value={setHeaderActions}>
@@ -834,13 +884,9 @@ function SyncNotifyShell({
               />
             ) : null}
             <ActionsMenu items={menuItems} />
-            {onLogout ? (
-              <button type="button" className="logout-btn" onClick={onLogout}>
-                Log out
-              </button>
-            ) : null}
             {switching ? <span className="center-switcher-busy">switching…</span> : null}
             {scratchError ? <span> · {scratchError}</span> : null}
+            {wipeError ? <span> · {wipeError}</span> : null}
             {status?.error ? <span> · sync error: {status.error}</span> : null}
           </div>
           <div className="sync-notify-row">

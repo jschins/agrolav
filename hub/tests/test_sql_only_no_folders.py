@@ -143,7 +143,7 @@ class AccountBalanceFileTests(unittest.TestCase):
         with mock.patch.object(sql_catalog, "_sql_ready", return_value=True), mock.patch.object(
             sql_catalog, "_sql_retry", side_effect=lambda fn: fn()
         ), mock.patch.object(sql_catalog, "_cursor", return_value=cursor):
-            files = sql_catalog.list_account_balance_files("janpiet")
+            files = sql_catalog.list_uploaded_files("janpiet")
         self.assertEqual(
             files,
             [
@@ -152,7 +152,7 @@ class AccountBalanceFileTests(unittest.TestCase):
             ],
         )
         cursor.execute.assert_called_once()
-        self.assertIn("account_balance_file", cursor.execute.call_args[0][0])
+        self.assertIn("uploaded_files", cursor.execute.call_args[0][0])
 
     def test_record_inserts_when_filename_is_new(self):
         from app import sql_catalog
@@ -165,14 +165,44 @@ class AccountBalanceFileTests(unittest.TestCase):
         ), mock.patch.object(sql_catalog, "_cursor", return_value=cursor), mock.patch(
             "app.user_store._sql_connect", return_value=conn
         ):
-            sql_catalog.record_account_balance_file("janpiet", "jan.csv", "natwest-csv")
+            sql_catalog.record_uploaded_file("janpiet", "jan.csv", "natwest-csv")
         insert_sql = cursor.execute.call_args_list[-1][0][0]
-        self.assertIn("INSERT INTO dbo.account_balance_file", insert_sql)
+        self.assertIn("INSERT INTO dbo.uploaded_files", insert_sql)
+        conn.commit.assert_called_once()
+
+
+class WipeCountryYearTests(unittest.TestCase):
+    def test_deletes_year_transactions_and_uploaded_files(self):
+        from app import sql_catalog
+
+        cursor = mock.Mock()
+        cursor.fetchone.side_effect = [
+            (1,),
+            (4,),
+            (12,),
+            (3,),
+        ]
+        conn = mock.Mock()
+        with mock.patch.object(sql_catalog, "_sql_ready", return_value=True), mock.patch.object(
+            sql_catalog, "_sql_retry", side_effect=lambda fn: fn()
+        ), mock.patch.object(sql_catalog, "_cursor", return_value=cursor), mock.patch(
+            "app.user_store._sql_connect", return_value=conn
+        ), mock.patch(
+            "app.sql_replica._transaction_table", return_value="dbo.transaction_nederland"
+        ):
+            result = sql_catalog.wipe_country_year("nederland", "2025")
+        sqls = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertTrue(any("DELETE FROM dbo.transaction_nederland" in sql for sql in sqls))
+        self.assertTrue(any("DELETE FROM dbo.category_total" in sql for sql in sqls))
+        self.assertTrue(any("DELETE FROM dbo.uploaded_files" in sql for sql in sqls))
+        self.assertEqual(result["transactions"], 12)
+        self.assertEqual(result["files"], 3)
+        self.assertEqual(result["year"], "2025")
         conn.commit.assert_called_once()
 
 
 class UploadGrantAndIngestTests(unittest.TestCase):
-    def test_grant_lists_files_from_account_balance_file(self):
+    def test_grant_lists_files_from_uploaded_files(self):
         from app import main
 
         files = [{"file_name": "jan.csv", "format": "natwest-csv"}]
@@ -187,7 +217,7 @@ class UploadGrantAndIngestTests(unittest.TestCase):
         ), mock.patch(
             "app.sql_catalog.years_for_person", return_value=["2026"]
         ), mock.patch(
-            "app.sql_catalog.list_account_balance_files", return_value=files
+            "app.sql_catalog.list_uploaded_files", return_value=files
         ), mock.patch(
             "app.core.bank_csv.upload_format_options", return_value=["excel", "natwest-csv"]
         ):
@@ -224,7 +254,7 @@ class UploadGrantAndIngestTests(unittest.TestCase):
                 "app.sql_replica.ingest_bound_transactions",
                 side_effect=lambda recs, locked=False: ingested.extend(recs) or len(recs),
             ), mock.patch(
-                "app.sql_catalog.record_account_balance_file",
+                "app.sql_catalog.record_uploaded_file",
                 side_effect=lambda *args: recorded.append(args),
             ), mock.patch.object(
                 main, "_sync_uploaded_account"

@@ -853,7 +853,7 @@ def load_tree(
     if file_rows:
         cursor.executemany(
             """
-            INSERT INTO dbo.account_balance_file (account_id, file_name, format)
+            INSERT INTO dbo.uploaded_files (account_id, file_name, format)
             VALUES (?, ?, ?)
             """,
             [(account_id, name, fmt) for (account_id, name), fmt in file_rows.items()],

@@ -15,6 +15,7 @@ IF OBJECT_ID(N'dbo.enable_account', N'U') IS NOT NULL DROP TABLE dbo.enable_acco
 IF OBJECT_ID(N'dbo.enable_redirect', N'U') IS NOT NULL DROP TABLE dbo.enable_redirect;
 IF OBJECT_ID(N'dbo.private_key', N'U') IS NOT NULL DROP TABLE dbo.private_key;
 IF OBJECT_ID(N'dbo.enable_connection', N'U') IS NOT NULL DROP TABLE dbo.enable_connection;
+IF OBJECT_ID(N'dbo.uploaded_files', N'U') IS NOT NULL DROP TABLE dbo.uploaded_files;
 IF OBJECT_ID(N'dbo.account_balance_file', N'U') IS NOT NULL DROP TABLE dbo.account_balance_file;
 IF OBJECT_ID(N'dbo.account_balance', N'U') IS NOT NULL DROP TABLE dbo.account_balance;
 IF OBJECT_ID(N'dbo.category_total', N'U') IS NOT NULL DROP TABLE dbo.category_total;
@@ -259,12 +260,12 @@ CREATE UNIQUE INDEX ux_category_total_bank
     ON dbo.category_total (person_id, year, bank_id, category_id)
     WHERE bank_id IS NOT NULL;
 
-CREATE TABLE dbo.account_balance_file (
-    account_balance_file_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+CREATE TABLE dbo.uploaded_files (
+    uploaded_file_id INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
     account_id INT NOT NULL,
     file_name NVARCHAR(256) NOT NULL,
     format NVARCHAR(64) NULL,
-    CONSTRAINT fk_abf_balance FOREIGN KEY (account_id) REFERENCES dbo.account (account_id)
+    CONSTRAINT fk_uploaded_files_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id)
 );
 
 CREATE TABLE dbo.visitor_ip (
