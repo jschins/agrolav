@@ -618,13 +618,19 @@ def api_recalculate_center(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+class RecalculateScratchRequest(BaseModel):
+    person: str | None = None
+
+
 @app.post("/api/local/{center}/recalculate-from-scratch")
 def api_recalculate_from_scratch(
     center: str,
+    body: RecalculateScratchRequest | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
+    req = body or RecalculateScratchRequest()
     try:
-        return store.recalculate_from_scratch_all(center)
+        return store.recalculate_from_scratch_all(center, person=req.person)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

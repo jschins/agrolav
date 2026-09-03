@@ -660,10 +660,12 @@ def api_recalculate() -> dict[str, Any]:
 
 @app.post("/api/recalculate-from-scratch")
 def api_recalculate_from_scratch() -> dict[str, Any]:
-    from app.centrale_sync import hub_post, scope_matrix
+    from app.centrale_sync import configured_person, hub_post, scope_matrix
 
     try:
-        result = hub_post("/recalculate-from-scratch", {}, timeout=600.0)
+        person = configured_person()
+        body: dict[str, Any] = {"person": person} if person else {}
+        result = hub_post("/recalculate-from-scratch", body, timeout=600.0)
         matrix = result.get("matrix")
         if isinstance(matrix, dict):
             return scope_matrix(matrix)
@@ -719,7 +721,7 @@ def api_refresh_person(person_name: str, body: PersonRefreshRequest | None = Non
                 "date_to": req.date_to,
                 "new_year": req.new_year,
             },
-            timeout=300.0,
+            timeout=1200.0,
         )
         return scope_refresh(result) if isinstance(result, dict) else result
     except PermissionError as exc:

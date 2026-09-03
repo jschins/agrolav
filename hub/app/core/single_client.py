@@ -19,8 +19,6 @@ from urllib.parse import parse_qs, urlparse
 from app.core.enable_banking import EnableBankingClient, EnableBankingError
 from app.core.enable_banking.transactions import (
     parse_iso_date,
-    date_period_chunks,
-    dedupe_transactions,
     fetch_transactions_pages,
     fetch_transactions_period,
 )
@@ -283,10 +281,10 @@ class SingleDockerClient(EnableBankingClient):
         date_to: str | None = None,
     ) -> list[dict[str, Any]]:
         if date_from and date_to:
-            merged: list[dict[str, Any]] = []
-            for chunk_from, chunk_to in date_period_chunks(date_from, date_to):
-                merged.extend(self._fetch_transactions_period(account_uid, chunk_from, chunk_to))
-            return dedupe_transactions(merged)
+            # Split only when the bank rejects/truncates the range. A fixed
+            # 30-day pre-chunk of Jan–today × several accounts timed out the
+            # first personal login download.
+            return self._fetch_transactions_period(account_uid, date_from, date_to)
 
         transactions, _truncated = self._fetch_transactions_pages(account_uid, date_from, date_to)
         return transactions
@@ -1256,11 +1254,11 @@ def fetch_transactions(
     index_by_uid = _account_index_by_uid()
     raw_transactions: list[dict[str, Any]] = []
     account_errors: list[str] = []
-    for account in accounts:
+    for position, account in enumerate(accounts):
         account_uid = str(account.get("uid") or "")
         if not account_uid:
             continue
-        account_index = index_by_uid.get(account_uid, 0)
+        account_index = index_by_uid.get(account_uid, position)
         label = str(account.get("iban") or account.get("name") or account_uid)
         try:
             batch = client.get_transactions(account_uid, date_from=resolved_from, date_to=resolved_to)
@@ -1276,10 +1274,13 @@ def fetch_transactions(
     if not raw_transactions and account_errors:
         raise EnableBankingError("; ".join(account_errors))
 
-    _refresh_account_balances(
-        client,
-        [str(account.get("uid")) for account in accounts if account.get("uid")],
-    )
+    try:
+        _refresh_account_balances(
+            client,
+            [str(account.get("uid")) for account in accounts if account.get("uid")],
+        )
+    except Exception:
+        pass
 
     try:
         from app.core.categorize import refresh_category_totals_balances

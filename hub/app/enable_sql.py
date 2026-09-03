@@ -426,7 +426,10 @@ def upsert_person_accounts(username: str, accounts: list[dict[str, Any]]) -> lis
         uid = str(account.get("uid") or "").strip()[:128]
         if not uid:
             continue
-        iban = str(account.get("iban") or "Credit Card").strip()[:64] or "Credit Card"
+        iban = str(account.get("iban") or "").strip()[:64]
+        placeholder_iban = not iban or iban.lower() == "credit card"
+        if placeholder_iban:
+            iban = iban or "Credit Card"
         name = (
             str(
                 account.get("name")
@@ -441,12 +444,24 @@ def upsert_person_accounts(username: str, accounts: list[dict[str, Any]]) -> lis
             """
             SELECT TOP 1 account_id
             FROM dbo.account
-            WHERE person_id = ? AND (uid = ? OR iban = ?)
-            ORDER BY CASE WHEN uid = ? THEN 0 ELSE 1 END, account_id
+            WHERE person_id = ? AND uid = ?
+            ORDER BY account_id
             """,
-            (person_id, uid, iban, uid),
+            (person_id, uid),
         )
         row = cursor.fetchone()
+        if row is None and not placeholder_iban:
+            cursor.execute(
+                """
+                SELECT TOP 1 account_id
+                FROM dbo.account
+                WHERE person_id = ? AND iban = ?
+                  AND (uid IS NULL OR LTRIM(RTRIM(CAST(uid AS NVARCHAR(128)))) = N'')
+                ORDER BY account_id
+                """,
+                (person_id, iban),
+            )
+            row = cursor.fetchone()
         if row is None:
             cursor.execute(
                 """

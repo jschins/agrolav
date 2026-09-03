@@ -488,15 +488,22 @@ def mutate_and_publish(
     }
 
 
-def recalculate_from_scratch_all(center: str, *, source: str = "central") -> dict[str, Any]:
-    """Wipe hit/modification and recategorize every person in every country."""
+def recalculate_from_scratch_all(
+    center: str,
+    *,
+    person: str | None = None,
+    source: str = "central",
+) -> dict[str, Any]:
+    """Wipe hit/modification and recategorize the logged-in scope.
+
+    ``person`` set → that person only. Otherwise every person in ``center``.
+    Does not walk other centers or countries.
+    """
     from app.matrix import build_matrix, recalculate_all_from_scratch
     from app.runtime import CALC_LOCK
     from app.runtime import (
         active_country,
-        list_country_folders,
         resolve_country_for_center,
-        reset_request_country,
         set_active_center,
         set_request_country,
     )
@@ -504,37 +511,26 @@ def recalculate_from_scratch_all(center: str, *, source: str = "central") -> dic
 
     primary = _clean_center(center)
     primary_country = resolve_country_for_center(primary) or active_country()
-    announced: list[str] = []
-    done: list[str] = []
+    name = (person or "").strip()
+    folders = [name] if name else None
     with CALC_LOCK:
-        for country in list_country_folders():
-            country_token = set_request_country(country)
-            try:
-                for ws in list_centers(country):
-                    set_active_center(ws, country=country)
-                    init_app()
-                    recalculate_all_from_scratch()
-                    announced.extend(
-                        announce_mutation(
-                            ws,
-                            derived_paths_for_center(ws, all_years=True),
-                            source=source,
-                        )
-                    )
-                    done.append(f"{country}/{ws}")
-            finally:
-                reset_request_country(country_token)
-        set_active_center(primary, country=primary_country)
         if primary_country:
             set_request_country(primary_country)
+        set_active_center(primary, country=primary_country)
         init_app()
+        recalculate_all_from_scratch(folders)
+        announced = announce_mutation(
+            primary,
+            derived_paths_for_center(primary, all_years=True),
+            source=source,
+        )
         matrix_payload = build_matrix()
     if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
         matrix_payload = {**matrix_payload, "center": primary}
     return {
         "ok": True,
         "center": primary,
-        "centers": done,
+        "person": name,
         "affected_files": announced,
         "matrix": matrix_payload,
     }

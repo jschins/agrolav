@@ -733,7 +733,7 @@ function SyncNotifyShell({
 
   function doRecalculateFromScratch() {
     if (scratchBusy) return;
-    beginRefreshBusy("please wait... recalculating");
+    beginRefreshBusy("please wait... recalculating categories");
     flushSync(() => {
       setScratchBusy(true);
       setScratchError(null);
@@ -834,7 +834,7 @@ function SyncNotifyShell({
               disabled={scratchBusy}
               onClick={doRecalculateFromScratch}
             >
-              {scratchBusy ? "Recalculating…" : "Recalculate from scratch"}
+              {scratchBusy ? "Recalculating…" : "Recalculate categories"}
             </button>
             {onLogout ? (
               <button type="button" className="logout-btn" onClick={onLogout}>
