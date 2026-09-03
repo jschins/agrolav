@@ -1122,6 +1122,25 @@ textarea.cell-edit {
   cursor: wait;
 }
 
+.password-main {
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+}
+
+.password-card {
+  margin: 0;
+  box-shadow: none;
+}
+
+.password-title {
+  margin: 0 0 0.15rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+  text-align: center;
+  letter-spacing: -0.02em;
+}
+
 .auth-user-label {
   color: #475569;
   font-size: 0.8rem;
@@ -1136,9 +1155,4 @@ textarea.cell-edit {
   color: #1a1a1a;
   cursor: pointer;
   border-radius: 4px;
-}
-
-.recalc-scratch-btn:disabled {
-  opacity: 0.55;
-  cursor: wait;
 }

@@ -765,6 +765,12 @@ function SyncNotifyShell({
       label: "⚙ Edit Terms (Alt+T)",
       onClick: () => openView("terms"),
     });
+    items.push({
+      id: "recalculate-categories",
+      label: scratchBusy ? "Recalculating…" : "Recalculate categories",
+      disabled: scratchBusy,
+      onClick: doRecalculateFromScratch,
+    });
     if (access === "country" || access === "local") {
       items.push({
         id: "categories",
@@ -792,7 +798,7 @@ function SyncNotifyShell({
       });
     }
     return items;
-  }, [headerActions, uploadUrl, access]);
+  }, [headerActions, uploadUrl, access, scratchBusy]);
 
   return (
     <HeaderActionsContext.Provider value={setHeaderActions}>
@@ -828,14 +834,6 @@ function SyncNotifyShell({
               />
             ) : null}
             <ActionsMenu items={menuItems} />
-            <button
-              type="button"
-              className="logout-btn recalc-scratch-btn"
-              disabled={scratchBusy}
-              onClick={doRecalculateFromScratch}
-            >
-              {scratchBusy ? "Recalculating…" : "Recalculate categories"}
-            </button>
             {onLogout ? (
               <button type="button" className="logout-btn" onClick={onLogout}>
                 Log out
@@ -2350,13 +2348,12 @@ function SetPasswordApp() {
           </div>
         </div>
         <p className="win-hint">
-          Person login only. Country and center keep the default formula password.
-          A mobile number (E.164, e.g. +31612345678) turns on SMS login.
+          Mobile phone number activates two-step login by sending a 6-digit code via SMS
         </p>
       </aside>
-      <main className="terms-main">
-        <h1>Set password</h1>
-        <form onSubmit={submit} className="login-card" style={{ margin: "1rem 0", boxShadow: "none" }}>
+      <main className="terms-main password-main">
+        <form onSubmit={submit} className="login-card password-card">
+          <h1 className="password-title">Set password</h1>
           <label className="login-label">
             Current password
             <input
