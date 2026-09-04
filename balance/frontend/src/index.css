@@ -25,7 +25,7 @@ h1 small { font-weight: 400; color: #666; }
 .error { color: #b42318; background: #fdecea; border: 1px solid #f5c6c2; padding: 10px 12px; border-radius: 6px; margin-bottom: 16px; white-space: pre-wrap; }
 .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .sheet .column { background: #fff; border: 1px solid #e0e3e8; border-radius: 8px; overflow: hidden; }
-.sheet .column h2 { margin: 0; padding: 10px 14px; font-size: 1rem; background: #eef1f5; border-bottom: 1px solid #e0e3e8; }
+.sheet .column h2 { margin: 0; padding: 10px 14px; font-size: 1rem; background: #ffecbc; border-bottom: 1px solid #e0e3e8; }
 .sheet table { width: 100%; border-collapse: collapse; }
 .sheet th, .sheet td { text-align: left; padding: 7px 14px; font-size: 0.92rem; border-bottom: 1px solid #eef0f3; }
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }

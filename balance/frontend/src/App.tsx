@@ -137,13 +137,8 @@ export default function App() {
 
           {sheet && (
             <div className="toolbar">
-              <span className={sheet.balanced ? "balance-badge ok" : "balance-badge bad"}>
-                {sheet.balanced
-                  ? "Activa = Passiva (in balans)"
-                  : "Niet in balans"}
-              </span>
               <button onClick={onRebuild} disabled={busy || year == null}>
-                {busy ? "Bezig…" : "Herbouw spaarrekening (1052)"}
+                {busy ? "Bezig…" : "Verversen"}
               </button>
               <button onClick={() => setView("journal")} disabled={year == null}>
                 Edit transactions
