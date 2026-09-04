@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "balance-hub"
+version = "0.1"
+description = "Balance statement hub for Beheer"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.6.0",
+  "pyodbc>=5.3.0",
+  "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+balance = "app.main:run"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

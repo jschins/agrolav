@@ -1,0 +1,32 @@
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1a1a1a;
+  background: #f5f6f8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+#root { max-width: 1000px; margin: 0 auto; padding: 24px 16px 64px; }
+header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+h1 { font-size: 1.5rem; margin: 0; }
+h1 small { font-weight: 400; color: #666; }
+header .year-switch { display: flex; gap: 6px; margin-left: auto; align-items: center; }
+.year-switch button, .toolbar button {
+  font: inherit; cursor: pointer; border-radius: 6px;
+  padding: 6px 12px; border: 1px solid #c4c9d0; background: #fff;
+}
+.year-switch button.active { background: #2a5a8c; color: #fff; border-color: #2a5a8c; }
+.toolbar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
+.toolbar .balance-badge { font-size: 0.9rem; }
+.balance-badge.ok { color: #1a7f37; font-weight: 600; }
+.balance-badge.bad { color: #b42318; font-weight: 600; }
+.error { color: #b42318; background: #fdecea; border: 1px solid #f5c6c2; padding: 10px 12px; border-radius: 6px; margin-bottom: 16px; white-space: pre-wrap; }
+.sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.column { background: #fff; border: 1px solid #e0e3e8; border-radius: 8px; overflow: hidden; }
+.column h2 { margin: 0; padding: 10px 14px; font-size: 1rem; background: #eef1f5; border-bottom: 1px solid #e0e3e8; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 7px 14px; font-size: 0.92rem; border-bottom: 1px solid #eef0f3; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.code { color: #666; width: 3.5em; }
+tfoot td { border-top: 2px solid #2a5a8c; font-weight: 700; }
+tfoot .computed { color: #7a4fbf; }
+.loading { padding: 40px; text-align: center; color: #666; }

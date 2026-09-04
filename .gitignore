@@ -16,6 +16,12 @@ client/frontend/**/*.tsbuildinfo
 client/frontend/vite.config.js
 client/frontend/vite.config.d.ts
 
+balance/frontend/dist/
+balance/frontend/node_modules/
+balance/frontend/**/*.tsbuildinfo
+balance/frontend/vite.config.js
+balance/frontend/vite.config.d.ts
+
 upload.log
 
 documentation/
