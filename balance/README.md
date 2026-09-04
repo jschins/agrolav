@@ -416,6 +416,24 @@ HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DA
 # BALANCE_DIST=/opt/agrolav/balance/frontend/dist
 ```
 
+### Optional API key (future)
+
+The hub supports an optional `CENTRALE_API_KEY` in `balance.env`; when set, every
+`/api/...` endpoint (except `/api/health`) requires an
+`Authorization: Bearer <key>` header. **This is currently disabled by default**
+because the balance SPA calls the API without an `Authorization` header — the
+sheet is served as a public read-only view, and a shared secret cannot be safely
+embedded in a browser app.
+
+To enable it later (once the frontend gets a real login that can attach the
+header), add:
+
+```text
+CENTRALE_API_KEY=your-secret-token
+```
+
+Keeping it empty (or the line absent) leaves the balance sheet public.
+
 The hub serves the frontend's `dist/` at `/balance/` and its API at
 `/api/balance/...`, all on `127.0.0.1:8100`.
 

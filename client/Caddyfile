@@ -15,6 +15,14 @@ boekhouding.agrolav.nl, expenses.apsurt.nl {
         }
     }
 
+    handle /balance/api/* {
+        uri strip_prefix /balance
+        reverse_proxy 127.0.0.1:8100 {
+            header_up X-Forwarded-For {http.request.remote.host}
+            header_up X-Real-IP {http.request.remote.host}
+        }
+    }
+
     handle /balance* {
         reverse_proxy 127.0.0.1:8100 {
             header_up X-Forwarded-For {http.request.remote.host}
