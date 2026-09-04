@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getSheet, getYears, rebuildSpaarMirror } from "./api";
+import JournalEditor from "./JournalEditor";
 import type { BalanceSheet } from "./types";
 
 const EUR = new Intl.NumberFormat("nl-NL", {
@@ -63,6 +64,7 @@ export default function App() {
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<"sheet" | "journal">("sheet");
 
   const load = useCallback((y: number) => {
     setError(null);
@@ -123,28 +125,45 @@ export default function App() {
         )}
       </header>
 
-      {sheet && (
-        <div className="toolbar">
-          <span className={sheet.balanced ? "balance-badge ok" : "balance-badge bad"}>
-            {sheet.balanced
-              ? "Activa = Passiva (in balans)"
-              : "Niet in balans"}
-          </span>
-          <button onClick={onRebuild} disabled={busy || year == null}>
-            {busy ? "Bezig…" : "Herbouw spaarrekening (1052)"}
-          </button>
-        </div>
+      {view === "journal" && (
+        <JournalEditor
+          year={year ?? new Date().getFullYear()}
+          onBack={() => {
+            setView("sheet");
+            if (year != null) load(year);
+          }}
+        />
       )}
 
-      {error && <div className="error">{error}</div>}
+      {view === "sheet" && (
+        <>
+          {sheet && (
+            <div className="toolbar">
+              <span className={sheet.balanced ? "balance-badge ok" : "balance-badge bad"}>
+                {sheet.balanced
+                  ? "Activa = Passiva (in balans)"
+                  : "Niet in balans"}
+              </span>
+              <button onClick={onRebuild} disabled={busy || year == null}>
+                {busy ? "Bezig…" : "Herbouw spaarrekening (1052)"}
+              </button>
+              <button onClick={() => setView("journal")} disabled={year == null}>
+                Edit transactions
+              </button>
+            </div>
+          )}
 
-      {!sheet && !error && <div className="loading">Laden…</div>}
+          {error && <div className="error">{error}</div>}
 
-      {sheet && (
-        <div className="sheet">
-          <SideTable title="Activa" lines={sheet.activa} total={sheet.total_activa} />
-          <SideTable title="Passiva" lines={sheet.passiva} total={sheet.total_passiva} />
-        </div>
+          {!sheet && !error && <div className="loading">Laden…</div>}
+
+          {sheet && (
+            <div className="sheet">
+              <SideTable title="Activa" lines={sheet.activa} total={sheet.total_activa} />
+              <SideTable title="Passiva" lines={sheet.passiva} total={sheet.total_passiva} />
+            </div>
+          )}
+        </>
       )}
     </div>
   );

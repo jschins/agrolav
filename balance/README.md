@@ -101,6 +101,35 @@ CREATE TABLE dbo.balance_transaction (
 );
 ```
 
+### 3c. `dbo.balance_journal` — hand-edited linking transactions
+
+Hand-edited journal entries that move money from one balance category to another
+(used for person `sdog` in center `beh_stichtingen`; a future `instudo` person
+will share the same structure). Each row has a FROM category, a TO category, an
+amount and a description. These are deliberately **separate** from
+`transaction_beheer` (bank bookings) and from the auto-generated spaar-mirror
+rows in `balance_transaction`.
+
+```sql
+IF OBJECT_ID(N'dbo.balance_journal', N'U') IS NULL
+CREATE TABLE dbo.balance_journal (
+    journal_id      INT           IDENTITY(1,1) PRIMARY KEY,
+    year            INT           NOT NULL,
+    date            DATE          NOT NULL,
+    category_from   INT           NOT NULL,
+    category_to     INT           NOT NULL,
+    amount          DECIMAL(18,2) NOT NULL,
+    description     NVARCHAR(512) NOT NULL,
+    created_at      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME()
+);
+```
+
+DDL file: `balance/sql/balance_journal.sql`. For each row the **FROM** category
+decreases by `amount` and the **TO** category increases by `amount`, so the sum
+across all categories is zero and the sheet stays balanced. In `balance_sheet`
+these effects are folded into each category total (source becomes
+`opening+journal` / `account:N+journal`).
+
 ---
 
 ## 4. Bank account → category mapping
@@ -154,6 +183,8 @@ is recorded by the accountant.
 | GET | `/api/balance/{year}/passiva` | Passiva side only |
 | PUT | `/api/balance/{year}/opening` | Set/update opening balances for a year |
 | POST | `/api/balance/{year}/spaar-mirror` | Rebuild the faked 1052 spaarrekening journal from the 1051 source rows |
+| GET | `/api/balance/{year}/journal` | List the hand-edited journal rows for a year |
+| PUT | `/api/balance/{year}/journal` | Full-replace the hand-edited journal for a year (from/to/amount/description) |
 | GET | `/api/balance/years` | List years with data |
 | GET | `/api/balance/categories` | Category list with bank account links |
 
@@ -264,6 +295,14 @@ The React app adds routes under `/balance/`:
 | `/balance/{year}` | Same, for a specific year |
 | `/balance/{year}/edit` | Edit opening balances (non-bank categories only) |
 
+From the overview toolbar the **Herbouw spaarrekening (1052)** knob rebuilds the
+1052 mirror journal, and the **Edit transactions** knob opens a full-screen
+journal editor (same window, replacing the sheet) for the hand-edited
+`balance_journal` rows of the selected year. The editor follows the client's
+category-edit pattern (draft table with inline inputs, add/remove rows, Save
+does a full-replace for the year). After returning to the sheet the totals are
+reloaded so the journal effects show up.
+
 The existing matrix/transaction/categorization UI is not affected.
 
 ---
@@ -332,12 +371,14 @@ balance/
     vite.config.ts    ← base /balance/, dev proxy → http://127.0.0.1:8100 (port 5174)
     src/
       main.tsx        ← entry
-      App.tsx         ← balance sheet UI (activa/passiva + rebuild button)
+      App.tsx         ← balance sheet UI (activa/passiva + view switch)
+      JournalEditor.tsx ← hand-edited journal editor (Edit transactions)
       api.ts          ← /balance/api/... calls
       types.ts
       index.css
   sql/
-    schema.sql        ← balance_opening + balance_transaction DDL
+    schema.sql            ← balance_opening + balance_transaction DDL
+    balance_journal.sql   ← dbo.balance_journal DDL
 ```
 
 The balance hub is standalone: it depends only on fastapi/uvicorn/pydantic/

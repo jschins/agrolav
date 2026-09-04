@@ -30,3 +30,26 @@ td.code { color: #666; width: 3.5em; }
 tfoot td { border-top: 2px solid #2a5a8c; font-weight: 700; }
 tfoot .computed { color: #7a4fbf; }
 .loading { padding: 40px; text-align: center; color: #666; }
+.ok { color: #1a7f37; background: #e6f4ea; border: 1px solid #b7e0c3; padding: 10px 12px; border-radius: 6px; margin-bottom: 16px; }
+
+.journal { display: grid; grid-template-columns: 220px 1fr; gap: 20px; align-items: start; }
+.journal-side { display: flex; flex-direction: column; gap: 8px; background: #fff; border: 1px solid #e0e3e8; border-radius: 8px; padding: 12px; }
+.journal-side button, .toolbar button {
+  font: inherit; cursor: pointer; border-radius: 6px;
+  padding: 8px 12px; border: 1px solid #c4c9d0; background: #fff; text-align: left;
+}
+.journal-side button:hover, .toolbar button:hover { background: #eef1f5; }
+.journal-body { background: #fff; border: 1px solid #e0e3e8; border-radius: 8px; overflow: hidden; }
+.journal-body > p { padding: 16px; color: #666; }
+.journal-table { width: 100%; border-collapse: collapse; }
+.journal-table th { background: #eef1f5; position: sticky; top: 0; }
+.journal-table td, .journal-table th { padding: 6px 10px; border-bottom: 1px solid #eef0f3; font-size: 0.88rem; }
+.journal-table input[type="date"],
+.journal-table input[type="number"],
+.journal-table input[type="text"],
+.journal-table select {
+  font: inherit; padding: 4px 6px; border: 1px solid #c4c9d0; border-radius: 5px; width: 100%;
+}
+.journal-table input[type="number"] { width: 90px; text-align: right; }
+.journal-table input[type="date"] { width: 130px; }
+.journal-table .journal-delete { font: inherit; cursor: pointer; border: 1px solid #f0b0aa; background: #fdecea; color: #b42318; border-radius: 6px; padding: 4px 8px; }

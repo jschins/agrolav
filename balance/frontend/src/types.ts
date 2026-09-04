@@ -28,3 +28,24 @@ export interface CategoryInfo {
 export interface YearsResponse {
   years: number[];
 }
+
+export interface JournalRow {
+  journal_id: number;
+  year: number;
+  date: string;
+  category_from: number;
+  category_to: number;
+  amount: number;
+  description: string;
+  from_label: string;
+  to_label: string;
+}
+
+export interface JournalResponse {
+  year: number;
+  rows: JournalRow[];
+}
+
+export interface CategoriesResponse {
+  categories: CategoryInfo[];
+}

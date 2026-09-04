@@ -104,6 +104,37 @@ def balance_spaar_mirror(
     return generate_spaarmirror(year)
 
 
+class JournalItem(BaseModel):
+    date: str
+    category_from: int
+    category_to: int
+    amount: float = 0.0
+    description: str = ""
+
+
+class JournalPayload(BaseModel):
+    items: list[JournalItem] = Field(default_factory=list)
+
+
+@app.get("/api/balance/{year}/journal")
+def balance_journal_get(
+    year: int,
+    _: None = Depends(_api_key),
+) -> dict[str, Any]:
+    from app.balance import list_journal
+    return {"year": year, "rows": list_journal(year)}
+
+
+@app.put("/api/balance/{year}/journal")
+def balance_journal_put(
+    year: int,
+    body: JournalPayload,
+    _: None = Depends(_api_key),
+) -> dict[str, Any]:
+    from app.balance import save_journal
+    return save_journal(year, [item.model_dump() for item in body.items])
+
+
 def run() -> None:
     import uvicorn
 

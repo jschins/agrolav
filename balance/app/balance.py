@@ -79,6 +79,37 @@ def _journal_balances(year: int) -> dict[int, Decimal]:
         return {int(r[0]): Decimal(str(r[1])) for r in cur.fetchall()}
 
 
+def _journal_table_exists() -> bool:
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT OBJECT_ID(N'dbo.balance_journal')")
+        return cur.fetchone()[0] is not None
+
+
+def _journal_effect(year: int) -> dict[int, Decimal]:
+    """category_id → net effect from the hand-edited dbo.balance_journal.
+
+    Each row moves money FROM ``category_from`` TO ``category_to``: the FROM
+    category decreases by ``amount`` and the TO category increases by ``amount``.
+    The sum over all categories is therefore zero (the sheet stays balanced).
+    """
+    if not _journal_table_exists():
+        return {}
+    effect: dict[int, Decimal] = {}
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT category_from, category_to, amount FROM dbo.balance_journal "
+            "WHERE year = ?",
+            year,
+        )
+        for cat_from, cat_to, amount in cur.fetchall():
+            d = Decimal(str(amount))
+            effect[cat_from] = effect.get(cat_from, Decimal("0")) - d
+            effect[cat_to] = effect.get(cat_to, Decimal("0")) + d
+    return effect
+
+
 def _spaar_mirror_rows(year: int) -> list[tuple[int, str, Decimal, str]]:
     """Derive the faked spaarrekening (1052) mirror transactions.
 
@@ -135,6 +166,7 @@ def balance_sheet(year: int) -> dict[str, Any]:
     acct = _account_balances()
     opening = _opening_balances(year)
     journal = _journal_balances(year)
+    journal_effect = _journal_effect(year)
     labels = _category_labels()
 
     activa: list[dict[str, Any]] = []
@@ -158,6 +190,12 @@ def balance_sheet(year: int) -> dict[str, Any]:
             if journal_amount is not None:
                 amount += journal_amount
                 source = "opening+journal"
+
+        effect = journal_effect.get(cat_id)
+        if effect:
+            amount += effect
+            if "+journal" not in source:
+                source += "+journal"
 
         row = {"category_id": cat_id, "code": cat_id, "label": label,
                "amount": float(amount), "source": source}
@@ -293,3 +331,56 @@ def generate_spaarmirror(year: int) -> dict[str, Any]:
             )
         conn.commit()
     return {"ok": True, "year": year, "generated": len(rows)}
+
+
+def list_journal(year: int) -> list[dict[str, Any]]:
+    """All hand-edited journal rows for a year (oldest first)."""
+    labels = _category_labels()
+    rows: list[dict[str, Any]] = []
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT journal_id, date, category_from, category_to, amount, description "
+            "FROM dbo.balance_journal WHERE year = ? "
+            "ORDER BY date, journal_id",
+            year,
+        )
+        for journal_id, date, cat_from, cat_to, amount, desc in cur.fetchall():
+            rows.append({
+                "journal_id": int(journal_id),
+                "year": year,
+                "date": str(date),
+                "category_from": int(cat_from),
+                "category_to": int(cat_to),
+                "amount": float(amount),
+                "description": str(desc or ""),
+                "from_label": labels.get(int(cat_from), f"cat_{cat_from}"),
+                "to_label": labels.get(int(cat_to), f"cat_{cat_to}"),
+            })
+    return rows
+
+
+def save_journal(year: int, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Full-replace the hand-edited journal for a year.
+
+    Each item: {"date", "category_from", "category_to", "amount", "description"}.
+    All existing rows for the year are deleted first, then the submitted set is
+    inserted. Does not touch dbo.balance_transaction (the auto spaar-mirror).
+    """
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM dbo.balance_journal WHERE year = ?", year)
+        for item in items:
+            date = str(item["date"])
+            cat_from = int(item["category_from"])
+            cat_to = int(item["category_to"])
+            amount = Decimal(str(item.get("amount", 0)))
+            description = str(item.get("description") or "")[:512]
+            cur.execute(
+                "INSERT INTO dbo.balance_journal "
+                "(year, date, category_from, category_to, amount, description, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
+                year, date, cat_from, cat_to, amount, description,
+            )
+        conn.commit()
+    return {"ok": True, "year": year, "saved": len(items)}
