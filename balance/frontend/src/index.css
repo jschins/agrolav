@@ -92,6 +92,7 @@ td.code { color: #666; width: 3.5em; }
 .journal-table {
   border-collapse: collapse;
   width: 100%;
+  table-layout: fixed;
   background: #fbfdef;
   font-size: 0.8rem;
 }
@@ -103,10 +104,10 @@ td.code { color: #666; width: 3.5em; }
   text-overflow: ellipsis;
 }
 .journal-table th { background: #ffecbc; }
-.journal-table col.col-date { width: 58px; }
+.journal-table col.col-date { width: 90px; }
 .journal-table col.col-cat { width: 90px; }
-.journal-table col.col-amount { width: 48px; }
-.journal-table col.col-act { width: 27px; }
+.journal-table col.col-amount { width: 100px; }
+.journal-table col.col-act { width: 90px; }
 .journal-table col.col-desc { width: auto; }
 .journal-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .journal-table td.code { color: #475569; text-align: center; }
@@ -117,7 +118,7 @@ td.code { color: #666; width: 3.5em; }
 .journal-table select {
   font: inherit; padding: 3px 5px; border: 1px solid #cbd5e1; border-radius: 4px;
 }
-.journal-table input[type="date"] { width: 130px; }
+.journal-table input[type="date"], .journal-table select { width: 100%; }
 .journal-table input[type="number"] { width: 90px; text-align: right; }
 .journal-table input.journal-desc {
   font: inherit; padding: 3px 5px; border: 1px solid #cbd5e1; border-radius: 4px;
@@ -125,7 +126,6 @@ td.code { color: #666; width: 3.5em; }
 }
 
 .journal-table th.desc, .journal-table td.desc {
-  width: 100%;
   white-space: normal;
   overflow: visible;
   text-overflow: clip;

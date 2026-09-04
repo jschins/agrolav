@@ -47,6 +47,21 @@ function formatDate(iso: string): string {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
+function sideShort(side: string): string {
+  switch (side) {
+    case "activa":
+      return "A";
+    case "passiva":
+      return "P";
+    case "kosten":
+      return "K";
+    case "opbrengsten":
+      return "O";
+    default:
+      return side;
+  }
+}
+
 export default function JournalEditor({
   year,
   onBack,
@@ -71,7 +86,9 @@ export default function JournalEditor({
         if (cancelled) return;
         setCats(d.categories);
         setLabels(
-          Object.fromEntries(d.categories.map((c) => [c.code, `${String(c.code).padStart(4, "0")} ${c.label} (${c.side})`]))
+          Object.fromEntries(
+            d.categories.map((c) => [c.code, `${String(c.code).padStart(4, "0")} ${c.label} (${sideShort(c.side)})`])
+          )
         );
       })
       .catch(() => {});
@@ -228,7 +245,7 @@ export default function JournalEditor({
                   <th>Datum</th>
                   <th>Van (C)</th>
                   <th>Naar (C)</th>
-                  <th>Bedrag</th>
+                  <th>Bedrag (€)</th>
                   <th colSpan={2}>Actie</th>
                   <th>Omschrijving</th>
                 </tr>
