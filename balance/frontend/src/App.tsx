@@ -6,6 +6,7 @@ import type { BalanceSheet } from "./types";
 const EUR = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
+  maximumFractionDigits: 0,
 });
 
 function toMessage(e: unknown): string {

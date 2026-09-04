@@ -3164,7 +3164,13 @@ function PTable({
         </strong>
       </div>
       {transactions.length === 0 ? (
-        <p>No transactions in this category</p>
+        <p>
+          Geen automatisch geregistreerde transacties in deze categorie;
+          <br />
+          hier vallen derhalve NIET onder: handmatig ingevoerde transacties via de balans-toegang,
+          <br />
+          en automatisch berekende spiegeltransacties voor de spaarrekening.
+        </p>
       ) : (
         <table className="p-table">
           <colgroup>
