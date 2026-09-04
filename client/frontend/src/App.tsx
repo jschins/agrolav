@@ -75,6 +75,33 @@ function displayCategoryName(name: string): string {
   return shownLabel(parseInt(match[1], 10), match[2]);
 }
 
+function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
+}
+
+function matrixToProfitLossCsv(matrix: MatrixResponse): string {
+  const people = matrix.people.map((p) => p.person_name);
+  const header = ["Category", ...people].map(csvEscape).join(",");
+  const rows = matrix.categories.map((cat) => {
+    const amounts = people.map((name) => csvEscape(matrix.cells[cat]?.[name] ?? ""));
+    return [csvEscape(displayCategoryName(cat)), ...amounts].join(",");
+  });
+  return [header, ...rows].join("\r\n") + "\r\n";
+}
+
+function downloadCsv(filename: string, csv: string): void {
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
   const footers = matrixFooterNames(matrix);
   return category === footers.balance || category === footers.last_booked;
@@ -754,6 +781,18 @@ function SyncNotifyShell({
     });
   }
 
+  function exportProfitLoss() {
+    if (!activeYear) return;
+    setScratchError(null);
+    const bankQuery = bankView !== "consolidated" ? bankView : undefined;
+    getMatrix(activeYear, bankQuery)
+      .then((payload) => {
+        const suffix = bankQuery ? `-${bankQuery}` : "";
+        downloadCsv(`profit-loss-${activeYear}${suffix}.csv`, matrixToProfitLossCsv(payload));
+      })
+      .catch((e: Error) => setScratchError(e.message));
+  }
+
   function doWipeYear() {
     if (scratchBusy || wipeBusy) return;
     const suggested = activeYear || String(new Date().getFullYear());
@@ -806,6 +845,13 @@ function SyncNotifyShell({
       disabled: scratchBusy || wipeBusy,
       onClick: doRecalculateFromScratch,
     });
+    if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView) {
+      items.push({
+        id: "export-profit-loss",
+        label: "Export Profit-Loss",
+        onClick: exportProfitLoss,
+      });
+    }
     if (access === "country") {
       items.push({
         id: "wipe-year",
@@ -848,7 +894,7 @@ function SyncNotifyShell({
       });
     }
     return items;
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView]);
 
   return (
     <HeaderActionsContext.Provider value={setHeaderActions}>
