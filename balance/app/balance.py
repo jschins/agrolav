@@ -155,7 +155,7 @@ def _category_labels() -> dict[int, str]:
         cur = conn.cursor()
         cur.execute(
             "SELECT category_id, label FROM dbo.dim_category "
-            "WHERE country_id = ? AND category_id BETWEEN 1000 AND 2999",
+            "WHERE country_id = ? AND category_id BETWEEN 1000 AND 4999",
             COUNTRY_ID,
         )
         return {int(r[0]): str(r[1]) for r in cur.fetchall()}
@@ -237,12 +237,21 @@ def list_years() -> list[int]:
 
 
 def list_categories() -> list[dict[str, Any]]:
-    """All balance categories with their account links (if any)."""
+    """All balance categories (1000-4999) with their account links (if any)."""
     labels = _category_labels()
     acct = _account_balances()
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT DISTINCT category_id FROM dbo.dim_category "
+            "WHERE country_id = ? AND category_id BETWEEN 1000 AND 4999",
+            COUNTRY_ID,
+        )
+        ids = {int(r[0]) for r in cur.fetchall()}
+    ids.update(CATEGORY_MAP.keys())
     result = []
-    for cat_id in sorted(CATEGORY_MAP):
-        side, account_id = CATEGORY_MAP[cat_id]
+    for cat_id in sorted(i for i in ids if 1000 <= i <= 4999):
+        side, account_id = CATEGORY_MAP.get(cat_id, (_infer_side(cat_id), None))
         row: dict[str, Any] = {
             "category_id": cat_id,
             "code": cat_id,
@@ -255,6 +264,16 @@ def list_categories() -> list[dict[str, Any]]:
             row["account_balance"] = float(acct.get(account_id, Decimal("0")))
         result.append(row)
     return result
+
+
+def _infer_side(cat_id: int) -> str:
+    if 1000 <= cat_id <= 1999:
+        return "activa"
+    if 2000 <= cat_id <= 2999:
+        return "passiva"
+    if 3000 <= cat_id <= 3999:
+        return "kosten"
+    return "opbrengsten"
 
 
 def _iban_for_account(account_id: int) -> str:
