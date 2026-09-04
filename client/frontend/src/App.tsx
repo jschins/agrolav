@@ -377,10 +377,7 @@ function BankSwitcher({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const selectedAccount = accounts.find((a) => a.iban === view);
-  const triggerLabel = view === "consolidated"
-    ? "Consolidated"
-    : (selectedAccount?.account_name || view);
+  const triggerLabel = view === "consolidated" ? "Consolidated" : view;
 
   useEffect(() => {
     if (!open) return;

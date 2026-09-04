@@ -1,7 +1,7 @@
 """Build category × person matrix and orchestrate multi-person operations."""
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -13,21 +13,16 @@ FOOTER_BALANCE = "saldo"
 FOOTER_DATUM = "datum"
 
 
-def _last_day_of_previous_month(today: date) -> date:
-    return date(today.year, today.month, 1) - timedelta(days=1)
-
-
 def monthly_refresh_period(
     updated_at: date | None, *, today: date | None = None
 ) -> tuple[date, date] | None:
     """Bank fetch window for a Refresh click, or ``None`` to skip.
 
-    Skip when ``last_booked`` already covers the last closed month. Otherwise
-    read from ``last_booked`` (or the first of last month if never updated)
-    through the last day of the previous month.
+    Skip when ``last_booked`` already covers today. Otherwise read from
+    ``last_booked`` (or the first of the month if never updated) through today.
     """
     today = today or date.today()
-    date_to = _last_day_of_previous_month(today)
+    date_to = today
     if updated_at is not None and updated_at >= date_to:
         return None
     date_from = updated_at if updated_at is not None else date(date_to.year, date_to.month, 1)
