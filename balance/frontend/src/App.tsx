@@ -102,30 +102,8 @@ export default function App() {
   };
 
   return (
-    <div>
-      <header>
-        <h1>
-          Balans <small>Beheer</small>
-        </h1>
-        {years.length > 1 && (
-          <div className="year-switch">
-            {years.map((y) => (
-              <button
-                key={y}
-                className={y === year ? "active" : ""}
-                onClick={() => {
-                  setYear(y);
-                  load(y);
-                }}
-              >
-                {y}
-              </button>
-            ))}
-          </div>
-        )}
-      </header>
-
-      {view === "journal" && (
+    <>
+      {view === "journal" ? (
         <JournalEditor
           year={year ?? new Date().getFullYear()}
           onBack={() => {
@@ -133,10 +111,30 @@ export default function App() {
             if (year != null) load(year);
           }}
         />
-      )}
+      ) : (
+        <div className="sheet-view">
+          <header>
+            <h1>
+              Balans <small>Beheer</small>
+            </h1>
+            {years.length > 1 && (
+              <div className="year-switch">
+                {years.map((y) => (
+                  <button
+                    key={y}
+                    className={y === year ? "active" : ""}
+                    onClick={() => {
+                      setYear(y);
+                      load(y);
+                    }}
+                  >
+                    {y}
+                  </button>
+                ))}
+              </div>
+            )}
+          </header>
 
-      {view === "sheet" && (
-        <>
           {sheet && (
             <div className="toolbar">
               <span className={sheet.balanced ? "balance-badge ok" : "balance-badge bad"}>
@@ -163,8 +161,8 @@ export default function App() {
               <SideTable title="Passiva" lines={sheet.passiva} total={sheet.total_passiva} />
             </div>
           )}
-        </>
+        </div>
       )}
-    </div>
+    </>
   );
 }
