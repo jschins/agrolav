@@ -963,7 +963,7 @@ def list_accounts_for_username(username: str) -> list[dict[str, str]]:
     cursor = _sql_connect().cursor()
     cursor.execute(
         """
-        SELECT a.iban, a.balance
+        SELECT a.iban, a.balance, a.account_name
         FROM dbo.account a
         JOIN dbo.person u ON u.id = a.person_id
         WHERE u.username = ? COLLATE Latin1_General_CI_AI
@@ -972,7 +972,11 @@ def list_accounts_for_username(username: str) -> list[dict[str, str]]:
         (name,),
     )
     return [
-        {"iban": str(row[0] or "").strip(), "balance": str(row[1] if row[1] is not None else "0")}
+        {
+            "iban": str(row[0] or "").strip(),
+            "balance": str(row[1] if row[1] is not None else "0"),
+            "account_name": str(row[2] or "").strip(),
+        }
         for row in cursor.fetchall()
     ]
 

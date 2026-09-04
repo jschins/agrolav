@@ -141,7 +141,7 @@ export default function App() {
                 {busy ? "Bezig…" : "Verversen"}
               </button>
               <button onClick={() => setView("journal")} disabled={year == null}>
-                Edit transactions
+                Bewerk grootboek
               </button>
             </div>
           )}

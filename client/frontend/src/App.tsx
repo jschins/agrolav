@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import {
   ackCentralWinsRefusal,
@@ -24,6 +24,7 @@ import {
   resendLoginOtp,
   getPersonSecurity,
   setPersonPassword,
+  type BankAccount,
   type OtpChallenge,
   recalculate,
   recalculateFromScratch,
@@ -366,16 +367,20 @@ function CenterSwitcher({
 
 function BankSwitcher({
   view,
-  folders,
+  accounts,
   onSelect,
 }: {
   view: string;
-  folders: string[];
+  accounts: BankAccount[];
   onSelect: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const options = ["consolidated", ...folders.filter((f) => f !== "consolidated")];
+
+  const selectedAccount = accounts.find((a) => a.iban === view);
+  const triggerLabel = view === "consolidated"
+    ? "Consolidated"
+    : (selectedAccount?.account_name || view);
 
   useEffect(() => {
     if (!open) return;
@@ -398,23 +403,37 @@ function BankSwitcher({
         <span className="center-switcher-chevron" aria-hidden>
           ▾
         </span>
-        <span className="center-switcher-label">{view}</span>
+        <span className="center-switcher-label">{triggerLabel}</span>
       </button>
       {open && (
         <ul className="center-switcher-menu" role="listbox">
-          {options.map((name) => (
-            <li key={name}>
+          <li key="consolidated">
+            <button
+              type="button"
+              role="option"
+              aria-selected={view === "consolidated"}
+              className={view === "consolidated" ? "is-selected" : undefined}
+              onClick={() => {
+                setOpen(false);
+                if (view !== "consolidated") onSelect("consolidated");
+              }}
+            >
+              Consolidated
+            </button>
+          </li>
+          {accounts.map((acc) => (
+            <li key={acc.iban}>
               <button
                 type="button"
                 role="option"
-                aria-selected={name === view}
-                className={name === view ? "is-selected" : undefined}
+                aria-selected={acc.iban === view}
+                className={acc.iban === view ? "is-selected" : undefined}
                 onClick={() => {
                   setOpen(false);
-                  if (name !== view) onSelect(name);
+                  if (acc.iban !== view) onSelect(acc.iban);
                 }}
               >
-                {name}
+                {acc.iban}
               </button>
             </li>
           ))}
@@ -552,7 +571,8 @@ function SyncNotifyShell({
     activeYear: string,
     bankView: string,
     dataRev: number,
-    banks: { person?: string; first_download: boolean; needs_initial_authorization: boolean }
+    banks: { person?: string; first_download: boolean; needs_initial_authorization: boolean },
+    bankOptions: BankAccount[]
   ) => ReactNode;
   onCenterChanged?: () => void;
   termsView?: boolean;
@@ -569,7 +589,7 @@ function SyncNotifyShell({
   const [activeYear, setActiveYear] = useState<string>("");
   const [yearOptions, setYearOptions] = useState<string[]>([]);
   const [bankView, setBankView] = useState<string>("consolidated");
-  const [bankOptions, setBankOptions] = useState<string[]>([]);
+  const [bankOptions, setBankOptions] = useState<BankAccount[]>([]);
   const [showBankSwitcher, setShowBankSwitcher] = useState(false);
   const [uploadUrl, setUploadUrl] = useState<string>("");
   const [refusal, setRefusal] = useState<CentralWinsAlert | null>(null);
@@ -637,7 +657,7 @@ function SyncNotifyShell({
           setBankOptions(res.folders || []);
           setBankView((prev) => {
             if (prev === "consolidated") return prev;
-            if ((res.folders || []).includes(prev)) return prev;
+            if ((res.folders || []).some((f) => f.iban === prev)) return prev;
             return "consolidated";
           });
           setBanksState({
@@ -922,7 +942,7 @@ function SyncNotifyShell({
             {showBankSwitcher && !termsView && !categoriesView && !ipView && !splitView && !passwordView ? (
               <BankSwitcher
                 view={bankView}
-                folders={bankOptions}
+                accounts={bankOptions}
                 onSelect={(v) => {
                   setBankView(v);
                   onCenterChanged?.();
@@ -955,7 +975,7 @@ function SyncNotifyShell({
           </div>
         </div>
       )}
-      {children(brandName, activeYear, bankView, dataRev, banksState)}
+      {children(brandName, activeYear, bankView, dataRev, banksState, bankOptions)}
     </div>
     </HeaderActionsContext.Provider>
   );
@@ -1164,7 +1184,7 @@ export default function App() {
       }
       onCenterChanged={bumpCenterEpoch}
     >
-      {(brandName, year, bankView, dataRev, banks) =>
+      {(brandName, year, bankView, dataRev, banks, bankOptions) =>
         isTerms ? (
           <TermsApp key={wsEpoch} />
         ) : isCategories ? (
@@ -1183,6 +1203,7 @@ export default function App() {
             bankView={bankView}
             dataRev={dataRev}
             banks={banks}
+            bankOptions={bankOptions}
           />
         )
       }
@@ -1348,37 +1369,9 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
   );
 }
 
-const HEADING_MIN_PX = 11;
-
 function FitSidebarTitle({ text }: { text: string }) {
-  const ref = useRef<HTMLHeadingElement>(null);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const fit = () => {
-      el.style.fontSize = "";
-      const maxPx = parseFloat(getComputedStyle(el).fontSize);
-      if (!Number.isFinite(maxPx) || maxPx <= 0) return;
-      const avail = el.clientWidth;
-      if (avail <= 0 || el.scrollWidth <= avail) return;
-      let size = Math.max(HEADING_MIN_PX, Math.floor((maxPx * avail) / el.scrollWidth));
-      el.style.fontSize = `${size}px`;
-      while (el.scrollWidth > el.clientWidth && size > HEADING_MIN_PX) {
-        size -= 1;
-        el.style.fontSize = `${size}px`;
-      }
-    };
-
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [text]);
-
   return (
-    <h1 ref={ref} className="app-heading">
+    <h1 className="app-heading">
       {text}
     </h1>
   );
@@ -1390,12 +1383,14 @@ function MainApp({
   bankView,
   dataRev,
   banks,
+  bankOptions,
 }: {
   brandName: string;
   year: string;
   bankView: string;
   dataRev: number;
   banks?: { person?: string; first_download: boolean; needs_initial_authorization: boolean };
+  bankOptions?: BankAccount[];
 }) {
   const [matrix, setMatrix] = useState<MatrixResponse | null>(null);
   const [selection, setSelection] = useState<CellSelection | null>(null);
@@ -1913,10 +1908,19 @@ function MainApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bankAuthUrl]);
 
+  const sidebarTitle = (() => {
+    if (bankView === "consolidated") {
+      const personName = banks?.person || "";
+      return `Consolidatie ${personName}`.trim();
+    }
+    const selectedAccount = (bankOptions || []).find((a) => a.iban === bankView);
+    return selectedAccount?.account_name || brandName;
+  })();
+
   return (
     <div className="app">
       <aside className="sidebar">
-        {brandName ? <FitSidebarTitle text={brandName} /> : null}
+        {sidebarTitle ? <FitSidebarTitle text={sidebarTitle} /> : null}
 
         {inPView && matrix && (
           <>

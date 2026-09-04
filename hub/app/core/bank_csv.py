@@ -342,14 +342,14 @@ def person_bank_folder_options(
     """IBANs from ``dbo.account`` for the personal account switcher."""
     from app import user_store
 
-    folders: list[str] = []
+    folders: list[dict[str, str]] = []
     seen: set[str] = set()
     for acc in user_store.list_accounts_for_username(person):
         iban = str(acc.get("iban") or "").strip()
         if not iban or iban in seen:
             continue
         seen.add(iban)
-        folders.append(iban)
+        folders.append({"iban": iban, "account_name": str(acc.get("account_name") or "").strip()})
 
     if len(folders) <= 1:
         return {"folders": [], "multi_bank": False, "show_switcher": False}

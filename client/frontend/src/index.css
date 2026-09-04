@@ -511,11 +511,12 @@ th {
   font-size: clamp(1.15rem, 2.8vw, 1.85rem);
   font-weight: 700;
   color: #0f172a;
-  white-space: nowrap;
+  white-space: normal;
   line-height: 1.15;
   text-transform: none;
   min-width: 0;
-  overflow: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .totals-table {

@@ -47,8 +47,13 @@ export interface YearsResponse {
   default_year: string;
 }
 
+export interface BankAccount {
+  iban: string;
+  account_name: string;
+}
+
 export interface BanksResponse {
-  folders: string[];
+  folders: BankAccount[];
   multi_bank: boolean;
   show_switcher: boolean;
   upload_token?: string;

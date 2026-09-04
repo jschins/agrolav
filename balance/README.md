@@ -534,3 +534,15 @@ The balance frontend (standalone Vite+React app) is built and committed under
 `frontend/`; it produces `dist/` (itself git-ignored — rebuild on deploy via
 `npm ci && npm run build`). The Caddy `/balance/` route and the transaction-edit
 interface are not yet deployed/built; see §13 and §9.6.
+
+
+
+
+```
+category_id     label  account_id      IBAN         Account name
+1051	Bank algemeen         18	NL34INGB0004378667	SDOG Algemeen
+1054	Bank FPU              17	NL09INGB0006364222	SDOG Fonds PUvhHK
+1055	Bank FOH              19	NL44INGB0006494736	SDOG Ontwikkelingsprojecten
+1053	Bank huish. dienst    20	NL93INGB0669986755	SDOG Huishoudelijk
+1056	Bank residentie dkg   21	NL94INGB0006200605	SDOG Residentie dkg
+```
