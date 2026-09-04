@@ -17,7 +17,7 @@ def _dist_dir() -> Path:
     env_dist = os.environ.get("BALANCE_DIST", "").strip()
     if env_dist:
         return Path(env_dist)
-    return Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+    return Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 
 _DIST = _dist_dir()

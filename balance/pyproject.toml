@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "balance-hub"
 version = "0.1"
 description = "Balance statement hub for Beheer"
+readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 
@@ -19,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 balance = "app.main:run"
+balance-hub = "app.main:run"
 
 [tool.setuptools.packages.find]
 where = ["."]
