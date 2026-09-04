@@ -69,7 +69,18 @@ td.code { color: #666; width: 3.5em; }
   padding: 1rem;
   overflow-y: auto;
 }
-.journal-panel h2 { margin: 0; font-size: 0.95rem; color: #475569; }
+.journal-panel h2 { margin: 0 0 0.75rem; font-size: 0.95rem; color: #475569; }
+
+.journal-filters { display: flex; flex-direction: column; gap: 0.6rem; }
+.journal-filters label {
+  display: flex; flex-direction: column; gap: 0.2rem;
+  font-size: 0.72rem; font-weight: 600; color: #475569;
+}
+.journal-filters input,
+.journal-filters select {
+  font: inherit; font-weight: 400; padding: 4px 6px;
+  border: 1px solid #cbd5e1; border-radius: 4px; width: 100%;
+}
 
 .journal-content {
   padding: 0.75rem;
@@ -80,8 +91,7 @@ td.code { color: #666; width: 3.5em; }
 
 .journal-table {
   border-collapse: collapse;
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
   background: #fbfdef;
   font-size: 0.8rem;
 }
@@ -93,11 +103,11 @@ td.code { color: #666; width: 3.5em; }
   text-overflow: ellipsis;
 }
 .journal-table th { background: #ffecbc; }
-.journal-table col.col-date { min-width: 96px; }
-.journal-table col.col-cat { min-width: 150px; }
-.journal-table col.col-amount { min-width: 80px; }
-.journal-table col.col-act { min-width: 44px; }
-.journal-table col.col-desc { width: max-content; }
+.journal-table col.col-date { width: 58px; }
+.journal-table col.col-cat { width: 90px; }
+.journal-table col.col-amount { width: 48px; }
+.journal-table col.col-act { width: 27px; }
+.journal-table col.col-desc { width: auto; }
 .journal-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .journal-table td.code { color: #475569; text-align: center; }
 .journal-table td.desc.editing { color: #2563eb; font-weight: 700; }
@@ -111,6 +121,14 @@ td.code { color: #666; width: 3.5em; }
 .journal-table input[type="number"] { width: 90px; text-align: right; }
 .journal-table input.journal-desc {
   font: inherit; padding: 3px 5px; border: 1px solid #cbd5e1; border-radius: 4px;
+  width: 100%;
+}
+
+.journal-table th.desc, .journal-table td.desc {
+  width: 100%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .journal-table tr.box-line { background: #fff; }

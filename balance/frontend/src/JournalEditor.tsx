@@ -59,6 +59,7 @@ export default function JournalEditor({
   const [rows, setRows] = useState<Draft[]>([]);
   const [box, setBox] = useState<Draft>(emptyBox);
   const [editKey, setEditKey] = useState<string | null>(null);
+  const [filters, setFilters] = useState({ date: "", from: "", to: "", amount: "", desc: "" });
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -151,6 +152,22 @@ export default function JournalEditor({
     setBox((b) => ({ ...b, ...patch }));
   }
 
+  function matchesFilter(r: Draft): boolean {
+    const f = filters;
+    if (f.date && !r.date.startsWith(f.date)) return false;
+    if (f.from && String(r.category_from) !== f.from) return false;
+    if (f.to && String(r.category_to) !== f.to) return false;
+    if (f.amount && !String(r.amount).includes(f.amount.trim())) return false;
+    if (f.desc && !r.description.toLowerCase().includes(f.desc.trim().toLowerCase())) return false;
+    return true;
+  }
+
+  const visibleRows = rows.filter(matchesFilter);
+
+  function setFilter(key: keyof typeof filters, value: string) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
+
   const maxDescLen = rows.reduce((m, r) => Math.max(m, r.description.length), 0);
   const descMinCh = Math.max(12, maxDescLen + 1);
 
@@ -164,6 +181,34 @@ export default function JournalEditor({
       <div className="journal-main">
         <aside className="journal-panel">
           <h2>Bewerk grootboek</h2>
+          <div className="journal-filters">
+            <label>
+              Datum
+              <input type="date" value={filters.date} onChange={(e) => setFilter("date", e.target.value)} />
+            </label>
+            <label>
+              Van (C)
+              <select value={filters.from} onChange={(e) => setFilter("from", e.target.value)}>
+                <option value="">alle</option>
+                {codeOptions}
+              </select>
+            </label>
+            <label>
+              Naar (C)
+              <select value={filters.to} onChange={(e) => setFilter("to", e.target.value)}>
+                <option value="">alle</option>
+                {codeOptions}
+              </select>
+            </label>
+            <label>
+              Bedrag
+              <input type="text" value={filters.amount} onChange={(e) => setFilter("amount", e.target.value)} />
+            </label>
+            <label>
+              Omschrijving
+              <input type="text" value={filters.desc} onChange={(e) => setFilter("desc", e.target.value)} />
+            </label>
+          </div>
         </aside>
         <main className="journal-content">
           {error && <div className="error">{error}</div>}
@@ -189,7 +234,39 @@ export default function JournalEditor({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => {
+                <tr className="box-line">
+                  <td>
+                    <input type="date" value={box.date} onChange={(e) => patchBox({ date: e.target.value })} />
+                  </td>
+                  <td>
+                    <select value={box.category_from} onChange={(e) => patchBox({ category_from: Number(e.target.value) })}>
+                      {codeOptions}
+                    </select>
+                  </td>
+                  <td>
+                    <select value={box.category_to} onChange={(e) => patchBox({ category_to: Number(e.target.value) })}>
+                      {codeOptions}
+                    </select>
+                  </td>
+                  <td>
+                    <input type="number" step="0.01" value={box.amount} onChange={(e) => patchBox({ amount: e.target.value })} />
+                  </td>
+                  <td colSpan={2}>
+                    <button type="button" className="journal-save" disabled={busy} onClick={saveNew}>
+                      {busy ? "Bezig…" : "Save"}
+                    </button>
+                  </td>
+                  <td>
+                    <input
+                      className="journal-desc"
+                      type="text"
+                      style={{ minWidth: `${descMinCh}ch` }}
+                      value={box.description}
+                      onChange={(e) => patchBox({ description: e.target.value })}
+                    />
+                  </td>
+                </tr>
+                {visibleRows.map((r) => {
                   const editing = editKey === r.key;
                   return (
                     <tr key={r.key} className={editing ? "box-line" : undefined}>
@@ -258,38 +335,6 @@ export default function JournalEditor({
                     </tr>
                   );
                 })}
-                <tr className="box-line">
-                  <td>
-                    <input type="date" value={box.date} onChange={(e) => patchBox({ date: e.target.value })} />
-                  </td>
-                  <td>
-                    <select value={box.category_from} onChange={(e) => patchBox({ category_from: Number(e.target.value) })}>
-                      {codeOptions}
-                    </select>
-                  </td>
-                  <td>
-                    <select value={box.category_to} onChange={(e) => patchBox({ category_to: Number(e.target.value) })}>
-                      {codeOptions}
-                    </select>
-                  </td>
-                  <td>
-                    <input type="number" step="0.01" value={box.amount} onChange={(e) => patchBox({ amount: e.target.value })} />
-                  </td>
-                  <td colSpan={2}>
-                    <button type="button" className="journal-save" disabled={busy} onClick={saveNew}>
-                      {busy ? "Bezig…" : "Save"}
-                    </button>
-                  </td>
-                  <td>
-                    <input
-                      className="journal-desc"
-                      type="text"
-                      style={{ minWidth: `${descMinCh}ch` }}
-                      value={box.description}
-                      onChange={(e) => patchBox({ description: e.target.value })}
-                    />
-                  </td>
-                </tr>
               </tbody>
             </table>
           ) : (
