@@ -290,12 +290,14 @@ def load_bound_transactions(*, category_code: int | None = None) -> list[dict[st
 def _balance_overlay_cents(year: int, cursor: Any) -> dict[int, int]:
     """Extra per-category cents from the beheer balance tables for a year.
 
-    Only category ids 3000-4999 (kosten + opbrengsten) are considered. In
-    ``dbo.balance_journal`` a row moves money FROM ``category_from`` to
-    ``category_to``: the TO category gets ``+amount`` and the FROM category
-    gets ``-amount``. ``dbo.balance_transaction`` rows carry a signed amount
-    per ``category_id`` and contribute as stored. Both tables are beheer-only;
-    returns ``{}`` when either table is missing.
+    Only category ids 3000-4999 are considered. Side sign: 3000-3999 (Kosten)
+    are positive, 4000-4999 (Opbrengsten) negative. Position sign: in
+    ``dbo.balance_journal`` a row moves money FROM ``category_from`` TO
+    ``category_to``, so the TO category gets the side sign and the FROM
+    category the opposite; ``dbo.balance_transaction`` rows contribute their
+    amount with the side sign. The entered amount keeps its own sign
+    throughout. Both tables are beheer-only; returns ``{}`` when either table
+    is missing.
     """
     for table in ("dbo.balance_journal", "dbo.balance_transaction"):
         cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
@@ -303,18 +305,18 @@ def _balance_overlay_cents(year: int, cursor: Any) -> dict[int, int]:
             return {}
     cursor.execute(
         """
-        SELECT c, SUM(amount) FROM (
-            SELECT category_to AS c, amount FROM dbo.balance_journal WHERE year = ?
+        SELECT c, s, k FROM (
+            SELECT category_to AS c, amount AS s, 'T' AS k FROM dbo.balance_journal WHERE year = ?
             UNION ALL
-            SELECT category_from AS c, -amount FROM dbo.balance_journal WHERE year = ?
+            SELECT category_from AS c, amount AS s, 'F' AS k FROM dbo.balance_journal WHERE year = ?
             UNION ALL
-            SELECT category_id AS c, amount FROM dbo.balance_transaction WHERE year = ?
-        ) u WHERE c BETWEEN 3000 AND 4999 GROUP BY c
+            SELECT category_id AS c, amount AS s, 'X' AS k FROM dbo.balance_transaction WHERE year = ?
+        ) u WHERE c BETWEEN 3000 AND 4999
         """,
         (year, year, year),
     )
     overlay: dict[int, int] = {}
-    for category_id, amount in cursor.fetchall():
+    for category_id, amount, kind in cursor.fetchall():
         try:
             code = int(category_id)
         except (TypeError, ValueError):
@@ -323,7 +325,10 @@ def _balance_overlay_cents(year: int, cursor: Any) -> dict[int, int]:
             cents = round(float(amount or 0) * 100)
         except (TypeError, ValueError):
             continue
-        overlay[code] = overlay.get(code, 0) + cents
+        side = -1 if code >= 4000 else 1  # K positive, O negative
+        if kind == "F":
+            side = -side  # FROM inverts the side sign
+        overlay[code] = overlay.get(code, 0) + side * cents
     return overlay
 
 
