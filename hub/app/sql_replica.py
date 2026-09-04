@@ -287,6 +287,46 @@ def load_bound_transactions(*, category_code: int | None = None) -> list[dict[st
     return rows
 
 
+def _balance_overlay_cents(year: int, cursor: Any) -> dict[int, int]:
+    """Extra per-category cents from the beheer balance tables for a year.
+
+    Only category ids 3000-4999 (kosten + opbrengsten) are considered. In
+    ``dbo.balance_journal`` a row moves money FROM ``category_from`` to
+    ``category_to``: the TO category gets ``+amount`` and the FROM category
+    gets ``-amount``. ``dbo.balance_transaction`` rows carry a signed amount
+    per ``category_id`` and contribute as stored. Both tables are beheer-only;
+    returns ``{}`` when either table is missing.
+    """
+    for table in ("dbo.balance_journal", "dbo.balance_transaction"):
+        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+        if cursor.fetchone()[0] is None:
+            return {}
+    cursor.execute(
+        """
+        SELECT c, SUM(amount) FROM (
+            SELECT category_to AS c, amount FROM dbo.balance_journal WHERE year = ?
+            UNION ALL
+            SELECT category_from AS c, -amount FROM dbo.balance_journal WHERE year = ?
+            UNION ALL
+            SELECT category_id AS c, amount FROM dbo.balance_transaction WHERE year = ?
+        ) u WHERE c BETWEEN 3000 AND 4999 GROUP BY c
+        """,
+        (year, year, year),
+    )
+    overlay: dict[int, int] = {}
+    for category_id, amount in cursor.fetchall():
+        try:
+            code = int(category_id)
+        except (TypeError, ValueError):
+            continue
+        try:
+            cents = round(float(amount or 0) * 100)
+        except (TypeError, ValueError):
+            continue
+        overlay[code] = overlay.get(code, 0) + cents
+    return overlay
+
+
 def load_bound_category_totals(general_names: list[str]) -> dict[str, str] | None:
     """Per-category sums in SQL. ``None`` if SQL is unused for this bind."""
     from app import user_store
@@ -320,6 +360,9 @@ def load_bound_category_totals(general_names: list[str]) -> dict[str, str] | Non
             except (TypeError, ValueError):
                 cents = 0
             by_code[code] = cents
+        if bound.table == "dbo.transaction_beheer" and bound.account_id is None:
+            for code, cents in _balance_overlay_cents(bound.year, bound.cursor).items():
+                by_code[code] = by_code.get(code, 0) + cents
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to load category totals: {exc}")
         return {}
@@ -416,6 +459,11 @@ def load_center_year_matrix(
             bucket = totals_cents.setdefault(person, {name: 0 for name in booking_names})
             label = name_by_code.get(code, str(code))
             bucket[label] = bucket.get(label, 0) + cents
+        if table == "dbo.transaction_beheer":
+            for code, cents in _balance_overlay_cents(int(year), cursor).items():
+                cur_label = name_by_code.get(code, str(code))
+                for bucket in totals_cents.values():
+                    bucket[cur_label] = bucket.get(cur_label, 0) + cents
         totals = {
             person: {name: _amount_str(cents) for name, cents in amounts.items()}
             for person, amounts in totals_cents.items()

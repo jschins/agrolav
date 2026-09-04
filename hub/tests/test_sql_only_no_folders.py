@@ -345,5 +345,53 @@ class MonthlyRefreshPeriodTests(unittest.TestCase):
         )
 
 
+class _FakeOverlayCursor:
+    """Minimal ODBC-like cursor: OBJECT_ID probes then the overlay UNION rows."""
+
+    def __init__(self, tables_exist: bool = True, rows: list | None = None) -> None:
+        self.tables_exist = tables_exist
+        self.rows = rows or []
+        self._mode = ""
+
+    def execute(self, sql: str, params: tuple | None = None) -> "_FakeOverlayCursor":
+        self._mode = "probe" if "OBJECT_ID" in sql else "data"
+        return self
+
+    def fetchone(self):
+        if self._mode == "probe":
+            return (1 if self.tables_exist else None,)
+        return None
+
+    def fetchall(self):
+        if self._mode == "probe":
+            return []
+        return [row for row in self.rows if row and 3000 <= int(row[0]) <= 4999]
+
+
+class BalanceOverlayTests(unittest.TestCase):
+    def test_missing_tables_return_empty(self):
+        from app.sql_replica import _balance_overlay_cents
+
+        self.assertEqual(
+            _balance_overlay_cents(2026, _FakeOverlayCursor(tables_exist=False)),
+            {},
+        )
+
+    def test_to_from_journal_and_mirror_fold_into_cents(self):
+        from app.sql_replica import _balance_overlay_cents
+
+        rows = [
+            (3000, 500.00),   # journal TO adds
+            (3100, -200.00),  # journal FROM subtracts
+            (3200, -50.00),   # mirror (signed amount) as stored
+            (1000, 999.00),   # below 3000 → ignored
+            (2500, 777.00),   # below 3000 → ignored
+        ]
+        self.assertEqual(
+            _balance_overlay_cents(2026, _FakeOverlayCursor(rows=rows)),
+            {3000: 50000, 3100: -20000, 3200: -5000},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
