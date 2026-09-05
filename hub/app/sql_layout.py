@@ -204,7 +204,40 @@ def _create_transaction_table(cursor, *, country: str, country_id: int) -> str:
     return table
 
 
-def _next_center_id(cursor) -> int:
+def ensure_transaction_table(*, country: str) -> str:
+    """Idempotently create ``dbo.transaction_{country}`` when missing; return table name or "". """
+    from app import user_store
+
+    username = _valid_name(country)
+    if not username or not user_store.database_url():
+        return ""
+    table = _transaction_table(username)
+    if table is None:
+        return ""
+    user_store.init_user_store()
+    conn = user_store._sql_connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+        if cursor.fetchone()[0] is not None:
+            return table
+        cursor.execute(
+            f"SELECT country_id FROM dbo.country WHERE username = ? COLLATE Latin1_General_CI_AI",
+            username,
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return ""
+        _seed_bank_formats(cursor)
+        _create_transaction_table(cursor, country=username, country_id=int(row[0]))
+        conn.commit()
+        return table
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     cursor.execute("SELECT center_id FROM dbo.center")
     used = {int(row[0]) for row in cursor.fetchall()}
     candidate = 1

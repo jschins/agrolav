@@ -1852,10 +1852,34 @@ function MainApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [awaitingPostConsentFetch, banks?.person, hasSecrets]);
 
+  const bankAuthUrl = (() => {
+    if (!bankAuthRequired) return "";
+    const person_name = banks?.person || "";
+    for (const r of refreshStatus?.results || []) {
+      if (
+        r.person_name === person_name &&
+        r.skipped &&
+        r.reason === "needs_consent_renewal" &&
+        r.authorization_url
+      ) {
+        return r.authorization_url;
+      }
+    }
+    return "";
+  })();
+
   const setHeaderActions = useContext(HeaderActionsContext);
   useEffect(() => {
     const items: HeaderAction[] = [];
-    if (hasSecrets && !awaitingPostConsentFetch) {
+    const consentAuthRequired =
+      bankAuthRequired && Boolean(bankAuthUrl) && !awaitingPostConsentFetch;
+    if (consentAuthRequired) {
+      items.push({
+        id: "authorize-bank",
+        label: "Authorize bank",
+        onClick: () => window.location.assign(bankAuthUrl),
+      });
+    } else if (hasSecrets && !awaitingPostConsentFetch) {
       items.push({
         id: "refresh",
         label: refreshing ? "Downloading…" : "Download transactions",
@@ -1878,26 +1902,12 @@ function MainApp({
     refreshing,
     canAddPerson,
     addPersonUrl,
+    bankAuthRequired,
+    bankAuthUrl,
     setHeaderActions,
   ]);
 
   const inPView = selection !== null;
-
-  const bankAuthUrl = (() => {
-    if (!bankAuthRequired) return "";
-    const person_name = banks?.person || "";
-    for (const r of refreshStatus?.results || []) {
-      if (
-        r.person_name === person_name &&
-        r.skipped &&
-        r.reason === "needs_consent_renewal" &&
-        r.authorization_url
-      ) {
-        return r.authorization_url;
-      }
-    }
-    return "";
-  })();
 
   const authOpenedRef = useRef<string>("");
   useEffect(() => {

@@ -169,7 +169,10 @@ def _open_bound_scope() -> _BoundScope | None:
     cursor = conn.cursor()
     cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
     if cursor.fetchone()[0] is None:
-        return None
+        from app.sql_layout import ensure_transaction_table
+
+        if not ensure_transaction_table(country=country_name):
+            return None
     cursor.execute(
         """
         SELECT id FROM dbo.person

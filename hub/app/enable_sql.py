@@ -203,6 +203,10 @@ def person_has_transactions(username: str) -> bool:
     table = _transaction_table(str(row[0] or ""))
     if table is None:
         return False
+    from app.sql_layout import ensure_transaction_table
+
+    if not ensure_transaction_table(country=str(row[0] or "")):
+        return False
     cursor.execute(
         f"SELECT TOP 1 transaction_id FROM {table} WHERE person_id = ?",
         (person_id,),
