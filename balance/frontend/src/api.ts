@@ -45,6 +45,10 @@ export function getYears(): Promise<YearsResponse> {
   return getJson("/api/balance/years");
 }
 
+export function getMeta(): Promise<{ country_id: number; title: string }> {
+  return getJson("/api/balance/meta");
+}
+
 export function getSheet(year: number): Promise<BalanceSheet> {
   return getJson(`/api/balance/${year}`);
 }

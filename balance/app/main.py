@@ -53,16 +53,23 @@ def health() -> dict[str, Any]:
     return {"ok": True, "service": "balance-hub"}
 
 
+@app.get("/api/balance/meta")
+def balance_meta(_: None = Depends(_api_key)) -> dict[str, Any]:
+    from app.balance import active_country_id, country_title
+    country_id = active_country_id()
+    return {"country_id": country_id, "title": country_title(country_id)}
+
+
 @app.get("/api/balance/years")
 def balance_years(_: None = Depends(_api_key)) -> dict[str, Any]:
-    from app.balance import list_years
-    return {"years": list_years()}
+    from app.balance import active_country_id, list_years
+    return {"years": list_years(active_country_id())}
 
 
 @app.get("/api/balance/categories")
 def balance_categories(_: None = Depends(_api_key)) -> dict[str, Any]:
-    from app.balance import list_categories
-    return {"categories": list_categories()}
+    from app.balance import active_country_id, list_categories
+    return {"categories": list_categories(active_country_id())}
 
 
 @app.get("/api/balance/{year}")
@@ -70,8 +77,8 @@ def balance_sheet(
     year: int,
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
-    from app.balance import balance_sheet as compute
-    return compute(year)
+    from app.balance import active_country_id, balance_sheet as compute
+    return compute(active_country_id(), year)
 
 
 class OpeningItem(BaseModel):
@@ -90,8 +97,8 @@ def balance_opening_update(
     body: OpeningPayload,
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
-    from app.balance import update_opening
-    update_opening(year, [item.model_dump() for item in body.items])
+    from app.balance import active_country_id, update_opening
+    update_opening(active_country_id(), year, [item.model_dump() for item in body.items])
     return {"ok": True, "updated": len(body.items)}
 
 
@@ -100,8 +107,8 @@ def balance_spaar_mirror(
     year: int,
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
-    from app.balance import generate_spaarmirror
-    return generate_spaarmirror(year)
+    from app.balance import active_country_id, generate_spaarmirror
+    return generate_spaarmirror(active_country_id(), year)
 
 
 class JournalItem(BaseModel):
@@ -121,8 +128,8 @@ def balance_journal_get(
     year: int,
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
-    from app.balance import list_journal
-    return {"year": year, "rows": list_journal(year)}
+    from app.balance import active_country_id, list_journal
+    return {"year": year, "rows": list_journal(active_country_id(), year)}
 
 
 @app.put("/api/balance/{year}/journal")
@@ -131,8 +138,8 @@ def balance_journal_put(
     body: JournalPayload,
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
-    from app.balance import save_journal
-    return save_journal(year, [item.model_dump() for item in body.items])
+    from app.balance import active_country_id, save_journal
+    return save_journal(active_country_id(), year, [item.model_dump() for item in body.items])
 
 
 def run() -> None:

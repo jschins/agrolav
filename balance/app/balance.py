@@ -1,21 +1,31 @@
-"""Balance sheet calculation for Beheer (country_id=4).
+"""Balance sheet calculation for balance countries (Beheer country_id=4, …).
 
-Reads bank account balances from ``dbo.account`` and non-bank opening balances
-from ``dbo.balance_opening``.  The Verlies (loss/profit) post is computed as
+Each balance country reads bank account balances from ``dbo.account`` and
+non-bank opening balances from ``dbo.balance_opening``, plus hand-edited
+journal rows (``dbo.balance_journal``) and auto spaar-mirror rows
+(``dbo.balance_transaction``).  The Verlies (loss/profit) post is computed as
 the balancing figure: ``total_activa - sum(other passiva)``.
+
+The balance tables carry a ``country_id`` so every country keeps its own
+opening balances, journal and mirror.  The instance serves the country given
+by ``BALANCE_COUNTRY_ID`` (default 4).
 """
 from __future__ import annotations
 
+import os
+import re
 from decimal import Decimal
 from typing import Any
 
 from app.db import connect
 
-COUNTRY_ID = 4
+SPAAR_MARKER = "[spaar-mirror]"
+_VERLIES_SUFFIX = "Verlies"
+_IDENT = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 # category_id → (side, account_id | None)
 # side: "activa" or "passiva"
-CATEGORY_MAP: dict[int, tuple[str, int | None]] = {
+_BEHEER_CATEGORY_MAP: dict[int, tuple[str, int | None]] = {
     1000: ("activa", None),       # Gebouwen
     1005: ("activa", None),       # Verbouwingen
     1010: ("activa", None),       # Inventaris
@@ -35,45 +45,168 @@ CATEGORY_MAP: dict[int, tuple[str, int | None]] = {
     2500: ("passiva", None),      # Schulden particulieren
 }
 
-VERLIES_ID = 2100
+# The checking → spaarrekening pair for Beheer. Money moves between 1051
+# (account 18, NL34..667) and 1052 via transactions that are invisible on the
+# spaarrekening side. We reconstruct them by mirroring the 1051 rows whose
+# description contains "spaarrekening", with the sign flipped.
+_BEHEER_MIRROR: dict[str, Any] = {
+    "source_account_id": 18,
+    "source_category": 1051,
+    "target_category": 1052,
+    "keyword": "spaarrekening",
+}
 
-# The checking → spaarrekening pair. Money moves between 1051 (account 18,
-# NL34..667) and 1052 via transactions that are invisible on the spaarrekening
-# side. We reconstruct them by mirroring the 1051 rows whose description
-# contains "spaarrekening", with the sign flipped.
-SPAAR_SOURCE_ACCOUNT_ID = 18
-SPAAR_SOURCE_CATEGORY = 1051
-SPAAR_TARGET_CATEGORY = 1052
-SPAAR_KEYWORD = "spaarrekening"
-SPAAR_MARKER = "[spaar-mirror]"
+# Per-country balance configuration:
+#   verlies_id:   the computed Verlies category on the passiva side
+#   category_map: category_id → (side, account_id | None); account_id links a
+#                 bank account whose live balance feeds that category. When
+#                 empty, every dim_category row 1000-4999 is used (side by
+#                 range, no account link).
+#   mirror:       spaarrekening mirror settings, or None when not used.
+#
+# Whether a country carries a balance sheet at all is declared in the database
+# on ``dbo.country.has_balance`` (set to 1 for sdog and instudo, 0 elsewhere).
+_BALANCE_COUNTRIES: dict[int, dict[str, Any]] = {
+    4: {
+        "verlies_id": 2100,
+        "category_map": _BEHEER_CATEGORY_MAP,
+        "mirror": _BEHEER_MIRROR,
+    },
+    5: {
+        "verlies_id": 2100,
+        # instudo: fill in its own balance categories and bank-account links.
+        "category_map": {},
+        "mirror": None,
+    },
+}
+
+_EMPTY_CONFIG: dict[str, Any] = {
+    "verlies_id": 2100,
+    "category_map": {},
+    "mirror": None,
+}
+
+_has_balance_cache: dict[int, bool] = {}
 
 
-def _account_balances() -> dict[int, Decimal]:
-    """account_id → balance from dbo.account."""
+def _country_has_balance(country_id: int) -> bool:
+    """``dbo.country.has_balance`` for a country (True when the column is missing)."""
+    cached = _has_balance_cache.get(country_id)
+    if cached is not None:
+        return cached
+    try:
+        with connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT has_balance FROM dbo.country WHERE country_id = ?",
+                country_id,
+            )
+            row = cur.fetchone()
+        value = bool(row[0]) if row else False
+    except Exception:
+        value = True
+    _has_balance_cache[country_id] = value
+    return value
+
+
+def balance_country_ids() -> list[int]:
+    """Country ids flagged ``has_balance = 1`` (falls back to Beheer/sdog)."""
+    try:
+        with connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT country_id FROM dbo.country "
+                "WHERE has_balance = 1 ORDER BY country_id"
+            )
+            ids = [int(r[0]) for r in cur.fetchall()]
+    except Exception:
+        ids = []
+    return ids or [4]
+
+
+def active_country_id() -> int:
+    """The balance country this instance serves.
+
+    ``BALANCE_COUNTRY_ID`` overrides; otherwise the first country flagged
+    ``dbo.country.has_balance = 1`` is used (that flag is what makes a country
+    a balance country at all).
+    """
+    raw = os.environ.get("BALANCE_COUNTRY_ID", "").strip()
+    if raw:
+        try:
+            country_id = int(raw)
+        except ValueError:
+            country_id = 0
+        if country_id > 0:
+            return country_id
+    ids = balance_country_ids()
+    return ids[0] if ids else 4
+
+
+def _country_config(country_id: int) -> dict[str, Any]:
+    if not _country_has_balance(country_id):
+        return dict(_EMPTY_CONFIG)
+    return _BALANCE_COUNTRIES.get(country_id, dict(_EMPTY_CONFIG))
+
+
+def _verlies_id(country_id: int) -> int:
+    return int(_country_config(country_id).get("verlies_id") or 2100)
+
+
+def _sql_ident(text: str) -> str | None:
+    return text if _IDENT.fullmatch(text or "") else None
+
+
+def _transaction_table(country_id: int) -> str | None:
+    """``dbo.transaction_{country.username}`` for a balance country."""
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT account_id, balance FROM dbo.account")
+        cur.execute(
+            "SELECT username FROM dbo.country WHERE country_id = ?",
+            country_id,
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    ident = _sql_ident(str(row[0] or ""))
+    return f"dbo.transaction_{ident}" if ident else None
+
+
+def _account_balances(country_id: int) -> dict[int, Decimal]:
+    """account_id → balance for the country's persons."""
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT a.account_id, a.balance FROM dbo.account a "
+            "JOIN dbo.person p ON p.id = a.person_id "
+            "JOIN dbo.center c ON c.center_id = p.center_id "
+            "WHERE c.country_id = ?",
+            country_id,
+        )
         return {int(r[0]): Decimal(str(r[1])) for r in cur.fetchall()}
 
 
-def _opening_balances(year: int) -> dict[int, Decimal]:
+def _opening_balances(country_id: int, year: int) -> dict[int, Decimal]:
     """category_id → amount from dbo.balance_opening."""
     with connect() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT category_id, amount FROM dbo.balance_opening WHERE year = ?",
+            "SELECT category_id, amount FROM dbo.balance_opening "
+            "WHERE country_id = ? AND year = ?",
+            country_id,
             year,
         )
         return {int(r[0]): Decimal(str(r[1])) for r in cur.fetchall()}
 
 
-def _journal_balances(year: int) -> dict[int, Decimal]:
-    """category_id → net sum of dbo.balance_transaction for a year."""
+def _journal_balances(country_id: int, year: int) -> dict[int, Decimal]:
+    """category_id → net sum of dbo.balance_transaction for a country/year."""
     with connect() as conn:
         cur = conn.cursor()
         cur.execute(
             "SELECT category_id, SUM(amount) FROM dbo.balance_transaction "
-            "WHERE year = ? GROUP BY category_id",
+            "WHERE country_id = ? AND year = ? GROUP BY category_id",
+            country_id,
             year,
         )
         return {int(r[0]): Decimal(str(r[1])) for r in cur.fetchall()}
@@ -86,7 +219,7 @@ def _journal_table_exists() -> bool:
         return cur.fetchone()[0] is not None
 
 
-def _journal_effect(year: int) -> dict[int, Decimal]:
+def _journal_effect(country_id: int, year: int) -> dict[int, Decimal]:
     """category_id → net effect from the hand-edited dbo.balance_journal.
 
     Each row moves money FROM ``category_from`` TO ``category_to``: the FROM
@@ -100,7 +233,8 @@ def _journal_effect(year: int) -> dict[int, Decimal]:
         cur = conn.cursor()
         cur.execute(
             "SELECT category_from, category_to, amount FROM dbo.balance_journal "
-            "WHERE year = ?",
+            "WHERE country_id = ? AND year = ?",
+            country_id,
             year,
         )
         for cat_from, cat_to, amount in cur.fetchall():
@@ -110,33 +244,37 @@ def _journal_effect(year: int) -> dict[int, Decimal]:
     return effect
 
 
-def _spaar_mirror_rows(year: int) -> list[tuple[int, str, Decimal, str]]:
-    """Derive the faked spaarrekening (1052) mirror transactions.
+def _spaar_mirror_rows(country_id: int, year: int) -> list[tuple[int, str, Decimal, str]]:
+    """Derive the faked spaarrekening mirror transactions for a country.
 
-    Each 1051 row on the source account whose description contains the
-    keyword gives one 1052 journal entry with the sign flipped:
-    a transfer out of 1051 ("Naar ...spaarrekening", negative) increases the
-    spaarrekening, and a transfer in ("Van ...spaarrekening", positive)
-    decreases it.
+    Each source-category row on the source account whose description contains
+    the keyword gives one target-category journal entry with the sign flipped:
+    a transfer out ("...spaarrekening", negative) increases the mirror account,
+    and a transfer in ("Van ...spaarrekening", positive) decreases it.
     """
+    mirror = _country_config(country_id).get("mirror")
+    if not mirror:
+        return []
+    table = _transaction_table(country_id)
+    if table is None:
+        return []
     rows: list[tuple[int, str, Decimal, str]] = []
     with connect() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT booked_on, amount, description "
-            "FROM dbo.transaction_beheer "
+            f"SELECT booked_on, amount, description FROM {table} "
             "WHERE year = ? AND account_id = ? "
             "AND LOWER(COALESCE(description, N'')) LIKE ? "
             "ORDER BY booked_on",
             year,
-            SPAAR_SOURCE_ACCOUNT_ID,
-            f"%{SPAAR_KEYWORD}%",
+            int(mirror["source_account_id"]),
+            f"%{mirror['keyword']}%",
         )
         for booked_on, amount, description in cur.fetchall():
             d = Decimal(str(amount))
             rows.append(
                 (
-                    SPAAR_TARGET_CATEGORY,
+                    int(mirror["target_category"]),
                     str(booked_on),
                     -d,
                     f"{SPAAR_MARKER} {str(description or '')[:180]}",
@@ -149,34 +287,81 @@ def _sum_amount(items: list[dict[str, Any]]) -> Decimal:
     return sum(Decimal(str(item["amount"])) for item in items)
 
 
-def _category_labels() -> dict[int, str]:
-    """category_id → label from dbo.dim_category (beheer balance categories)."""
+def _category_labels(country_id: int) -> dict[int, str]:
+    """category_id → label from dbo.dim_category (balance categories)."""
     with connect() as conn:
         cur = conn.cursor()
         cur.execute(
             "SELECT category_id, label FROM dbo.dim_category "
             "WHERE country_id = ? AND category_id BETWEEN 1000 AND 4999",
-            COUNTRY_ID,
+            country_id,
         )
         return {int(r[0]): str(r[1]) for r in cur.fetchall()}
 
 
-def balance_sheet(year: int) -> dict[str, Any]:
-    """Return the full balance sheet for a given year."""
-    acct = _account_balances()
-    opening = _opening_balances(year)
-    journal = _journal_balances(year)
-    journal_effect = _journal_effect(year)
-    labels = _category_labels()
+def _dim_category_ids(country_id: int) -> set[int]:
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT DISTINCT category_id FROM dbo.dim_category "
+            "WHERE country_id = ? AND category_id BETWEEN 1000 AND 4999",
+            country_id,
+        )
+        return {int(r[0]) for r in cur.fetchall()}
+
+
+def _category_ids(country_id: int) -> set[int]:
+    ids = _dim_category_ids(country_id)
+    ids.update(
+        c for c in (_country_config(country_id).get("category_map") or {})
+        if isinstance(c, int)
+    )
+    return {i for i in ids if 1000 <= i <= 4999}
+
+
+def _category_map(country_id: int) -> dict[int, tuple[str, int | None]]:
+    configured = _country_config(country_id).get("category_map") or {}
+    if configured:
+        return {
+            int(c): (str(s), (int(a) if a is not None else None))
+            for c, (s, a) in configured.items()
+        }
+    return {cat: (_infer_side(cat), None) for cat in _dim_category_ids(country_id)}
+
+
+def country_title(country_id: int) -> str:
+    """Display title from dbo.country (falls back to the username)."""
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT title, username FROM dbo.country WHERE country_id = ?",
+            country_id,
+        )
+        row = cur.fetchone()
+    if not row:
+        return ""
+    title = str(row[0] or "").strip()
+    return title or str(row[1] or "")
+
+
+def balance_sheet(country_id: int, year: int) -> dict[str, Any]:
+    """Return the full balance sheet for a given country and year."""
+    acct = _account_balances(country_id)
+    opening = _opening_balances(country_id, year)
+    journal = _journal_balances(country_id, year)
+    journal_effect = _journal_effect(country_id, year)
+    labels = _category_labels(country_id)
+    category_map = _category_map(country_id)
+    verlies_id = _verlies_id(country_id)
 
     activa: list[dict[str, Any]] = []
     passiva: list[dict[str, Any]] = []
 
-    for cat_id in sorted(CATEGORY_MAP):
-        side, account_id = CATEGORY_MAP[cat_id]
+    for cat_id in sorted(category_map):
+        side, account_id = category_map[cat_id]
         label = labels.get(cat_id, f"cat_{cat_id}")
 
-        if cat_id == VERLIES_ID:
+        if cat_id == verlies_id:
             # computed later
             continue
 
@@ -209,9 +394,9 @@ def balance_sheet(year: int) -> dict[str, Any]:
 
     verlies_amount = total_activa - total_passiva_others
     passiva.append({
-        "category_id": VERLIES_ID,
-        "code": VERLIES_ID,
-        "label": labels.get(VERLIES_ID, "Verlies"),
+        "category_id": verlies_id,
+        "code": verlies_id,
+        "label": labels.get(verlies_id, _VERLIES_SUFFIX),
         "amount": float(verlies_amount),
         "source": "computed",
     })
@@ -220,6 +405,7 @@ def balance_sheet(year: int) -> dict[str, Any]:
 
     return {
         "year": year,
+        "country_id": country_id,
         "activa": activa,
         "passiva": passiva,
         "total_activa": float(total_activa),
@@ -228,30 +414,27 @@ def balance_sheet(year: int) -> dict[str, Any]:
     }
 
 
-def list_years() -> list[int]:
-    """Years that have any data in balance_opening."""
-    with connect() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT DISTINCT year FROM dbo.balance_opening ORDER BY year")
-        return [int(r[0]) for r in cur.fetchall()]
-
-
-def list_categories() -> list[dict[str, Any]]:
-    """All balance categories (1000-4999) with their account links (if any)."""
-    labels = _category_labels()
-    acct = _account_balances()
+def list_years(country_id: int) -> list[int]:
+    """Years that have any data in balance_opening for this country."""
     with connect() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT DISTINCT category_id FROM dbo.dim_category "
-            "WHERE country_id = ? AND category_id BETWEEN 1000 AND 4999",
-            COUNTRY_ID,
+            "SELECT DISTINCT year FROM dbo.balance_opening "
+            "WHERE country_id = ? ORDER BY year",
+            country_id,
         )
-        ids = {int(r[0]) for r in cur.fetchall()}
-    ids.update(CATEGORY_MAP.keys())
+        return [int(r[0]) for r in cur.fetchall()]
+
+
+def list_categories(country_id: int) -> list[dict[str, Any]]:
+    """All balance categories (1000-4999) with their account links (if any)."""
+    labels = _category_labels(country_id)
+    acct = _account_balances(country_id)
+    category_map = _category_map(country_id)
+    ids = _category_ids(country_id)
     result = []
     for cat_id in sorted(i for i in ids if 1000 <= i <= 4999):
-        side, account_id = CATEGORY_MAP.get(cat_id, (_infer_side(cat_id), None))
+        side, account_id = category_map.get(cat_id, (_infer_side(cat_id), None))
         row: dict[str, Any] = {
             "category_id": cat_id,
             "code": cat_id,
@@ -284,19 +467,21 @@ def _iban_for_account(account_id: int) -> str:
         return str(row[0]) if row else ""
 
 
-def update_opening(year: int, items: list[dict[str, Any]]) -> None:
-    """Upsert opening balances for a year.
+def update_opening(country_id: int, year: int, items: list[dict[str, Any]]) -> None:
+    """Upsert opening balances for a country and year.
 
     Each item: {"category_id": int, "amount": float, "note": str | None}.
     Only non-bank categories (account_id is None) may be updated.
     """
+    category_map = _category_map(country_id)
+    verlies_id = _verlies_id(country_id)
     with connect() as conn:
         cur = conn.cursor()
         for item in items:
             cat_id = int(item["category_id"])
-            if cat_id == VERLIES_ID:
+            if cat_id == verlies_id:
                 continue  # computed, never stored
-            _, account_id = CATEGORY_MAP.get(cat_id, (None, None))
+            _, account_id = category_map.get(cat_id, (None, None))
             if account_id is not None:
                 continue  # bank balance comes from dbo.account
             amount = Decimal(str(item.get("amount", 0)))
@@ -304,64 +489,69 @@ def update_opening(year: int, items: list[dict[str, Any]]) -> None:
             cur.execute(
                 """
                 IF EXISTS (SELECT 1 FROM dbo.balance_opening
-                           WHERE category_id = ? AND year = ?)
+                           WHERE country_id = ? AND category_id = ? AND year = ?)
                     UPDATE dbo.balance_opening
                     SET amount = ?, note = ?
-                    WHERE category_id = ? AND year = ?
+                    WHERE country_id = ? AND category_id = ? AND year = ?
                 ELSE
-                    INSERT INTO dbo.balance_opening (category_id, year, amount, note)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO dbo.balance_opening (country_id, category_id, year, amount, note)
+                    VALUES (?, ?, ?, ?, ?)
                 """,
-                cat_id, year,
-                amount, note, cat_id, year,
-                cat_id, year, amount, note,
+                country_id, cat_id, year,
+                amount, note, country_id, cat_id, year,
+                country_id, cat_id, year, amount, note,
             )
         conn.commit()
 
 
-def generate_spaarmirror(year: int) -> dict[str, Any]:
-    """(Re)build the faked spaarrekening (1052) mirror journal for a year.
+def generate_spaarmirror(country_id: int, year: int) -> dict[str, Any]:
+    """(Re)build the faked spaarrekening mirror journal for a country/year.
 
-    Idempotent: any previously generated 1052 mirror rows for the year are
-    deleted first, then re-derived from the current 1051 source rows. This
-    keeps the balance sheet correct after bank data is refreshed.
+    Idempotent: any previously generated mirror rows for the country/year are
+    deleted first, then re-derived from the current source rows. This keeps the
+    balance sheet correct after bank data is refreshed.
     """
-    rows = _spaar_mirror_rows(year)
+    rows = _spaar_mirror_rows(country_id, year)
+    mirror = _country_config(country_id).get("mirror")
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM dbo.balance_transaction "
-            "WHERE year = ? AND category_id = ? "
-            "AND description LIKE ? ESCAPE '!'",
-            year,
-            SPAAR_TARGET_CATEGORY,
-            "![" + SPAAR_MARKER[1:] + "%",
-        )
+        if mirror:
+            cur.execute(
+                "DELETE FROM dbo.balance_transaction "
+                "WHERE year = ? AND country_id = ? AND category_id = ? "
+                "AND description LIKE ? ESCAPE '!'",
+                year,
+                country_id,
+                int(mirror["target_category"]),
+                "![" + SPAAR_MARKER[1:] + "%",
+            )
         for category_id, booked_on, amount, description in rows:
             cur.execute(
                 "INSERT INTO dbo.balance_transaction "
-                "(year, date, category_id, amount, description, created_at) "
-                "VALUES (?, ?, ?, ?, ?, SYSUTCDATETIME())",
+                "(year, country_id, date, category_id, amount, description, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
                 year,
+                country_id,
                 booked_on,
                 category_id,
                 amount,
                 description,
             )
         conn.commit()
-    return {"ok": True, "year": year, "generated": len(rows)}
+    return {"ok": True, "year": year, "country_id": country_id, "generated": len(rows)}
 
 
-def list_journal(year: int) -> list[dict[str, Any]]:
-    """All hand-edited journal rows for a year (oldest first)."""
-    labels = _category_labels()
+def list_journal(country_id: int, year: int) -> list[dict[str, Any]]:
+    """All hand-edited journal rows for a country/year (oldest first)."""
+    labels = _category_labels(country_id)
     rows: list[dict[str, Any]] = []
     with connect() as conn:
         cur = conn.cursor()
         cur.execute(
             "SELECT journal_id, date, category_from, category_to, amount, description "
-            "FROM dbo.balance_journal WHERE year = ? "
+            "FROM dbo.balance_journal WHERE country_id = ? AND year = ? "
             "ORDER BY date, journal_id",
+            country_id,
             year,
         )
         for journal_id, date, cat_from, cat_to, amount, desc in cur.fetchall():
@@ -379,16 +569,21 @@ def list_journal(year: int) -> list[dict[str, Any]]:
     return rows
 
 
-def save_journal(year: int, items: list[dict[str, Any]]) -> dict[str, Any]:
-    """Full-replace the hand-edited journal for a year.
+def save_journal(country_id: int, year: int, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Full-replace the hand-edited journal for a country/year.
 
     Each item: {"date", "category_from", "category_to", "amount", "description"}.
-    All existing rows for the year are deleted first, then the submitted set is
-    inserted. Does not touch dbo.balance_transaction (the auto spaar-mirror).
+    All existing rows for the country/year are deleted first, then the
+    submitted set is inserted. Does not touch dbo.balance_transaction (the auto
+    spaar-mirror).
     """
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute("DELETE FROM dbo.balance_journal WHERE year = ?", year)
+        cur.execute(
+            "DELETE FROM dbo.balance_journal WHERE country_id = ? AND year = ?",
+            country_id,
+            year,
+        )
         for item in items:
             date = str(item["date"])
             cat_from = int(item["category_from"])
@@ -397,9 +592,9 @@ def save_journal(year: int, items: list[dict[str, Any]]) -> dict[str, Any]:
             description = str(item.get("description") or "")[:512]
             cur.execute(
                 "INSERT INTO dbo.balance_journal "
-                "(year, date, category_from, category_to, amount, description, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
-                year, date, cat_from, cat_to, amount, description,
+                "(year, country_id, date, category_from, category_to, amount, description, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
+                year, country_id, date, cat_from, cat_to, amount, description,
             )
         conn.commit()
-    return {"ok": True, "year": year, "saved": len(items)}
+    return {"ok": True, "year": year, "country_id": country_id, "saved": len(items)}

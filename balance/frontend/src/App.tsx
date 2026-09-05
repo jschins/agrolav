@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getSheet, getYears, rebuildSpaarMirror } from "./api";
+import { getMeta, getSheet, getYears, rebuildSpaarMirror } from "./api";
 import JournalEditor from "./JournalEditor";
 import type { BalanceSheet } from "./types";
 
@@ -65,6 +65,7 @@ export default function App() {
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [title, setTitle] = useState("");
   const [view, setView] = useState<"sheet" | "journal">("sheet");
 
   const load = useCallback((y: number) => {
@@ -76,6 +77,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    getMeta()
+      .then((m) => setTitle(m.title || ""))
+      .catch(() => setTitle(""));
     getYears()
       .then((r) => {
         const ys = r.years;
@@ -116,7 +120,7 @@ export default function App() {
         <div className="sheet-view">
           <header>
             <h1>
-              Balans <small>Beheer</small>
+              Balans{title ? ` ${title}` : ""}
             </h1>
             {years.length > 1 && (
               <div className="year-switch">
