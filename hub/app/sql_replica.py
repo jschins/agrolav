@@ -385,6 +385,43 @@ def load_bound_category_totals(general_names: list[str]) -> dict[str, str] | Non
     return {name: _amount_str(cents) for name, cents in totals.items()}
 
 
+def sync_person_category_totals(bound: _BoundScope) -> None:
+    """Re-derive the consolidated ``dbo.category_total`` rows for the bound person.
+
+    ``dbo.category_total`` used to be filled only by the legacy import scripts,
+    so persons created later never got rows (the balance app reads these rows
+    for the Verlies/resultaat post). This resumes population for every person:
+    per year, the consolidated rows (``bank_id IS NULL``) are replaced with the
+    per-category sums from the person's own transaction table.
+    """
+    try:
+        cursor = bound.cursor
+        cursor.execute(
+            f"SELECT DISTINCT year FROM {bound.table} WHERE person_id = ?",
+            (bound.person_id,),
+        )
+        for (year,) in cursor.fetchall():
+            y = int(year)
+            cursor.execute(
+                "DELETE FROM dbo.category_total "
+                "WHERE person_id = ? AND year = ? AND bank_id IS NULL",
+                (bound.person_id, y),
+            )
+            cursor.execute(
+                f"""
+                INSERT INTO dbo.category_total (person_id, year, bank_id, category_id, amount)
+                SELECT person_id, ?, NULL, category_id, SUM(CAST(amount AS decimal(19,2)))
+                FROM {bound.table}
+                WHERE person_id = ? AND year = ?
+                GROUP BY person_id, category_id
+                """,
+                (y, bound.person_id, y),
+            )
+        bound.conn.commit()
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql replica: failed to sync category totals: {exc}")
+
+
 def load_bound_last_booked() -> str | None:
     """``dbo.account.last_booked`` as ``DD-MM-YYYY``, or ``None`` if unset."""
     from app import user_store
@@ -626,6 +663,7 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
         if not params:
             return
         _executemany_commit(bound.conn, bound.cursor, sql, params)
+        sync_person_category_totals(bound)
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to update bookings: {exc}")
         raise
@@ -893,6 +931,7 @@ def ingest_bound_transactions(
         bound.cursor.executemany(sql, params)
         bound.cursor.fast_executemany = False
         bound.conn.commit()
+        sync_person_category_totals(bound)
         return len(params)
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to insert bookings: {exc}")

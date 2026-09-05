@@ -83,6 +83,62 @@ def _amount_for_category(totals: dict[str, str], catalog_name: str) -> str:
     return "0.00"
 
 
+def _resultaat_country_id(country: str) -> int | None:
+    """Country id for a country username, or ``None`` when SQL is unused."""
+    from app import user_store
+
+    if not country or not user_store.database_url():
+        return None
+    try:
+        cursor = user_store._sql_connect().cursor()
+        cursor.execute(
+            "SELECT country_id FROM dbo.country WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (country,),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+# Countries whose matrix shows ONLY the resultaat categories (codes 3000-4999,
+# kosten + opbrengsten) and whose "balance" footer is the difference between
+# them. Hardcoded for now; country 5 (beheer_instudo) gets a similar rule of
+# its own later. (Eventually driven from the database.)
+_RESULTAAT_MATRIX_COUNTRIES: frozenset[int] = frozenset({4})
+
+
+def _resultaat_categories(country: str, names: list[str]) -> list[str]:
+    """Booking names shown in the matrix for a resultaat country.
+
+    A resultaat country (see ``_RESULTAAT_MATRIX_COUNTRIES``) exposes the full
+    balance plan in ``categories_payload``; its matrix shows only the
+    Kosten/Opbrengsten categories (codes 3000-4999), and the "balance" read is
+    over only those. All other countries keep their full booking lists.
+    """
+    from app.core.categorize import _category_code
+
+    if _resultaat_country_id(country) not in _RESULTAAT_MATRIX_COUNTRIES:
+        return names
+    return [
+        name
+        for name in names
+        if (code := _category_code(name)) is not None and 3000 <= code < 5000
+    ]
+
+
+def _sum_totals(totals: dict[str, str], names: list[str]) -> str:
+    """Net cents over ``names`` as a formatted amount string."""
+    cents = 0
+    for name in names:
+        text = _amount_for_category(totals, name)
+        try:
+            cents += round(float(text) * 100)
+        except (TypeError, ValueError):
+            continue
+    return f"{cents / 100:.2f}"
+
+
 def person_totals(pack: PersonScope) -> dict[str, str]:
     from app import user_store
     from app.core.categorize import load_category_totals, recategorize_transactions
@@ -160,7 +216,7 @@ def build_matrix(
     bank: str | None = None,
 ) -> dict[str, Any]:
     from app.core.bank_csv import scope_for_account_view
-    from app.runtime import active_center
+    from app.runtime import active_center, active_country
 
     if people is not None:
         packs = people
@@ -172,8 +228,12 @@ def build_matrix(
     from app.core.categorize import _category_code
 
     categories = category_names(packs)
+    country = active_country() or (packs[0].country if packs else "")
     balance_name, date_name = _footer_labels(categories)
     booking = [name for name in categories if _category_code(name) is not None]
+    resultaat = _resultaat_categories(country or "", booking)
+    is_resultaat = resultaat != booking
+    booking = resultaat
     category_list = booking + [balance_name, date_name]
     columns = [{"person_name": p.person_name} for p in packs]
     cells: dict[str, dict[str, str]] = {name: {} for name in category_list}
@@ -181,7 +241,6 @@ def build_matrix(
     sql_matrix = None
     if not bank:
         from app import user_store
-        from app.runtime import active_country
         from app.sql_replica import load_center_year_matrix
         from app.yearpath import parse_year
 
@@ -206,7 +265,10 @@ def build_matrix(
             totals = totals_map.get(key) or {}
             for name in booking:
                 cells[name][pack.person_name] = _amount_for_category(totals, name)
-            cells[balance_name][pack.person_name] = balances.get(key) or ""
+            if is_resultaat:
+                cells[balance_name][pack.person_name] = _sum_totals(totals, booking)
+            else:
+                cells[balance_name][pack.person_name] = balances.get(key) or ""
             cells[date_name][pack.person_name] = dates.get(key) or ""
     else:
         for pack in packs:
@@ -217,7 +279,10 @@ def build_matrix(
                 totals = {}
             for name in booking:
                 cells[name][pack.person_name] = _amount_for_category(totals, name)
-            cells[balance_name][pack.person_name] = person_current_balance(view_pack) or ""
+            if is_resultaat:
+                cells[balance_name][pack.person_name] = _sum_totals(totals, booking)
+            else:
+                cells[balance_name][pack.person_name] = person_current_balance(view_pack) or ""
             cells[date_name][pack.person_name] = person_updated_display(view_pack) or ""
     payload: dict[str, Any] = {
         "categories": category_list,

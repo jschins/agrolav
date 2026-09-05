@@ -1,10 +1,13 @@
 """Balance sheet calculation for balance countries (Beheer country_id=4, …).
 
-Each balance country reads bank account balances from ``dbo.account`` and
-non-bank opening balances from ``dbo.balance_opening``, plus hand-edited
-journal rows (``dbo.balance_journal``) and auto spaar-mirror rows
-(``dbo.balance_transaction``).  The Verlies (loss/profit) post is computed as
-the balancing figure: ``total_activa - sum(other passiva)``.
+Each balance country reads bank account balances from ``dbo.account`` (linked
+to balance categories through ``dbo.mapping``) and non-bank opening balances
+from ``dbo.balance_opening``, plus hand-edited journal rows
+(``dbo.balance_journal``) and auto spaar-mirror rows
+(``dbo.balance_transaction``).  The Verlies (loss/profit) post is the recorded
+result: the sum of the P&L category amounts (``category_id`` 3000-4999) stored
+per person in ``dbo.category_total`` for that year.  The Eigen vermogen post is
+computed as the balancing figure: ``total_activa - sum(other passiva)``.
 
 The balance tables carry a ``country_id`` so every country keeps its own
 opening balances, journal and mirror.  The instance serves the country given
@@ -57,10 +60,12 @@ _BEHEER_MIRROR: dict[str, Any] = {
 }
 
 # Per-country balance configuration:
-#   verlies_id:   the computed Verlies category on the passiva side
+#   balance_id:  the Eigen vermogen category, computed as the balancing figure
+#   result_id:   the Verlies (resultaat) category, derived from dbo.category_total
 #   category_map: category_id → (side, account_id | None); account_id links a
-#                 bank account whose live balance feeds that category. When
-#                 empty, every dim_category row 1000-4999 is used (side by
+#                 bank account whose live balance feeds that category (only
+#                 used when dbo.mapping has no entry for that category).
+#                 When empty, every dim_category row 1000-4999 is used (side by
 #                 range, no account link).
 #   mirror:       spaarrekening mirror settings, or None when not used.
 #
@@ -68,12 +73,14 @@ _BEHEER_MIRROR: dict[str, Any] = {
 # on ``dbo.country.has_balance`` (set to 1 for sdog and instudo, 0 elsewhere).
 _BALANCE_COUNTRIES: dict[int, dict[str, Any]] = {
     4: {
-        "verlies_id": 2100,
+        "balance_id": 2000,
+        "result_id": 2100,
         "category_map": _BEHEER_CATEGORY_MAP,
         "mirror": _BEHEER_MIRROR,
     },
     5: {
-        "verlies_id": 2100,
+        "balance_id": 2000,
+        "result_id": 2100,
         # instudo: fill in its own balance categories and bank-account links.
         "category_map": {},
         "mirror": None,
@@ -81,7 +88,8 @@ _BALANCE_COUNTRIES: dict[int, dict[str, Any]] = {
 }
 
 _EMPTY_CONFIG: dict[str, Any] = {
-    "verlies_id": 2100,
+    "balance_id": 2000,
+    "result_id": 2100,
     "category_map": {},
     "mirror": None,
 }
@@ -150,7 +158,11 @@ def _country_config(country_id: int) -> dict[str, Any]:
 
 
 def _verlies_id(country_id: int) -> int:
-    return int(_country_config(country_id).get("verlies_id") or 2100)
+    return int(_country_config(country_id).get("result_id") or 2100)
+
+
+def _balance_id(country_id: int) -> int:
+    return int(_country_config(country_id).get("balance_id") or 2000)
 
 
 def _sql_ident(text: str) -> str | None:
@@ -184,6 +196,21 @@ def _account_balances(country_id: int) -> dict[int, Decimal]:
             country_id,
         )
         return {int(r[0]): Decimal(str(r[1])) for r in cur.fetchall()}
+
+
+def _account_links(country_id: int) -> dict[int, int]:
+    """category_id → account_id from ``dbo.mapping`` for a country.
+
+    The mapping table records which live bank account feeds each balance
+    category (e.g. Beheer 1051 Bank algemeen → account 18).
+    """
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT category_id, account_id FROM dbo.mapping WHERE country_id = ?",
+            country_id,
+        )
+        return {int(r[0]): int(r[1]) for r in cur.fetchall()}
 
 
 def _opening_balances(country_id: int, year: int) -> dict[int, Decimal]:
@@ -322,11 +349,47 @@ def _category_ids(country_id: int) -> set[int]:
 def _category_map(country_id: int) -> dict[int, tuple[str, int | None]]:
     configured = _country_config(country_id).get("category_map") or {}
     if configured:
-        return {
+        result = {
             int(c): (str(s), (int(a) if a is not None else None))
             for c, (s, a) in configured.items()
         }
-    return {cat: (_infer_side(cat), None) for cat in _dim_category_ids(country_id)}
+    else:
+        result = {cat: (_infer_side(cat), None) for cat in _dim_category_ids(country_id)}
+    # dbo.mapping overrides the account link per category.
+    for cat_id, account_id in _account_links(country_id).items():
+        side, _ = result.get(cat_id, (_infer_side(cat_id), None))
+        result[int(cat_id)] = (side, account_id)
+    return result
+
+
+def _recorded_result(country_id: int, year: int) -> Decimal:
+    """Verlies (resultaat): sum of the P&L category totals (3000-4999).
+
+    Reads the recorded per-person category totals from ``dbo.category_total``
+    (consolidated rows with ``bank_id IS NULL``) for the country's persons.
+    Empty when no totals are recorded (the balance post stays out of the
+    sheet's stored passiva until the totals are written).
+    """
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT ROUND(SUM(CAST(ct.amount AS decimal(19,2))), 2)
+            FROM dbo.category_total ct
+            JOIN dbo.person p ON p.id = ct.person_id
+            JOIN dbo.center c ON c.center_id = p.center_id
+            WHERE c.country_id = ?
+              AND ct.year = ?
+              AND ct.bank_id IS NULL
+              AND ct.category_id BETWEEN 3000 AND 4999
+            """,
+            country_id,
+            year,
+        )
+        row = cur.fetchone()
+    if row is None or row[0] is None:
+        return Decimal("0")
+    return Decimal(str(row[0]))
 
 
 def country_title(country_id: int) -> str:
@@ -352,7 +415,8 @@ def balance_sheet(country_id: int, year: int) -> dict[str, Any]:
     journal_effect = _journal_effect(country_id, year)
     labels = _category_labels(country_id)
     category_map = _category_map(country_id)
-    verlies_id = _verlies_id(country_id)
+    balance_id = _balance_id(country_id)
+    result_id = _verlies_id(country_id)
 
     activa: list[dict[str, Any]] = []
     passiva: list[dict[str, Any]] = []
@@ -361,22 +425,14 @@ def balance_sheet(country_id: int, year: int) -> dict[str, Any]:
         side, account_id = category_map[cat_id]
         label = labels.get(cat_id, f"cat_{cat_id}")
 
-        if cat_id == verlies_id:
+        if cat_id in (balance_id, result_id):
             # computed later
             continue
 
         if account_id is not None:
-            opening_amount = opening.get(cat_id)
-            if opening_amount is not None:
-                # The bank category amount is the initial (opening) balance
-                # recorded in dbo.balance_opening.
-                amount = opening_amount
-                source = "opening"
-            else:
-                # No recorded opening balance yet — fall back to the live
-                # dbo.account.balance for the mapped account.
-                amount = acct.get(account_id, Decimal("0"))
-                source = f"account:{account_id}"
+            # Bank category: always the live balance of the mapped account.
+            amount = acct.get(account_id, Decimal("0"))
+            source = f"account:{account_id}"
         else:
             amount = opening.get(cat_id, Decimal("0"))
             source = "opening"
@@ -401,18 +457,28 @@ def balance_sheet(country_id: int, year: int) -> dict[str, Any]:
             passiva.append(row)
 
     total_activa = _sum_amount(activa)
+
+    result_amount = _recorded_result(country_id, year)
+    passiva.append({
+        "category_id": result_id,
+        "code": result_id,
+        "label": labels.get(result_id, _VERLIES_SUFFIX),
+        "amount": float(result_amount),
+        "source": "category_total",
+    })
+
     total_passiva_others = _sum_amount(passiva)
 
-    verlies_amount = total_activa - total_passiva_others
+    balance_amount = total_activa - total_passiva_others
     passiva.append({
-        "category_id": verlies_id,
-        "code": verlies_id,
-        "label": labels.get(verlies_id, _VERLIES_SUFFIX),
-        "amount": float(verlies_amount),
+        "category_id": balance_id,
+        "code": balance_id,
+        "label": labels.get(balance_id, "Eigen vermogen"),
+        "amount": float(balance_amount),
         "source": "computed",
     })
 
-    total_passiva = total_passiva_others + verlies_amount
+    total_passiva = _sum_amount(passiva)
 
     return {
         "year": year,
@@ -485,12 +551,13 @@ def update_opening(country_id: int, year: int, items: list[dict[str, Any]]) -> N
     Bank categories are included too: their amount is the initial/opening
     balance recorded here and used by the sheet (see ``balance_sheet``).
     """
-    verlies_id = _verlies_id(country_id)
+    balance_id = _balance_id(country_id)
+    result_id = _verlies_id(country_id)
     with connect() as conn:
         cur = conn.cursor()
         for item in items:
             cat_id = int(item["category_id"])
-            if cat_id == verlies_id:
+            if cat_id in (balance_id, result_id):
                 continue  # computed, never stored
             amount = Decimal(str(item.get("amount", 0)))
             note = item.get("note")
