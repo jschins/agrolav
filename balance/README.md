@@ -134,9 +134,13 @@ these effects are folded into each category total (source becomes
 
 ## 4. Bank account → category mapping
 
-Five bank accounts in `dbo.account` map to balance categories. The balance hub
-reads `dbo.account.balance` directly — no duplication. The mapping follows the
-account's purpose (account name), matching the actual rows in `dbo.account`.
+Five bank accounts in `dbo.account` map to balance categories. Each bank
+category's amount on the sheet is the **initial/opening balance** recorded in
+`dbo.balance_opening`; the account link identifies which bank account the
+category serves (and is the fallback source — if no opening row exists for the
+year, the live `dbo.account.balance` of the mapped account is used). The
+mapping follows the account's purpose (account name), matching the actual rows
+in `dbo.account`.
 
 | category_id | label | account_id | IBAN | account_name |
 |-------------|-------|------------|------|--------------|
@@ -147,7 +151,7 @@ account's purpose (account name), matching the actual rows in `dbo.account`.
 | 1056 | Bank residentie ddkg | 21 | NL94INGB0006200605 | Stichting De Oude Gracht |
 
 Category 1052 (Spaarrekening) has no linked account yet; its balance is
-manually entered in `dbo.balance_opening`.
+manually entered in `dbo.balance_opening` too.
 
 The mapping is hard-coded as `CATEGORY_MAP` in `app/balance.py`.
 
@@ -166,9 +170,11 @@ inventory, autos) and equity/liability categories are not bank accounts:
 - Forcing them into `dbo.account` would require fake IBANs or a new account-type
   column, adding complexity without benefit.
 
-Instead, `dbo.balance_opening` stores their values per year. This is the standard
-approach for a balance sheet: bank balances come from the bank, everything else
-is recorded by the accountant.
+Instead, `dbo.balance_opening` stores their values per year. Bank categories are
+recorded there as well (their initial/opening amounts), rather than drifting
+with the live snapshot in `dbo.account.balance`. This is the standard approach
+for a balance sheet: bank balances come from the accountant's opening figures,
+everything else is recorded by the accountant.
 
 ---
 
@@ -209,14 +215,14 @@ is recorded by the accountant.
 ```
 
 The `source` field indicates where the amount came from:
-- `"opening"` — from `dbo.balance_opening`
-- `"account:{id}"` — from `dbo.account.balance`
+- `"opening"` — from `dbo.balance_opening` (bank and non-bank categories)
+- `"account:{id}"` — fallback to `dbo.account.balance` when no opening row exists for a bank category/year
 - `"opening+journal"` — opening + sum of `dbo.balance_transaction` for that category/year
 - `"computed"` — the Verlies post, computed so the two sides balance
 
-Note: each bank-category balance is read live from `dbo.account.balance`. This
-is the *current* snapshot, not a start-of-year figure. See §12 for how the
-spaarrekening differs.
+Note: each bank category's amount is the initial/opening balance recorded in
+`dbo.balance_opening`, not the live account snapshot. The live `dbo.account.balance`
+is used only as a fallback when no opening row exists for that year.
 
 ---
 
@@ -311,9 +317,9 @@ The existing matrix/transaction/categorization UI is not affected.
 
 ### Opening balances for year 2026
 
-Bank balances are read from `dbo.account` (current `balance` column). Non-bank
-categories are read from `dbo.balance_opening`. Actual values currently in the
-database:
+Bank and non-bank categories are both read from `dbo.balance_opening` (bank
+categories fall back to live `dbo.account.balance` only when no opening row
+exists). Actual values currently in the database:
 
 | category_id | label | amount (2026) | source |
 |-------------|-------|---------------|--------|
@@ -321,12 +327,12 @@ database:
 | 1005 | Verbouwingen | 2 272 550.85 | opening |
 | 1010 | Inventaris | 29 245.54 | opening |
 | 1015 | Autos | 6 685.34 | opening |
-| 1051 | Bank algemeen | 18 393.74 | account:18 |
+| 1051 | Bank algemeen | 53 511.25 | opening |
 | 1052 | Spaarrekening | 688 269.91 | opening |
-| 1053 | Bank huish. dienst | 2 867.50 | account:20 |
-| 1054 | Bank FPU | 2 096.11 | account:17 |
-| 1055 | Bank FOH | 2 230.56 | account:19 |
-| 1056 | Bank residentie ddkg | 3 633.87 | account:21 |
+| 1053 | Bank huish. dienst | 344.11 | opening |
+| 1054 | Bank FPU | 23 070.61 | opening |
+| 1055 | Bank FOH | 8 163.80 | opening |
+| 1056 | Bank residentie ddkg | 6 450.32 | opening |
 | 1110 | Kruisposten | 0.00 | opening |
 | 1111 | r/c K218 | -3 311.23 | opening |
 | 2000 | Eigen vermogen | 2 525 971.26 | opening |
