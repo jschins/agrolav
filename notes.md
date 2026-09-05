@@ -60,6 +60,8 @@ agrolav@agrolav:/opt/agrolav/balance/frontend$ npm ci
 agrolav@agrolav:/opt/agrolav/balance/frontend$ npm run build
 agrolav@agrolav:/opt/agrolav/balance/frontend$ cd ..
 
+agrolav@agrolav:/opt/agrolav$ sudo systemctl daemon-reload
+agrolav@agrolav:/opt/agrolav$ sudo systemctl reload caddy
 agrolav@agrolav:/opt/agrolav$ sudo systemctl reload caddy
 agrolav@agrolav:/opt/agrolav$ sudo systemctl restart agrolav-hub
 agrolav@agrolav:/opt/agrolav$ sudo systemctl restart agrolav-client
@@ -67,6 +69,15 @@ agrolav@agrolav:/opt/agrolav$ sudo systemctl restart agrolav-balance
 
 edit: sudo nano (CTRL-O, enter, CTRL-X)
 print: sudo cat
+rechten: 
+agrolav@agrolav:/opt/agrolav$ ls -ld /opt/sql_backups
+agrolav@agrolav:/opt/agrolav$ ls -la /opt/sql_backups
+agrolav@agrolav:/opt/agrolav$ sudo chown 10001:10001 /opt/sql_backups
+agrolav@agrolav:/opt/agrolav$ sudo chown 10001:10001 /opt/sql_backups/*
+agrolav@agrolav:/opt/agrolav$ ls -ldn /opt/sql_backups
+agrolav@agrolav:/opt/agrolav$ ls -lan /opt/sql_backups
+
+
 
 =====================environment variables on the remote
 
@@ -91,6 +102,31 @@ HOST=127.0.0.1
 PORT=8100
 HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=Agrolav_Hub_2026!;Encrypt=yes;TrustServerCertificate=yes
 agrolav@agrolav:/opt/agrolav$
+
+==================remote database backup
+
+DECLARE @path NVARCHAR(4000) = N'/var/opt/mssql/backup/agrolav_full_' +
+        CONVERT(NVARCHAR(8), GETDATE(), 112) + '_' +
+        REPLACE(CONVERT(NVARCHAR(8), GETDATE(), 108), ':', '') + '.bak';
+
+BACKUP DATABASE agrolav
+TO DISK = @path
+WITH FORMAT, INIT, NAME = N'agrolav-full', COMPRESSION, STATS = 10;
+
+-- Optional verify:
+RESTORE VERIFYONLY FROM DISK = @path;
+
+SELECT @path AS backup_path;
+
+then copy the file to local disk (from terminal): 
+PS C:\Coding\agrolav> scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/*.bak "C:\SQLBackups\remote_backups\"
+
+
+
+
+ls -ld /opt/sql_backups
+sudo -S docker exec -u 0 MSSQL2022 ls -ld /var/opt/mssql/backup
+
 
 
 ==================copy database

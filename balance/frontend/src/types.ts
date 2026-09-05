@@ -8,6 +8,7 @@ export interface BalanceLine {
 
 export interface BalanceSheet {
   year: number;
+  as_of?: string | null;
   activa: BalanceLine[];
   passiva: BalanceLine[];
   total_activa: number;
@@ -27,6 +28,11 @@ export interface CategoryInfo {
 
 export interface YearsResponse {
   years: number[];
+}
+
+export interface DatesResponse {
+  year: number;
+  dates: string[];
 }
 
 export interface JournalRow {

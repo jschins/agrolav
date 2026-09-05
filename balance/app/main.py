@@ -75,10 +75,20 @@ def balance_categories(_: None = Depends(_api_key)) -> dict[str, Any]:
 @app.get("/api/balance/{year}")
 def balance_sheet(
     year: int,
+    date: str | None = None,
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
     from app.balance import active_country_id, balance_sheet as compute
-    return compute(active_country_id(), year)
+    return compute(active_country_id(), year, as_of=date)
+
+
+@app.get("/api/balance/{year}/dates")
+def balance_dates(
+    year: int,
+    _: None = Depends(_api_key),
+) -> dict[str, Any]:
+    from app.balance import active_country_id, list_dates
+    return {"year": year, "dates": list_dates(active_country_id(), year)}
 
 
 class OpeningItem(BaseModel):

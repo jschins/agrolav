@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -226,16 +227,20 @@ def _opening_balances(country_id: int, year: int) -> dict[int, Decimal]:
         return {int(r[0]): Decimal(str(r[1])) for r in cur.fetchall()}
 
 
-def _journal_balances(country_id: int, year: int) -> dict[int, Decimal]:
+def _journal_balances(country_id: int, year: int, as_of: str | None = None) -> dict[int, Decimal]:
     """category_id → net sum of dbo.balance_transaction for a country/year."""
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute(
+        q = (
             "SELECT category_id, SUM(amount) FROM dbo.balance_transaction "
-            "WHERE country_id = ? AND year = ? GROUP BY category_id",
-            country_id,
-            year,
+            "WHERE country_id = ? AND year = ?"
         )
+        p: list[Any] = [country_id, year]
+        if as_of is not None:
+            q += " AND date <= ?"
+            p.append(as_of)
+        q += " GROUP BY category_id"
+        cur.execute(q, tuple(p))
         return {int(r[0]): Decimal(str(r[1])) for r in cur.fetchall()}
 
 
@@ -246,24 +251,28 @@ def _journal_table_exists() -> bool:
         return cur.fetchone()[0] is not None
 
 
-def _journal_effect(country_id: int, year: int) -> dict[int, Decimal]:
+def _journal_effect(country_id: int, year: int, as_of: str | None = None) -> dict[int, Decimal]:
     """category_id → net effect from the hand-edited dbo.balance_journal.
 
     Each row moves money FROM ``category_from`` TO ``category_to``: the FROM
     category decreases by ``amount`` and the TO category increases by ``amount``.
     The sum over all categories is therefore zero (the sheet stays balanced).
+    With ``as_of`` only rows dated on or before that day are included.
     """
     if not _journal_table_exists():
         return {}
     effect: dict[int, Decimal] = {}
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute(
+        q = (
             "SELECT category_from, category_to, amount FROM dbo.balance_journal "
-            "WHERE country_id = ? AND year = ?",
-            country_id,
-            year,
+            "WHERE country_id = ? AND year = ?"
         )
+        p: list[Any] = [country_id, year]
+        if as_of is not None:
+            q += " AND date <= ?"
+            p.append(as_of)
+        cur.execute(q, tuple(p))
         for cat_from, cat_to, amount in cur.fetchall():
             d = Decimal(str(amount))
             effect[cat_from] = effect.get(cat_from, Decimal("0")) - d
@@ -362,13 +371,64 @@ def _category_map(country_id: int) -> dict[int, tuple[str, int | None]]:
     return result
 
 
+def _result_overlay(country_id: int, year: int, as_of: str | None = None) -> Decimal:
+    """Resultaat effect of the beheer journal rows for categories 3000-4999.
+
+    Mirrors the hub matrix overlay so the sheet's Verlies post agrees with the
+    client's "Saldo" (kosten minus opbrengsten). ``dbo.balance_journal`` rows
+    move money FROM ``category_from`` TO ``category_to``: the TO category gets
+    the range sign, the FROM category the opposite. ``dbo.balance_transaction``
+    rows contribute their amount with the range sign. Sign: 3000-3999 (Kosten)
+    positive, 4000-4999 (Opbrengsten) negative. With ``as_of`` only rows dated
+    on or before that day are included.
+    """
+    total = Decimal("0")
+    with connect() as conn:
+        cur = conn.cursor()
+        for table in ("dbo.balance_journal", "dbo.balance_transaction"):
+            cur.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+            if cur.fetchone()[0] is None:
+                return Decimal("0")
+        dateq = " AND date <= ?" if as_of is not None else ""
+        if as_of is not None:
+            p: list[Any] = [country_id, year, as_of] * 3
+        else:
+            p = [country_id, year] * 3
+        cur.execute(
+            "SELECT c, s, k FROM ("
+            f" SELECT category_to AS c, amount AS s, 'T' AS k"
+            f" FROM dbo.balance_journal WHERE country_id = ? AND year = ?{dateq}"
+            " UNION ALL"
+            f" SELECT category_from AS c, amount AS s, 'F' AS k"
+            f" FROM dbo.balance_journal WHERE country_id = ? AND year = ?{dateq}"
+            " UNION ALL"
+            f" SELECT category_id AS c, amount AS s, 'X' AS k"
+            f" FROM dbo.balance_transaction WHERE country_id = ? AND year = ?{dateq}"
+            ") u WHERE c BETWEEN 3000 AND 4999",
+            tuple(p),
+        )
+        for category_id, amount, kind in cur.fetchall():
+            try:
+                code = int(category_id)
+                cents = Decimal(str(amount or 0))
+            except (TypeError, ValueError):
+                continue
+            side = -1 if code >= 4000 else 1  # K positive, O negative
+            if kind == "F":
+                side = -side  # FROM inverts the side sign
+            total += side * cents
+    return total
+
+
 def _recorded_result(country_id: int, year: int) -> Decimal:
     """Verlies (resultaat): sum of the P&L category totals (3000-4999).
 
     Reads the recorded per-person category totals from ``dbo.category_total``
-    (consolidated rows with ``bank_id IS NULL``) for the country's persons.
-    Empty when no totals are recorded (the balance post stays out of the
-    sheet's stored passiva until the totals are written).
+    (consolidated rows with ``bank_id IS NULL``) for the country's persons,
+    plus the beheer journal overlay so the sheet matches the client matrix
+    "Saldo" (kosten minus opbrengsten). Empty when no totals are recorded (the
+    balance post stays out of the sheet's stored passiva until the totals are
+    written).
     """
     with connect() as conn:
         cur = conn.cursor()
@@ -387,9 +447,8 @@ def _recorded_result(country_id: int, year: int) -> Decimal:
             year,
         )
         row = cur.fetchone()
-    if row is None or row[0] is None:
-        return Decimal("0")
-    return Decimal(str(row[0]))
+    base = Decimal("0") if row is None or row[0] is None else Decimal(str(row[0]))
+    return base + _result_overlay(country_id, year)
 
 
 def country_title(country_id: int) -> str:
@@ -407,13 +466,117 @@ def country_title(country_id: int) -> str:
     return title or str(row[1] or "")
 
 
-def balance_sheet(country_id: int, year: int) -> dict[str, Any]:
-    """Return the full balance sheet for a given country and year."""
-    acct = _account_balances(country_id)
-    opening = _opening_balances(country_id, year)
-    journal = _journal_balances(country_id, year)
-    journal_effect = _journal_effect(country_id, year)
+def list_dates(country_id: int, year: int) -> list[str]:
+    """Distinct booking dates (YYYY-MM-DD) in the country's transaction table."""
+    table = _transaction_table(country_id)
+    if table is None:
+        return []
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT DISTINCT CONVERT(varchar(10), booked_on, 23) "
+            f"FROM {table} WHERE year = ? ORDER BY 1",
+            year,
+        )
+        return [str(r[0]) for r in cur.fetchall()]
+
+
+def _asof_cutoff(country_id: int, year: int, as_of: str | None) -> date | None:
+    """Resolve the ``as_of`` selector to a cutoff date.
+
+    ``None``/``""`` means the live, full-year sheet. ``"initial"`` means a
+    date strictly before the first booked transaction (the starting sheet).
+    Anything else is parsed as YYYY-MM-DD.
+    """
+    if as_of in (None, ""):
+        return None
+    if as_of == "initial":
+        table = _transaction_table(country_id)
+        if table is not None:
+            with connect() as conn:
+                cur = conn.cursor()
+                cur.execute(f"SELECT MIN(booked_on) FROM {table} WHERE year = ?", year)
+                row = cur.fetchone()
+            if row and row[0] is not None:
+                first = row[0]
+                if hasattr(first, "date"):
+                    first = first.date()
+                return first - timedelta(days=1)
+        return date(2000, 1, 1)
+    try:
+        return date.fromisoformat(str(as_of))
+    except ValueError:
+        return None
+
+
+def _account_balances_asof(country_id: int, year: int, cutoff: date) -> dict[int, Decimal]:
+    """account_id → balance as of ``cutoff`` (current minus later movements)."""
+    current = _account_balances(country_id)
+    if not current:
+        return current
+    table = _transaction_table(country_id)
+    if table is None:
+        return current
+    later: dict[int, Decimal] = {}
+    ids = list(current)
+    placeholders = ",".join("?" for _ in ids)
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT account_id, SUM(amount) FROM {table} "
+            f"WHERE year = ? AND booked_on > ? AND account_id IN ({placeholders}) "
+            f"GROUP BY account_id",
+            tuple([year, cutoff.isoformat()] + ids),
+        )
+        for aid, s in cur.fetchall():
+            later[int(aid)] = Decimal(str(s))
+    return {aid: (cur - later.get(aid, Decimal("0"))) for aid, cur in current.items()}
+
+
+def _result_amount(country_id: int, year: int, cutoff: date) -> Decimal:
+    """Verlies recomputed from the transaction rows booked on or before cutoff."""
+    table = _transaction_table(country_id)
+    total = Decimal("0")
+    if table is not None:
+        with connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"SELECT category_id, amount FROM {table} "
+                "WHERE year = ? AND booked_on <= ?",
+                year,
+                cutoff.isoformat(),
+            )
+            for cat, amt in cur.fetchall():
+                try:
+                    if 3000 <= int(cat) <= 4999:
+                        total += Decimal(str(amt))
+                except (TypeError, ValueError):
+                    continue
+    return total + _result_overlay(country_id, year, cutoff.isoformat())
+
+
+def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[str, Any]:
+    """Return the full balance sheet for a given country and year.
+
+    With ``as_of`` ("initial" or YYYY-MM-DD) the Verlies post, the bank
+    account balances, and the journal effects are computed up to that day; a
+    date before the first transaction yields the starting balance sheet.
+    """
+    cutoff = _asof_cutoff(country_id, year, as_of)
+    if cutoff is None:
+        acct = _account_balances(country_id)
+        journal = _journal_balances(country_id, year)
+        journal_effect = _journal_effect(country_id, year)
+        result_amount = _recorded_result(country_id, year)
+        result_source = "category_total"
+    else:
+        acct = _account_balances_asof(country_id, year, cutoff)
+        journal = _journal_balances(country_id, year, cutoff.isoformat())
+        journal_effect = _journal_effect(country_id, year, cutoff.isoformat())
+        result_amount = _result_amount(country_id, year, cutoff)
+        result_source = "as_of"
     labels = _category_labels(country_id)
+    opening = _opening_balances(country_id, year)
     category_map = _category_map(country_id)
     balance_id = _balance_id(country_id)
     result_id = _verlies_id(country_id)
@@ -458,13 +621,12 @@ def balance_sheet(country_id: int, year: int) -> dict[str, Any]:
 
     total_activa = _sum_amount(activa)
 
-    result_amount = _recorded_result(country_id, year)
     passiva.append({
         "category_id": result_id,
         "code": result_id,
         "label": labels.get(result_id, _VERLIES_SUFFIX),
         "amount": float(result_amount),
-        "source": "category_total",
+        "source": result_source,
     })
 
     total_passiva_others = _sum_amount(passiva)
@@ -483,6 +645,7 @@ def balance_sheet(country_id: int, year: int) -> dict[str, Any]:
     return {
         "year": year,
         "country_id": country_id,
+        "as_of": cutoff.isoformat() if cutoff is not None else None,
         "activa": activa,
         "passiva": passiva,
         "total_activa": float(total_activa),

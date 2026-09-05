@@ -293,14 +293,14 @@ def load_bound_transactions(*, category_code: int | None = None) -> list[dict[st
 def _balance_overlay_cents(year: int, cursor: Any) -> dict[int, int]:
     """Extra per-category cents from the beheer balance tables for a year.
 
-    Only category ids 3000-4999 are considered. Side sign: 3000-3999 (Kosten)
-    are positive, 4000-4999 (Opbrengsten) negative. Position sign: in
-    ``dbo.balance_journal`` a row moves money FROM ``category_from`` TO
-    ``category_to``, so the TO category gets the side sign and the FROM
-    category the opposite; ``dbo.balance_transaction`` rows contribute their
-    amount with the side sign. The entered amount keeps its own sign
-    throughout. Both tables are beheer-only; returns ``{}`` when either table
-    is missing.
+    Only category ids 3000-4999 are considered, and only for country_id = 4
+    (beheer; hardcoded for now — instudo gets its own rule later). Side sign:
+    3000-3999 (Kosten) are positive, 4000-4999 (Opbrengsten) negative.
+    Position sign: in ``dbo.balance_journal`` a row moves money FROM
+    ``category_from`` TO ``category_to``, so the TO category gets the side
+    sign and the FROM category the opposite; ``dbo.balance_transaction`` rows
+    contribute their amount with the side sign. The entered amount keeps its
+    own sign throughout. Returns ``{}`` when either table is missing.
     """
     for table in ("dbo.balance_journal", "dbo.balance_transaction"):
         cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
@@ -309,11 +309,14 @@ def _balance_overlay_cents(year: int, cursor: Any) -> dict[int, int]:
     cursor.execute(
         """
         SELECT c, s, k FROM (
-            SELECT category_to AS c, amount AS s, 'T' AS k FROM dbo.balance_journal WHERE year = ?
+            SELECT category_to AS c, amount AS s, 'T' AS k
+            FROM dbo.balance_journal WHERE year = ? AND country_id = 4
             UNION ALL
-            SELECT category_from AS c, amount AS s, 'F' AS k FROM dbo.balance_journal WHERE year = ?
+            SELECT category_from AS c, amount AS s, 'F' AS k
+            FROM dbo.balance_journal WHERE year = ? AND country_id = 4
             UNION ALL
-            SELECT category_id AS c, amount AS s, 'X' AS k FROM dbo.balance_transaction WHERE year = ?
+            SELECT category_id AS c, amount AS s, 'X' AS k
+            FROM dbo.balance_transaction WHERE year = ? AND country_id = 4
         ) u WHERE c BETWEEN 3000 AND 4999
         """,
         (year, year, year),

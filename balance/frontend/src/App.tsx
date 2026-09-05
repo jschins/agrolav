@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getMeta, getSheet, getYears, rebuildSpaarMirror } from "./api";
+import { getDates, getMeta, getSheet, getYears, rebuildSpaarMirror } from "./api";
 import JournalEditor from "./JournalEditor";
 import type { BalanceSheet } from "./types";
 
@@ -11,6 +11,11 @@ const EUR = new Intl.NumberFormat("nl-NL", {
 
 function toMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+function fmtDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}-${m}-${y}`;
 }
 
 function SideTable({
@@ -62,16 +67,18 @@ function SideTable({
 export default function App() {
   const [years, setYears] = useState<number[]>([]);
   const [year, setYear] = useState<number | null>(null);
+  const [dates, setDates] = useState<string[]>([]);
+  const [asOf, setAsOf] = useState<string | null>(null);
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [title, setTitle] = useState("");
   const [view, setView] = useState<"sheet" | "journal">("sheet");
 
-  const load = useCallback((y: number) => {
+  const load = useCallback((y: number, date?: string | null) => {
     setError(null);
     setSheet(null);
-    getSheet(y)
+    getSheet(y, date ?? undefined)
       .then(setSheet)
       .catch((e) => setError(toMessage(e)));
   }, []);
@@ -86,10 +93,31 @@ export default function App() {
         setYears(ys);
         const current = ys.length ? Math.max(...ys) : null;
         setYear(current);
-        if (current != null) load(current);
+        getDates(current ?? 0)
+          .then((dr) => {
+            setDates(dr.dates);
+            if (current != null) load(current);
+          })
+          .catch((e) => setError(toMessage(e)));
       })
       .catch((e) => setError(toMessage(e)));
   }, [load]);
+
+  const onYear = (y: number) => {
+    setYear(y);
+    setAsOf(null);
+    getDates(y)
+      .then((dr) => {
+        setDates(dr.dates);
+        load(y);
+      })
+      .catch((e) => setError(toMessage(e)));
+  };
+
+  const onAsOf = (d: string) => {
+    setAsOf(d);
+    if (year != null) load(year, d);
+  };
 
   const onRebuild = async () => {
     if (year == null) return;
@@ -98,7 +126,7 @@ export default function App() {
     try {
       const res = await rebuildSpaarMirror(year);
       alert(`Spaarrekening-verwerking opnieuw opgebouwd: ${res.generated} mutaties.`);
-      load(year);
+      load(year, asOf);
     } catch (e) {
       setError(toMessage(e));
     } finally {
@@ -113,7 +141,7 @@ export default function App() {
           year={year ?? new Date().getFullYear()}
           onBack={() => {
             setView("sheet");
-            if (year != null) load(year);
+            if (year != null) load(year, asOf);
           }}
         />
       ) : (
@@ -128,28 +156,40 @@ export default function App() {
                   <button
                     key={y}
                     className={y === year ? "active" : ""}
-                    onClick={() => {
-                      setYear(y);
-                      load(y);
-                    }}
+                    onClick={() => onYear(y)}
                   >
                     {y}
                   </button>
                 ))}
               </div>
             )}
+            {year != null && (
+              <div className="toolbar">
+                <button onClick={onRebuild} disabled={busy || year == null}>
+                  {busy ? "Bezig…" : "Verversen"}
+                </button>
+                <button onClick={() => setView("journal")} disabled={year == null}>
+                  Bewerk grootboek
+                </button>
+                {dates.length > 0 && (
+                  <select
+                    className="asof-select"
+                    value={asOf ?? ""}
+                    onChange={(e) => onAsOf(e.target.value)}
+                    aria-label="Toon balans per datum"
+                  >
+                    <option value="">Actueel</option>
+                    <option value="initial">Start (vóór mutaties)</option>
+                    {dates.map((d) => (
+                      <option key={d} value={d}>
+                        {fmtDate(d)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
           </header>
-
-          {sheet && (
-            <div className="toolbar">
-              <button onClick={onRebuild} disabled={busy || year == null}>
-                {busy ? "Bezig…" : "Verversen"}
-              </button>
-              <button onClick={() => setView("journal")} disabled={year == null}>
-                Bewerk grootboek
-              </button>
-            </div>
-          )}
 
           {error && <div className="error">{error}</div>}
 

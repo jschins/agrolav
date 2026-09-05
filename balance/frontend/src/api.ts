@@ -1,4 +1,4 @@
-import type { BalanceSheet, YearsResponse, JournalResponse, JournalRow, CategoriesResponse } from "./types";
+import type { BalanceSheet, YearsResponse, DatesResponse, JournalResponse, JournalRow, CategoriesResponse } from "./types";
 
 function apiBase(): string {
   const p = window.location.pathname;
@@ -49,8 +49,15 @@ export function getMeta(): Promise<{ country_id: number; title: string }> {
   return getJson("/api/balance/meta");
 }
 
-export function getSheet(year: number): Promise<BalanceSheet> {
-  return getJson(`/api/balance/${year}`);
+export function getSheet(year: number, date?: string): Promise<BalanceSheet> {
+  const q = date
+    ? `?date=${encodeURIComponent(date)}`
+    : "";
+  return getJson(`/api/balance/${year}${q}`);
+}
+
+export function getDates(year: number): Promise<DatesResponse> {
+  return getJson(`/api/balance/${year}/dates`);
 }
 
 export function rebuildSpaarMirror(year: number): Promise<{ ok: boolean; generated: number }> {
