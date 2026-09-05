@@ -858,7 +858,7 @@ function SyncNotifyShell({
     });
     items.push({
       id: "recalculate-categories",
-      label: scratchBusy ? "Recalculating…" : "Recalculate categories",
+      label: scratchBusy ? "Recalculating…" : "Recalculate",
       disabled: scratchBusy || wipeBusy,
       onClick: doRecalculateFromScratch,
     });

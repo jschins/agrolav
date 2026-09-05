@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+/usr/bin/python3 - <<'PY'
+import ast
+ast.parse(open('/opt/agrolav/hub/app/main.py', encoding='utf-8').read())
+print('server syntax OK')
+PY
+cd /opt/agrolav/hub
+.venv/bin/python -m unittest tests.test_sql_only_no_folders -v 2>&1 | tail -25

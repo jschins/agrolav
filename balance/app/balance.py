@@ -366,15 +366,26 @@ def balance_sheet(country_id: int, year: int) -> dict[str, Any]:
             continue
 
         if account_id is not None:
-            amount = acct.get(account_id, Decimal("0"))
-            source = f"account:{account_id}"
+            opening_amount = opening.get(cat_id)
+            if opening_amount is not None:
+                # The bank category amount is the initial (opening) balance
+                # recorded in dbo.balance_opening.
+                amount = opening_amount
+                source = "opening"
+            else:
+                # No recorded opening balance yet — fall back to the live
+                # dbo.account.balance for the mapped account.
+                amount = acct.get(account_id, Decimal("0"))
+                source = f"account:{account_id}"
         else:
             amount = opening.get(cat_id, Decimal("0"))
             source = "opening"
-            journal_amount = journal.get(cat_id)
-            if journal_amount is not None:
-                amount += journal_amount
-                source = "opening+journal"
+
+        journal_amount = journal.get(cat_id)
+        if journal_amount is not None:
+            amount += journal_amount
+            if "+journal" not in source:
+                source += "+journal"
 
         effect = journal_effect.get(cat_id)
         if effect:
@@ -471,9 +482,9 @@ def update_opening(country_id: int, year: int, items: list[dict[str, Any]]) -> N
     """Upsert opening balances for a country and year.
 
     Each item: {"category_id": int, "amount": float, "note": str | None}.
-    Only non-bank categories (account_id is None) may be updated.
+    Bank categories are included too: their amount is the initial/opening
+    balance recorded here and used by the sheet (see ``balance_sheet``).
     """
-    category_map = _category_map(country_id)
     verlies_id = _verlies_id(country_id)
     with connect() as conn:
         cur = conn.cursor()
@@ -481,9 +492,6 @@ def update_opening(country_id: int, year: int, items: list[dict[str, Any]]) -> N
             cat_id = int(item["category_id"])
             if cat_id == verlies_id:
                 continue  # computed, never stored
-            _, account_id = category_map.get(cat_id, (None, None))
-            if account_id is not None:
-                continue  # bank balance comes from dbo.account
             amount = Decimal(str(item.get("amount", 0)))
             note = item.get("note")
             cur.execute(

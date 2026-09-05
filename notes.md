@@ -127,6 +127,34 @@ WITH
 ALTER DATABASE [agrolav]
 SET MULTI_USER;
 ```
+
+
+
+
+
+
+=====================================using pyodc
+$ $tool = @'
+#!/bin/bash
+/opt/agrolav/balance/.venv/bin/python - <<'PY'
+import pyodbc
+cn = pyodbc.connect("DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=Agrolav_Hub_2026!;Encrypt=yes;TrustServerCertificate=yes", timeout=10)
+cur = cn.cursor()
+cur.execute("ALTER TABLE dbo.transaction_beheer_instudo DROP CONSTRAINT ck_txn_beheer_instudo_cat")
+cur.execute("ALTER TABLE dbo.transaction_beheer_instudo ADD CONSTRAINT ck_txn_beheer_instudo_cat CHECK (category_id >= 10000 AND category_id < 20000)")
+cn.commit()
+cur.execute("""SELECT cc.definition FROM sys.check_constraints cc WHERE cc.name='ck_txn_beheer_instudo_cat'""")
+print("new CHECK:", cur.fetchone()[0])
+cn.close()
+PY
+'@
+$b = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($tool))
+$env:SSH_ASKPASS = "C:\Users\PCUSER~1\AppData\Local\Temp\opencode\askpass.cmd"
+$env:SSH_ASKPASS_REQUIRE = "force"
+ssh -p 4523 -o ConnectTimeout=15 agrolav@209.38.39.105 "printf '%s' '$b' | base64 -d > /tmp/agro_fix.sh; bash /tmp/agro_fix.sh"
+new CHECK: ([category_id]>=(10000) AND [category_id]<(20000))
+
+
 ====================================delete test users
 
 
@@ -232,4 +260,14 @@ DELETE FROM dbo.dim_category WHERE category_id = 3300;
 UPDATE dbo.transaction_beheer SET category_id = 1000 WHERE category_id = 3350;
 UPDATE dbo.category_term SET category_id = 1000 WHERE category_id = 3350;
 DELETE FROM dbo.dim_category WHERE category_id = 3350;
+
+=================WHEN ADDING FIRST PERSON TO NEWLY CREATED COUNTRY with country_id = 5
+
+INSERT INTO dbo.dim_category VALUES
+(13997,	5,	13997,	'Overige kosten',	'True',	NULL),
+(13998,	5,	13998,	'Balance',	'False',	'balance'),
+(13999,	5,	13999,	'Updated',	'False	'last_booked');
+
+ALTER TABLE dbo.transaction_beheer_instudo DROP CONSTRAINT ck_txn_beheer_instudo_cat;
+ALTER TABLE dbo.transaction_beheer_instudo ADD CONSTRAINT ck_txn_beheer_instudo_cat CHECK (category_id >= 10000 AND category_id < 20000);
 
