@@ -23,23 +23,19 @@ from app.core.enable_banking.transactions import (
     fetch_transactions_period,
 )
 
-from app import app_config
 from app import runtime as paths
 
 DEFAULT_REDIRECT = "https://deoudegracht.nl/banking-callback.html"
 
 
 def default_redirect_url() -> str:
-    """Return the configured callback used by Enable Banking redirects.
+    """Return the callback used by Enable Banking redirects.
 
-    On the server the dbo.app_config rows win over the ``ENABLEBANKING_REDIRECT_URL``
-    env override; locally the env override wins (matching old behaviour).
+    The ``ENABLEBANKING_REDIRECT_URL`` env override, else the hardcoded public
+    default. On the server set it to the Caddy callback
+    (https://expenses.apsurt.nl/api/consent/callback).
     """
-    override = os.environ.get("ENABLEBANKING_REDIRECT_URL", "").strip()
-    db_value = app_config.enablebanking_redirect_url()
-    if app_config.running_on_server():
-        return db_value or override or DEFAULT_REDIRECT
-    return override or db_value or DEFAULT_REDIRECT
+    return os.environ.get("ENABLEBANKING_REDIRECT_URL", "").strip() or DEFAULT_REDIRECT
 
 
 def _db_configured() -> bool:

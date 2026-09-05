@@ -10,7 +10,8 @@ Defaults are hardcoded. Override only via environment variables when needed.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `SERVER_URL` | `http://127.0.0.1:8200` | Hub base URL |
+| `SERVER_URL` | `http://127.0.0.1:8200` | Hub base URL (server-to-server API) |
+| `PUBLIC_HUB_URL` | unset → `SERVER_URL` | Browser-facing hub base for the Add person / Upload links — **set to the public host in production** (e.g. `https://expenses.apsurt.nl`); on a dev machine leave unset to use `SERVER_URL` |
 | `PORT` | `8300` | Client listen port |
 | `CLIENT_AUTH` | on (`true`) | Browser login; set `0`/`false` to disable |
 | `CLIENT_SESSION_SECRET` | insecure dev string | Cookie signing secret — **set in production** |

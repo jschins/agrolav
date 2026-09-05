@@ -93,9 +93,7 @@ def development_hub() -> bool:
     """Whether this hub is a developer's own machine, per ``HUB_DEV_LOGIN``.
 
     Deliberately opt-in and unset by default, so a server is IP-gated without
-    having to configure anything. It is not derived from
-    ``app_config.environment()``, which reports ``local`` whenever
-    ``dbo.app_config`` is absent and would hand a server the developer rules.
+    having to configure anything.
     """
     flag = os.environ.get("HUB_DEV_LOGIN", "").strip().lower()
     return flag in ("1", "true", "yes", "on")

@@ -1480,10 +1480,13 @@ function MainApp({
 
   const bankAuthRequired =
     banks?.needs_initial_authorization === true && Boolean(banks?.person);
-  const bankAuthAutoRef = useRef(false);
+  const autoFirstDownload =
+    Boolean(banks?.person) &&
+    (banks?.needs_initial_authorization === true || banks?.first_download === true);
+  const firstDownloadAutoRef = useRef(false);
   useEffect(() => {
-    if (!bankAuthRequired) return;
-    if (bankAuthAutoRef.current) return;
+    if (!autoFirstDownload) return;
+    if (firstDownloadAutoRef.current) return;
     const person_name = banks?.person || "";
     if (!person_name) return;
     let cancelled = false;
@@ -1491,7 +1494,7 @@ function MainApp({
     function attempt() {
       if (cancelled) return;
       if (hasSecrets) {
-        bankAuthAutoRef.current = true;
+        firstDownloadAutoRef.current = true;
         doFirstDownload(person_name);
         return;
       }
@@ -1503,7 +1506,7 @@ function MainApp({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bankAuthRequired, hasSecrets]);
+  }, [autoFirstDownload, hasSecrets]);
 
   useEffect(() => {
     return () => endRefreshBusy();

@@ -21,18 +21,15 @@ DEFAULT_CLIENT_RETURN_URL = "http://127.0.0.1:8300"
 
 
 def client_return_url() -> str:
-    """Browser-facing client base: dbo.app_config wins on the server.
+    """Browser-facing client base (env ``HUB_CLIENT_URL``, else localhost).
 
-    Priority: ``PUBLIC_CLIENT_URL`` row (when running on the server) → env
-    ``HUB_CLIENT_URL`` → ``http://127.0.0.1:8300``.
+    No ``dbo.app_config`` lookup: on the server set ``HUB_CLIENT_URL`` to the
+    public client host, e.g. ``https://expenses.apsurt.nl``.
     """
-    from app import app_config
-
-    env_value = os.environ.get("HUB_CLIENT_URL", "").strip().rstrip("/")
-    db_value = app_config.public_client_url().strip().rstrip("/")
-    if app_config.running_on_server():
-        return db_value or env_value or DEFAULT_CLIENT_RETURN_URL
-    return env_value or db_value or DEFAULT_CLIENT_RETURN_URL
+    return (
+        os.environ.get("HUB_CLIENT_URL", "").strip().rstrip("/")
+        or DEFAULT_CLIENT_RETURN_URL
+    )
 
 
 @asynccontextmanager
@@ -1847,23 +1844,6 @@ def add_person_page() -> str:
     )
 
 
-@app.get("/api/public-links")
-def public_links() -> dict[str, str]:
-    """DB-driven browser-facing URLs, read by the client BFF.
-
-    ``PUBLIC_HUB_URL`` is where the Add person / Upload pages live;
-    ``PUBLIC_CLIENT_URL`` is where the wizard returns after finishing.
-    Both are returned only when the hub runs on the server; otherwise they
-    are empty so browsers get local (127.0.0.1) links.
-    """
-    from app import app_config
-
-    return {
-        "public_hub_url": app_config.public_hub_url(),
-        "public_client_url": app_config.public_client_url(),
-    }
-
-
 _UPLOAD_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2683,7 +2663,6 @@ def run() -> None:
         _MUTE = (
             "GET /api/events",
             "GET /api/status",
-            "GET /api/public-links",
             "/capabilities",
             "/consent-ready",
             "/session/heartbeat",

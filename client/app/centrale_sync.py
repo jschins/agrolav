@@ -52,43 +52,15 @@ class HubConfig:
     title: str = ""
     auth_required: bool = False
     country: str = ""
-    public_url: str = ""  # browser-facing hub base (falls back to url)
-
-
-_PUBLIC_LINKS_CACHE: dict[str, str] | None = None
-
-
-def _fetch_public_links(url: str, api_key: str) -> dict[str, str]:
-    """Browser-facing URLs from the hub's dbo.app_config (cached on success).
-
-    An empty/failed response falls back to env ``PUBLIC_HUB_URL``, then to the
-    internal ``url``.
-    """
-    global _PUBLIC_LINKS_CACHE
-    if _PUBLIC_LINKS_CACHE is not None:
-        return _PUBLIC_LINKS_CACHE
-    links: dict[str, str] = {}
-    headers = {"Accept": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    try:
-        req = urllib.request.Request(
-            f"{url}/api/public-links", headers=headers, method="GET"
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            raw = resp.read().decode("utf-8")
-            parsed = json.loads(raw) if raw else {}
-            if isinstance(parsed, dict):
-                links = parsed
-    except Exception:  # noqa: BLE001
-        links = {}
-    if links.get("public_hub_url") or links.get("public_client_url"):
-        _PUBLIC_LINKS_CACHE = links
-    return links
+    public_url: str = ""  # browser-facing hub base (env PUBLIC_HUB_URL, else url)
 
 
 def public_hub_url() -> str:
-    """Browser-facing hub base: env override only (hub DB checked separately)."""
+    """Browser-facing hub base: the single ``PUBLIC_HUB_URL`` env option.
+
+    No database, no network round-trips, no fallback chain. When unset the
+    caller falls back to the internal hub ``url`` (works on a local machine).
+    """
     return os.environ.get("PUBLIC_HUB_URL", "").strip().rstrip("/")
 
 
@@ -159,11 +131,7 @@ def _build_hub_config(
         if centers_allowlist is not None
         else parse_centers(center_key)
     )
-    public_url = (
-        _fetch_public_links(url, api_key).get("public_hub_url", "").strip().rstrip("/")
-        or public_hub_url()
-        or url
-    )
+    public_url = public_hub_url() or url
 
     if access == ACCESS_PERSON:
         if not person_key:

@@ -10,6 +10,31 @@ boekhouding.agrolav.nl, expenses.apsurt.nl {
 
     handle /upload* {
         reverse_proxy 127.0.0.1:8200 {
+            header_up Authorization "Bearer {$CENTRALE_API_KEY}"
+            header_up X-Forwarded-For {http.request.remote.host}
+            header_up X-Real-IP {http.request.remote.host}
+        }
+    }
+
+    handle /add-person* {
+        reverse_proxy 127.0.0.1:8200 {
+            header_up Authorization "Bearer {$CENTRALE_API_KEY}"
+            header_up X-Forwarded-For {http.request.remote.host}
+            header_up X-Real-IP {http.request.remote.host}
+        }
+    }
+
+    handle /api/status {
+        reverse_proxy 127.0.0.1:8200 {
+            header_up Authorization "Bearer {$CENTRALE_API_KEY}"
+            header_up X-Forwarded-For {http.request.remote.host}
+            header_up X-Real-IP {http.request.remote.host}
+        }
+    }
+
+    handle /api/local/* {
+        reverse_proxy 127.0.0.1:8200 {
+            header_up Authorization "Bearer {$CENTRALE_API_KEY}"
             header_up X-Forwarded-For {http.request.remote.host}
             header_up X-Real-IP {http.request.remote.host}
         }

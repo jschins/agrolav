@@ -51,8 +51,46 @@ agrolav@agrolav:/opt/agrolav/client$ cd frontend
 agrolav@agrolav:/opt/agrolav/client/frontend$ npm ci
 agrolav@agrolav:/opt/agrolav/client/frontend$ npm run build
 agrolav@agrolav:/opt/agrolav/client/frontend$ cd ..
-agrolav@agrolav:/opt/agrolav/client$ sudo systemctl restart agrolav-hub
-agrolav@agrolav:/opt/agrolav/client$ sudo systemctl restart agrolav-client
+
+agrolav@agrolav:/opt/agrolav/client$ cd ..
+agrolav@agrolav:/opt/agrolav$ cd balance
+agrolav@agrolav:/opt/agrolav/balance$ uv sync
+agrolav@agrolav:/opt/agrolav/balance$ cd frontend
+agrolav@agrolav:/opt/agrolav/balance/frontend$ npm ci
+agrolav@agrolav:/opt/agrolav/balance/frontend$ npm run build
+agrolav@agrolav:/opt/agrolav/balance/frontend$ cd ..
+
+agrolav@agrolav:/opt/agrolav$ sudo systemctl reload caddy
+agrolav@agrolav:/opt/agrolav$ sudo systemctl restart agrolav-hub
+agrolav@agrolav:/opt/agrolav$ sudo systemctl restart agrolav-client
+agrolav@agrolav:/opt/agrolav$ sudo systemctl restart agrolav-balance
+
+edit: sudo nano (CTRL-O, enter, CTRL-X)
+print: sudo cat
+
+=====================environment variables on the remote
+
+agrolav@agrolav:/opt/agrolav$ sudo cat /etc/agrolav/hub.env
+HOST=127.0.0.1
+PORT=8200
+HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=Agrolav_Hub_2026!;Encrypt=yes;TrustServerCertificate=yes
+CENTRALE_API_KEY=b57ac888a83441516fe4e608c65ea8cdcbacab80ee4b43710dc417bcc421a2f4
+ENABLEBANKING_REDIRECT_URL=https://expenses.apsurt.nl/api/consent/callback
+HUB_CLIENT_URL=https://expenses.apsurt.nl
+agrolav@agrolav:/opt/agrolav$ sudo cat /etc/agrolav/client.env
+HOST=127.0.0.1
+PORT=8300
+SERVER_URL=http://127.0.0.1:8200
+CLIENT_AUTH=1
+CLIENT_SESSION_SECRET=SOME_OTHER_LONG_RANDOM_SECRET
+CLIENT_COUNTRY=nederland
+CENTRALE_API_KEY=b57ac888a83441516fe4e608c65ea8cdcbacab80ee4b43710dc417bcc421a2f4
+PUBLIC_HUB_URL=https://expenses.apsurt.nl
+agrolav@agrolav:/opt/agrolav$ sudo cat /etc/agrolav/balance.env
+HOST=127.0.0.1
+PORT=8100
+HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=Agrolav_Hub_2026!;Encrypt=yes;TrustServerCertificate=yes
+agrolav@agrolav:/opt/agrolav$
 
 
 ==================copy database

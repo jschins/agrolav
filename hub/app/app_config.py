@@ -1,25 +1,20 @@
-"""Application configuration from ``dbo.app_config``.
+"""Application configuration, deliberately minimal.
 
-Live rows replace the hardcoded env fallbacks. Reading is done through the
-existing user_store SQL connection; when SQL Server is not configured or the
-table is missing, ``load()`` returns an empty mapping and callers keep their
-hardcoded default.
+Only the hub API key is database-managed (the ``CENTRALE_API_KEY`` row of
+``dbo.app_config``); the ``CENTRALE_API_KEY`` env var is the fallback.
+Browser-facing URLs are NOT read from the database: the client uses the
+single ``PUBLIC_HUB_URL`` env option and the hub wizard returns via the
+``HUB_CLIENT_URL`` env option.
 
-The Enable Banking callback address is read directly from the single fieldName
-``LOCAL_ENABLEBANKING_REDIRECT_URL`` (falling back to PRODUCTION only when
-that row is missing).
+Reading is done through the existing user_store SQL connection; when SQL
+Server is not configured or the table is missing, ``load()`` returns an
+empty mapping and callers keep their hardcoded default.
 """
 from __future__ import annotations
 
 import os
 
-PRODUCTION_ENABLEBANKING_REDIRECT_URL = "PRODUCTION_ENABLEBANKING_REDIRECT_URL"
-LOCAL_ENABLEBANKING_REDIRECT_URL = "LOCAL_ENABLEBANKING_REDIRECT_URL"
-PUBLIC_HUB_URL = "PUBLIC_HUB_URL"
-PUBLIC_CLIENT_URL = "PUBLIC_CLIENT_URL"
-RUN_ON_SERVER = "RUN_ON_SERVER"
 CENTRALE_API_KEY = "CENTRALE_API_KEY"
-_ENABLEBANKING_REDIRECT_URL_ENV = "ENABLEBANKING_REDIRECT_URL"
 
 _CACHE: dict[str, str] | None = None
 
@@ -59,74 +54,6 @@ def get(field_name: str, default: str = "") -> str:
 def reset_cache() -> None:
     global _CACHE
     _CACHE = None
-
-
-def environment() -> str:
-    """``production`` or ``local``: the ``RUN_ON_SERVER`` row, else ``HUB_ENV``.
-
-    Used only when no request ``Host`` is bound (CLI / tests).
-    """
-    if running_on_server():
-        return "production"
-    raw = os.environ.get("HUB_ENV", "").strip().lower()
-    if raw in ("production", "prod"):
-        return "production"
-    return "local"
-
-
-def running_on_server() -> bool:
-    """True when the ``RUN_ON_SERVER`` dbo.app_config row is truthy.
-
-    With no row (or SQL not configured / table missing) it is false, i.e. local.
-    """
-    value = load().get(RUN_ON_SERVER, "").strip().lower()
-    return value in ("1", "true", "yes", "on")
-
-
-def enablebanking_redirect_url() -> str:
-    """Enable Banking callback: the environment-matched row.
-
-    On the server the ``PRODUCTION_ENABLEBANKING_REDIRECT_URL`` row is used;
-    locally the ``LOCAL_ENABLEBANKING_REDIRECT_URL`` row. The other row is the
-    fallback either way.
-    """
-    rows = load()
-    if running_on_server():
-        return (
-            rows.get(PRODUCTION_ENABLEBANKING_REDIRECT_URL)
-            or rows.get(LOCAL_ENABLEBANKING_REDIRECT_URL)
-            or ""
-        )
-    return (
-        rows.get(LOCAL_ENABLEBANKING_REDIRECT_URL)
-        or rows.get(PRODUCTION_ENABLEBANKING_REDIRECT_URL)
-        or ""
-    )
-
-
-def public_hub_url() -> str:
-    """Browser-facing hub base (the hub's Add person / Upload pages).
-
-    The ``PUBLIC_HUB_URL`` row is honoured only on the server
-    (``RUN_ON_SERVER`` truthy). Local mode returns ``""`` so consumers fall
-    back to their own 127.0.0.1 addresses instead of pointing browsers at
-    production.
-    """
-    if not running_on_server():
-        return ""
-    return get(PUBLIC_HUB_URL)
-
-
-def public_client_url() -> str:
-    """Browser-facing client base (where the wizard returns after finishing).
-
-    The ``PUBLIC_CLIENT_URL`` row is honoured only on the server
-    (``RUN_ON_SERVER`` truthy). Local mode returns ``""`` so consumers fall
-    back to env ``HUB_CLIENT_URL`` / localhost.
-    """
-    if not running_on_server():
-        return ""
-    return get(PUBLIC_CLIENT_URL)
 
 
 def centrale_api_key() -> str:

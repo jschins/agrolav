@@ -1,4 +1,5 @@
 INSERT INTO dbo.country VALUES (5, 'beheer_instudo', 'EUR', 'Beheer Instudo', 4, NULL);
+INSERT INTO dbo.center VALUES (7, 5, 'beh_instudo', 'Beheer Instudo', NULL);
 
 ALTER TABLE dbo.country ADD has_balance BIT NOT NULL
   CONSTRAINT DF_country_has_balance DEFAULT 0 WITH VALUES;

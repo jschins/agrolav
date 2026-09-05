@@ -1,0 +1,14 @@
+AGENDA
+
+The upload list should read filenames from dbo.uploaded_files (account_id,
+file_name, format), not from disk. After the user hits upload, parse the
+bytes and write dbo.uploaded_files plus dbo.transaction_{country}.
+
+After "add person", return the browser to the client on :8300, not the hub
+on :8200.
+
+Enable Banking consent uses dbo.enable_connection (pem, session_id,
+valid_until) and dbo.consent_pending for the in-flight callback.
+
+Country/center login allowlist: dbo.administrator ∪ dbo.country.egress_ip /
+dbo.center.egress_ip. Empty admits nobody. Attempts go to dbo.visitor_ip.
