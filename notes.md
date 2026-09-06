@@ -383,7 +383,7 @@ INSERT INTO dbo.dim_category VALUES
 (14070, 5, 4070, 'Giften', 'False', NULL),
 (14085, 5, 4085, 'Overige baten', 'False', NULL)
 
-INSERT INTO dbo.mapping VALUES (5, 11100, 39),(5, 11104, 40),(5, 11106, 41),(5, 11107, 42),(5, 11108, 43);
+INSERT INTO dbo.mapping VALUES (5, 11021, 39),(5, 11025, 40),(5, 11023, 41),(5, 11024, 42),(5, 11022, 43);
 
 because
 39	24	NL46INGB0001726568	Stichting Instudo
@@ -392,8 +392,10 @@ because
 42	24	NL63INGB0000776923	Leidenhoven College
 43	24	NL61INGB0002843544	Lepelenburg
 
-(11100, 5, 1100, 'r/c SIb', 'False', NULL),
-(11104, 5, 1104, 'r/c Den Eker', 'False', NULL),
-(11106, 5, 1106, 'r/c Jan Luijken', 'False', NULL),
-(11107, 5, 1107, 'r/c Leidenhoven', 'False', NULL),
-(11108, 5, 1108, 'r/c Lepelenburg', 'False', NULL),
+INSERT INTO dbo.dim_category VALUES
+(11020, 5, 1020, 'SIa', 'False', NULL),
+(11021, 5, 1021, 'SIb', 'False', NULL),
+(11022, 5, 1022, 'Lepelenburg', 'False', NULL),
+(11023, 5, 1023, 'Jan Luijken', 'False', NULL),
+(11024, 5, 1024, 'Leidenhoven', 'False', NULL),
+(11025, 5, 1025, 'Den Eker', 'False', NULL),

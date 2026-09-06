@@ -325,12 +325,28 @@ def settings(center: str) -> dict[str, Any]:
         general_file = load_general_file(people_list)
         general = _category_map(general_file)
         personal: dict[str, dict[str, list[str]]] = {}
+        account_groups: list[dict[str, Any]] = []
         typerules: list[dict[str, str]] = []
         codes: list[int] = []
         remainder = ""
         for pack in people_list:
             with bind_scope(pack):
+                from app.core.categorize import _account_modality, _personal_category_maps
+                from app.runtime import active_country
+                from app.sql_catalog import account_groups as account_groups_sql
+
                 personal[pack.person_name] = _personal_category_map()
+                if _account_modality():
+                    country = active_country()
+                    for group in account_groups_sql(country, pack.person_name):
+                        bucket = _personal_category_maps().get(group["account_key"], {}) or {}
+                        account_groups.append(
+                            {
+                                **group,
+                                "person": pack.person_name,
+                                "categories": bucket,
+                            }
+                        )
                 if not typerules:
                     typerules = type_rules_payload()
                 if not codes:
@@ -342,6 +358,7 @@ def settings(center: str) -> dict[str, Any]:
             "people": _people_payload(people_list),
             "general": general,
             "personal": personal,
+            "account_groups": account_groups,
             "valid_category_codes": codes,
             "remainder_category": remainder,
             "typerules": typerules,
@@ -371,6 +388,21 @@ def update_catalog(center: str, categories: list[dict[str, Any]]) -> dict[str, A
         return payload
 
 
+def _resolve_account_group(ws: str, group: str) -> tuple[str, str]:
+    """Resolve an account-uid group to (person_name, account_uid) in account modality."""
+    from app.runtime import active_country
+    from app.sql_catalog import account_groups as account_groups_sql
+    from app.sql_catalog import country_for_center
+    from app.settings import get_people
+
+    country = active_country() or country_for_center(ws) or ""
+    for pack in get_people():
+        for entry in account_groups_sql(country, pack.person_name):
+            if entry["account_key"] == group:
+                return pack.person_name, group
+    raise ValueError(f"Unknown account group: {group!r}")
+
+
 def update_settings(
     center: str,
     group: str,
@@ -382,9 +414,11 @@ def update_settings(
     """Save terms, then announce + iRCfT (lock released before the scan)."""
     from app import user_store
     from app.core.categorize import (
+        _account_modality,
         _categories_file,
         _category_map,
         _personal_category_map,
+        _personal_category_map_for,
         term_list_diff,
     )
     from app.matrix import build_matrix, save_general_terms, save_personal_terms
@@ -401,11 +435,20 @@ def update_settings(
             recalc_all = True
             group_name = "general"
             personal = False
+            account: str | None = None
         else:
-            pack = get_person(group)
+            if _account_modality():
+                person_name, account = _resolve_account_group(ws, group)
+            else:
+                person_name, account = group, None
+            pack = get_person(person_name)
             with bind_scope(pack):
-                old_terms = list(_personal_category_map().get(category_name, []) or [])
-            cleaned = save_personal_terms(pack.person_name, category_name, terms)
+                old_terms = list(
+                    _personal_category_map_for(account).get(category_name, []) or []
+                )
+            cleaned = save_personal_terms(
+                pack.person_name, category_name, terms, account=account
+            )
             rel = store.person_secret_rel(pack.person_name, store.PERSONAL_CATEGORIES)
             content = None
             if not sql:
@@ -415,7 +458,7 @@ def update_settings(
                 else:
                     content = {}
             recalc_all = False
-            group_name = pack.person_name
+            group_name = account or pack.person_name
             personal = True
 
     added, removed = term_list_diff(old_terms, cleaned)
@@ -438,6 +481,7 @@ def update_settings(
             removed=removed,
             personal=personal,
             category_name=category_name,
+            account=account,
         )
     else:
         result = {"affected_files": [rel], "matrix": None}
@@ -460,14 +504,17 @@ def add_term(
     term: str,
     general: bool,
     person: str | None = None,
+    account: str | None = None,
     source: str = "local",
 ) -> dict[str, Any]:
     with _center_scope(center) as ws:
         from app import user_store
         from app.core.categorize import (
+            _account_modality,
             _categories_file,
             _category_map,
             _personal_category_map,
+            _personal_category_map_for,
             append_category_term,
             term_list_diff,
         )
@@ -531,16 +578,28 @@ def add_term(
         person_name = (person or "").strip()
         if not person_name:
             raise ValueError("person is required when general=false")
+        account_key = (account or "").strip() or None
+        if _account_modality():
+            if not account_key:
+                raise ValueError("account is required for personal terms in this country")
+            owner, account_key = _resolve_account_group(ws, account_key)
+            if owner != person_name:
+                raise ValueError(f"Account {account_key!r} does not belong to {person_name!r}")
         pack = get_person(person_name)
         with bind_scope(pack):
-            old_terms = list(_personal_category_map().get(category_name, []) or [])
+            old_terms = list(
+                _personal_category_map_for(account_key).get(category_name, []) or []
+            )
             terms = append_category_term(
                 category_name,
                 term,
-                group=pack.person_name,
+                group=account_key or pack.person_name,
                 person=pack.person_name,
+                account=account_key,
             )
-            after_terms = list(_personal_category_map().get(category_name, []) or [])
+            after_terms = list(
+                _personal_category_map_for(account_key).get(category_name, []) or []
+            )
         added, removed = term_list_diff(old_terms, after_terms)
         rel = store.person_secret_rel(pack.person_name, store.PERSONAL_CATEGORIES)
         if not sql:
@@ -555,12 +614,21 @@ def add_term(
                 skip_event=True,
             )
         if added or removed:
-            result = store.mutate_and_ircft(ws, [rel], source=source, added=added, removed=removed, personal=True, category_name=category_name)
+            result = store.mutate_and_ircft(
+                ws,
+                [rel],
+                source=source,
+                added=added,
+                removed=removed,
+                personal=True,
+                category_name=category_name,
+                account=account_key,
+            )
         else:
             result = {"affected_files": [rel], "matrix": None}
         return {
             "center": ws,
-            "group": pack.person_name,
+            "group": account_key or pack.person_name,
             "category": category_name,
             "term": term,
             "terms": terms,

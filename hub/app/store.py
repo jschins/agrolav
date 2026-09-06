@@ -245,8 +245,13 @@ def ircft_center(
     removed: list[str],
     personal: bool,
     category_name: str,
+    account: str | None = None,
 ) -> dict[str, Any]:
-    """Apply iRCfT for one center; publish derived files; return the matrix."""
+    """Apply iRCfT for one center; publish derived files; return the matrix.
+
+    ``account`` (an account uid) scopes a personal edit to one account in
+    account-modality countries.
+    """
     from app.core.categorize import apply_ircft_terms
     from app.matrix import build_matrix
     from app.runtime import CALC_LOCK, bind_scope
@@ -267,6 +272,7 @@ def ircft_center(
                     removed=removed,
                     personal=personal,
                     category_name=category_name,
+                    account=account,
                 )
         return {"ok": True, "center": ws, "matrix": build_matrix(packs)}
 
@@ -597,6 +603,7 @@ def mutate_and_ircft(
     removed: list[str],
     personal: bool,
     category_name: str,
+    account: str | None = None,
 ) -> dict[str, Any]:
     """Announce expected files, iRCfT affected person(s)/center(s), return matrix."""
     from app.runtime import CALC_LOCK
@@ -628,6 +635,7 @@ def mutate_and_ircft(
                 removed=removed,
                 personal=personal,
                 category_name=category_name,
+                account=account,
             )
     primary_result = matrices.get(primary) or {}
     matrix_payload = primary_result.get("matrix")

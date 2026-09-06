@@ -21,10 +21,55 @@ def _sql_categories() -> dict[str, Any]:
 
 
 def _personal_category_map() -> dict[str, list[str]]:
-    from app.sql_catalog import personal_categories_payload
+    """Flat personal terms for the bound person (all accounts merged).
+
+    In account modality this merges every account bucket, which keeps
+    display/diff paths working; account-scoped save and match paths use
+    ``_personal_category_maps`` instead.
+    """
+    merged: dict[str, list[str]] = {}
+    for bucket in _personal_category_maps().values():
+        for category, terms in bucket.items():
+            merged.setdefault(category, []).extend(terms)
+    return merged
+
+
+def _personal_category_maps() -> dict[str | None, dict[str, list[str]]]:
+    """Personal terms keyed by account uid; ``None`` = unbound (person modality)."""
+    from app.sql_catalog import personal_category_maps
 
     name = str(paths.BOUND_PERSON or "").strip()
-    return personal_categories_payload(name)
+    return personal_category_maps(name)
+
+
+def _account_modality() -> bool:
+    """True when the active country scopes P terms per account (has_balance)."""
+    from app.runtime import active_center, active_country
+    from app.sql_catalog import country_for_center, country_has_balance
+
+    country = active_country() or country_for_center(active_center() or "") or ""
+    return country_has_balance(country)
+
+
+def _personal_map_for_account(
+    record: dict[str, Any],
+    personal_maps: dict[str | None, dict[str, list[str]]],
+) -> dict[str, list[str]]:
+    """Resolve the flat personal map that applies to one transaction row."""
+    uid = str(record.get("account_uid") or "").strip()
+    if uid:
+        bucket = personal_maps.get(uid)
+        if bucket is not None:
+            return bucket
+    return personal_maps.get(None, {})
+
+
+def _account_modality_scope(
+    personal_maps: dict[str | None, dict[str, list[str]]] | None,
+    account: str | None,
+) -> bool:
+    """True when the row-scoped maps are in use (account modality with a target account)."""
+    return personal_maps is not None and bool((account or "").strip())
 
 
 def _load_categorized_store() -> dict[str, Any]:
@@ -703,6 +748,7 @@ def _categorize_transactions(
     personal: dict[str, list[str]],
     *,
     match_sources: dict[Any, dict[str, Any]] | None = None,
+    personal_maps: dict[str | None, dict[str, list[str]]] | None = None,
 ) -> list[dict[str, Any]]:
     categorized: list[dict[str, Any]] = []
     for record in records:
@@ -713,7 +759,10 @@ def _categorize_transactions(
             source = match_sources.get(record.get("id"), record)
         flag = _modification_of(updated)
         if not _user_set_category(flag) and not _is_excel_row(source):
-            code, hit = categorize_with_hit(source, general, personal)
+            effective_personal = personal
+            if personal_maps is not None:
+                effective_personal = _personal_map_for_account(source, personal_maps)
+            code, hit = categorize_with_hit(source, general, effective_personal)
             updated["category"] = code
             updated["hit"] = hit
             if flag == MOD_UNCALCULATED:
@@ -848,7 +897,6 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
     sets ``modification`` to 0 for the reset rows.
     """
     general = _category_map(_categories_file())
-    personal = _personal_category_map()
     data = _load_categorized_store()
 
     existing_tx = data.get("transactions")
@@ -869,7 +917,14 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
             else:
                 record["modification"] = MOD_UNCALCULATED
 
-    categorized = _categorize_transactions(records, general, personal)
+    if _account_modality():
+        personal_maps = _personal_category_maps()
+        categorized = _categorize_transactions(
+            records, general, {}, personal_maps=personal_maps
+        )
+    else:
+        personal = _personal_category_map()
+        categorized = _categorize_transactions(records, general, personal)
 
     result = dict(data) if data else {}
     result["transactions"] = sorted(categorized, key=_tx_sort_key, reverse=True)
@@ -885,14 +940,17 @@ def ircft_add_term(
     personal: bool,
     category_name: str,
     general: dict[str, list[str]],
-    personal_map: dict[str, list[str]],
+    personal_map: dict[str, list[str]] | None = None,
+    personal_maps: dict[str | None, dict[str, list[str]]] | None = None,
+    account: str | None = None,
 ) -> bool:
     """Apply one newly added term without recategorizing every row.
 
     Call after the term is already saved. Unlocked rows with no ``hit`` are
     backfilled with a full categorize (the new term is already in the maps).
     Rows that already have a hit are updated only when the new term matches
-    and outranks the stored hit.
+    and outranks the stored hit. In account modality ``personal_maps`` is the
+    account-keyed map and ``account`` restricts a P term to one account.
     """
     normalized = _normalize_term(term)
     if not normalized:
@@ -915,6 +973,10 @@ def ircft_add_term(
             continue
         canonical = _canonical_transaction(transaction)
         flag = _modification_of(canonical)
+        if personal_maps is not None:
+            effective_personal = _personal_map_for_account(canonical, personal_maps)
+        else:
+            effective_personal = personal_map or {}
         if _user_set_category(flag):
             next_rows.append(canonical)
             continue
@@ -924,10 +986,18 @@ def ircft_add_term(
                 changed = True
             next_rows.append(canonical)
             continue
+        if (
+            personal
+            and personal_maps is not None
+            and (account or "").strip()
+            and str(canonical.get("account_uid") or "") != str(account)
+        ):
+            next_rows.append(canonical)
+            continue
 
         existing = parse_hit(canonical.get("hit"))
         if existing is None:
-            code, hit = categorize_with_hit(canonical, general, personal_map)
+            code, hit = categorize_with_hit(canonical, general, effective_personal)
             if canonical.get("category") != code or canonical.get("hit") != hit:
                 canonical["category"] = code
                 canonical["hit"] = hit
@@ -966,13 +1036,17 @@ def ircft_remove_term(
     *,
     personal: bool,
     general: dict[str, list[str]],
-    personal_map: dict[str, list[str]],
+    personal_map: dict[str, list[str]] | None = None,
+    personal_maps: dict[str | None, dict[str, list[str]]] | None = None,
+    account: str | None = None,
 ) -> bool:
     """Undo rows whose ``hit`` is this term; full-categorize those rows.
 
     Unlocked keyword rows with no ``hit`` (legacy JSON) are also fully
     categorized, because the deleted term may have been their winner.
     ``modification`` 1 or 3 keeps ``category`` and only clears a stale hit.
+    In account modality ``personal_maps`` supplies per-account maps and
+    ``account`` restricts the undo to a single account.
     """
     normalized = _normalize_term(term)
     if not normalized:
@@ -992,6 +1066,18 @@ def ircft_remove_term(
             continue
         canonical = _canonical_transaction(transaction)
         flag = _modification_of(canonical)
+        if personal_maps is not None:
+            effective_personal = _personal_map_for_account(canonical, personal_maps)
+        else:
+            effective_personal = personal_map or {}
+        if (
+            personal
+            and personal_maps is not None
+            and (account or "").strip()
+            and str(canonical.get("account_uid") or "") != str(account)
+        ):
+            next_rows.append(canonical)
+            continue
         parsed = parse_hit(canonical.get("hit"))
         stored = format_hit(parsed[1], personal=parsed[0]) if parsed else None
         type_rule = _category_from_type_rules(canonical) is not None
@@ -1007,7 +1093,7 @@ def ircft_remove_term(
             next_rows.append(canonical)
             continue
 
-        code, hit = categorize_with_hit(canonical, general, personal_map)
+        code, hit = categorize_with_hit(canonical, general, effective_personal)
         if canonical.get("category") != code or canonical.get("hit") != hit:
             canonical["category"] = code
             canonical["hit"] = hit
@@ -1039,13 +1125,24 @@ def apply_ircft_terms(
     removed: list[str],
     personal: bool,
     category_name: str,
+    account: str | None = None,
 ) -> None:
-    """Run iRCfT for the currently bound person. Terms must already be saved."""
+    """Run iRCfT for the currently bound person. Terms must already be saved.
+
+    ``account`` (an account uid) scopes a personal edit to one account in
+    account-modality countries.
+    """
     general = _category_map(_categories_file())
     personal_map = _personal_category_map()
+    personal_maps = _personal_category_maps() if _account_modality() else None
     for term in removed:
         ircft_remove_term(
-            term, personal=personal, general=general, personal_map=personal_map
+            term,
+            personal=personal,
+            general=general,
+            personal_map=personal_map,
+            personal_maps=personal_maps,
+            account=account,
         )
     for term in added:
         ircft_add_term(
@@ -1054,6 +1151,8 @@ def apply_ircft_terms(
             category_name=category_name,
             general=general,
             personal_map=personal_map,
+            personal_maps=personal_maps,
+            account=account,
         )
 
 
@@ -1186,14 +1285,27 @@ def _save_general_category_terms(category_name: str, terms: list[str]) -> None:
     save_category_terms(category_name, cleaned, person=None)
 
 
-def _save_personal_category_terms(category_name: str, terms: list[str]) -> None:
+def _personal_category_map_for(account: str | None = None) -> dict[str, list[str]]:
+    """Flat personal map for a save target (account-scoped in account modality)."""
+    if _account_modality() and (account or "").strip():
+        bucket = _personal_category_maps().get(account) or {}
+        return dict(bucket)
+    return _personal_category_map()
+
+
+def _save_personal_category_terms(
+    category_name: str,
+    terms: list[str],
+    *,
+    account: str | None = None,
+) -> None:
     cleaned = _cleaned_terms(terms)
     from app.sql_catalog import save_category_terms
 
     name = str(paths.BOUND_PERSON or "").strip()
     if not name:
         raise ValueError("personal terms need a bound person")
-    save_category_terms(category_name, cleaned, person=name)
+    save_category_terms(category_name, cleaned, person=name, account=account)
 
 
 def append_category_term(
@@ -1202,6 +1314,7 @@ def append_category_term(
     *,
     group: str,
     person: str,
+    account: str | None = None,
 ) -> list[str]:
     """Append one keyword to general (categories.json) or personal (personal_categories.json)."""
     cleaned = _normalize_term(term)
@@ -1219,18 +1332,18 @@ def append_category_term(
         if cleaned not in _cleaned_terms(terms):
             terms.append(cleaned)
         _save_general_category_terms(category_name, terms)
-    elif group == person:
-        personal = _personal_category_map()
+    elif group == person or account:
+        personal = _personal_category_map_for(account)
         terms = list(personal.get(category_name, []))
         if cleaned not in _cleaned_terms(terms):
             terms.append(cleaned)
-        _save_personal_category_terms(category_name, terms)
+        _save_personal_category_terms(category_name, terms, account=account)
     else:
         raise ValueError(f"Unknown settings group: {group!r}")
     return terms_for_category(category_name)
 
 
-def add_category_term(category_name: str, term: str) -> list[str]:
+def add_category_term(category_name: str, term: str, *, account: str | None = None) -> list[str]:
     """Append a term to the personal keyword list for a category."""
     cleaned_term = _normalize_term(term)
     if not cleaned_term:
@@ -1238,17 +1351,17 @@ def add_category_term(category_name: str, term: str) -> list[str]:
     if cleaned_term in _cleaned_terms(terms_for_category(category_name)):
         return terms_for_category(category_name)
 
-    personal = _personal_category_map()
+    personal = _personal_category_map_for(account)
     personal_terms = list(personal.get(category_name, []))
     personal_terms.append(cleaned_term)
-    _save_personal_category_terms(category_name, personal_terms)
+    _save_personal_category_terms(category_name, personal_terms, account=account)
     return terms_for_category(category_name)
 
 
-def remove_category_term(category_name: str, term: str) -> list[str]:
+def remove_category_term(category_name: str, term: str, *, account: str | None = None) -> list[str]:
     """Remove a term from personal keywords, otherwise from general keywords."""
     needle = _normalize_term(term)
-    personal = _personal_category_map()
+    personal = _personal_category_map_for(account)
     general = _category_map(_categories_file())
     personal_terms = list(personal.get(category_name, []))
     general_terms = list(general.get(category_name, []))
@@ -1257,6 +1370,7 @@ def remove_category_term(category_name: str, term: str) -> list[str]:
         _save_personal_category_terms(
             category_name,
             [existing for existing in personal_terms if _normalize_term(existing) != needle],
+            account=account,
         )
     elif any(_normalize_term(existing) == needle for existing in general_terms):
         _save_general_category_terms(

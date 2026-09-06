@@ -664,6 +664,7 @@ class AddTermRequest(BaseModel):
     term: str
     general: bool = False
     person: str | None = None
+    account: str | None = None
     source: str = "local"
 
 
@@ -1020,6 +1021,7 @@ def api_add_term(
             term=body.term,
             general=body.general,
             person=body.person,
+            account=body.account,
             source=body.source,
         )
     except KeyError as exc:

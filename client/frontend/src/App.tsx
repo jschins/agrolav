@@ -1692,7 +1692,12 @@ function MainApp({
     setTermMenuSettings(null);
   }
 
-  function saveTermMenu(term: string, targetCategory: string, general: boolean) {
+  function saveTermMenu(
+    term: string,
+    targetCategory: string,
+    general: boolean,
+    account?: string
+  ) {
     const person_name = selectionRef.current?.person_name;
     if (!general && !person_name) return Promise.resolve();
     const sel = selectionRef.current;
@@ -1706,6 +1711,7 @@ function MainApp({
       term,
       general,
       person: general ? undefined : person_name,
+      account: general ? undefined : account,
     })
       .then((res) => {
         setMatrix(res.matrix);
@@ -3232,13 +3238,20 @@ function TermContextMenu({
   onPickCategory: (
     term: string,
     targetCategory: string,
-    general: boolean
+    general: boolean,
+    account?: string
   ) => void | Promise<void>;
 }) {
   const [term, setTerm] = useState(initialTerm);
   const [saving, setSaving] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState({ left: x, top: y });
+
+  const accountGroups = settings.account_groups ?? [];
+  const accountModality = accountGroups.length > 0;
+  const [accountKey, setAccountKey] = useState(
+    () => accountGroups[0]?.account_key ?? ""
+  );
 
   const categories = settings.categories.filter(
     (name) => name !== settings.remainder_category && isBookingCategoryName(name)
@@ -3257,7 +3270,7 @@ function TermContextMenu({
       left: Math.min(x, window.innerWidth - rect.width - pad),
       top: Math.min(y, window.innerHeight - rect.height - pad),
     });
-  }, [x, y, categories.length, initialTerm]);
+  }, [x, y, categories.length, initialTerm, accountModality]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -3271,9 +3284,14 @@ function TermContextMenu({
     const cleaned = term.trim();
     if (!cleaned || saving) return;
     setSaving(true);
-    Promise.resolve(onPickCategory(cleaned, category, general)).finally(() =>
-      setSaving(false)
-    );
+    Promise.resolve(
+      onPickCategory(
+        cleaned,
+        category,
+        general,
+        general ? undefined : accountKey || undefined
+      )
+    ).finally(() => setSaving(false));
   }
 
   return (
@@ -3324,7 +3342,24 @@ function TermContextMenu({
                   className="term-context-gp-head"
                   title={tableHeaderTerm(settings.table_header_terms, "Personal")}
                 >
-                  {tableHeaderTerm(settings.table_header_terms, "P")}
+                  {accountModality ? (
+                    <select
+                      className="term-context-account-select"
+                      value={accountKey}
+                      title={tableHeaderTerm(settings.table_header_terms, "Personal")}
+                      disabled={saving}
+                      onChange={(e) => setAccountKey(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {accountGroups.map((group) => (
+                        <option key={group.account_key} value={group.account_key}>
+                          {group.account_name || group.account_key}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    tableHeaderTerm(settings.table_header_terms, "P")
+                  )}
                 </th>
               </tr>
             </thead>

@@ -730,7 +730,11 @@ def categories_payload(country: str) -> dict[str, Any]:
 
 
 def personal_categories_payload(username: str) -> dict[str, list[str]]:
-    """Category label → personal keyword terms for one person."""
+    """Category name → personal keyword terms for one person.
+
+    Keys use the same ``{local_code:04d} {label}`` naming as the general map
+    (bare label when the category has a ``matrix_role``).
+    """
     name = (username or "").strip()
     if not name or not _sql_ready():
         return {}
@@ -739,7 +743,7 @@ def personal_categories_payload(username: str) -> dict[str, list[str]]:
         cursor = _cursor()
         cursor.execute(
             """
-            SELECT d.label, t.term
+            SELECT d.label, d.local_code, d.matrix_role, t.term
             FROM dbo.category_term t
             JOIN dbo.person p ON p.id = t.person_id
             JOIN dbo.dim_category d ON d.category_id = t.category_id
@@ -749,17 +753,119 @@ def personal_categories_payload(username: str) -> dict[str, list[str]]:
             (name,),
         )
         out: dict[str, list[str]] = {}
-        for label, term in cursor.fetchall():
-            key = str(label or "").strip()
-            text = str(term or "").strip()
-            if key and text:
-                out.setdefault(key, []).append(text)
+        for label, code, role, term in cursor.fetchall():
+            text = str(label or "").strip()
+            if not text:
+                continue
+            if str(role or "").strip():
+                key = text
+            elif code is not None:
+                key = f"{int(code):04d} {text}"
+            else:
+                continue
+            value = str(term or "").strip()
+            if value:
+                out.setdefault(key, []).append(value)
         return out
 
     try:
         return _sql_retry(_run)
     except Exception:  # noqa: BLE001
         return {}
+
+
+def personal_category_maps(username: str) -> dict[str | None, dict[str, list[str]]]:
+    """Personal keyword terms, keyed by account uid (``None`` = unbound).
+
+    For person-modality countries a person's terms are unbound and collapse
+    into the ``None`` map. For account-modality (balance) countries the same
+    terms are scoped per account uid, and ``None`` holds any unbound leftovers.
+    """
+    name = (username or "").strip()
+    if not name or not _sql_ready():
+        return {}
+    out: dict[str | None, dict[str, list[str]]] = {}
+
+    def _run() -> dict[str, list[str]]:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            SELECT d.label, d.local_code, d.matrix_role, t.term, t.term_id, a.uid
+            FROM dbo.category_term t
+            JOIN dbo.person p ON p.id = t.person_id
+            JOIN dbo.dim_category d ON d.category_id = t.category_id
+            LEFT JOIN dbo.account a ON a.account_id = t.account_id
+            WHERE p.username = ? COLLATE Latin1_General_CI_AI
+            ORDER BY d.local_code, t.sort_order, t.term_id
+            """,
+            (name,),
+        )
+        result: dict[str | None, dict[str, list[str]]] = {}
+        for label, code, role, term, _term_id, uid in cursor.fetchall():
+            text = str(label or "").strip()
+            if not text:
+                continue
+            if str(role or "").strip():
+                key = text
+            elif code is not None:
+                key = f"{int(code):04d} {text}"
+            else:
+                continue
+            value = str(term or "").strip()
+            if not value:
+                continue
+            account_key = str(uid or "").strip() or None
+            result.setdefault(account_key, {}).setdefault(key, []).append(value)
+        return result
+
+    try:
+        grouped = _sql_retry(_run)
+        for account_key, bucket in grouped.items():
+            out[account_key] = bucket
+        return out
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def account_groups(country: str, username: str) -> list[dict[str, str]]:
+    """Accounts of one person as client term-group entries (account modality)."""
+    cname = (country or "").strip()
+    name = (username or "").strip()
+    if not cname or not name or not _sql_ready():
+        return []
+
+    def _run() -> list[dict[str, str]]:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            SELECT a.uid, a.account_name, a.iban
+            FROM dbo.account a
+            JOIN dbo.person p ON p.id = a.person_id
+            JOIN dbo.country c ON c.country_id = p.country_id
+            WHERE c.username = ? COLLATE Latin1_General_CI_AI
+              AND p.username = ? COLLATE Latin1_General_CI_AI
+            ORDER BY a.iban, a.account_id
+            """,
+            (cname, name),
+        )
+        groups: list[dict[str, str]] = []
+        for uid, account_name, iban in cursor.fetchall():
+            key = str(uid or "").strip()
+            if not key:
+                continue
+            groups.append(
+                {
+                    "account_key": key,
+                    "account_name": str(account_name or "").strip(),
+                    "iban": str(iban or "").strip(),
+                }
+            )
+        return groups
+
+    try:
+        return _sql_retry(_run)
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def clear_catalog_cache() -> None:
@@ -771,13 +877,20 @@ def save_category_terms(
     terms: list[str],
     *,
     person: str | None = None,
+    account: str | None = None,
 ) -> None:
-    """Replace general (person_id NULL) or personal keyword rows in ``dbo.category_term``."""
+    """Replace general (person_id NULL) or personal keyword rows in ``dbo.category_term``.
+
+    ``account`` (an account uid) scopes a personal bucket to one account
+    (account-modality / balance countries); the scope lives in
+    ``dbo.category_term.account_id``.
+    """
     label = (category_name or "").strip()
     if not label or not _sql_ready():
         return
     cleaned = [str(item).strip().lower() for item in terms if str(item or "").strip()]
     person_name = (person or "").strip() or None
+    account_key = (account or "").strip() or None
     country = ""
     if person_name:
         layout = person_country_center(person_name)
@@ -816,6 +929,7 @@ def save_category_terms(
                 raise ValueError(f"Unknown category {label!r} for {country!r}")
             category_id = int(row[0])
             person_id: int | None = None
+            account_id: int | None = None
             if person_name:
                 cursor.execute(
                     "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
@@ -825,23 +939,42 @@ def save_category_terms(
                 if prow is None:
                     raise ValueError(f"Unknown person {person_name!r}")
                 person_id = int(prow[0])
-                cursor.execute(
-                    "DELETE FROM dbo.category_term WHERE category_id = ? AND person_id = ?",
-                    (category_id, person_id),
-                )
+                if account_key:
+                    cursor.execute(
+                        "SELECT account_id FROM dbo.account WHERE person_id = ? AND uid = ?",
+                        (person_id, account_key),
+                    )
+                    arow = cursor.fetchone()
+                    if arow is None:
+                        raise ValueError(f"Unknown account {account_key!r} for {person_name!r}")
+                    account_id = int(arow[0])
+                    cursor.execute(
+                        """
+                        DELETE FROM dbo.category_term
+                        WHERE category_id = ? AND person_id = ? AND account_id = ?
+                        """,
+                        (category_id, person_id, account_id),
+                    )
+                else:
+                    cursor.execute(
+                        "DELETE FROM dbo.category_term WHERE category_id = ? AND person_id = ?",
+                        (category_id, person_id),
+                    )
             else:
                 cursor.execute(
                     "DELETE FROM dbo.category_term WHERE category_id = ? AND person_id IS NULL",
                     (category_id,),
                 )
             if cleaned:
-                cursor.fast_executemany = False
                 cursor.executemany(
                     """
-                    INSERT INTO dbo.category_term (category_id, person_id, term, sort_order)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO dbo.category_term (category_id, person_id, account_id, term, sort_order)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
-                    [(category_id, person_id, term, index) for index, term in enumerate(cleaned)],
+                    [
+                        (category_id, person_id, account_id, term, index)
+                        for index, term in enumerate(cleaned)
+                    ],
                 )
             conn.commit()
             _CAT_CACHE.clear()
@@ -870,6 +1003,27 @@ def _country_id_for(cursor, country: str) -> int | None:
     )
     row = cursor.fetchone()
     return int(row[0]) if row else None
+
+
+def country_has_balance(country: str) -> bool:
+    """True when the country uses per-account personal-term modality."""
+    name = (country or "").strip()
+    if not name or not _sql_ready():
+        return False
+
+    def _run() -> bool:
+        cursor = _cursor()
+        cursor.execute(
+            "SELECT has_balance FROM dbo.country WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (name,),
+        )
+        row = cursor.fetchone()
+        return bool(row and int(row[0] or 0))
+
+    try:
+        return _sql_retry(_run)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def display_digits(rows: list[dict[str, Any]]) -> int:

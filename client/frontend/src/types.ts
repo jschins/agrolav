@@ -34,11 +34,20 @@ export interface TypeRule {
   category: string;
 }
 
+export interface AccountGroup {
+  account_key: string;
+  account_name: string;
+  iban: string;
+  person: string;
+  categories: Record<string, string[]>;
+}
+
 export interface SettingsResponse {
   categories: string[];
   people: PersonInfo[];
   general: Record<string, string[]>;
   personal: Record<string, Record<string, string[]>>;
+  account_groups?: AccountGroup[];
   valid_category_codes: number[];
   remainder_category: string;
   typerules: TypeRule[];

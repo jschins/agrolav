@@ -614,11 +614,17 @@ def save_general_terms(category_name: str, terms: list[str]) -> list[str]:
     return cleaned
 
 
-def save_personal_terms(person_name: str, category_name: str, terms: list[str]) -> list[str]:
+def save_personal_terms(
+    person_name: str,
+    category_name: str,
+    terms: list[str],
+    *,
+    account: str | None = None,
+) -> list[str]:
     from app.core.categorize import _cleaned_terms, _save_personal_category_terms
 
     pack = get_person(person_name)
     with bind_scope(pack):
         cleaned = _cleaned_terms(terms)
-        _save_personal_category_terms(category_name, cleaned)
+        _save_personal_category_terms(category_name, cleaned, account=account)
         return cleaned

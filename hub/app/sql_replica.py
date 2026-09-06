@@ -239,11 +239,13 @@ def load_bound_transactions(*, category_code: int | None = None) -> list[dict[st
                 t.modification,
                 t.hit,
                 d.local_code,
-                c.currency_default
+                c.currency_default,
+                a.uid
             FROM {bound.table} t
             JOIN dbo.person p ON p.id = t.person_id
             JOIN dbo.country c ON c.country_id = p.country_id
             LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
+            LEFT JOIN dbo.account a ON a.account_id = t.account_id
             WHERE {where_sql}{extra}
             ORDER BY t.booked_on DESC, t.source_id DESC
             """,
@@ -267,6 +269,7 @@ def load_bound_transactions(*, category_code: int | None = None) -> list[dict[st
             hit,
             local_code,
             currency,
+            account_uid,
         ) = item
         try:
             flag = int(modification)
@@ -285,6 +288,7 @@ def load_bound_transactions(*, category_code: int | None = None) -> list[dict[st
                 "category": int(local_code) if local_code is not None else 18,
                 "modification": flag,
                 "hit": None if hit in (None, "") else str(hit),
+                "account_uid": _json_text(account_uid),
             }
         )
     return rows

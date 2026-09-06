@@ -167,6 +167,7 @@ export function addCategoryTerm(body: {
   term: string;
   general: boolean;
   person?: string;
+  account?: string;
 }): Promise<AddTermResponse> {
   return sendJson("/api/settings/add-term", "POST", body);
 }
