@@ -300,10 +300,20 @@ DELETE FROM dbo.dim_category WHERE category_id = 3350;
 =================WHEN ADDING FIRST PERSON TO NEWLY CREATED COUNTRY with country_id = 5
 
 INSERT INTO dbo.dim_category VALUES
-(13997,	5,	13997,	'Overige kosten',	'True',	NULL),
-(13998,	5,	13998,	'Balance',	'False',	'balance'),
-(13999,	5,	13999,	'Updated',	'False	'last_booked');
+(13997,	5,	3997,	'Overige kosten',	'True',	NULL),
+(13998,	5,	3998,	'Balance',	'False',	'balance'),
+(13999,	5,	3999,	'Updated',	'False	'last_booked');
 
 ALTER TABLE dbo.transaction_beheer_instudo DROP CONSTRAINT ck_txn_beheer_instudo_cat;
 ALTER TABLE dbo.transaction_beheer_instudo ADD CONSTRAINT ck_txn_beheer_instudo_cat CHECK (category_id >= 10000 AND category_id < 20000);
+
+=================MAKE MAPPING AFTER HAVING DEFINED CATEGORIES
+
+INSERT INTO dbo.dim_category VALUES
+(13309,	5,	3309,	'Stichting Instudo',	'False',	NULL),
+(13310,	5,	3310,	'Den Eker',	'False',	NULL),
+(13311,	5,	3311,	'Studiecentrum',	'False',	NULL),
+(13312,	5,	3312,	'Leidenhoven',	'False',	NULL),
+(13313,	5,	3313,	'Lepelenburg',	'False',	NULL);
+INSERT INTO dbo.mapping VALUES (5, 1309, 39),(5, 1310, 40),(5, 1311, 41),(5, 1312, 42),(5, 1313, 43);
 

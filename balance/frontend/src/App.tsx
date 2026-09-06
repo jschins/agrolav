@@ -18,6 +18,44 @@ function fmtDate(iso: string): string {
   return `${d}-${m}-${y}`;
 }
 
+function csvCell(value: string | number): string {
+  const s = String(value);
+  if (/["\n\r,]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function csvNumber(value: number): string {
+  return value.toFixed(2).replace(".", ",");
+}
+
+function exportSheetCsv(sheet: BalanceSheet, year: number): void {
+  const lines: string[] = [];
+  lines.push(`Balans ${year}${sheet.as_of ? ` per ${fmtDate(sheet.as_of)}` : ""}`);
+  lines.push("");
+  lines.push(["Zijde", "Code", "Post", "Bedrag"].join(";"));
+  const pushRows = (side: string, rows: BalanceSheet["activa"], total: number) => {
+    for (const r of rows) {
+      lines.push([side, String(r.code), csvCell(r.label), csvNumber(r.amount)].join(";"));
+    }
+    lines.push([side, "", "Totaal", csvNumber(total)].join(";"));
+    lines.push("");
+  };
+  pushRows("Activa", sheet.activa, sheet.total_activa);
+  pushRows("Passiva", sheet.passiva, sheet.total_passiva);
+
+  const blob = new Blob(["\ufeff" + lines.join("\r\n")], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `balans-${year}${sheet.as_of ? "-" + sheet.as_of : ""}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function SideTable({
   title,
   lines,
@@ -170,6 +208,14 @@ export default function App() {
                 </button>
                 <button onClick={() => setView("journal")} disabled={year == null}>
                   Bewerk grootboek
+                </button>
+                <button
+                  onClick={() => {
+                    if (year != null && sheet) exportSheetCsv(sheet, year);
+                  }}
+                  disabled={year == null || !sheet}
+                >
+                  Export naar CSV
                 </button>
                 {dates.length > 0 && (
                   <select
