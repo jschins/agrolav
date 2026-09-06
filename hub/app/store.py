@@ -494,7 +494,10 @@ def recalculate_from_scratch_all(
     person: str | None = None,
     source: str = "central",
 ) -> dict[str, Any]:
-    """Wipe hit/modification and recategorize the logged-in scope.
+    """Re-categorize the logged-in scope from scratch, keeping user-set locks.
+
+    Auto-assigned rows are reset and re-derived; explicitly edited categories
+    and descriptions (``modification`` 1-3) and Excel rows are kept.
 
     ``person`` set → that person only. Otherwise every person in ``center``.
     Does not walk other centers or countries.

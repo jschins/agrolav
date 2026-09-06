@@ -316,7 +316,11 @@ def recalculate_all(person_folders: list[str] | None = None) -> dict[str, Any]:
 
 
 def recalculate_pack_from_scratch(pack: PersonScope) -> None:
-    """Wipe hit/modification, then recategorize every SQL year for ``pack``."""
+    """Re-categorize from scratch every SQL year for ``pack``.
+
+    User-set locks (``modification`` 1-3) and Excel rows survive; only
+    auto-assigned rows are reset and re-derived.
+    """
     from dataclasses import replace
 
     from app.core.categorize import recategorize_transactions

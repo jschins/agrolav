@@ -466,6 +466,45 @@ def country_title(country_id: int) -> str:
     return title or str(row[1] or "")
 
 
+def balance_country_by_slug(slug: str) -> int | None:
+    """Country id for a URL slug (``dbo.country.username``) with balance.
+
+    Only countries flagged ``has_balance = 1`` are considered; any unknown
+    or non-balance slug resolves to ``None`` so the route can answer 404.
+    """
+    slug = (slug or "").strip().lower()
+    if not slug:
+        return None
+    if not _IDENT.match(slug):
+        return None
+    try:
+        with connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT country_id FROM dbo.country "
+                "WHERE username = ? AND has_balance = 1",
+                slug,
+            )
+            row = cur.fetchone()
+    except Exception:
+        return None
+    return int(row[0]) if row else None
+
+
+def balance_country_slugs() -> list[str]:
+    """Username slugs of every balance country, in ``country_id`` order."""
+    try:
+        with connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT username FROM dbo.country "
+                "WHERE has_balance = 1 ORDER BY country_id"
+            )
+            return [str(r[0]).strip() for r in cur.fetchall() if r[0]]
+    except Exception:
+        return []
+
+
 def list_dates(country_id: int, year: int) -> list[str]:
     """Distinct booking dates (YYYY-MM-DD) in the country's transaction table."""
     table = _transaction_table(country_id)

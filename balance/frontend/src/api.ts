@@ -2,7 +2,8 @@ import type { BalanceSheet, YearsResponse, DatesResponse, JournalResponse, Journ
 
 function apiBase(): string {
   const p = window.location.pathname;
-  if (p.startsWith("/balance/") || p === "/balance") return "/balance";
+  const m = p.match(/^\/balance\/([^/]+)/);
+  if (m) return `/balance/${m[1]}`;
   return "";
 }
 
@@ -45,7 +46,7 @@ export function getYears(): Promise<YearsResponse> {
   return getJson("/api/balance/years");
 }
 
-export function getMeta(): Promise<{ country_id: number; title: string }> {
+export function getMeta(): Promise<{ country_id: number; slug: string; title: string }> {
   return getJson("/api/balance/meta");
 }
 
