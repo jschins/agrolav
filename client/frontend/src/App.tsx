@@ -44,7 +44,6 @@ import {
 import type {
   CatalogCategory,
   MatrixResponse,
-  PersonInfo,
   RefreshPersonResult,
   SettingsResponse,
   Transaction,
@@ -2050,30 +2049,38 @@ function TermsApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  function patchSettings(
+    prev: SettingsResponse,
+    group: string,
+    category: string,
+    terms: string[]
+  ): SettingsResponse {
+    if (group === "general") {
+      return { ...prev, general: { ...prev.general, [category]: terms } };
+    }
+    if ((prev.account_groups ?? []).some((g) => g.account_key === group)) {
+      return {
+        ...prev,
+        account_groups: (prev.account_groups ?? []).map((g) =>
+          g.account_key === group
+            ? { ...g, categories: patchCategories(g.categories, category, terms) }
+            : g
+        ),
+      };
+    }
+    const personGroup = { ...(prev.personal[group] ?? {}) };
+    if (terms.length) personGroup[category] = terms;
+    else delete personGroup[category];
+    return { ...prev, personal: { ...prev.personal, [group]: personGroup } };
+  }
+
   function updateTerms(group: string, category: string, terms: string[]) {
-    setSettings((prev) => {
-      if (!prev) return prev;
-      if (group === "general") {
-        return { ...prev, general: { ...prev.general, [category]: terms } };
-      }
-      const personGroup = { ...(prev.personal[group] ?? {}) };
-      if (terms.length) personGroup[category] = terms;
-      else delete personGroup[category];
-      return { ...prev, personal: { ...prev.personal, [group]: personGroup } };
-    });
+    setSettings((prev) => (prev ? patchSettings(prev, group, category, terms) : prev));
     updateSettings(group, category, terms)
       .then((res) => {
-        setSettings((prev) => {
-          if (!prev) return prev;
-          const nextTerms = res.terms ?? terms;
-          if (group === "general") {
-            return { ...prev, general: { ...prev.general, [category]: nextTerms } };
-          }
-          const personGroup = { ...(prev.personal[group] ?? {}) };
-          if (nextTerms.length) personGroup[category] = nextTerms;
-          else delete personGroup[category];
-          return { ...prev, personal: { ...prev.personal, [group]: personGroup } };
-        });
+        setSettings((prev) =>
+          prev ? patchSettings(prev, group, category, res.terms ?? terms) : prev
+        );
         channelRef.current?.postMessage("recalculated");
       })
       .catch((e: Error) => setError(e.message));
@@ -3471,22 +3478,15 @@ function termsTableCategories(settings: SettingsResponse): string[] {
   );
 }
 
-function termsColumnWidths(
-  columns: string[],
-  general: Record<string, string[]>,
-  personal: Record<string, Record<string, string[]>>,
-  people: PersonInfo[]
-): number[] {
-  const measure = (text: string) => Math.max(text.length, 1);
-
-  return columns.map((category) => {
-    const texts = [category, ...(general[category] ?? []), "+ term"];
-    for (const p of people) {
-      texts.push(...(personal[p.person_name]?.[category] ?? []));
-    }
-    const maxChars = Math.max(...texts.map(measure));
-    return Math.ceil(maxChars * 7.5 + 20);
-  });
+function patchCategories(
+  categories: Record<string, string[]> | undefined,
+  category: string,
+  terms: string[]
+): Record<string, string[]> {
+  const next = { ...(categories ?? {}) };
+  if (terms.length) next[category] = terms;
+  else delete next[category];
+  return next;
 }
 
 /** Stable empty list so `?? EMPTY_TERMS` does not allocate a new [] every render. */
@@ -3499,84 +3499,133 @@ function TermsTables({
   settings: SettingsResponse;
   onUpdate: (group: string, category: string, terms: string[]) => void;
 }) {
-  const { people, general, personal } = settings;
+  const { people, general, personal, account_groups } = settings;
   const columns = termsTableCategories(settings);
-  const columnWidths = termsColumnWidths(columns, general, personal, people);
+  const accountModality = Boolean(account_groups && account_groups.length > 0);
+
+  const [selectedCategory, setSelectedCategory] = useState(columns[0] ?? "");
+  const [selectedPerson, setSelectedPerson] = useState(people[0]?.person_name ?? "");
+  const [selectedAccount, setSelectedAccount] = useState(account_groups?.[0]?.account_key ?? "");
+
+  useEffect(() => {
+    if (!columns.includes(selectedCategory)) {
+      setSelectedCategory(columns[0] ?? "");
+    }
+  }, [columns, selectedCategory]);
+
+  const selectedGroupKey = accountModality ? selectedAccount : selectedPerson;
+  const selectedAccountGroup = account_groups?.find((g) => g.account_key === selectedAccount);
+
+  const gTerms = selectedCategory ? (general[selectedCategory] ?? EMPTY_TERMS) : EMPTY_TERMS;
+  const pTerms = selectedCategory
+    ? accountModality
+      ? (selectedAccountGroup?.categories[selectedCategory] ?? EMPTY_TERMS)
+      : (personal[selectedPerson]?.[selectedCategory] ?? EMPTY_TERMS)
+    : EMPTY_TERMS;
+  const personalEditable = Boolean(
+    selectedCategory && (accountModality ? selectedAccount : selectedPerson)
+  );
 
   return (
     <div className="terms-scroll">
-      <div className="terms-panels">
-        <section className="terms-panel terms-panel-general" aria-label="General terms">
+      <div className="terms-four">
+        <section className="terms-col" aria-label="Categories">
+          <h2 className="terms-panel-label">
+            {tableHeaderTerm(settings.table_header_terms, "Category")}
+          </h2>
+          <div className="terms-list">
+            {columns.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className={
+                  name === selectedCategory ? "terms-list-item selected" : "terms-list-item"
+                }
+                onClick={() => setSelectedCategory(name)}
+              >
+                {displayCategoryName(name)}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="terms-col" aria-label="General terms">
           <h2 className="terms-panel-label">
             {tableHeaderTerm(settings.table_header_terms, "General")}
           </h2>
-          <TermsColumnTable
-            columns={columns}
-            columnWidths={columnWidths}
-            termsForCategory={(name) => general[name] ?? EMPTY_TERMS}
-            onCommit={(name, terms) => onUpdate("general", name, terms)}
-          />
+          <div className="terms-cell">
+            {selectedCategory ? (
+              <EditableCell
+                terms={gTerms}
+                onCommit={(t) => onUpdate("general", selectedCategory, t)}
+              />
+            ) : (
+              <p className="terms-empty">No category selected</p>
+            )}
+          </div>
         </section>
-        {people.map((p) => (
-          <section
-            key={p.person_name}
-            className="terms-panel terms-panel-personal"
-            aria-label={`${p.person_name} terms`}
-          >
-            <h2 className="terms-panel-label">{p.person_name}</h2>
-            <TermsColumnTable
-              columns={columns}
-              columnWidths={columnWidths}
-              termsForCategory={(name) => personal[p.person_name]?.[name] ?? EMPTY_TERMS}
-              onCommit={(name, terms) => onUpdate(p.person_name, name, terms)}
-            />
-          </section>
-        ))}
+
+        <section className="terms-col" aria-label="People">
+          <h2 className="terms-panel-label">
+            {accountModality
+              ? tableHeaderTerm(settings.table_header_terms, "Account")
+              : tableHeaderTerm(settings.table_header_terms, "Person")}
+          </h2>
+          <div className="terms-list">
+            {accountModality ? (
+              (account_groups ?? []).map((g) => (
+                <button
+                  key={g.account_key}
+                  type="button"
+                  className={
+                    g.account_key === selectedAccount
+                      ? "terms-list-item selected"
+                      : "terms-list-item"
+                  }
+                  onClick={() => setSelectedAccount(g.account_key)}
+                >
+                  {g.account_name || g.account_key}
+                  {g.person ? <span className="terms-list-sub">{g.person}</span> : null}
+                </button>
+              ))
+            ) : (
+              people.map((p) => (
+                <button
+                  key={p.person_name}
+                  type="button"
+                  className={
+                    p.person_name === selectedPerson
+                      ? "terms-list-item selected"
+                      : "terms-list-item"
+                  }
+                  onClick={() => setSelectedPerson(p.person_name)}
+                >
+                  {p.person_name}
+                </button>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="terms-col" aria-label="Personal terms">
+          <h2 className="terms-panel-label">
+            {tableHeaderTerm(settings.table_header_terms, "Personal")}
+          </h2>
+          <div className="terms-cell">
+            {personalEditable ? (
+              <EditableCell
+                terms={pTerms}
+                onCommit={(t) => onUpdate(selectedGroupKey, selectedCategory, t)}
+              />
+            ) : (
+              <p className="terms-empty">
+                {selectedCategory ? "No person or account selected" : "No category selected"}
+              </p>
+            )}
+          </div>
+        </section>
       </div>
     </div>
-  );
-}
-
-function TermsColumnTable({
-  columns,
-  columnWidths,
-  termsForCategory,
-  onCommit,
-}: {
-  columns: string[];
-  columnWidths: number[];
-  termsForCategory: (category: string) => string[];
-  onCommit: (category: string, terms: string[]) => void;
-}) {
-  return (
-    <table className="s-table s-table-terms">
-      <colgroup>
-        {columns.map((name, index) => (
-          <col key={name} style={{ width: `${columnWidths[index]}px` }} />
-        ))}
-      </colgroup>
-      <thead>
-        <tr>
-          {columns.map((name) => (
-            <th key={name} title={name}>
-              {displayCategoryName(name)}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          {columns.map((name) => (
-            <td key={name}>
-              <EditableCell
-                terms={termsForCategory(name)}
-                onCommit={(terms) => onCommit(name, terms)}
-              />
-            </td>
-          ))}
-        </tr>
-      </tbody>
-    </table>
   );
 }
 
