@@ -182,17 +182,22 @@ everything else is recorded by the accountant.
 
 ### Endpoints
 
+All endpoints are slug-scoped so there is **one balance per balance-having
+country** (`dbo.country.username` with `has_balance = 1`). Current slugs:
+`beheer` (country 4), `beheer_instudo` (country 5). Replace `{slug}` below.
+
 | method | path | description |
 |--------|------|-------------|
-| GET | `/api/balance/{year}` | Full balance sheet for a year |
-| GET | `/api/balance/{year}/activa` | Activa side only |
-| GET | `/api/balance/{year}/passiva` | Passiva side only |
-| PUT | `/api/balance/{year}/opening` | Set/update opening balances for a year |
-| POST | `/api/balance/{year}/spaar-mirror` | Rebuild the faked 1052 spaarrekening journal from the 1051 source rows |
-| GET | `/api/balance/{year}/journal` | List the hand-edited journal rows for a year |
-| PUT | `/api/balance/{year}/journal` | Full-replace the hand-edited journal for a year (from/to/amount/description) |
-| GET | `/api/balance/years` | List years with data |
-| GET | `/api/balance/categories` | Category list with bank account links |
+| GET | `/balance/{slug}/api/balance/{year}` | Full balance sheet for a year |
+| GET | `/balance/{slug}/api/balance/{year}/activa` | Activa side only |
+| GET | `/balance/{slug}/api/balance/{year}/passiva` | Passiva side only |
+| PUT | `/balance/{slug}/api/balance/{year}/opening` | Set/update opening balances for a year |
+| POST | `/balance/{slug}/api/balance/{year}/spaar-mirror` | Rebuild the faked 1052 spaarrekening journal from the 1051 source rows |
+| GET | `/balance/{slug}/api/balance/{year}/journal` | List the hand-edited journal rows for a year |
+| PUT | `/balance/{slug}/api/balance/{year}/journal` | Full-replace the hand-edited journal for a year (from/to/amount/description) |
+| GET | `/balance/{slug}/api/balance/years` | List years with data |
+| GET | `/balance/{slug}/api/balance/categories` | Category list with bank account links |
+| GET | `/balance/{slug}/api/balance/meta` | Country meta (country id, slug, title) |
 
 ### GET `/api/balance/{year}` response
 
@@ -293,13 +298,14 @@ Server.
 
 ## 7. Frontend routes
 
-The React app adds routes under `/balance/`:
+The React app adds routes under `/balance/{slug}/`, one set per balance
+country:
 
 | route | page |
 |-------|------|
-| `/balance/` | Balance overview — two-column table (activa / passiva) with totals |
-| `/balance/{year}` | Same, for a specific year |
-| `/balance/{year}/edit` | Edit opening balances (non-bank categories only) |
+| `/balance/{slug}/` | Balance overview — two-column table (activa / passiva) with totals |
+| `/balance/{slug}/{year}` | Same, for a specific year |
+| `/balance/{slug}/{year}/edit` | Edit opening balances (non-bank categories only) |
 
 From the overview toolbar the **Herbouw spaarrekening (1052)** knob rebuilds the
 1052 mirror journal, and the **Edit transactions** knob opens a full-screen
@@ -369,17 +375,17 @@ balance/
   .env                ← HUB_DATABASE_URL + PORT (local override)
   app/
     __init__.py
-    main.py           ← FastAPI app (endpoints + serves /balance/ static)
+    main.py           ← FastAPI app (endpoints + serves /balance/{slug}/ static)
     balance.py        ← balance calculation + CATEGORY_MAP + spaar-mirror
     db.py             ← pyodbc connection wrapper (+ .env loading)
   frontend/
     package.json      ← balance-frontend (Vite + React 18)
-    vite.config.ts    ← base /balance/, dev proxy → http://127.0.0.1:8100 (port 5174)
+    vite.config.ts    ← base ./, dev proxy → http://127.0.0.1:8100 (port 5174)
     src/
       main.tsx        ← entry
       App.tsx         ← balance sheet UI (activa/passiva + view switch)
       JournalEditor.tsx ← hand-edited journal editor (Edit transactions)
-      api.ts          ← /balance/api/... calls
+      api.ts          ← /balance/{slug}/api/... calls
       types.ts
       index.css
   sql/
@@ -481,8 +487,9 @@ CENTRALE_API_KEY=your-secret-token
 
 Keeping it empty (or the line absent) leaves the balance sheet public.
 
-The hub serves the frontend's `dist/` at `/balance/` and its API at
-`/api/balance/...`, all on `127.0.0.1:8100`.
+The hub serves the frontend's `dist/` under `/balance/{slug}/` and its API at
+`/balance/{slug}/api/balance/...`, all on `127.0.0.1:8100` — one SPA and one
+set of endpoints per balance-having country slug.
 
 ### Caddy route
 
@@ -514,27 +521,52 @@ uv sync                                 # → .venv + uv.lock
 # terminal 1 — balance hub (reads HUB_DATABASE_URL from balance/.env)
 cd C:\Coding\agrolav\balance
 .\.venv\Scripts\python.exe -m app.main  # → 127.0.0.1:8100
+```
 
-# terminal 2 — frontend dev server
+That's the one to use for day-to-day testing: **uvicorn** (the FastAPI app in
+`app/main.py`) serves the **prebuilt** frontend from `frontend/dist/` under
+`/balance/{slug}/` on :8100 — no build step, identical to production, and the
+page is `http://127.0.0.1:8100/balance/beheer/`.
+
+**Vite** (`npm run dev`, :5174) is a separate, *optional* dev-only server for
+live-editing the React source with hot-reload:
+
+```powershell
+# terminal 2 — frontend dev server (only while editing the React UI)
 cd C:\Coding\agrolav\balance\frontend
 npm run dev                             # → localhost:5174
 ```
 
+| | `uv run balance` (uvicorn) | `npm run dev` (vite) |
+|---|---|---|
+| Serves | `frontend/dist/` (prebuilt) | React source dir, hot-reloaded |
+| URL (Beheer) | `http://127.0.0.1:8100/balance/beheer/` | `http://localhost:5174/balance/beheer/` |
+| Needs rebuild to update UI | yes (`npm run build`) | no (instant) |
+| Use for | using/testing the app | editing the frontend |
+
+They're independent — interrupting Vite does **not** stop the hub, and the
+hub URL keeps working from `dist/`. Only restart Vite if you're actively
+editing; for plain testing, use the uvicorn URL and ignore 5174. (The
+`vite.config.ts` proxy rewrites `/api` → `/balance/{slug}/api` so Vite can
+reach the same backend on :8100.)
+
 ## 11. Current status
 
 The balance hub runs on `127.0.0.1:8100` and computes a balanced balance sheet
-for Beheer (country_id=4). Verified against the remote database:
+for each balance-having country (currently Beheer country_id=4). Verified
+against the remote database:
 
-- `GET /api/balance/2026` → balanced activa = passiva = 3 111 662.19 (without
-  the spaarrekening journal; with the mirror applied it is 3 031 662.19).
+- `GET /balance/beheer/api/balance/2026` → balanced activa = passiva =
+  3 111 662.19 (without the spaarrekening journal; with the mirror applied it
+  is 3 031 662.19).
 - Bank categories read live from `dbo.account.balance`.
 - Non-bank categories read from `dbo.balance_opening` (+ journal where present).
 - Verlies (2100) computed as the balancing figure.
-- `PUT /api/balance/{year}/opening` upserts opening balances (bank + computed
-  categories are skipped).
-- `POST /api/balance/{year}/spaar-mirror` rebuilds the 1052 journal from the
-  1051 "spaarrekening" rows; verified idempotent (repeated calls do not
-  duplicate rows).
+- `PUT /balance/beheer/api/balance/{year}/opening` upserts opening balances
+  (bank + computed categories are skipped).
+- `POST /balance/beheer/api/balance/{year}/spaar-mirror` rebuilds the 1052
+  journal from the 1051 "spaarrekening" rows; verified idempotent (repeated
+  calls do not duplicate rows).
 
 The balance frontend (standalone Vite+React app) is built and committed under
 `frontend/`; it produces `dist/` (itself git-ignored — rebuild on deploy via

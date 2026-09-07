@@ -12,8 +12,9 @@ Caddy.
 |---|---|---|---|
 | hub | systemd `agrolav-hub` | `127.0.0.1:8200` | FastAPI: login, sync, calculation, SQL Server |
 | client BFF | systemd `agrolav-client` | `127.0.0.1:8300` | Serves the frontend, proxies hub APIs, browser login |
-| SQL Server | Docker `SQLServer2022` | `0.0.0.0:1433` | the only data store |
-| Caddy | systemd `caddy` | `80/443` | public site → client BFF; selected hub paths → hub |
+| balance hub | systemd `agrolav-balance` | `127.0.0.1:8100` | Balance sheets — one SPA per balance country, served under `/balance/{slug}` (slugs = `dbo.country.username` with `has_balance = 1`, e.g. `beheer`, `beheer_instudo`), API at `/balance/{slug}/api/...` |
+| SQL Server | Docker `MSSQL2022` | `0.0.0.0:1433` | the only data store |
+| Caddy | systemd `caddy` | `80/443` | public site → client BFF; selected hub paths → hub; `/balance/*` → balance hub |
 
 There is no SQLite fallback. If `HUB_DATABASE_URL` is unset the hub refuses
 to start. Configuration lives in `/etc/agrolav/hub.env` and
@@ -33,7 +34,7 @@ Never set that flag on the server.
 |---|---|---|
 | `HUB_DEV_LOGIN` | `1` | unset |
 | reverse proxy | none (or Caddy on loopback) | Caddy `80/443` |
-| SQL Server | Docker on this PC | Docker `SQLServer2022` on the droplet |
+| SQL Server | Docker on this PC | Docker `MSSQL2022` on the droplet |
 | Enable Banking callback | `ENABLEBANKING_REDIRECT_URL` in `hub/.env`, often the deoudegracht relay | `https://expenses.apsurt.nl/api/consent/callback` |
 | `HUB_CLIENT_URL` | empty → `http://127.0.0.1:8300` | `https://expenses.apsurt.nl` |
 | `CENTRALE_API_KEY` | often empty | identical in `hub.env` and `client.env` |
@@ -106,32 +107,39 @@ npm run build
 
 ## 5. Check the SQL Server container
 
+Every `docker` command on the server needs `sudo` — the `agrolav` user is not
+in the `docker` group:
+
 ```bash
 sudo docker ps
 ```
 
-Expected: `SQLServer2022`, `0.0.0.0:1433->1433/tcp`.
+Expected: `MSSQL2022`, `0.0.0.0:1433->1433/tcp`.
 
 ---
 
 ## 6. Copy a `.bak` to the server
 
-From Windows:
+Local backups live in `C:\SQLBackups\local_backups\`; from Windows:
 
 ```powershell
-scp -P 4523 C:/SQLBackups/agrolav.bak agrolav@209.38.39.105:/tmp/
+scp -P 4523 C:/SQLBackups/local_backups/agrolav.bak agrolav@209.38.39.105:/tmp/
 ```
 
-On the server: `ls -lh /tmp/agrolav.bak`.
+On the server:
+
+```bash
+ls -lh /tmp/agrolav.bak
+```
 
 ---
 
 ## 7. Copy the backup into the container
 
 ```bash
-sudo docker exec SQLServer2022 mkdir -p /var/opt/mssql/backup
-sudo docker cp /tmp/agrolav.bak SQLServer2022:/var/opt/mssql/backup/agrolav.bak
-sudo docker exec SQLServer2022 ls -lh /var/opt/mssql/backup/agrolav.bak
+sudo docker exec MSSQL2022 mkdir -p /var/opt/mssql/backup
+sudo docker cp /tmp/agrolav.bak MSSQL2022:/var/opt/mssql/backup/agrolav.bak
+sudo docker exec MSSQL2022 ls -lh /var/opt/mssql/backup/agrolav.bak
 ```
 
 ---
@@ -165,6 +173,8 @@ ALTER DATABASE [agrolav]
 SET MULTI_USER;
 ```
 
+---
+
 ### 8a. Verify tables the app needs
 
 The hub auto-creates **only** `dbo.consent_pending`. Everything else must
@@ -191,6 +201,63 @@ Then run the idempotent scripts so local and remote stay identical:
 and insert the production router WAN addresses into `dbo.administrator`
 **before** country/center logins can succeed (empty `egress_ip` now admits
 nobody). See `DATABASE.md`.
+
+---
+
+### 8b. Reverse direction: pull a backup from the server
+
+Only the endpoints swap; the middle mirrors §7/§6. On the server, create the
+`.bak` inside the container (SSMS at `209.38.39.105,1433` → *Back Up…* to
+`/var/opt/mssql/backup/`, or via `BACKUP DATABASE [agrolav] TO DISK =
+'/var/opt/mssql/backup/agrolav.bak'`), then copy it out the same path:
+
+```bash
+sudo docker cp MSSQL2022:/var/opt/mssql/backup/agrolav.bak /tmp/
+sudo chown agrolav:agrolav /tmp/agrolav.bak
+```
+
+`docker cp` creates a root-owned file that the later `scp` (running as
+`agrolav`) cannot read, hence the `chown`.
+
+On Windows, reverse the §6 `scp` into `C:\SQLBackups\remote_backups\`:
+
+```powershell
+scp -P 4523 agrolav@209.38.39.105:/tmp/agrolav.bak C:/SQLBackups/remote_backups/agrolav.bak
+```
+
+Restore on your local container. This is the complete command — the path
+differs from §8 because the pulled file lives under `remote_backups/`:
+
+```sql
+USE MASTER
+RESTORE FILELISTONLY
+FROM DISK = '/var/opt/mssql/backup/remote_backups/agrolav.bak';
+```
+
+Then, with the logical names from the output:
+
+```sql
+USE master;
+
+ALTER DATABASE [agrolav]
+SET SINGLE_USER
+WITH ROLLBACK IMMEDIATE;
+
+RESTORE DATABASE [agrolav]
+FROM DISK = '/var/opt/mssql/backup/remote_backups/agrolav.bak'
+WITH
+    REPLACE,
+    RECOVERY;
+
+ALTER DATABASE [agrolav]
+SET MULTI_USER;
+```
+
+Use the **container** path in SSMS: the local container only sees
+`C:\SQLBackups` via the bind mount as `/var/opt/mssql/backup`, so a Windows
+path like `C:/SQLBackups/…` fails with MSG 3201. The only differences from
+§6–§8 are the direction of `docker cp` / `scp` and that the `.bak` now
+originates from the server DB.
 
 ---
 
@@ -580,13 +647,13 @@ sudo systemctl restart agrolav-hub agrolav-client
 
 ## Copy-paste: local `.bak` onto the remote database
 
-1. SSMS: right-click agrolav → Tasks → Backup (Docker mapping `C:/SQLBackups`).
-2. PowerShell: `scp -P 4523 C:/SQLBackups/agrolav.bak agrolav@209.38.39.105:/tmp/`
+1. SSMS: right-click agrolav → Tasks → Backup (Docker mapping `C:/SQLBackups`; save as `C:\SQLBackups\local_backups\agrolav.bak`).
+2. PowerShell: `scp -P 4523 C:/SQLBackups/local_backups/agrolav.bak agrolav@209.38.39.105:/tmp/`
 3. SSH: `ls -lh /tmp/agrolav.bak`
-4. `sudo docker cp /tmp/agrolav.bak SQLServer2022:/var/opt/mssql/backup/agrolav.bak`
+4. `sudo docker cp /tmp/agrolav.bak MSSQL2022:/var/opt/mssql/backup/agrolav.bak`
 5. Restore with the SQL in §8.
 6. Run `hub/sql/visitor_ip.sql` and `hub/sql/administrator.sql` if those
    objects are missing after the restore.
 
-The Docker container name on the droplet has been `SQLServer2022`; if a
-host uses `MSSQL2022`, substitute that name in the `docker` commands.
+That's the server-side name; the local container is named `agrolav-sql` (see
+`docker-compose.sqlserver.yml`).

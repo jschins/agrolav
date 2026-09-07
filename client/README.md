@@ -46,6 +46,23 @@ uv sync
 uv run client
 ```
 
+`uv run client` serves the **prebuilt** frontend (`frontend/dist/`) via
+uvicorn on :8300 — same as production, with no build step. Use this to just
+use/test the app.
+
+🔁 **Live frontend editing** (optional): to edit the React source with instant
+hot-reload instead, run Vite separately:
+
+```powershell
+cd C:\Coding\agrolav\client\frontend
+npm run dev        # → localhost:5173, proxies /api → 127.0.0.1:8300
+```
+
+Then open `http://localhost:5173/`. Keep `uv run client` running in the other
+terminal so the API is up. Rebuild once with `npm run build` (in
+`frontend/`) when you're done editing — otherwise `uv run client` keeps
+serving the stale `dist/`.
+
 Secrets (`CLIENT_SESSION_SECRET`, `CENTRALE_API_KEY`) come from the repo-root
 `.env` file, not from the shell. See
 [`../documentation/passwords.md`](../documentation/passwords.md).

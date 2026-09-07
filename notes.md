@@ -117,7 +117,7 @@ sudo -S docker exec -u 0 MSSQL2022 ls -ld /var/opt/mssql/backup
   /tmp/agrolav20.bak \
   MSSQL2022:/var/opt/mssql/backup/agrolav20.bak
 7. Verify:
-sudo docker exec SQLServer2022 \
+sudo docker exec MSSQL2022 \
   ls -lh /var/opt/mssql/backup/agrolav19.bak
 8. Use SSMS connected to `209.38.39.105,1433` (`sa` login). First determine the logical file names:
 ```sql

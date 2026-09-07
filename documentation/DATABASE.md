@@ -17,7 +17,7 @@ Schema sources in the repo:
 
 ```sql
 BACKUP DATABASE agrolav
-TO DISK = '/var/opt/mssql/backup/agrolav.bak'
+TO DISK = '/var/opt/mssql/backup/local_backups/agrolav.bak'
 WITH
     INIT,
     COMPRESSION,
@@ -32,6 +32,11 @@ The destination folder on disk (`C:/SQLBackups`) is the Docker volume in
 volumes:
   - "C:/SQLBackups:/var/opt/mssql/backup"
 ```
+
+Because of that mapping the container path `/var/opt/mssql/backup/local_backups`
+= `C:\SQLBackups\local_backups`, where **backups made from the local DB** are
+kept. A second folder, `C:\SQLBackups\remote_backups`, holds `.bak` files
+**pulled from the server** (see `deployment.md` §8b).
 
 Restoring a backup over the remote database is in `deployment.md`.
 

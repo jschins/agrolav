@@ -100,6 +100,48 @@ changed there, then `sudo systemctl restart agrolav-hub`.
 
 ---
 
+## Docker (local SQL Server)
+
+The **one** container (`agrolav-sql`, compose project `agrolav`) is defined by
+`docker-compose.sqlserver.yml` in the repo root. It does **not** read a
+per-service env file. It interpolates the SA password from the same single
+source:
+
+```yaml
+environment:
+  ACCEPT_EULA: "Y"
+  MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set in the root /.env}
+```
+
+`${MSSQL_SA_PASSWORD}` resolves from the root `/.env` (that is exactly why the
+file lives at the repository root — it is Compose’s default `.env` for the
+project). Only that value reaches the container; no Twilio/session/API-key
+secrets are put in its environment. The backup volume path
+`${AGROLAV_SQL_DISK:-C:/SQLBackups}` is interpolated from the same file.
+
+Changing the SA password therefore means one edit in `/.env`; a recreated
+container initializes with the new value. (The container only reads the
+variable at first initialization, so to change an already-running instance
+you still run `ALTER LOGIN [sa] WITH PASSWORD = …` and update `/.env`
+together — see the `sa` section above.)
+
+### Why Docker Desktop shows two entries
+
+Every container runs in its own **PID namespace**: inside the container its
+main process is PID 1, while the host sees the same process with a different
+global PID (`docker inspect` `State.Pid` holds the host-side PID of the
+container's main process). Two containers can both have an internal PID 1
+without colliding.
+
+On Docker Desktop's *Containers* page the SQL setup appears as two rows that
+share one PID: the compose-project group (`agrolav`) and the container itself
+(`agrolav-sql`). Both rows showing the same PID confirms they are the **same
+container** — the group row is just how Docker Desktop renders the compose
+stack. `docker compose ls` reports `agrolav running(1)`, i.e. one single
+container.
+
+---
+
 ## User login passwords (initial value and storage)
 
 Every user that can log into the app starts with the **formula password**:
