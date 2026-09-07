@@ -156,3 +156,10 @@ caddy           EnvironmentFile=/opt/agrolav/.env         ExecStart=/usr/bin/cad
   (root-only, redacted if shared).
 - Never set `HUB_DEV_LOGIN` on the server.
 - Keep secrets in exactly one file per environment (see `passwords.md`).
+
+
+# Kill a process
+Windows doesn't propagate Ctrl+C to child processes the same way Unix does — uv run spawns Python/uvicorn in a separate process group, and the signal never reaches it. Use a separate terminal:
+- taskkill /F /IM python.exe
+Or kill by PID (from the "Started server process xxxxx" line):
+- taskkill /PID 16404 /F

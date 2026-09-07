@@ -72,3 +72,35 @@ manager only (see `passwords.md`).
 - Serve hub/client on a public port
 - Set `HUB_DEV_LOGIN` on the server
 - Refresh data with `git pull` over workspaces or backups
+- Leave `CENTRALE_API_KEY` empty on the server
+
+
+
+
+---
+## Hub API key (`CENTRALE_API_KEY`)
+The hub is an **internal service**: other programs on the same machine
+call it; browsers should not. On the droplet that hop is client →
+`127.0.0.1:8200`. The public site is Caddy + the client; people log in
+there. How to set the value: [`passwords.md`](passwords.md).
+Hub `/api/*` routes do not check a browser session cookie. They only
+check `Authorization: Bearer …` when `CENTRALE_API_KEY` is set. Missing
+or empty, that check does nothing and the hub accepts unkeyed calls.
+Anyone who can open TCP to the hub can then read and write data
+(people, transactions, wipe-year, shutdown).
+With the key set:
+- Only callers that know the secret get in (client BFF, Caddy on a few
+  paths). A direct `curl` to `:8200` gets `401`.
+- The browser never holds it. The SPA talks to the client; the client
+  adds the Bearer token when it calls the hub.
+- `POST /api/auth/login` on the hub is keyed too, so password guessing
+  against port 8200 needs the token first.
+It is one shared machine secret, not per-user login. It does not replace
+person/country/center passwords, SMS OTP, or the IP allowlist.
+Caddy stamps `Authorization: Bearer {$CENTRALE_API_KEY}` onto
+`/upload*`, `/add-person*`, `/api/status`, and `/api/local/*` so the
+add-person wizard can call the hub without the key in the page. Those
+public paths are therefore not locked by the key; Caddy supplies it for
+every visitor. Their gates are Caddy routing, upload ACL, and the hub
+IP allowlist.
+On the droplet, keep the key set and keep `:8200` bound to localhost.

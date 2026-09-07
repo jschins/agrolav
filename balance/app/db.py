@@ -22,7 +22,7 @@ def _ensure_dotenv() -> None:
     ]
     for env_path in candidates:
         if env_path is not None and env_path.is_file():
-            load_dotenv(env_path)
+            load_dotenv(env_path, interpolate=False)
 
 
 def _load_url() -> str:

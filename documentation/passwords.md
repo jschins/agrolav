@@ -22,6 +22,32 @@ consumer reads the same file, a change is always made in exactly one place.
 
 ---
 
+## Password requirements (length + symbols)
+
+Every password in the root `.env` (the four below) follows the same rules:
+
+- **Length**: at least **16 characters**. SQL Server's own rules require only
+  8, but the current values are 16–32 (`secrets.token_hex(32)` gives 64 for
+  the API key). Aim for 20+ for human-chosen ones.
+- **Symbols**: contain **all four classes** — upper-case, lower-case, digit,
+  and symbol. (SQL Server's `CHECK_POLICY` only *requires* three of the four
+  classes; we require all four.) Allowed symbols:
+  `! @ # $ % ^ & * ( ) _ - + =` .
+- **Charset**: no spaces, no quotes (`'` `"`), and avoided inside `.env`
+  values: `#` (starts a comment), `=` (separator), and `;` (used in
+  connection strings) — unless you know the consumer handles them.
+
+Example: `Agrolav_Hub_2026!` = 16 chars, all four classes — fine by these
+rules, but it is a known demo value, so rotate to a random one
+(`python -c "import secrets; print(secrets.token_urlsafe(24))"`) before relying
+on it.
+
+The SSH/`agrolav` password is *not* covered by these rules: the OS enforces
+its own policy via PAM (and it lives in no `.env`). The derived user-login
+passwords (`PREFIX + username`) also skip this rule set on purpose.
+
+---
+
 ## The four passwords
 
 ### 1. SQL Server `sa` password
@@ -55,8 +81,8 @@ Change it:
 1. Generate a long random value, e.g. `python -c "import secrets; print(secrets.token_hex(32))"`.
 2. Replace the `CENTRALE_API_KEY=` line in the root `.env` (local) or
    `/opt/agrolav/.env` (server).
-3. Restart the readers: `sudo systemctl restart agrolav-hub agrolav-client`
-   and `sudo systemctl reload caddy`. Balance, if it makes keyed calls, too.
+3. Restart the readers: `sudo systemctl restart agrolav-hub agrolav-client agrolav-balance`
+   and `sudo systemctl restart caddy` (reload is not enough).
 
 If it is left empty, `require_api_key` is a no-op and the hub accepts
 unkeyed calls.
@@ -199,3 +225,56 @@ uv run hub
 
 `HUB_DEV_LOGIN=1` (in `hub/.env`) lets country/center logins through on
 loopback and writes nothing to `dbo.visitor_ip`. Never set it on the server.
+
+
+---
+
+## Exposure: disk vs terminal
+
+**Disk storage is the safer of the two places these secrets live.**
+
+- **Server `/opt/agrolav/.env`** is `root:root 600`. Only root and the
+  systemd-run services (hub, client, balance, Caddy — all run as root, no
+  `User=` set) can read it. Attack surface is SSH brute-force on port 4523 and
+  any public-facing FastAPI/Caddy process exploited for RCE/SSRF. To read the
+  file an attacker already has to own a root process or have escalated locally
+  — at that point `.env` is the prize, not the entry.
+- **Local `C:\Coding\agrolav\.env`** is a plaintext file readable by your
+  Windows user. Any malware/ransomware running as your user can read it. It is
+  gitignored, so it never reaches git.
+
+**The more realistic leak is the terminal/stdout**, not the disk: running
+`cat`, `grep`, or `sed` on `.env` prints the values into your shell scrollback
+and any pasted logs. That is how the values end up in nathan logs, pastebins,
+or session transcripts.
+
+- The single file is read by hub, client, balance **and** Caddy (the server
+  Caddy unit gets it through `EnvironmentFile=/opt/agrolav/.env`). Because every
+  consumer reads the same file, a change is always made in exactly one place.
+
+**Hardening:**
+
+- Keep `600` on the server `.env` and `/.env` in `.gitignore` on the local
+  repo.
+- Never echo `.env` to stdout, a shared command, or a pastebin. When you must
+  inspect it, use `sudo grep <key-name> .env` and avoid dumping the whole
+  file.
+- Ensure no FastAPI route or static mount can resolve to `.env`. All services
+  mount specific directories, never the repo root — keep it that way.
+- Rotate weak/derivable secrets periodically (the server `CLIENT_SESSION_SECRET`
+  is still a `<secret>` placeholder; rotate it) especially if a value was ever
+  printed to a terminal/log.
+- Optional defense-in-depth against local malware: encrypt the local `.env`
+  (EFS/DPAPI) or move secrets to a manager; this is optional, not required.
+
+---
+
+# Root password of the server
+```
+ssh -p 4523 root@209.38.39.105
+```
+or 
+```
+ssh -p 4523 root@expenses.apsurt.nl
+```
+logs in as the root account on that Droplet. The root password is whatever was set when the Droplet was created (hosting provider default, or changed since). If you don't know it, you can reset it from your hosting provider's control panel — or just keep using agrolav with sudo.

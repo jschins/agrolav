@@ -1,11 +1,4 @@
-  ============================
 
-
-  (superseded: key rotation now = edit ONE file, see documentation/passwords.md)
-
-  ============================
-
-172.24.48.1 is a private IP (RFC 1918 range), and it's the gateway address on your current LAN — not your public egress IP. The hub behind Caddy sees your public/NAT IP, not this private one.
 See public egress IP following the output in
 
 sudo journalctl -u agrolav-hub -f
