@@ -1981,6 +1981,7 @@ function MainApp({
           <TermContextMenu
             settings={termMenuSettings}
             initialTerm={termMenu.term}
+            bankIban={bankView !== "consolidated" ? bankView : undefined}
             x={termMenu.x}
             y={termMenu.y}
             onClose={closeTermMenu}
@@ -3083,9 +3084,11 @@ function PTable({
   const descriptionModified = new Set(detail.description_modified_ids ?? []);
   const categoryModified = new Set(detail.category_modified_ids ?? []);
   const columns = categoryBeforeDescription(
-    Array.isArray(detail.columns) && detail.columns.length > 0
-      ? detail.columns
-      : ptableColumns(transactions)
+    stripHiddenColumns(
+      Array.isArray(detail.columns) && detail.columns.length > 0
+        ? detail.columns
+        : ptableColumns(transactions)
+    )
   );
 
   function safeHighlight(text: string): ReactNode {
@@ -3232,6 +3235,7 @@ function PTable({
 function TermContextMenu({
   settings,
   initialTerm,
+  bankIban,
   x,
   y,
   onClose,
@@ -3239,6 +3243,7 @@ function TermContextMenu({
 }: {
   settings: SettingsResponse;
   initialTerm: string;
+  bankIban?: string;
   x: number;
   y: number;
   onClose: () => void;
@@ -3256,9 +3261,16 @@ function TermContextMenu({
 
   const accountGroups = settings.account_groups ?? [];
   const accountModality = accountGroups.length > 0;
-  const [accountKey, setAccountKey] = useState(
-    () => accountGroups[0]?.account_key ?? ""
-  );
+  const [accountKey, setAccountKey] = useState(() => {
+    const preset = bankIban
+      ? accountGroups.find(
+          (g) =>
+            String(g.iban ?? "").trim().toUpperCase() ===
+            String(bankIban).trim().toUpperCase()
+        )
+      : undefined;
+    return preset?.account_key ?? accountGroups[0]?.account_key ?? "";
+  });
 
   const categories = settings.categories.filter(
     (name) => name !== settings.remainder_category && isBookingCategoryName(name)
@@ -3735,12 +3747,23 @@ function categoryBeforeDescription(columns: string[]): string[] {
   return rest;
 }
 
+const HIDDEN_TRANSACTION_COLUMNS = new Set([
+  "id",
+  "currency",
+  "modification",
+  "hit",
+  "account_uid",
+]);
+
+function stripHiddenColumns(columns: string[]): string[] {
+  return columns.filter((c) => !HIDDEN_TRANSACTION_COLUMNS.has(c));
+}
+
 function ptableColumns(transactions: Transaction[]): string[] {
-  const hidden = new Set(["id", "currency", "modification", "hit"]);
   const columns: string[] = [];
   for (const t of transactions) {
     for (const key of Object.keys(t)) {
-      if (!hidden.has(key) && !columns.includes(key)) {
+      if (!HIDDEN_TRANSACTION_COLUMNS.has(key) && !columns.includes(key)) {
         columns.push(key);
       }
     }
