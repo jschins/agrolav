@@ -196,6 +196,23 @@ nobody). See `DATABASE.md`.
 
 ## 9. Configure env files
 
+All **passwords** live in ONE file — `/opt/agrolav/.env` on the server (the
+repository root). Create it as a copy of the local single-secret file and fill
+in the real values (see [`passwords.md`](passwords.md) for what goes in it and
+how to change each value). It holds every secret variable
+(`HUB_DATABASE_URL`, `MSSQL_SA_PASSWORD`, `CENTRALE_API_KEY`,
+`CLIENT_SESSION_SECRET`, `HUB_OTP_SECRET`, Twilio). Hub, client, balance, and
+Caddy read the same file.
+
+```bash
+sudo touch /opt/agrolav/.env
+sudo chown root:root /opt/agrolav/.env && sudo chmod 600 /opt/agrolav/.env
+sudo nano /opt/agrolav/.env
+```
+
+The per-service env files under `/etc/agrolav` hold only **non-secret**
+settings (bind host/port, `SERVER_URL`, redirect URLs, `CLIENT_AUTH`, …):
+
 ```bash
 sudo nano /etc/agrolav/hub.env
 ```
@@ -206,8 +223,6 @@ sudo nano /etc/agrolav/hub.env
 HOST=127.0.0.1
 PORT=8200
 AGROLAV_SQL_DISK=/opt/agrolav/workspaces
-HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=YOUR_ACTUAL_PASSWORD;Encrypt=yes;TrustServerCertificate=yes
-CENTRALE_API_KEY=SOME_LONG_RANDOM_SECRET
 HUB_CLIENT_URL=https://expenses.apsurt.nl
 ENABLEBANKING_REDIRECT_URL=https://expenses.apsurt.nl/api/consent/callback
 # Never set HUB_DEV_LOGIN on the server.
@@ -221,22 +236,20 @@ sudo nano /etc/agrolav/client.env
 HOST=127.0.0.1
 PORT=8300
 SERVER_URL=http://127.0.0.1:8200
-CENTRALE_API_KEY=SOME_LONG_RANDOM_SECRET
 CLIENT_AUTH=1
-CLIENT_SESSION_SECRET=SOME_OTHER_LONG_RANDOM_SECRET
 ```
 
 Notes:
 
-- `CENTRALE_API_KEY` must match **byte for byte** between hub and client.
 - `SERVER_URL` is how the BFF reaches the hub; it cannot be omitted.
-- `CLIENT_SESSION_SECRET` must be a long random string in production.
+- Do not put any password in these per-service files — out them in
+  `/opt/agrolav/.env` instead.
 - Do not commit these files to Git.
 
 Verify the connection string without leaking the password:
 
 ```bash
-sudo grep '^HUB_DATABASE_URL=' /etc/agrolav/hub.env \
+sudo grep '^HUB_DATABASE_URL=' /opt/agrolav/.env \
   | sed 's/PWD=[^;]*/PWD=***REDACTED***/'
 ```
 
@@ -385,33 +398,14 @@ curl -I https://expenses.apsurt.nl/add-person?center=nl_dkg
 
 → expect `HTTP/1.1 200`.
 
-### 14a. API key and the proxied hub paths
+### 14a. Hub key on the proxied hub paths
 
-When `CENTRALE_API_KEY` is empty, `require_api_key` is a no-op. If the key
-is set, browser calls to hub paths would get 401. Inject it server-side
-(the browser never sees it). `/api/consent/callback` is unkeyed (the bank
-hits it). The client BFF already sends the key itself.
-
-```caddy
-@hub_paths {
-    path /add-person*
-    path /upload*
-    path /api/status
-    path /api/consent/callback*
-    path /api/local/*
-}
-reverse_proxy @hub_paths 127.0.0.1:8200 {
-    header_up Authorization "Bearer <KEY>"
-    header_up X-Forwarded-For {http.request.remote.host}
-    header_up X-Real-IP {http.request.remote.host}
-}
-```
-
-The repo `client/Caddyfile` ships this with
-`header_up Authorization "Bearer {$CENTRALE_API_KEY}"`, so the key comes from
-Caddy's environment instead of the file. Give the Caddy service a
-`CENTRALE_API_KEY` matching the hub (e.g. a systemd
-`EnvironmentFile=/etc/agrolav/caddy.env`) and then reload Caddy.
+The repo `client/Caddyfile` injects the hub key server-side with
+`header_up Authorization "Bearer {$CENTRALE_API_KEY}"`, so the browser never
+sees it. Caddy resolves the placeholder from the process environment, which
+comes from the shared secret file: give the Caddy service an
+`EnvironmentFile=/opt/agrolav/.env` and then `sudo systemctl restart caddy`.
+Key rotation and where the file lives: [`passwords.md`](passwords.md).
 
 ### 14b. Consent — `REDIRECT_URI_NOT_ALLOWED`
 

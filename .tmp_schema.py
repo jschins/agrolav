@@ -1,6 +1,6 @@
 import pyodbc
 
-c = pyodbc.connect("DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=Agrolav_Hub_2026!;Encrypt=yes;TrustServerCertificate=yes")
+c = pyodbc.connect("DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=<redacted: stored in /.env>;Encrypt=yes;TrustServerCertificate=yes")
 q = c.cursor()
 q.execute("SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'category_term' ORDER BY ORDINAL_POSITION")
 print("-- category_term columns --")

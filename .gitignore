@@ -1,3 +1,4 @@
+# Python build/runtime junk.
 .venv/
 *.exe
 __pycache__/
@@ -5,10 +6,26 @@ __pycache__/
 *.egg-info/
 build/
 *.spec
+
+# Scratch scripts and logs: bulky or useless, no secrets in them.
 .tmp_*.py
+upload.log
 
+# === Secrets ===
+# /.env is the ONLY file excluded because it contains passwords. It is the
+# single source of truth for every secret (see documentation/passwords.md).
+# Never add another .env* rule "because of secrets" — secrets only ever go
+# into /.env (locally) or /opt/agrolav/.env (server).
+/.env
 
-.env
+# Per-service .env files are NOT password files: they hold machine-local,
+# non-secret settings (ports, hosts, dev flags) that are not useful to share
+# upstream. If a secret ever needs storing, its home is /.env, not here.
+hub/.env
+client/.env
+balance/.env
+
+# Frontend build output: bulky.
 client/dist/*
 !client/dist/.gitkeep
 client/frontend/dist/
@@ -22,6 +39,3 @@ balance/frontend/node_modules/
 balance/frontend/**/*.tsbuildinfo
 balance/frontend/vite.config.js
 balance/frontend/vite.config.d.ts
-
-upload.log
-

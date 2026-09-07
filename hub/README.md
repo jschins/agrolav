@@ -55,7 +55,8 @@ uv sync
 uv run hub
 ```
 
-`HUB_DATABASE_URL` is required (`hub/.env`).
+`HUB_DATABASE_URL` is required (it lives in the repo-root `.env`, the single
+secret file — see `documentation/passwords.md`).
 
 ## Onefile
 

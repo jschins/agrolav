@@ -1,6 +1,6 @@
 import pyodbc
 
-c = pyodbc.connect("DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=Agrolav_Hub_2026!;Encrypt=yes;TrustServerCertificate=yes")
+c = pyodbc.connect("DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=<redacted: stored in /.env>;Encrypt=yes;TrustServerCertificate=yes")
 q = c.cursor()
 q.execute("SELECT i.name, i.is_unique, COL_NAME(ic.object_id, ic.column_id) FROM sys.indexes i JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id WHERE i.object_id = OBJECT_ID('dbo.category_term') ORDER BY i.name")
 print("-- indexes --")

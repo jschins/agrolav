@@ -14,8 +14,6 @@ Defaults are hardcoded. Override only via environment variables when needed.
 | `PUBLIC_HUB_URL` | unset → `SERVER_URL` | Browser-facing hub base for the Add person / Upload links — **set to the public host in production** (e.g. `https://expenses.apsurt.nl`); on a dev machine leave unset to use `SERVER_URL` |
 | `PORT` | `8300` | Client listen port |
 | `CLIENT_AUTH` | on (`true`) | Browser login; set `0`/`false` to disable |
-| `CLIENT_SESSION_SECRET` | insecure dev string | Cookie signing secret — **set in production** |
-| `CENTRALE_API_KEY` | empty | Optional hub Bearer token (must match the hub) |
 | `CENTRALE_SYNC` | on | Set `0`/`false` to disable hub sync |
 | `CLIENT_BOOTSTRAP_CENTER` | first hub center / `dkg` | Center used before login (auth on) |
 | `CLIENT_ACCESS` | `local` | Only when auth off |
@@ -45,10 +43,12 @@ uv run python scripts/user_admin.py list
 # hub must be running on :8200 first
 cd C:\Coding\agrolav\client
 uv sync
-# optional for production:
-# $env:CLIENT_SESSION_SECRET = "long-random-string"
 uv run client
 ```
+
+Secrets (`CLIENT_SESSION_SECRET`, `CENTRALE_API_KEY`) come from the repo-root
+`.env` file, not from the shell. See
+[`../documentation/passwords.md`](../documentation/passwords.md).
 
 ## Onefile build
 
@@ -58,13 +58,13 @@ uv sync --group build
 uv run python scripts/build_onefile.py
 ```
 
-Output: `dist/boekhouding-client.exe`. Set `CLIENT_SESSION_SECRET` when
-running the exe.
+Output: `dist/boekhouding-client.exe`. The exe reads the same repo-root
+`.env` for secrets.
 
 ## Production
 
 Caddy terminates HTTPS for `expenses.apsurt.nl` and proxies to this client
 on `:8300`. Hub stays at `127.0.0.1:8200` on the same host. Caddy must
 forward `X-Forwarded-For` (see `Caddyfile`) so the hub sees the caller’s
-public egress IP. Set `CLIENT_SESSION_SECRET` and match
-`CENTRALE_API_KEY` to the hub.
+public egress IP. Secrets are read from `/opt/agrolav/.env`
+(see `passwords.md`).

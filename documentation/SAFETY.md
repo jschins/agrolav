@@ -3,11 +3,9 @@
 Public site: `https://expenses.apsurt.nl`. Hub and client stay on the
 droplet; Caddy is the only process on 80/443.
 
-| What | Where it lives |
-|:-----|:---------------|
-| Logins | `dbo.country` / `dbo.center` / `dbo.person`. Person passwords are scrypt hashes on `dbo.person.password_hash`; country and center use the derived formula password. |
-| Enable Banking PEM and session | `dbo.enable_connection` (`pem`, `app_id`, `session_id`, `valid_until`) |
-| SQL connection, API key, Twilio, session cookie | `/etc/agrolav/hub.env` and `client.env` (systemd). Locally `hub/.env` / `client/.env`. Never git. |
+Secrets and passwords are managed in exactly one place per environment
+([`passwords.md`](passwords.md) — the single secret file, how to change each
+value, and the rules). This page is about operational procedure only.
 
 The hub refuses to start without `HUB_DATABASE_URL`.
 
@@ -61,7 +59,8 @@ public object URL, no git of secrets.
 scp -P 4523 C:\SQLBackups\agrolav.bak agrolav@<DROPLET_IP>:/tmp/
 ```
 
-Use a key. Do not write the SSH password here.
+Use a key. Do not write the SSH password here — it belongs in a password
+manager only (see `passwords.md`).
 
 ---
 
@@ -69,6 +68,7 @@ Use a key. Do not write the SSH password here.
 
 - Commit `*.env`, `*.pem`, or connection strings
 - Put SSH passwords, API keys, or session secrets in git or in docs
+- Put a password anywhere except the single secret file (see `passwords.md`)
 - Serve hub/client on a public port
 - Set `HUB_DEV_LOGIN` on the server
 - Refresh data with `git pull` over workspaces or backups

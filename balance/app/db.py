@@ -15,9 +15,14 @@ _URL: str | None = None
 
 
 def _ensure_dotenv() -> None:
-    env_path = Path(__file__).resolve().parent.parent / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parents[1] / ".env",
+        here.parents[2] / ".env" if len(here.parents) > 2 else None,
+    ]
+    for env_path in candidates:
+        if env_path is not None and env_path.is_file():
+            load_dotenv(env_path)
 
 
 def _load_url() -> str:

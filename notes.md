@@ -1,33 +1,9 @@
   ============================
 
 
-  Fix properly from the process (which is authoritative), normalizing both files to the hub's actual 65-char key:
-  
-```
-HKEY=$(sudo tr '\0' '\n' < /proc/$(sudo systemctl show agrolav-hub -p MainPID --value)/environ | sed -n 's/^CENTRALE_API_KEY=//p')
-export HKEY
-sudo -E python3 - <<'EOF'
-import os
-k = os.environ["HKEY"] + "\n"
-for p in ("/etc/agrolav/hub.env", "/etc/agrolav/client.env"):
-    keep = [l for l in open(p) if not l.startswith("CENTRALE_API_KEY=")]
-    keep.append("CENTRALE_API_KEY=" + k)
-    open(p, "w").writelines(keep)
-EOF
-sudo systemctl restart agrolav-hub agrolav-client
-HKEY=$(sudo tr '\0' '\n' < /proc/$(sudo systemctl show agrolav-hub -p MainPID --value)/environ | sed -n 's/^CENTRALE_API_KEY=//p')
-CKEY=$(sudo tr '\0' '\n' < /proc/$(sudo systemctl show agrolav-client -p MainPID --value)/environ | sed -n 's/^CENTRALE_API_KEY=//p')
-echo "hub len=${#HKEY} sha=$(printf %s "$HKEY" | sha256sum | cut -c1-16)"
-echo "cli len=${#CKEY} sha=$(printf %s "$CKEY" | sha256sum | cut -c1-16)"
-[ "$HKEY" = "$CKEY" ] && echo MATCH || echo MISMATCH
-curl -s -X POST http://127.0.0.1:8300/api/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"beheer","password":"STRING_beheer"}' | head -c 200
-```
+  (superseded: key rotation now = edit ONE file, see documentation/passwords.md)
 
-This removes every old CENTRALE_API_KEY= line from both files, writes the one true key, and restarts both — expect MATCH and a login JSON.
-
-========================
+  ============================
 
 172.24.48.1 is a private IP (RFC 1918 range), and it's the gateway address on your current LAN — not your public egress IP. The hub behind Caddy sees your public/NAT IP, not this private one.
 See public egress IP following the output in
@@ -84,8 +60,8 @@ agrolav@agrolav:/opt/agrolav$ ls -lan /opt/sql_backups
 agrolav@agrolav:/opt/agrolav$ sudo cat /etc/agrolav/hub.env
 HOST=127.0.0.1
 PORT=8200
-HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=Agrolav_Hub_2026!;Encrypt=yes;TrustServerCertificate=yes
-CENTRALE_API_KEY=b57ac888a83441516fe4e608c65ea8cdcbacab80ee4b43710dc417bcc421a2f4
+HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=<redacted: stored in /.env>;Encrypt=yes;TrustServerCertificate=yes
+CENTRALE_API_KEY=<redacted: in root .env>
 ENABLEBANKING_REDIRECT_URL=https://expenses.apsurt.nl/api/consent/callback
 HUB_CLIENT_URL=https://expenses.apsurt.nl
 agrolav@agrolav:/opt/agrolav$ sudo cat /etc/agrolav/client.env
@@ -95,12 +71,12 @@ SERVER_URL=http://127.0.0.1:8200
 CLIENT_AUTH=1
 CLIENT_SESSION_SECRET=SOME_OTHER_LONG_RANDOM_SECRET
 CLIENT_COUNTRY=nederland
-CENTRALE_API_KEY=b57ac888a83441516fe4e608c65ea8cdcbacab80ee4b43710dc417bcc421a2f4
+CENTRALE_API_KEY=<redacted: in root .env>
 PUBLIC_HUB_URL=https://expenses.apsurt.nl
 agrolav@agrolav:/opt/agrolav$ sudo cat /etc/agrolav/balance.env
 HOST=127.0.0.1
 PORT=8100
-HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=Agrolav_Hub_2026!;Encrypt=yes;TrustServerCertificate=yes
+HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=<redacted: stored in /.env>;Encrypt=yes;TrustServerCertificate=yes
 agrolav@agrolav:/opt/agrolav$
 
 ==================remote database backup
@@ -174,7 +150,7 @@ $ $tool = @'
 #!/bin/bash
 /opt/agrolav/balance/.venv/bin/python - <<'PY'
 import pyodbc
-cn = pyodbc.connect("DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=Agrolav_Hub_2026!;Encrypt=yes;TrustServerCertificate=yes", timeout=10)
+cn = pyodbc.connect("DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=<redacted: stored in /.env>;Encrypt=yes;TrustServerCertificate=yes", timeout=10)
 cur = cn.cursor()
 cur.execute("ALTER TABLE dbo.transaction_beheer_instudo DROP CONSTRAINT ck_txn_beheer_instudo_cat")
 cur.execute("ALTER TABLE dbo.transaction_beheer_instudo ADD CONSTRAINT ck_txn_beheer_instudo_cat CHECK (category_id >= 10000 AND category_id < 20000)")

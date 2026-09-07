@@ -50,7 +50,7 @@ def country_folder(name: str | None) -> str:
 
 
 def set_request_host(host: str | None) -> Token[str | None]:
-    """Bind the incoming request ``Host`` header for app_config row selection."""
+    """Bind the incoming request ``Host`` header for per-request lookup."""
     text = str(host or "").strip().lower()
     return _cv_request_host.set(text or None)
 
