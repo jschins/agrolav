@@ -107,6 +107,11 @@ function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
   return category === footers.balance || category === footers.last_booked;
 }
 
+function isBalancePassivaCategory(name: string): boolean {
+  const code = categoryCodeFromName(name);
+  return code != null && code >= 2000 && code <= 2999;
+}
+
 function categoryCodeFromName(name: string): number | null {
   const match = String(name).match(/^(\d{4})/);
   if (!match) return null;
@@ -1624,7 +1629,7 @@ function MainApp({
   }, []);
 
   function selectCell(person_name: string, category: string) {
-    if (matrix && isMatrixFooter(matrix, category)) return;
+    if (matrix && (isMatrixFooter(matrix, category) || isBalancePassivaCategory(category))) return;
     const sel = { person_name, category };
     setSelection(sel);
     setError(null);
@@ -2741,14 +2746,17 @@ function MatrixTable({
         {categories.map((cat) => (
           <tr
             key={cat}
-            className={`${selection?.category === cat ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}`}
+            className={`${selection?.category === cat ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${isBalancePassivaCategory(cat) ? " balance-passiva-row" : ""}`}
           >
             <td className="cat">{displayCategoryName(cat)}</td>
             {people.map((p) => {
               const amount = cells[cat]?.[p.person_name] ?? "";
               const isActive =
                 selection?.person_name === p.person_name && selection?.category === cat;
-              const clickable = !isMatrixFooter(matrix, cat) && amount !== "";
+              const clickable =
+                !isMatrixFooter(matrix, cat) &&
+                !isBalancePassivaCategory(cat) &&
+                amount !== "";
               return (
                 <td
                   key={p.person_name}
@@ -2791,12 +2799,15 @@ function PersonColumnTable({
         {categories.map((cat) => (
           <tr
             key={cat}
-            className={`${cat === selectedCategory ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}`}
+            className={`${cat === selectedCategory ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${isBalancePassivaCategory(cat) ? " balance-passiva-row" : ""}`}
           >
             <td className="cat">{displayCategoryName(cat)}</td>
             {(() => {
               const amount = cells[cat]?.[person_name] ?? "";
-              const clickable = !isMatrixFooter(matrix, cat) && amount !== "";
+              const clickable =
+                !isMatrixFooter(matrix, cat) &&
+                !isBalancePassivaCategory(cat) &&
+                amount !== "";
               return (
                 <td
                   className={`num${clickable ? " clickable" : ""}`}

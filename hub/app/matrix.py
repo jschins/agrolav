@@ -101,24 +101,50 @@ def _resultaat_country_id(country: str) -> int | None:
         return None
 
 
-# Countries whose matrix shows ONLY the resultaat categories (codes 3000-4999,
-# kosten + opbrengsten) and whose "balance" footer is the difference between
-# them. Hardcoded for now; country 5 (beheer_instudo) gets a similar rule of
-# its own later. (Eventually driven from the database.)
+# Countries whose matrix shows ONLY the balance-sheet plan (codes 1000-4999)
+# and whose "balance" footer is the difference over the resultaat subset
+# (3000-4999). Driven from the database (``dbo.country.has_balance``); this set
+# is the fallback when the column or the query is unavailable.
 _RESULTAAT_MATRIX_COUNTRIES: frozenset[int] = frozenset({4})
 
 
-def _resultaat_categories(country: str, names: list[str]) -> list[str]:
-    """Booking names shown in the matrix for a resultaat country.
+def _balance_matrix_country_id(country: str) -> int | None:
+    """Country id when SQL is configured and the country carries a balance sheet.
 
-    A resultaat country (see ``_RESULTAAT_MATRIX_COUNTRIES``) exposes the full
-    balance plan in ``categories_payload``; its matrix shows only the
-    Kosten/Opbrengsten categories (codes 3000-4999), and the "balance" read is
-    over only those. All other countries keep their full booking lists.
+    ``dbo.country.has_balance`` decides; falls back to
+    ``_RESULTAAT_MATRIX_COUNTRIES`` when the column is missing or the query
+    fails. ``None`` means a plain country (full booking, live-balance footer).
+    """
+    from app import user_store
+
+    country_id = _resultaat_country_id(country)
+    if country_id is None:
+        return None
+    if country_id in _RESULTAAT_MATRIX_COUNTRIES:
+        return country_id
+    try:
+        cursor = user_store._sql_connect().cursor()
+        cursor.execute(
+            "SELECT has_balance FROM dbo.country WHERE country_id = ?",
+            (country_id,),
+        )
+        row = cursor.fetchone()
+    except Exception:  # noqa: BLE001
+        return None
+    return country_id if (row and row[0]) else None
+
+
+def _resultaat_categories(country: str, names: list[str]) -> list[str]:
+    """Booking names summed by the "balance" footer for a balance country.
+
+    A balance country (see ``_balance_matrix_country_id``) exposes the full
+    balance plan in ``categories_payload``; its "balance"/saldo footer is the
+    difference over only the Kosten/Opbrengsten categories (codes 3000-4999).
+    All other countries keep the full subset (footer = live account balance).
     """
     from app.core.categorize import _category_code
 
-    if _resultaat_country_id(country) not in _RESULTAAT_MATRIX_COUNTRIES:
+    if _balance_matrix_country_id(country) is None:
         return names
     return [
         name
@@ -231,14 +257,17 @@ def build_matrix(
     country = active_country() or (packs[0].country if packs else "")
     balance_name, date_name = _footer_labels(categories)
     booking = [name for name in categories if _category_code(name) is not None]
+    # Booking keeps the FULL balance plan (1000-4999) as matrix rows; resultaat
+    # is the 3000-4999 subset the "balance" footer is summed over.
     resultaat = _resultaat_categories(country or "", booking)
     is_resultaat = resultaat != booking
-    booking = resultaat
     category_list = booking + [balance_name, date_name]
     columns = [{"person_name": p.person_name} for p in packs]
     cells: dict[str, dict[str, str]] = {name: {} for name in category_list}
     ws = active_center() or ""
     sql_matrix = None
+    balance_cents: dict[int, int] | None = None
+    balance_names: dict[int, str] = {}
     if not bank:
         from app import user_store
         from app.sql_replica import load_center_year_matrix
@@ -258,6 +287,20 @@ def build_matrix(
                     year=y_int,
                     general_names=booking,
                 )
+            balance_country = _balance_matrix_country_id(country) if country else None
+            if balance_country is not None and y_int is not None:
+                balance_names = {
+                    code: name
+                    for name in booking
+                    if (code := _category_code(name)) is not None and 1000 <= code <= 2999
+                }
+                try:
+                    from shared.balance_values import present_balance_cents
+
+                    cursor = user_store._sql_connect().cursor()
+                    balance_cents = present_balance_cents(balance_country, y_int, cursor)
+                except Exception:  # noqa: BLE001
+                    balance_cents = None
     if sql_matrix is not None:
         totals_map, dates, balances = sql_matrix
         for pack in packs:
@@ -265,8 +308,12 @@ def build_matrix(
             totals = totals_map.get(key) or {}
             for name in booking:
                 cells[name][pack.person_name] = _amount_for_category(totals, name)
+            for code, name in balance_names.items():
+                cents = balance_cents.get(code) if balance_cents is not None else None
+                if cents is not None:
+                    cells[name][pack.person_name] = f"{cents / 100:.2f}"
             if is_resultaat:
-                cells[balance_name][pack.person_name] = _sum_totals(totals, booking)
+                cells[balance_name][pack.person_name] = _sum_totals(totals, resultaat)
             else:
                 cells[balance_name][pack.person_name] = balances.get(key) or ""
             cells[date_name][pack.person_name] = dates.get(key) or ""
@@ -280,7 +327,7 @@ def build_matrix(
             for name in booking:
                 cells[name][pack.person_name] = _amount_for_category(totals, name)
             if is_resultaat:
-                cells[balance_name][pack.person_name] = _sum_totals(totals, booking)
+                cells[balance_name][pack.person_name] = _sum_totals(totals, resultaat)
             else:
                 cells[balance_name][pack.person_name] = person_current_balance(view_pack) or ""
             cells[date_name][pack.person_name] = person_updated_display(view_pack) or ""

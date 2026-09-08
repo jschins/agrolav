@@ -1172,9 +1172,15 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
         log("filter.abort", reason="category_name_has_no_numeric_prefix")
         return []
 
-    from app.sql_replica import load_bound_transactions
+    from app.sql_replica import load_bound_balance_transactions, load_bound_transactions
 
-    rows = load_bound_transactions(category_code=code) or []
+    if 1000 <= code <= 2999:
+        # Balance-plan category: bank-linked categories list every row on the
+        # mapped account; non-bank categories list their journal/mirror rows;
+        # passiva categories (2000-2999) are not clickable and return nothing.
+        rows = load_bound_balance_transactions(category_code=code)
+    else:
+        rows = load_bound_transactions(category_code=code) or []
     log(
         "filter.done",
         category_name=category_name,

@@ -22,78 +22,21 @@ from decimal import Decimal
 from typing import Any
 
 from app.db import connect
+from shared.balance_values import (
+    SPAAR_MARKER,
+    balance_category_breakdown,
+    balance_config,
+    category_labels as shared_category_labels,
+    category_map as shared_category_map,
+    country_has_balance as shared_country_has_balance,
+    eigen_vermogen_id as shared_eigen_vermogen_id,
+    result_overlay_cents,
+    sql_ident,
+    verlies_id as shared_verlies_id,
+)
 
-SPAAR_MARKER = "[spaar-mirror]"
 _VERLIES_SUFFIX = "Verlies"
 _IDENT = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
-
-# category_id → (side, account_id | None)
-# side: "activa" or "passiva"
-_BEHEER_CATEGORY_MAP: dict[int, tuple[str, int | None]] = {
-    1000: ("activa", None),       # Gebouwen
-    1005: ("activa", None),       # Verbouwingen
-    1010: ("activa", None),       # Inventaris
-    1015: ("activa", None),       # Autos
-    1051: ("activa", 18),         # Bank algemeen
-    1052: ("activa", None),       # Spaarrekening
-    1053: ("activa", 20),         # Bank huishoudelijke dienst
-    1054: ("activa", 17),         # Bank FPU
-    1055: ("activa", 19),         # Bank FOH
-    1056: ("activa", 21),         # Bank residentie ddkg
-    1110: ("activa", None),       # Kruisposten
-    1111: ("activa", None),       # r/c K218
-    2000: ("passiva", None),      # Eigen vermogen
-    2050: ("passiva", None),      # Reserve Vergeer
-    2055: ("passiva", None),      # Reserve FF-OG
-    2100: ("passiva", None),      # Verlies (computed)
-    2500: ("passiva", None),      # Schulden particulieren
-}
-
-# The checking → spaarrekening pair for Beheer. Money moves between 1051
-# (account 18, NL34..667) and 1052 via transactions that are invisible on the
-# spaarrekening side. We reconstruct them by mirroring the 1051 rows whose
-# description contains "spaarrekening", with the sign flipped.
-_BEHEER_MIRROR: dict[str, Any] = {
-    "source_account_id": 18,
-    "source_category": 1051,
-    "target_category": 1052,
-    "keyword": "spaarrekening",
-}
-
-# Per-country balance configuration:
-#   balance_id:  the Eigen vermogen category, computed as the balancing figure
-#   result_id:   the Verlies (resultaat) category, derived from dbo.category_total
-#   category_map: category_id → (side, account_id | None); account_id links a
-#                 bank account whose live balance feeds that category (only
-#                 used when dbo.mapping has no entry for that category).
-#                 When empty, every dim_category row 1000-4999 is used (side by
-#                 range, no account link).
-#   mirror:       spaarrekening mirror settings, or None when not used.
-#
-# Whether a country carries a balance sheet at all is declared in the database
-# on ``dbo.country.has_balance`` (set to 1 for sdog and instudo, 0 elsewhere).
-_BALANCE_COUNTRIES: dict[int, dict[str, Any]] = {
-    4: {
-        "balance_id": 2000,
-        "result_id": 2100,
-        "category_map": _BEHEER_CATEGORY_MAP,
-        "mirror": _BEHEER_MIRROR,
-    },
-    5: {
-        "balance_id": 2000,
-        "result_id": 2100,
-        # instudo: fill in its own balance categories and bank-account links.
-        "category_map": {},
-        "mirror": None,
-    },
-}
-
-_EMPTY_CONFIG: dict[str, Any] = {
-    "balance_id": 2000,
-    "result_id": 2100,
-    "category_map": {},
-    "mirror": None,
-}
 
 _has_balance_cache: dict[int, bool] = {}
 
@@ -106,12 +49,7 @@ def _country_has_balance(country_id: int) -> bool:
     try:
         with connect() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "SELECT has_balance FROM dbo.country WHERE country_id = ?",
-                country_id,
-            )
-            row = cur.fetchone()
-        value = bool(row[0]) if row else False
+            value = shared_country_has_balance(country_id, cur)
     except Exception:
         value = True
     _has_balance_cache[country_id] = value
@@ -153,21 +91,19 @@ def active_country_id() -> int:
 
 
 def _country_config(country_id: int) -> dict[str, Any]:
-    if not _country_has_balance(country_id):
-        return dict(_EMPTY_CONFIG)
-    return _BALANCE_COUNTRIES.get(country_id, dict(_EMPTY_CONFIG))
+    return dict(balance_config(country_id))
 
 
 def _verlies_id(country_id: int) -> int:
-    return int(_country_config(country_id).get("result_id") or 2100)
+    return shared_verlies_id(country_id)
 
 
 def _balance_id(country_id: int) -> int:
-    return int(_country_config(country_id).get("balance_id") or 2000)
+    return shared_eigen_vermogen_id(country_id)
 
 
 def _sql_ident(text: str) -> str | None:
-    return text if _IDENT.fullmatch(text or "") else None
+    return sql_ident(text)
 
 
 def _transaction_table(country_id: int) -> str | None:
@@ -197,87 +133,6 @@ def _account_balances(country_id: int) -> dict[int, Decimal]:
             country_id,
         )
         return {int(r[0]): Decimal(str(r[1])) for r in cur.fetchall()}
-
-
-def _account_links(country_id: int) -> dict[int, int]:
-    """category_id → account_id from ``dbo.mapping`` for a country.
-
-    The mapping table records which live bank account feeds each balance
-    category (e.g. Beheer 1051 Bank algemeen → account 18).
-    """
-    with connect() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT category_id, account_id FROM dbo.mapping WHERE country_id = ?",
-            country_id,
-        )
-        return {int(r[0]): int(r[1]) for r in cur.fetchall()}
-
-
-def _opening_balances(country_id: int, year: int) -> dict[int, Decimal]:
-    """category_id → amount from dbo.balance_opening."""
-    with connect() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT category_id, amount FROM dbo.balance_opening "
-            "WHERE country_id = ? AND year = ?",
-            country_id,
-            year,
-        )
-        return {int(r[0]): Decimal(str(r[1])) for r in cur.fetchall()}
-
-
-def _journal_balances(country_id: int, year: int, as_of: str | None = None) -> dict[int, Decimal]:
-    """category_id → net sum of dbo.balance_transaction for a country/year."""
-    with connect() as conn:
-        cur = conn.cursor()
-        q = (
-            "SELECT category_id, SUM(amount) FROM dbo.balance_transaction "
-            "WHERE country_id = ? AND year = ?"
-        )
-        p: list[Any] = [country_id, year]
-        if as_of is not None:
-            q += " AND date <= ?"
-            p.append(as_of)
-        q += " GROUP BY category_id"
-        cur.execute(q, tuple(p))
-        return {int(r[0]): Decimal(str(r[1])) for r in cur.fetchall()}
-
-
-def _journal_table_exists() -> bool:
-    with connect() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT OBJECT_ID(N'dbo.balance_journal')")
-        return cur.fetchone()[0] is not None
-
-
-def _journal_effect(country_id: int, year: int, as_of: str | None = None) -> dict[int, Decimal]:
-    """category_id → net effect from the hand-edited dbo.balance_journal.
-
-    Each row moves money FROM ``category_from`` TO ``category_to``: the FROM
-    category decreases by ``amount`` and the TO category increases by ``amount``.
-    The sum over all categories is therefore zero (the sheet stays balanced).
-    With ``as_of`` only rows dated on or before that day are included.
-    """
-    if not _journal_table_exists():
-        return {}
-    effect: dict[int, Decimal] = {}
-    with connect() as conn:
-        cur = conn.cursor()
-        q = (
-            "SELECT category_from, category_to, amount FROM dbo.balance_journal "
-            "WHERE country_id = ? AND year = ?"
-        )
-        p: list[Any] = [country_id, year]
-        if as_of is not None:
-            q += " AND date <= ?"
-            p.append(as_of)
-        cur.execute(q, tuple(p))
-        for cat_from, cat_to, amount in cur.fetchall():
-            d = Decimal(str(amount))
-            effect[cat_from] = effect.get(cat_from, Decimal("0")) - d
-            effect[cat_to] = effect.get(cat_to, Decimal("0")) + d
-    return effect
 
 
 def _spaar_mirror_rows(country_id: int, year: int) -> list[tuple[int, str, Decimal, str]]:
@@ -327,12 +182,7 @@ def _category_labels(country_id: int) -> dict[int, str]:
     """category_id → label from dbo.dim_category (balance categories)."""
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute(
-            "SELECT category_id, label FROM dbo.dim_category "
-            "WHERE country_id = ? AND category_id BETWEEN 1000 AND 4999",
-            country_id,
-        )
-        return {int(r[0]): str(r[1]) for r in cur.fetchall()}
+        return shared_category_labels(country_id, cur)
 
 
 def _dim_category_ids(country_id: int) -> set[int]:
@@ -356,68 +206,23 @@ def _category_ids(country_id: int) -> set[int]:
 
 
 def _category_map(country_id: int) -> dict[int, tuple[str, int | None]]:
-    configured = _country_config(country_id).get("category_map") or {}
-    if configured:
-        result = {
-            int(c): (str(s), (int(a) if a is not None else None))
-            for c, (s, a) in configured.items()
-        }
-    else:
-        result = {cat: (_infer_side(cat), None) for cat in _dim_category_ids(country_id)}
-    # dbo.mapping overrides the account link per category.
-    for cat_id, account_id in _account_links(country_id).items():
-        side, _ = result.get(cat_id, (_infer_side(cat_id), None))
-        result[int(cat_id)] = (side, account_id)
-    return result
+    with connect() as conn:
+        cur = conn.cursor()
+        return shared_category_map(country_id, cur)
 
 
 def _result_overlay(country_id: int, year: int, as_of: str | None = None) -> Decimal:
-    """Resultaat effect of the beheer journal rows for categories 3000-4999.
+    """Resultaat effect of the journal rows for categories 3000-4999 (Decimal sum).
 
     Mirrors the hub matrix overlay so the sheet's Verlies post agrees with the
-    client's "Saldo" (kosten minus opbrengsten). ``dbo.balance_journal`` rows
-    move money FROM ``category_from`` TO ``category_to``: the TO category gets
-    the range sign, the FROM category the opposite. ``dbo.balance_transaction``
-    rows contribute their amount with the range sign. Sign: 3000-3999 (Kosten)
-    positive, 4000-4999 (Opbrengsten) negative. With ``as_of`` only rows dated
-    on or before that day are included.
+    client's "Saldo" (kosten minus opbrengsten). Delegates to the shared module.
+    With ``as_of`` (YYYY-MM-DD) only rows dated on or before that day are
+    included.
     """
-    total = Decimal("0")
     with connect() as conn:
         cur = conn.cursor()
-        for table in ("dbo.balance_journal", "dbo.balance_transaction"):
-            cur.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
-            if cur.fetchone()[0] is None:
-                return Decimal("0")
-        dateq = " AND date <= ?" if as_of is not None else ""
-        if as_of is not None:
-            p: list[Any] = [country_id, year, as_of] * 3
-        else:
-            p = [country_id, year] * 3
-        cur.execute(
-            "SELECT c, s, k FROM ("
-            f" SELECT category_to AS c, amount AS s, 'T' AS k"
-            f" FROM dbo.balance_journal WHERE country_id = ? AND year = ?{dateq}"
-            " UNION ALL"
-            f" SELECT category_from AS c, amount AS s, 'F' AS k"
-            f" FROM dbo.balance_journal WHERE country_id = ? AND year = ?{dateq}"
-            " UNION ALL"
-            f" SELECT category_id AS c, amount AS s, 'X' AS k"
-            f" FROM dbo.balance_transaction WHERE country_id = ? AND year = ?{dateq}"
-            ") u WHERE c BETWEEN 3000 AND 4999",
-            tuple(p),
-        )
-        for category_id, amount, kind in cur.fetchall():
-            try:
-                code = int(category_id)
-                cents = Decimal(str(amount or 0))
-            except (TypeError, ValueError):
-                continue
-            side = -1 if code >= 4000 else 1  # K positive, O negative
-            if kind == "F":
-                side = -side  # FROM inverts the side sign
-            total += side * cents
-    return total
+        overlay = result_overlay_cents(country_id, year, cur, as_of=as_of)
+    return Decimal(sum(overlay.values())) / 100
 
 
 def _recorded_result(country_id: int, year: int) -> Decimal:
@@ -548,30 +353,6 @@ def _asof_cutoff(country_id: int, year: int, as_of: str | None) -> date | None:
         return None
 
 
-def _account_balances_asof(country_id: int, year: int, cutoff: date) -> dict[int, Decimal]:
-    """account_id → balance as of ``cutoff`` (current minus later movements)."""
-    current = _account_balances(country_id)
-    if not current:
-        return current
-    table = _transaction_table(country_id)
-    if table is None:
-        return current
-    later: dict[int, Decimal] = {}
-    ids = list(current)
-    placeholders = ",".join("?" for _ in ids)
-    with connect() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"SELECT account_id, SUM(amount) FROM {table} "
-            f"WHERE year = ? AND booked_on > ? AND account_id IN ({placeholders}) "
-            f"GROUP BY account_id",
-            tuple([year, cutoff.isoformat()] + ids),
-        )
-        for aid, s in cur.fetchall():
-            later[int(aid)] = Decimal(str(s))
-    return {aid: (cur - later.get(aid, Decimal("0"))) for aid, cur in current.items()}
-
-
 def _result_amount(country_id: int, year: int, cutoff: date) -> Decimal:
     """Verlies recomputed from the transaction rows booked on or before cutoff."""
     table = _transaction_table(country_id)
@@ -603,20 +384,16 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
     """
     cutoff = _asof_cutoff(country_id, year, as_of)
     if cutoff is None:
-        acct = _account_balances(country_id)
-        journal = _journal_balances(country_id, year)
-        journal_effect = _journal_effect(country_id, year)
         result_amount = _recorded_result(country_id, year)
         result_source = "category_total"
     else:
-        acct = _account_balances_asof(country_id, year, cutoff)
-        journal = _journal_balances(country_id, year, cutoff.isoformat())
-        journal_effect = _journal_effect(country_id, year, cutoff.isoformat())
         result_amount = _result_amount(country_id, year, cutoff)
         result_source = "as_of"
+    with connect() as conn:
+        cur = conn.cursor()
+        breakdown = balance_category_breakdown(country_id, year, cur, as_of=cutoff)
+        category_map = shared_category_map(country_id, cur)
     labels = _category_labels(country_id)
-    opening = _opening_balances(country_id, year)
-    category_map = _category_map(country_id)
     balance_id = _balance_id(country_id)
     result_id = _verlies_id(country_id)
 
@@ -631,25 +408,8 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
             # computed later
             continue
 
-        if account_id is not None:
-            # Bank category: always the live balance of the mapped account.
-            amount = acct.get(account_id, Decimal("0"))
-            source = f"account:{account_id}"
-        else:
-            amount = opening.get(cat_id, Decimal("0"))
-            source = "opening"
-
-        journal_amount = journal.get(cat_id)
-        if journal_amount is not None:
-            amount += journal_amount
-            if "+journal" not in source:
-                source += "+journal"
-
-        effect = journal_effect.get(cat_id)
-        if effect:
-            amount += effect
-            if "+journal" not in source:
-                source += "+journal"
+        cents, source = breakdown.get(cat_id, (0, "opening"))
+        amount = cents / 100
 
         row = {"category_id": cat_id, "code": cat_id, "label": label,
                "amount": float(amount), "source": source}
@@ -750,17 +510,23 @@ def update_opening(country_id: int, year: int, items: list[dict[str, Any]]) -> N
     """Upsert opening balances for a country and year.
 
     Each item: {"category_id": int, "amount": float, "note": str | None}.
-    Bank categories are included too: their amount is the initial/opening
-    balance recorded here and used by the sheet (see ``balance_sheet``).
+    Computed posts (Eigen vermogen / Verlies) are never stored, and categories
+    with a live account link (bank categories) are skipped too: their amount is
+    the live ``dbo.account.balance``, never an opening row in balance_opening.
     """
     balance_id = _balance_id(country_id)
     result_id = _verlies_id(country_id)
     with connect() as conn:
         cur = conn.cursor()
+        account_linked = {
+            cat_id
+            for cat_id, (_side, account_id) in shared_category_map(country_id, cur).items()
+            if account_id is not None
+        }
         for item in items:
             cat_id = int(item["category_id"])
-            if cat_id in (balance_id, result_id):
-                continue  # computed, never stored
+            if cat_id in (balance_id, result_id) or cat_id in account_linked:
+                continue  # computed or live-account categories, never stored
             amount = Decimal(str(item.get("amount", 0)))
             note = item.get("note")
             cur.execute(

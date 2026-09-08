@@ -619,6 +619,10 @@ th {
   background: #ffecbc;
 }
 
+.totals-table tr.balance-passiva-row td {
+  color: #9ca3af;
+}
+
 .p-panel {
   min-width: min-content;
 }

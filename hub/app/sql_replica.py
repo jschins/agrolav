@@ -35,6 +35,17 @@ def _transaction_table(country_name: str) -> str | None:
     return f"dbo.transaction_{ident}"
 
 
+def _country_id_for_username(cursor: Any, country: str) -> int | None:
+    """``dbo.country.country_id`` for a country username (case/accent-insensitive)."""
+    cursor.execute(
+        "SELECT country_id FROM dbo.country "
+        "WHERE username = ? COLLATE Latin1_General_CI_AI",
+        (country,),
+    )
+    row = cursor.fetchone()
+    return int(row[0]) if row else None
+
+
 def _local_code(raw: Any) -> int | None:
     if raw is None or raw == "":
         return None
@@ -255,91 +266,197 @@ def load_bound_transactions(*, category_code: int | None = None) -> list[dict[st
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to load bookings: {exc}")
         return []
-    rows: list[dict[str, Any]] = []
-    for item in fetched:
-        (
-            source_id,
-            amount,
-            bank_type,
-            name,
-            iban,
-            description,
-            booked_on,
-            modification,
-            hit,
-            local_code,
-            currency,
-            account_uid,
-        ) = item
-        try:
-            flag = int(modification)
-        except (TypeError, ValueError):
-            flag = -1
-        rows.append(
-            {
-                "id": str(source_id),
-                "amount": _json_amount(amount),
-                "currency": _json_text(currency) or "EUR",
-                "type": _json_text(bank_type),
-                "name": _json_text(name),
-                "iban": _json_text(iban),
-                "description": _json_text(description),
-                "date": _json_date(booked_on),
-                "category": int(local_code) if local_code is not None else 18,
-                "modification": flag,
-                "hit": None if hit in (None, "") else str(hit),
-                "account_uid": _json_text(account_uid),
-            }
+    return [_booked_row_shape(item) for item in fetched]
+
+
+def _booked_row_shape(item: Any) -> dict[str, Any]:
+    """Shape one fetched booking row into the public transaction dict."""
+    (
+        source_id,
+        amount,
+        bank_type,
+        name,
+        iban,
+        description,
+        booked_on,
+        modification,
+        hit,
+        local_code,
+        currency,
+        account_uid,
+    ) = item
+    try:
+        flag = int(modification)
+    except (TypeError, ValueError):
+        flag = -1
+    return {
+        "id": str(source_id),
+        "amount": _json_amount(amount),
+        "currency": _json_text(currency) or "EUR",
+        "type": _json_text(bank_type),
+        "name": _json_text(name),
+        "iban": _json_text(iban),
+        "description": _json_text(description),
+        "date": _json_date(booked_on),
+        "category": int(local_code) if local_code is not None else 18,
+        "modification": flag,
+        "hit": None if hit in (None, "") else str(hit),
+        "account_uid": _json_text(account_uid),
+    }
+
+
+def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any]]:
+    """Drill-down rows for a balance-plan category (codes 1000-2999).
+
+    - A bank-linked category (its ``category_map`` entry has an ``account_id``)
+      returns EVERY transaction on that mapped account for the bound person and
+      year, whatever their P&L category.
+    - A non-bank category (1000-series without an account link) returns the
+      hand-edited journal rows and spaar-mirror rows that move money in/out of
+      it, as read-only pseudo-transactions (``modification`` -1).
+    - A passiva category (2000-2999) has no bookable rows and returns ``[]``.
+
+    ``[]`` is also returned when SQL is unused or the bound scope fails, so
+    callers never fall back to categorized JSON for these categories.
+    """
+    from app import runtime as paths
+    from app import user_store
+    from shared.balance_values import category_map as balance_category_map
+
+    if not user_store.database_url():
+        return []
+    bound = _open_bound_scope()
+    if bound is None:
+        return []
+    country_name = str(paths.BOUND_COUNTRY or "").strip()
+    country_id = _country_id_for_username(bound.cursor, country_name)
+    if country_id is None:
+        return []
+    if 2000 <= category_code <= 2999:
+        return []
+    try:
+        cfg = balance_category_map(country_id, bound.cursor)
+        account_id = cfg.get(category_code, (None, None))[1]
+    except Exception:  # noqa: BLE001
+        account_id = None
+    if account_id is not None:
+        return _load_mapped_account_rows(bound, account_id)
+    return _load_nonbank_category_rows(bound, country_id, category_code)
+
+
+def _load_mapped_account_rows(bound: _BoundScope, account_id: int) -> list[dict[str, Any]]:
+    """All rows on the mapped account for the bound person/year (bank view)."""
+    try:
+        bound.cursor.execute(
+            f"""
+            SELECT
+                t.source_id,
+                t.amount,
+                t.bank_type,
+                t.counterparty_name,
+                t.counterparty_iban,
+                t.description,
+                t.booked_on,
+                t.modification,
+                t.hit,
+                d.local_code,
+                c.currency_default,
+                a.uid
+            FROM {bound.table} t
+            JOIN dbo.person p ON p.id = t.person_id
+            JOIN dbo.country c ON c.country_id = p.country_id
+            LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
+            LEFT JOIN dbo.account a ON a.account_id = t.account_id
+            WHERE t.person_id = ? AND t.year = ? AND t.bank_id IS NULL
+              AND t.account_id = ?
+            ORDER BY t.booked_on DESC, t.source_id DESC
+            """,
+            (bound.person_id, bound.year, int(account_id)),
         )
+        fetched = bound.cursor.fetchall()
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql replica: failed to load account rows: {exc}")
+        return []
+    return [_booked_row_shape(item) for item in fetched]
+
+
+def _load_nonbank_category_rows(
+    bound: _BoundScope, country_id: int, category_code: int
+) -> list[dict[str, Any]]:
+    """Journal + mirror rows that move money in/out of a non-bank category."""
+    rows: list[dict[str, Any]] = []
+    try:
+        bound.cursor.execute(
+            "SELECT journal_id, date, category_from, category_to, amount, description "
+            "FROM dbo.balance_journal "
+            "WHERE country_id = ? AND year = ? AND (category_from = ? OR category_to = ?) "
+            "ORDER BY date, journal_id",
+            (country_id, bound.year, category_code, category_code),
+        )
+        for journal_id, booked_on, cat_from, cat_to, amount, description in bound.cursor.fetchall():
+            delta = _decimal_amount(amount)
+            if delta is None:
+                continue
+            if int(cat_from) == category_code:
+                delta = -delta
+            rows.append(
+                {
+                    "id": f"j{int(journal_id)}",
+                    "amount": _json_amount(delta),
+                    "currency": "EUR",
+                    "type": "",
+                    "name": "",
+                    "iban": "",
+                    "description": _json_text(description),
+                    "date": _json_date(booked_on),
+                    "category": category_code,
+                    "modification": -1,
+                    "hit": None,
+                    "account_uid": "",
+                }
+            )
+        bound.cursor.execute(
+            "SELECT id, date, amount, description "
+            "FROM dbo.balance_transaction "
+            "WHERE country_id = ? AND year = ? AND category_id = ? "
+            "ORDER BY date, id",
+            (country_id, bound.year, category_code),
+        )
+        for tid, booked_on, amount, description in bound.cursor.fetchall():
+            rows.append(
+                {
+                    "id": f"b{int(tid)}",
+                    "amount": _json_amount(amount),
+                    "currency": "EUR",
+                    "type": "",
+                    "name": "",
+                    "iban": "",
+                    "description": _json_text(description),
+                    "date": _json_date(booked_on),
+                    "category": category_code,
+                    "modification": -1,
+                    "hit": None,
+                    "account_uid": "",
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql replica: failed to load balance category rows: {exc}")
+        return []
     return rows
 
 
-def _balance_overlay_cents(year: int, cursor: Any) -> dict[int, int]:
-    """Extra per-category cents from the beheer balance tables for a year.
+def _balance_overlay_cents(
+    year: int, cursor: Any, *, country_id: int = 4
+) -> dict[int, int]:
+    """Extra per-category cents from the balance tables for a year.
 
-    Only category ids 3000-4999 are considered, and only for country_id = 4
-    (beheer; hardcoded for now — instudo gets its own rule later). Side sign:
-    3000-3999 (Kosten) are positive, 4000-4999 (Opbrengsten) negative.
-    Position sign: in ``dbo.balance_journal`` a row moves money FROM
-    ``category_from`` TO ``category_to``, so the TO category gets the side
-    sign and the FROM category the opposite; ``dbo.balance_transaction`` rows
-    contribute their amount with the side sign. The entered amount keeps its
-    own sign throughout. Returns ``{}`` when either table is missing.
+    Delegates to ``shared.balance_values.result_overlay_cents`` (the balance
+    app uses the same derivation). Only category ids 3000-4999 are considered.
+    Returns ``{}`` when either table is missing.
     """
-    for table in ("dbo.balance_journal", "dbo.balance_transaction"):
-        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
-        if cursor.fetchone()[0] is None:
-            return {}
-    cursor.execute(
-        """
-        SELECT c, s, k FROM (
-            SELECT category_to AS c, amount AS s, 'T' AS k
-            FROM dbo.balance_journal WHERE year = ? AND country_id = 4
-            UNION ALL
-            SELECT category_from AS c, amount AS s, 'F' AS k
-            FROM dbo.balance_journal WHERE year = ? AND country_id = 4
-            UNION ALL
-            SELECT category_id AS c, amount AS s, 'X' AS k
-            FROM dbo.balance_transaction WHERE year = ? AND country_id = 4
-        ) u WHERE c BETWEEN 3000 AND 4999
-        """,
-        (year, year, year),
-    )
-    overlay: dict[int, int] = {}
-    for category_id, amount, kind in cursor.fetchall():
-        try:
-            code = int(category_id)
-        except (TypeError, ValueError):
-            continue
-        try:
-            cents = round(float(amount or 0) * 100)
-        except (TypeError, ValueError):
-            continue
-        side = -1 if code >= 4000 else 1  # K positive, O negative
-        if kind == "F":
-            side = -side  # FROM inverts the side sign
-        overlay[code] = overlay.get(code, 0) + side * cents
-    return overlay
+    from shared.balance_values import result_overlay_cents
+
+    return result_overlay_cents(country_id, year, cursor)
 
 
 def load_bound_category_totals(general_names: list[str]) -> dict[str, str] | None:
@@ -512,7 +629,8 @@ def load_center_year_matrix(
             label = name_by_code.get(code, str(code))
             bucket[label] = bucket.get(label, 0) + cents
         if table == "dbo.transaction_beheer":
-            for code, cents in _balance_overlay_cents(int(year), cursor).items():
+            country_id = _country_id_for_username(cursor, country) or 4
+            for code, cents in _balance_overlay_cents(int(year), cursor, country_id=country_id).items():
                 cur_label = name_by_code.get(code, str(code))
                 for bucket in totals_cents.values():
                     bucket[cur_label] = bucket.get(cur_label, 0) + cents
