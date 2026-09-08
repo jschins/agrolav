@@ -864,12 +864,29 @@ def api_settings() -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+def _is_account_group(group: str) -> bool:
+    """True when ``group`` is an account-modality account key (a ``dbo.account.uid``)."""
+    from app.centrale_sync import hub_get
+
+    try:
+        payload = hub_get("/settings")
+    except Exception:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    for entry in payload.get("account_groups") or []:
+        if isinstance(entry, dict) and str(entry.get("account_key") or "") == str(group).strip():
+            return True
+    return False
+
+
 def _hub_update_settings(group: str, category: str, body: SettingsTermsRequest) -> dict[str, Any]:
-    from app.centrale_sync import hub_put, person_allowed, require_person, scope_matrix, scope_settings
+    from app.centrale_sync import hub_get, hub_put, person_allowed, require_person, scope_matrix, scope_settings
     import urllib.parse
 
-    if group not in ("general", "shared", "categories") and not person_allowed(group):
-        require_person(group)
+    if group not in ("general", "shared", "categories"):
+        if not person_allowed(group) and not _is_account_group(group):
+            require_person(group)
     result = hub_put(
         f"/settings/{urllib.parse.quote(group)}"
         f"?category={urllib.parse.quote(category, safe='')}",
