@@ -321,7 +321,7 @@ def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any
     """
     from app import runtime as paths
     from app import user_store
-    from shared.balance_values import category_map as balance_category_map
+    from shared.balance_values import balance_config as _balance_cfg
 
     if not user_store.database_url():
         return []
@@ -335,8 +335,15 @@ def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any
     if 2000 <= category_code <= 2999:
         return []
     try:
-        cfg = balance_category_map(country_id, bound.cursor)
-        account_id = cfg.get(category_code, (None, None))[1]
+        # Use the *configured* beheer map (before dbo.mapping overrides) to
+        # decide routing: a category with a configured account_id shows all
+        # transactions on that mapped bank account; categories without one show
+        # their journal + mirror rows. dbo.mapping may link 1052 to an account
+        # for display purposes, but the drill-down for spaarrekening must show
+        # the balance_transaction/balance_journal rows, not account transactions.
+        configured_map = (_balance_cfg(country_id).get("category_map") or {})
+        entry = configured_map.get(category_code)
+        account_id = int(entry[1]) if (entry is not None and entry[1] is not None) else None
     except Exception:  # noqa: BLE001
         account_id = None
     if account_id is not None:
@@ -383,7 +390,14 @@ def _load_mapped_account_rows(bound: _BoundScope, account_id: int) -> list[dict[
 def _load_nonbank_category_rows(
     bound: _BoundScope, country_id: int, category_code: int
 ) -> list[dict[str, Any]]:
-    """Journal + mirror rows that move money in/out of a non-bank category."""
+    """Journal + mirror + booked rows that move money in/out of a non-bank category.
+
+    Sources (three, independent): ``dbo.balance_journal`` (hand-edited rows),
+    ``dbo.balance_transaction`` (spaar-mirror rows) and the bound transaction
+    table (rows posted to this category, e.g. kruisposten). Each source is
+    queried in its own ``try`` so a column mismatch in one table can never wipe
+    out the rows already collected from the other tables.
+    """
     rows: list[dict[str, Any]] = []
     try:
         bound.cursor.execute(
@@ -415,17 +429,24 @@ def _load_nonbank_category_rows(
                     "account_uid": "",
                 }
             )
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql replica: balance_journal load failed: {exc}")
+    try:
+        # Only the columns the balance app actually uses are selected: this table
+        # has no bookkeeping columns (no day-book sign, no bank/account link).
         bound.cursor.execute(
-            "SELECT id, date, amount, description "
+            "SELECT date, category_id, amount, description "
             "FROM dbo.balance_transaction "
             "WHERE country_id = ? AND year = ? AND category_id = ? "
-            "ORDER BY date, id",
+            "ORDER BY date, amount",
             (country_id, bound.year, category_code),
         )
-        for tid, booked_on, amount, description in bound.cursor.fetchall():
+        for n, (booked_on, cat_id, amount, description) in enumerate(
+            bound.cursor.fetchall(), start=1
+        ):
             rows.append(
                 {
-                    "id": f"b{int(tid)}",
+                    "id": f"b{n}",
                     "amount": _json_amount(amount),
                     "currency": "EUR",
                     "type": "",
@@ -433,15 +454,48 @@ def _load_nonbank_category_rows(
                     "iban": "",
                     "description": _json_text(description),
                     "date": _json_date(booked_on),
-                    "category": category_code,
+                    "category": int(cat_id) if cat_id is not None else category_code,
                     "modification": -1,
                     "hit": None,
                     "account_uid": "",
                 }
             )
     except Exception as exc:  # noqa: BLE001
-        print(f"sql replica: failed to load balance category rows: {exc}")
-        return []
+        print(f"sql replica: balance_transaction load failed: {exc}")
+    try:
+        bound.cursor.execute(
+            f"""
+            SELECT
+                t.source_id,
+                t.amount,
+                t.bank_type,
+                t.counterparty_name,
+                t.counterparty_iban,
+                t.description,
+                t.booked_on,
+                t.modification,
+                t.hit,
+                d.local_code,
+                c.currency_default,
+                a.uid
+            FROM {bound.table} t
+            JOIN dbo.person p ON p.id = t.person_id
+            JOIN dbo.country c ON c.country_id = p.country_id
+            LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
+            LEFT JOIN dbo.account a ON a.account_id = t.account_id
+            WHERE t.person_id = ? AND t.year = ? AND t.bank_id IS NULL
+              AND t.category_id = ?
+            ORDER BY t.booked_on DESC, t.source_id DESC
+            """,
+            (bound.person_id, bound.year, category_code),
+        )
+        for item in bound.cursor.fetchall():
+            row = _booked_row_shape(item)
+            row["modification"] = -1
+            row["account_uid"] = row.get("account_uid") or ""
+            rows.append(row)
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql replica: booked category rows load failed: {exc}")
     return rows
 
 
