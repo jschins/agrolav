@@ -109,6 +109,7 @@ class AddTermRequest(BaseModel):
     term: str
     general: bool = False
     person: str | None = None
+    account: str | None = None
 
 
 class CatalogCategoriesRequest(BaseModel):
@@ -927,6 +928,7 @@ def api_add_term(body: AddTermRequest) -> dict[str, Any]:
                 "term": body.term,
                 "general": body.general,
                 "person": body.person,
+                "account": body.account,
                 "source": _source(),
             },
         )
