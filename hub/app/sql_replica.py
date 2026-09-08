@@ -347,6 +347,10 @@ def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any
     except Exception:  # noqa: BLE001
         account_id = None
     if account_id is not None:
+        # The drill-down follows the account the user selected (BOUND_ACCOUNT);
+        # without a selection it falls back to the account mapped to the category.
+        if bound.account_id is not None:
+            account_id = bound.account_id
         return _load_mapped_account_rows(bound, account_id)
     return _load_nonbank_category_rows(bound, country_id, category_code)
 
@@ -463,6 +467,12 @@ def _load_nonbank_category_rows(
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: balance_transaction load failed: {exc}")
     try:
+        # Booked rows posted to this category (e.g. kruisposten): scoped to the
+        # selected account when one is bound, otherwise every row for the person.
+        account_sql = " AND t.account_id = ?" if bound.account_id is not None else ""
+        account_param: tuple[Any, ...] = (
+            (bound.account_id,) if bound.account_id is not None else ()
+        )
         bound.cursor.execute(
             f"""
             SELECT
@@ -484,10 +494,10 @@ def _load_nonbank_category_rows(
             LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
             LEFT JOIN dbo.account a ON a.account_id = t.account_id
             WHERE t.person_id = ? AND t.year = ? AND t.bank_id IS NULL
-              AND t.category_id = ?
+              AND t.category_id = ?{account_sql}
             ORDER BY t.booked_on DESC, t.source_id DESC
             """,
-            (bound.person_id, bound.year, category_code),
+            (bound.person_id, bound.year, category_code, *account_param),
         )
         for item in bound.cursor.fetchall():
             row = _booked_row_shape(item)

@@ -287,8 +287,22 @@ def build_matrix(
                     year=y_int,
                     general_names=booking,
                 )
-            balance_country = _balance_matrix_country_id(country) if country else None
-            if balance_country is not None and y_int is not None:
+    # The 1000-2999 totals are balance-sheet figures and must NOT follow the
+    # selected account/bank view. Overlay them from the shared balance values
+    # whenever the country carries a balance sheet, bank selected or not.
+    from app import user_store
+    from app.yearpath import parse_year
+
+    if user_store.database_url() and packs:
+        y = parse_year(year) if year else parse_year(packs[0].year)
+        country = active_country() or packs[0].country
+        try:
+            y_int = int(y)
+        except (TypeError, ValueError):
+            y_int = None
+        if y_int is not None and country:
+            balance_country = _balance_matrix_country_id(country)
+            if balance_country is not None:
                 balance_names = {
                     code: name
                     for name in booking
@@ -308,10 +322,6 @@ def build_matrix(
             totals = totals_map.get(key) or {}
             for name in booking:
                 cells[name][pack.person_name] = _amount_for_category(totals, name)
-            for code, name in balance_names.items():
-                cents = balance_cents.get(code) if balance_cents is not None else None
-                if cents is not None:
-                    cells[name][pack.person_name] = f"{cents / 100:.2f}"
             if is_resultaat:
                 cells[balance_name][pack.person_name] = _sum_totals(totals, resultaat)
             else:
@@ -331,6 +341,14 @@ def build_matrix(
             else:
                 cells[balance_name][pack.person_name] = person_current_balance(view_pack) or ""
             cells[date_name][pack.person_name] = person_updated_display(view_pack) or ""
+    # Balance overlay: identical in both branches, independent of bank/account.
+    if balance_cents is not None:
+        for pack in packs:
+            family = pack.person_name
+            for code, name in balance_names.items():
+                cents = balance_cents.get(code)
+                if cents is not None:
+                    cells[name][family] = f"{cents / 100:.2f}"
     payload: dict[str, Any] = {
         "categories": category_list,
         "people": columns,
