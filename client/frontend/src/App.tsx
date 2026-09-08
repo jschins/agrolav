@@ -866,6 +866,14 @@ function SyncNotifyShell({
       disabled: scratchBusy || wipeBusy,
       onClick: doRecalculateFromScratch,
     });
+    if (status?.balance_url) {
+      items.push({
+        id: "balance-sheet",
+        label: "Balance sheet",
+        onClick: () =>
+          window.open(status.balance_url!, "_blank", "noopener,noreferrer"),
+      });
+    }
     if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView) {
       items.push({
         id: "export-profit-loss",
@@ -915,7 +923,7 @@ function SyncNotifyShell({
       });
     }
     return items;
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, status?.balance_url]);
 
   return (
     <HeaderActionsContext.Provider value={setHeaderActions}>

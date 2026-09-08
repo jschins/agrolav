@@ -473,6 +473,25 @@ def api_status(
     return store.get_status(country=country)
 
 
+@app.get("/api/local/{center}/balance-slug")
+def api_balance_slug(
+    center: str,
+    country: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.runtime import request_country
+    from app.sql_catalog import country_has_balance
+
+    key = (country or "").strip() or str(request_country() or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="country is required")
+    return {
+        "country": key,
+        "slug": key,
+        "has_balance": country_has_balance(key),
+    }
+
+
 @app.get("/api/events")
 def api_events(
     since_id: int = Query(default=0),

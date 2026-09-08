@@ -64,6 +64,43 @@ def public_hub_url() -> str:
     return os.environ.get("PUBLIC_HUB_URL", "").strip().rstrip("/")
 
 
+def _balance_base_url() -> str:
+    """Browser-facing balance app base for ``/balance/{slug}``.
+
+    ``BALANCE_URL`` overrides; otherwise the public hub origin (the balance SPA
+    is reverse-proxied on that same origin), with ``http://127.0.0.1:8100`` as a
+    local-machines fallback.
+    """
+    override = os.environ.get("BALANCE_URL", "").strip().rstrip("/")
+    if override:
+        return override
+    pub = public_hub_url()
+    if pub:
+        return pub
+    return "http://127.0.0.1:8100"
+
+
+def _balance_url(cfg: HubConfig) -> str:
+    """Best-effort ``/balance/{slug}`` link for the active country.
+
+    Asks the hub (``?country=`` is appended automatically to
+    ``/api/local/...`` calls); empty when the hub is unreachable, the country
+    has no balance sheet, or this client is not country-scoped.
+    """
+    if not cfg.enabled or not cfg.country:
+        return ""
+    try:
+        data = hub_get("/balance-slug", timeout=5.0)
+        if not isinstance(data, dict) or not data.get("has_balance"):
+            return ""
+        slug = str(data.get("slug") or "").strip()
+        if not slug:
+            return ""
+        return f"{_balance_base_url()}/balance/{urllib.parse.quote(slug)}"
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def load_base_settings(*, force_reload: bool = False) -> dict[str, Any]:
     """Host settings from hardcoded defaults + environment variables (no config file)."""
     global _base_cache
@@ -675,6 +712,7 @@ def sync_status() -> dict[str, Any]:
         "title": sidebar_title_from_config(cfg),
         "auth_required": cfg.auth_required,
         "centrale_url": cfg.public_url,
+        "balance_url": _balance_url(cfg),
         "local_session_active": _hub_session_active,
         "error": _last_error,
         "last_event_id": _last_event_id,

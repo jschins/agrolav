@@ -228,6 +228,7 @@ export interface CentraleSyncStatus {
   auth_required?: boolean;
   authenticated?: boolean;
   centrale_url: string;
+  balance_url?: string;
   local_session_active: boolean;
   error: string | null;
   last_event_id?: number;
