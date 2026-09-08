@@ -966,16 +966,25 @@ def save_category_terms(
                     (category_id,),
                 )
             if cleaned:
-                cursor.executemany(
-                    """
-                    INSERT INTO dbo.category_term (category_id, person_id, account_id, term, sort_order)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    [
-                        (category_id, person_id, account_id, term, index)
-                        for index, term in enumerate(cleaned)
-                    ],
-                )
+                try:
+                    cursor.executemany(
+                        """
+                        INSERT INTO dbo.category_term (category_id, person_id, account_id, term, sort_order)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        [
+                            (category_id, person_id, account_id, term, index)
+                            for index, term in enumerate(cleaned)
+                        ],
+                    )
+                except Exception as exc:
+                    if _is_duplicate_key(exc):
+                        detail = _duplicate_key_hint(exc)
+                        raise ValueError(
+                            f"Database unicity conflict: check if this term does not already exist"
+                            + (f" ({detail})" if detail else "")
+                        ) from exc
+                    raise
             conn.commit()
             _CAT_CACHE.clear()
         except Exception:
@@ -1003,6 +1012,30 @@ def _country_id_for(cursor, country: str) -> int | None:
     )
     row = cursor.fetchone()
     return int(row[0]) if row else None
+
+
+def _is_duplicate_key(exc: Exception) -> bool:
+    """True when ``exc`` is a SQL unique-name/index violation (duplicate key)."""
+    try:
+        sqlstate = str((exc.args[0] or "") if exc.args else "")
+    except Exception:  # noqa: BLE001
+        sqlstate = ""
+    if sqlstate.startswith(("23000", "2601", "2627")):
+        return True
+    import re as _re
+
+    text = str(exc)
+    return bool(
+        _re.search(r"(duplicate key|unique index|unique constraint|violation of UNIQUE)", text, _re.I)
+    )
+
+
+def _duplicate_key_hint(exc: Exception) -> str:
+    """Short human-readable hint: the offending index name, when visible."""
+    import re as _re
+
+    match = _re.search(r"unique index ['\"]([^'\"]+)['\"]", str(exc), _re.I)
+    return match.group(1) if match else ""
 
 
 def country_has_balance(country: str) -> bool:
