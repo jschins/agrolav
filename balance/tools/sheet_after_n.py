@@ -1,10 +1,9 @@
 """Read-only diagnostic: balance sheet as of a given booking date (or after the
 first N rows of dbo.transaction_beheer).
 
-The sheet's only transaction-driven figures are Verlies (2100; sum of amounts
-in categories 3000-4999 plus the journal overlay) and the balancing Eigen
-vermogen (2000). Everything else comes from opening balances, live bank
-accounts and the journal tables.
+The sheet's transaction-driven Verlies (2100) is R, the sum of amounts in
+categories 3000-4999 plus the journal overlay. Eigen vermogen (2000) is the
+plug.
 
 Usage:
     python tools/sheet_after_n.py [N [N2 ...]] [--date YYYY-MM-DD]

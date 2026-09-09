@@ -4,10 +4,10 @@ Each balance country reads bank account balances from ``dbo.account`` (linked
 to balance categories through ``dbo.mapping``) and non-bank opening balances
 from ``dbo.balance_opening``, plus hand-edited journal rows
 (``dbo.balance_journal``) and auto spaar-mirror rows
-(``dbo.balance_transaction``).  The Verlies (loss/profit) post is the recorded
-result: the sum of the P&L category amounts (``category_id`` 3000-4999) stored
-per person in ``dbo.category_total`` for that year.  The Eigen vermogen post is
-computed as the balancing figure: ``total_activa - sum(other passiva)``.
+(``dbo.balance_transaction``).  Resultaat R is the sum of P&L category
+amounts (``category_id`` 3000-4999) in ``dbo.category_total``.  Passiva 2100
+Verlies is that same R.  Eigen vermogen is the plug:
+``total_activa - sum(other passiva)``.
 
 The balance tables carry a ``country_id`` so every country keeps its own
 opening balances, journal and mirror.  The instance serves the country given
@@ -28,9 +28,15 @@ from shared.balance_values import (
     balance_config,
     category_labels as shared_category_labels,
     category_map as shared_category_map,
+    category_roles as shared_category_roles,
     country_has_balance as shared_country_has_balance,
     eigen_vermogen_id as shared_eigen_vermogen_id,
+    ensure_matrix_role_booking_rules,
+    is_journal_forbidden_code,
     result_overlay_cents,
+    spaar_mirror_posted_amount,
+    spaar_source_exclude_clause,
+    spaar_source_result_amounts,
     sql_ident,
     verlies_id as shared_verlies_id,
 )
@@ -138,10 +144,9 @@ def _account_balances(country_id: int) -> dict[int, Decimal]:
 def _spaar_mirror_rows(country_id: int, year: int) -> list[tuple[int, str, Decimal, str]]:
     """Derive the faked spaarrekening mirror transactions for a country.
 
-    Each source-category row on the source account whose description contains
-    the keyword gives one target-category journal entry with the sign flipped:
-    a transfer out ("...spaarrekening", negative) increases the mirror account,
-    and a transfer in ("Van ...spaarrekening", positive) decreases it.
+    Each source-account row whose description contains the keyword gives one
+    target-category ``balance_transaction`` of ``-d`` (d = 1051 bank amount):
+    a transfer out (d = -X, X > 0) increases 1052 by X so plug 2000 is still.
     """
     mirror = _country_config(country_id).get("mirror")
     if not mirror:
@@ -167,7 +172,7 @@ def _spaar_mirror_rows(country_id: int, year: int) -> list[tuple[int, str, Decim
                 (
                     int(mirror["target_category"]),
                     str(booked_on),
-                    -d,
+                    spaar_mirror_posted_amount(d),
                     f"{SPAAR_MARKER} {str(description or '')[:180]}",
                 )
             )
@@ -183,6 +188,13 @@ def _category_labels(country_id: int) -> dict[int, str]:
     with connect() as conn:
         cur = conn.cursor()
         return shared_category_labels(country_id, cur)
+
+
+def _category_roles(country_id: int) -> dict[int, str]:
+    with connect() as conn:
+        cur = conn.cursor()
+        ensure_matrix_role_booking_rules(cur)
+        return shared_category_roles(country_id, cur)
 
 
 def _dim_category_ids(country_id: int) -> set[int]:
@@ -215,7 +227,7 @@ def _result_overlay(country_id: int, year: int, as_of: str | None = None) -> Dec
     """Resultaat effect of the journal rows for categories 3000-4999 (Decimal sum).
 
     Mirrors the hub matrix overlay so the sheet's Verlies post agrees with the
-    client's "Saldo" (kosten minus opbrengsten). Delegates to the shared module.
+    client's "Saldo" (numerical sum of 3000-4999). Delegates to the shared module.
     With ``as_of`` (YYYY-MM-DD) only rows dated on or before that day are
     included.
     """
@@ -226,14 +238,12 @@ def _result_overlay(country_id: int, year: int, as_of: str | None = None) -> Dec
 
 
 def _recorded_result(country_id: int, year: int) -> Decimal:
-    """Verlies (resultaat): sum of the P&L category totals (3000-4999).
+    """Resultaat R: sum of the P&L category totals (3000-4999).
 
     Reads the recorded per-person category totals from ``dbo.category_total``
     (consolidated rows with ``bank_id IS NULL``) for the country's persons,
-    plus the beheer journal overlay so the sheet matches the client matrix
-    "Saldo" (kosten minus opbrengsten). Empty when no totals are recorded (the
-    balance post stays out of the sheet's stored passiva until the totals are
-    written).
+    plus the beheer journal overlay so R matches the client matrix "Saldo"
+    (numerical sum of 3000-4999; K and O same sign). Passiva 2100 uses this same R.
     """
     with connect() as conn:
         cur = conn.cursor()
@@ -252,8 +262,12 @@ def _recorded_result(country_id: int, year: int) -> Decimal:
             year,
         )
         row = cur.fetchone()
+        spaar_pnl = sum(
+            spaar_source_result_amounts(country_id, year, cur).values(),
+            Decimal("0"),
+        )
     base = Decimal("0") if row is None or row[0] is None else Decimal(str(row[0]))
-    return base + _result_overlay(country_id, year)
+    return base - spaar_pnl + _result_overlay(country_id, year)
 
 
 def list_result_rows(country_id: int, year: int) -> list[dict[str, Any]]:
@@ -261,8 +275,8 @@ def list_result_rows(country_id: int, year: int) -> list[dict[str, Any]]:
 
     Same derivation as ``_recorded_result`` but grouped per category: the
     recorded ``dbo.category_total`` (consolidated, ``bank_id IS NULL``) plus
-    the beheer journal/mirror overlay. The grand total therefore equals the
-    sheet's Verlies post.
+    the beheer journal/mirror overlay. The grand total is R, equal to passiva
+    2100.
     """
     with connect() as conn:
         cur = conn.cursor()
@@ -282,6 +296,8 @@ def list_result_rows(country_id: int, year: int) -> list[dict[str, Any]]:
             year,
         )
         records = {int(r[0]): Decimal(str(r[1] or 0)) for r in cur.fetchall()}
+        for code, amount in spaar_source_result_amounts(country_id, year, cur).items():
+            records[code] = records.get(code, Decimal("0")) - amount
         overlay = result_overlay_cents(country_id, year, cur)
     labels = _category_labels(country_id)
     combined: dict[int, Decimal] = {}
@@ -403,11 +419,13 @@ def _result_amount(country_id: int, year: int, cutoff: date) -> Decimal:
     if table is not None:
         with connect() as conn:
             cur = conn.cursor()
+            exclude_sql, exclude_params = spaar_source_exclude_clause(country_id)
             cur.execute(
-                f"SELECT category_id, amount FROM {table} "
-                "WHERE year = ? AND booked_on <= ?",
+                f"SELECT category_id, amount FROM {table} t "
+                f"WHERE t.year = ? AND t.booked_on <= ?{exclude_sql}",
                 year,
                 cutoff.isoformat(),
+                *exclude_params,
             )
             for cat, amt in cur.fetchall():
                 try:
@@ -509,13 +527,16 @@ def list_years(country_id: int) -> list[int]:
 
 
 def list_categories(country_id: int) -> list[dict[str, Any]]:
-    """All balance categories (1000-4999) with their account links (if any)."""
+    """Journal-eligible categories (1000-4999), excluding ``never`` (2000)."""
     labels = _category_labels(country_id)
+    roles = _category_roles(country_id)
     acct = _account_balances(country_id)
     category_map = _category_map(country_id)
     ids = _category_ids(country_id)
     result = []
     for cat_id in sorted(i for i in ids if 1000 <= i <= 4999):
+        if is_journal_forbidden_code(cat_id, roles.get(cat_id)):
+            continue
         side, account_id = category_map.get(cat_id, (_infer_side(cat_id), None))
         row: dict[str, Any] = {
             "category_id": cat_id,
@@ -665,17 +686,26 @@ def save_journal(country_id: int, year: int, items: list[dict[str, Any]]) -> dic
     """
     with connect() as conn:
         cur = conn.cursor()
+        ensure_matrix_role_booking_rules(cur)
+        roles = shared_category_roles(country_id, cur)
+        parsed: list[tuple[str, int, int, Decimal, str]] = []
+        for item in items:
+            date = str(item["date"])
+            cat_from = int(item["category_from"])
+            cat_to = int(item["category_to"])
+            if is_journal_forbidden_code(cat_from, roles.get(cat_from)):
+                raise ValueError(f"Category {cat_from} cannot be used in a journal")
+            if is_journal_forbidden_code(cat_to, roles.get(cat_to)):
+                raise ValueError(f"Category {cat_to} cannot be used in a journal")
+            amount = Decimal(str(item.get("amount", 0)))
+            description = str(item.get("description") or "")[:512]
+            parsed.append((date, cat_from, cat_to, amount, description))
         cur.execute(
             "DELETE FROM dbo.balance_journal WHERE country_id = ? AND year = ?",
             country_id,
             year,
         )
-        for item in items:
-            date = str(item["date"])
-            cat_from = int(item["category_from"])
-            cat_to = int(item["category_to"])
-            amount = Decimal(str(item.get("amount", 0)))
-            description = str(item.get("description") or "")[:512]
+        for date, cat_from, cat_to, amount, description in parsed:
             cur.execute(
                 "INSERT INTO dbo.balance_journal "
                 "(year, country_id, date, category_from, category_to, amount, description, created_at) "
@@ -683,4 +713,4 @@ def save_journal(country_id: int, year: int, items: list[dict[str, Any]]) -> dic
                 year, country_id, date, cat_from, cat_to, amount, description,
             )
         conn.commit()
-    return {"ok": True, "year": year, "country_id": country_id, "saved": len(items)}
+    return {"ok": True, "year": year, "country_id": country_id, "saved": len(parsed)}

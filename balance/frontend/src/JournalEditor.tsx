@@ -17,7 +17,7 @@ const emptyBox = (): Draft => ({
   key: `box-${keySeq++}`,
   date: new Date().toISOString().slice(0, 10),
   category_from: 1000,
-  category_to: 2000,
+  category_to: 1110,
   amount: "",
   description: "",
 });

@@ -53,6 +53,7 @@ export interface SettingsResponse {
   valid_category_codes: number[];
   remainder_category: string;
   typerules: TypeRule[];
+  matrix_roles?: Record<string, string>;
   table_header_terms?: Record<string, string>;
 }
 

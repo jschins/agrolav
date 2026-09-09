@@ -226,9 +226,12 @@ def balance_journal_put(
 ) -> dict[str, Any]:
     from app.balance import save_journal
 
-    return save_journal(
-        resolve_country(slug), year, [item.model_dump() for item in body.items]
-    )
+    try:
+        return save_journal(
+            resolve_country(slug), year, [item.model_dump() for item in body.items]
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def run() -> None:

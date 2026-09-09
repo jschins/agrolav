@@ -38,6 +38,13 @@ async def _lifespan(_app: FastAPI):
 
     path = user_store.init_user_store()
     print(f"user store ready: {path}")
+    if user_store.database_url():
+        try:
+            from shared.balance_values import ensure_matrix_role_booking_rules
+
+            ensure_matrix_role_booking_rules(user_store._sql_connect().cursor())
+        except Exception as exc:  # noqa: BLE001
+            print(f"matrix_role stamp skipped: {exc}")
     yield
 
 

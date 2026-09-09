@@ -346,31 +346,39 @@ class MonthlyRefreshPeriodTests(unittest.TestCase):
 
 
 class _FakeOverlayCursor:
-    """Minimal ODBC-like cursor: OBJECT_ID probes then the overlay rows.
+    """OBJECT_ID probes, then journal (from, to, amount), then transactions."""
 
-    Rows are ``(category_id, amount, kind)`` with kind ``'T'`` (journal TO),
-    ``'F'`` (journal FROM) or ``'X'`` (balance_transaction). The BETWEEN
-    filter is applied here as the SQL ``WHERE c BETWEEN 3000 AND 4999`` would.
-    """
-
-    def __init__(self, tables_exist: bool = True, rows: list | None = None) -> None:
+    def __init__(
+        self,
+        tables_exist: bool = True,
+        journals: list | None = None,
+        transactions: list | None = None,
+    ) -> None:
         self.tables_exist = tables_exist
-        self.rows = rows or []
-        self._mode = ""
+        self.journals = journals or []
+        self.transactions = transactions or []
+        self.sql = ""
 
     def execute(self, sql: str, params: tuple | None = None) -> "_FakeOverlayCursor":
-        self._mode = "probe" if "OBJECT_ID" in sql else "data"
+        del params
+        self.sql = sql
         return self
 
     def fetchone(self):
-        if self._mode == "probe":
+        if "OBJECT_ID" in self.sql:
             return (1 if self.tables_exist else None,)
         return None
 
     def fetchall(self):
-        if self._mode == "probe":
+        if "OBJECT_ID" in self.sql:
             return []
-        return [row for row in self.rows if row and 3000 <= int(row[0]) <= 4999]
+        if "category_from" in self.sql:
+            return list(self.journals)
+        return [
+            row
+            for row in self.transactions
+            if row and 3000 <= int(row[0]) <= 4999
+        ]
 
 
 class BalanceOverlayTests(unittest.TestCase):
@@ -382,51 +390,55 @@ class BalanceOverlayTests(unittest.TestCase):
             {},
         )
 
-    def test_kosten_positive(self):
+    def test_activa_to_kosten_decreases_saldo(self):
         from app.sql_replica import _balance_overlay_cents
 
-        rows = [
-            (3100, 60, "T"),    # +60 into a K category → increases
-            (3200, 40, "F"),    # money out of a K category → decreases
-        ]
         self.assertEqual(
-            _balance_overlay_cents(2026, _FakeOverlayCursor(rows=rows)),
-            {3100: 6000, 3200: -4000},
+            _balance_overlay_cents(
+                2026, _FakeOverlayCursor(journals=[(1110, 3100, 60)])
+            ),
+            {3100: -6000},
         )
 
-    def test_opbrengsten_negative(self):
+    def test_from_kosten_always_minus_x(self):
         from app.sql_replica import _balance_overlay_cents
 
-        rows = [
-            (4050, 100, "T"),   # +100 into an O category → decreases
-            (4100, 50, "F"),    # money out of an O category → increases
-        ]
         self.assertEqual(
-            _balance_overlay_cents(2026, _FakeOverlayCursor(rows=rows)),
-            {4050: -10000, 4100: 5000},
+            _balance_overlay_cents(
+                2026, _FakeOverlayCursor(journals=[(3200, 1110, 40)])
+            ),
+            {3200: -4000},
         )
 
-    def test_transaction_rows_take_side_sign(self):
+    def test_kosten_and_omzet_same_sign(self):
         from app.sql_replica import _balance_overlay_cents
 
-        rows = [
-            (4000, 200, "X"),   # +200 on an O category → decreases
-            (3050, -30, "X"),   # -30 on a K category → decreases
-        ]
         self.assertEqual(
-            _balance_overlay_cents(2026, _FakeOverlayCursor(rows=rows)),
-            {4000: -20000, 3050: -3000},
+            _balance_overlay_cents(
+                2026, _FakeOverlayCursor(journals=[(1110, 4050, 100)])
+            ),
+            {4050: -10000},
+        )
+
+    def test_transaction_rows_keep_stored_amount(self):
+        from app.sql_replica import _balance_overlay_cents
+
+        self.assertEqual(
+            _balance_overlay_cents(
+                2026,
+                _FakeOverlayCursor(transactions=[(4000, 200), (3050, -30)]),
+            ),
+            {4000: 20000, 3050: -3000},
         )
 
     def test_out_of_range_and_missing_objects_ignored(self):
         from app.sql_replica import _balance_overlay_cents
 
-        rows = [
-            (2500, 777, "X"),   # below 3000 → ignored
-            (9999, 100, "X"),   # above 4999 → ignored
-        ]
         self.assertEqual(
-            _balance_overlay_cents(2026, _FakeOverlayCursor(rows=rows)),
+            _balance_overlay_cents(
+                2026,
+                _FakeOverlayCursor(transactions=[(2500, 777), (9999, 100)]),
+            ),
             {},
         )
 

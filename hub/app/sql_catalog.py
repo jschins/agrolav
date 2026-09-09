@@ -608,7 +608,7 @@ def category_codes_for_country(country: str) -> frozenset[int]:
     cursor = _cursor()
     cursor.execute(
         """
-        SELECT d.local_code
+        SELECT d.local_code, d.matrix_role
         FROM dbo.dim_category d
         JOIN dbo.country c ON c.country_id = d.country_id
         WHERE c.username = ? COLLATE Latin1_General_CI_AI
@@ -616,13 +616,24 @@ def category_codes_for_country(country: str) -> frozenset[int]:
         """,
         (name,),
     )
-    return frozenset(int(row[0]) for row in cursor.fetchall())
+    from shared.balance_values import is_hit_forbidden_code
+
+    return frozenset(
+        int(row[0])
+        for row in cursor.fetchall()
+        if not is_hit_forbidden_code(int(row[0]), row[1])
+    )
 
 
 def categories_payload(country: str) -> dict[str, Any]:
     """``categories.json``-shaped dict from ``dim_category`` / terms / headers."""
     name = (country or "").strip()
-    empty: dict[str, Any] = {"categories": {}, "table_header_terms": {}, "typerules": []}
+    empty: dict[str, Any] = {
+        "categories": {},
+        "table_header_terms": {},
+        "typerules": [],
+        "matrix_roles": {},
+    }
     if not name or not _sql_ready():
         return empty
     now = time.monotonic()
@@ -644,6 +655,16 @@ def categories_payload(country: str) -> dict[str, Any]:
             return empty
         country_id = int(row[0])
 
+        categories: dict[str, list[str]] = {}
+        matrix_roles: dict[str, str] = {}
+        id_to_label: dict[int, str] = {}
+        from shared.balance_values import (
+            category_display_name,
+            ensure_matrix_role_booking_rules,
+            is_hit_forbidden_code,
+        )
+
+        ensure_matrix_role_booking_rules(cursor)
         cursor.execute(
             """
             SELECT category_id, local_code, label, matrix_role
@@ -653,20 +674,15 @@ def categories_payload(country: str) -> dict[str, Any]:
             """,
             (country_id,),
         )
-        categories: dict[str, list[str]] = {}
-        id_to_label: dict[int, str] = {}
         for category_id, code, label, role in cursor.fetchall():
-            text = str(label or "").strip()
-            if not text:
-                continue
-            if str(role or "").strip():
-                cat_name = text
-            elif code is not None:
-                cat_name = f"{int(code):04d} {text}"
-            else:
+            cat_name = category_display_name(label, code, role)
+            if not cat_name:
                 continue
             categories[cat_name] = []
             id_to_label[int(category_id)] = cat_name
+            role_text = str(role or "").strip()
+            if role_text:
+                matrix_roles[cat_name] = role_text
 
         cursor.execute(
             """
@@ -700,7 +716,7 @@ def categories_payload(country: str) -> dict[str, Any]:
 
         cursor.execute(
             """
-            SELECT r.bank_type, d.local_code, d.label
+            SELECT r.bank_type, d.local_code, d.label, d.matrix_role
             FROM dbo.type_rule r
             JOIN dbo.dim_category d ON d.category_id = r.category_id
             WHERE r.country_id = ?
@@ -708,10 +724,10 @@ def categories_payload(country: str) -> dict[str, Any]:
             (country_id,),
         )
         typerules = []
-        for bank_type, local_code, label in cursor.fetchall():
+        for bank_type, local_code, label, role in cursor.fetchall():
             t = str(bank_type or "").strip()
             plain = str(label or "").strip()
-            if t and plain:
+            if t and plain and not is_hit_forbidden_code(int(local_code), role):
                 rule_cat = f"{int(local_code):04d} {plain}"
                 typerules.append({"type": t, "category": rule_cat})
 
@@ -719,6 +735,7 @@ def categories_payload(country: str) -> dict[str, Any]:
             "categories": categories,
             "table_header_terms": headers,
             "typerules": typerules,
+            "matrix_roles": matrix_roles,
         }
 
     try:
@@ -733,7 +750,7 @@ def personal_categories_payload(username: str) -> dict[str, list[str]]:
     """Category name → personal keyword terms for one person.
 
     Keys use the same ``{local_code:04d} {label}`` naming as the general map
-    (bare label when the category has a ``matrix_role``).
+    (bare label only for footer roles ``balance`` / ``last_booked``).
     """
     name = (username or "").strip()
     if not name or not _sql_ready():
@@ -752,16 +769,12 @@ def personal_categories_payload(username: str) -> dict[str, list[str]]:
             """,
             (name,),
         )
+        from shared.balance_values import category_display_name
+
         out: dict[str, list[str]] = {}
         for label, code, role, term in cursor.fetchall():
-            text = str(label or "").strip()
-            if not text:
-                continue
-            if str(role or "").strip():
-                key = text
-            elif code is not None:
-                key = f"{int(code):04d} {text}"
-            else:
+            key = category_display_name(label, code, role)
+            if not key:
                 continue
             value = str(term or "").strip()
             if value:
@@ -801,15 +814,11 @@ def personal_category_maps(username: str) -> dict[str | None, dict[str, list[str
             (name,),
         )
         result: dict[str | None, dict[str, list[str]]] = {}
+        from shared.balance_values import category_display_name
+
         for label, code, role, term, _term_id, uid in cursor.fetchall():
-            text = str(label or "").strip()
-            if not text:
-                continue
-            if str(role or "").strip():
-                key = text
-            elif code is not None:
-                key = f"{int(code):04d} {text}"
-            else:
+            key = category_display_name(label, code, role)
+            if not key:
                 continue
             value = str(term or "").strip()
             if not value:
@@ -1068,8 +1077,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     rows (3000-4999), and ``gecondenseerd`` from ``dbo.map_condensed_balance``.
     Plain countries get ``resultaat`` only.
     The Resultaat rows come from the recorded ``dbo.category_total`` plus the
-    beheer journal/mirror overlay, so their grand total equals the sheet's
-    Verlies post.
+    beheer journal/mirror overlay (R). Passiva 2100 Verlies uses that same R.
     """
     name = (country or "").strip()
     if not name or not _sql_ready():
@@ -1085,6 +1093,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             country_has_balance,
             eigen_vermogen_id,
             result_overlay_cents,
+            spaar_source_result_amounts,
             verlies_id,
         )
 
@@ -1109,6 +1118,10 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             (int(country_id), int(year)),
         )
         recorded = {int(r[0]): Decimal(str(r[1] or 0)) for r in cursor.fetchall()}
+        for code, amount in spaar_source_result_amounts(
+            country_id, int(year), cursor
+        ).items():
+            recorded[code] = recorded.get(code, Decimal("0")) - amount
         overlay = result_overlay_cents(country_id, int(year), cursor)
         labels = category_labels(country_id, cursor)
 
@@ -1360,7 +1373,7 @@ def display_digits(rows: list[dict[str, Any]]) -> int:
 
 
 def booking_categories_payload(country: str) -> dict[str, Any]:
-    """Booking rows in ``dbo.dim_category`` (excludes Balance / Updated footers)."""
+    """Booking rows in ``dbo.dim_category`` (excludes footers and never/no_hit)."""
     name = (country or "").strip()
     empty: dict[str, Any] = {
         "country": name,

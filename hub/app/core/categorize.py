@@ -20,6 +20,23 @@ def _sql_categories() -> dict[str, Any]:
     return categories_payload(country)
 
 
+def _matrix_roles() -> dict[str, str]:
+    raw = _categories_file().get("matrix_roles")
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): str(v) for k, v in raw.items()}
+
+
+def _is_hit_category_name(name: str, roles: dict[str, str] | None = None) -> bool:
+    from shared.balance_values import is_hit_forbidden_code
+
+    code = _category_code(name)
+    if code is None:
+        return False
+    lookup = roles if roles is not None else _matrix_roles()
+    return not is_hit_forbidden_code(code, lookup.get(name))
+
+
 def _personal_category_map() -> dict[str, list[str]]:
     """Flat personal terms for the bound person (all accounts merged).
 
@@ -401,10 +418,12 @@ def type_rules_payload() -> list[dict[str, str]]:
 
 def _type_rule_category_map() -> dict[str, int]:
     """Map lowercased bank ``type`` strings to category codes."""
+    roles = _matrix_roles()
     mapping: dict[str, int] = {}
     for rule in type_rules_payload():
-        code = _category_code(rule["category"])
-        if code is not None:
+        name = rule["category"]
+        code = _category_code(name)
+        if code is not None and _is_hit_category_name(name, roles):
             mapping[rule["type"].lower()] = code
     return mapping
 
@@ -475,10 +494,13 @@ def _best_keyword_hit(
     general: dict[str, list[str]],
     personal: dict[str, list[str]],
 ) -> tuple[int, str] | None:
+    roles = _matrix_roles()
     best_key: tuple | None = None
     best: tuple[int, str] | None = None
     for is_personal, group in ((False, general), (True, personal)):
         for name, fields in group.items():
+            if not _is_hit_category_name(name, roles):
+                continue
             code = _category_code(name)
             if code is None:
                 continue
@@ -1445,9 +1467,13 @@ def category_names() -> list[str]:
 
 
 def category_code_set() -> frozenset[int]:
-    """Category numbers defined as keys in ``categories.json``."""
+    """HIT-eligible category numbers (excludes never / no_hit / footers)."""
+    roles = _matrix_roles()
     return frozenset(
-        code for name in category_names() if (code := _category_code(name)) is not None
+        code
+        for name in category_names()
+        if _is_hit_category_name(name, roles)
+        and (code := _category_code(name)) is not None
     )
 
 

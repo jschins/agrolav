@@ -68,6 +68,22 @@ function isBookingCategoryName(name: string): boolean {
   return /^\d{4}/.test(name);
 }
 
+function categoryCodeOf(name: string): number | null {
+  const match = String(name).match(/^(\d{4})/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function isHitCategoryName(name: string, settings: SettingsResponse): boolean {
+  if (!isBookingCategoryName(name)) return false;
+  const role = String(settings.matrix_roles?.[name] ?? "").toLowerCase();
+  if (role === "never" || role === "no_hit" || role === "balance" || role === "last_booked") {
+    return false;
+  }
+  const code = categoryCodeOf(name);
+  if (code === 2000 || (code !== null && code >= 1051 && code <= 1056)) return false;
+  return true;
+}
+
 function shownLabel(localCode: number, label: string): string {
   const pad = localCode < 100 ? 2 : 4;
   return `${String(localCode).padStart(pad, "0")} ${label}`;
@@ -3355,7 +3371,8 @@ function TermContextMenu({
   });
 
   const categories = settings.categories.filter(
-    (name) => name !== settings.remainder_category && isBookingCategoryName(name)
+    (name) =>
+      name !== settings.remainder_category && isHitCategoryName(name, settings)
   );
 
   useEffect(() => {
@@ -3568,7 +3585,8 @@ function wordAtClick(root: EventTarget, clientX: number, clientY: number): strin
 
 function termsTableCategories(settings: SettingsResponse): string[] {
   return settings.categories.filter(
-    (name) => name !== settings.remainder_category && isBookingCategoryName(name)
+    (name) =>
+      name !== settings.remainder_category && isHitCategoryName(name, settings)
   );
 }
 

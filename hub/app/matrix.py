@@ -102,7 +102,7 @@ def _resultaat_country_id(country: str) -> int | None:
 
 
 # Countries whose matrix shows ONLY the balance-sheet plan (codes 1000-4999)
-# and whose "balance" footer is the difference over the resultaat subset
+# and whose "balance" footer is the numerical sum over the resultaat subset
 # (3000-4999). Driven from the database (``dbo.country.has_balance``); this set
 # is the fallback when the column or the query is unavailable.
 _RESULTAAT_MATRIX_COUNTRIES: frozenset[int] = frozenset({4})
@@ -139,7 +139,7 @@ def _resultaat_categories(country: str, names: list[str]) -> list[str]:
 
     A balance country (see ``_balance_matrix_country_id``) exposes the full
     balance plan in ``categories_payload``; its "balance"/saldo footer is the
-    difference over only the Kosten/Opbrengsten categories (codes 3000-4999).
+    numerical sum over the Kosten/Opbrengsten categories (codes 3000-4999).
     All other countries keep the full subset (footer = live account balance).
     """
     from app.core.categorize import _category_code
@@ -225,10 +225,23 @@ def person_last_booked(pack: PersonScope) -> str | None:
         return load_bound_last_booked()
 
 
-def _footer_labels(categories: list[str]) -> tuple[str, str]:
-    """Catalog keys without a two-digit prefix: first = saldo, second = datum."""
+def _footer_labels(
+    categories: list[str], roles: dict[str, str] | None = None
+) -> tuple[str, str]:
+    """Saldo / datum footer keys: ``matrix_role`` first, else uncoded names."""
     from app.core.categorize import _category_code
+    from shared.balance_values import MATRIX_FOOTER_ROLES, matrix_role_text
 
+    by_role: dict[str, str] = {}
+    for name in categories:
+        role = matrix_role_text((roles or {}).get(name))
+        if role in MATRIX_FOOTER_ROLES and role not in by_role:
+            by_role[role] = name
+    if by_role:
+        return (
+            by_role.get("balance") or FOOTER_BALANCE,
+            by_role.get("last_booked") or FOOTER_DATUM,
+        )
     uncoded = [name for name in categories if _category_code(name) is None]
     balance = uncoded[0] if uncoded else FOOTER_BALANCE
     booked = uncoded[1] if len(uncoded) > 1 else FOOTER_DATUM
@@ -255,7 +268,9 @@ def build_matrix(
 
     categories = category_names(packs)
     country = active_country() or (packs[0].country if packs else "")
-    balance_name, date_name = _footer_labels(categories)
+    roles_raw = load_general_file(packs).get("matrix_roles")
+    roles = roles_raw if isinstance(roles_raw, dict) else {}
+    balance_name, date_name = _footer_labels(categories, roles)
     booking = [name for name in categories if _category_code(name) is not None]
     # Booking keeps the FULL balance plan (1000-4999) as matrix rows; resultaat
     # is the 3000-4999 subset the "balance" footer is summed over.

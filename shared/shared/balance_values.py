@@ -109,6 +109,201 @@ def infer_side(cat_id: int) -> str:
     return "opbrengsten"
 
 
+# ``dbo.dim_category.matrix_role``:
+#   NULL            ordinary booking / journal category
+#   balance         matrix saldo footer
+#   last_booked     matrix datum footer
+#   never           2000 Eigen vermogen: never HIT, never journal
+#   no_hit          1051-1056 bank posts: never HIT; journals allowed (as A)
+MATRIX_ROLE_NEVER = "never"
+MATRIX_ROLE_NO_HIT = "no_hit"
+MATRIX_FOOTER_ROLES = frozenset({"balance", "last_booked"})
+MATRIX_HIT_FORBIDDEN_ROLES = frozenset(
+    {MATRIX_ROLE_NEVER, MATRIX_ROLE_NO_HIT, *MATRIX_FOOTER_ROLES}
+)
+
+# Checking accounts 1051-1056: live ``dbo.account.balance``. Booking a bank
+# transaction onto these codes is invalid (no overlay). 1052 is the spaar
+# mirror target, not a HIT category.
+_BANK_BOOKING_LO = 1051
+_BANK_BOOKING_HI = 1056
+
+
+def matrix_role_text(role: object) -> str:
+    return str(role or "").strip().lower()
+
+
+def is_footer_role(role: object) -> bool:
+    return matrix_role_text(role) in MATRIX_FOOTER_ROLES
+
+
+def is_hit_forbidden_role(role: object) -> bool:
+    return matrix_role_text(role) in MATRIX_HIT_FORBIDDEN_ROLES
+
+
+def is_journal_forbidden_role(role: object) -> bool:
+    return matrix_role_text(role) == MATRIX_ROLE_NEVER
+
+
+def is_hit_forbidden_code(local_code: int, role: object = None) -> bool:
+    """HIT onto this local code is invalid (role stamp, else 2000 / 1051-1056)."""
+    if is_hit_forbidden_role(role):
+        return True
+    code = int(local_code)
+    return code == 2000 or is_invalid_bank_booking(code)
+
+
+def is_journal_forbidden_code(local_code: int, role: object = None) -> bool:
+    """Journal FROM/TO onto this local code is invalid (role stamp, else 2000)."""
+    if is_journal_forbidden_role(role):
+        return True
+    return int(local_code) == 2000
+
+
+def category_display_name(
+    label: object, code: object, role: object
+) -> str | None:
+    """Matrix / catalog key: coded name, except footer roles which stay bare."""
+    text = str(label or "").strip()
+    if not text:
+        return None
+    if is_footer_role(role):
+        return text
+    if code is None or code == "":
+        return None
+    return f"{int(code):04d} {text}"
+
+
+def ensure_matrix_role_booking_rules(cursor: object) -> None:
+    """Widen ``ck_dim_category_role`` and stamp 2000=never, 1051-1056=no_hit."""
+    cursor.execute(
+        "SELECT OBJECT_ID(N'dbo.dim_category', N'U')"
+    )
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        return
+    cursor.execute(
+        "SELECT definition FROM sys.check_constraints "
+        "WHERE name = N'ck_dim_category_role' "
+        "AND parent_object_id = OBJECT_ID(N'dbo.dim_category')"
+    )
+    existing = cursor.fetchone()
+    definition = str(existing[0] or "") if existing else ""
+    if "never" not in definition.lower():
+        if existing is not None:
+            cursor.execute(
+                "ALTER TABLE dbo.dim_category DROP CONSTRAINT ck_dim_category_role"
+            )
+        cursor.execute(
+            "ALTER TABLE dbo.dim_category ADD CONSTRAINT ck_dim_category_role "
+            "CHECK (matrix_role IS NULL OR matrix_role IN "
+            "(N'balance', N'last_booked', N'never', N'no_hit'))"
+        )
+    cursor.execute(
+        "UPDATE dbo.dim_category SET matrix_role = N'never' "
+        "WHERE local_code = 2000 AND matrix_role IS NULL"
+    )
+    cursor.execute(
+        "UPDATE dbo.dim_category SET matrix_role = N'no_hit' "
+        "WHERE local_code BETWEEN 1051 AND 1056 AND matrix_role IS NULL"
+    )
+
+
+def is_activa(cat_id: int) -> bool:
+    """True for 1000-1999. Passiva and resultaat (3000-4999) share the other class."""
+    return 1000 <= int(cat_id) <= 1999
+
+
+def is_resultaat(cat_id: int) -> bool:
+    return 3000 <= int(cat_id) <= 4999
+
+
+def is_invalid_bank_booking(local_code: int) -> bool:
+    """HIT onto 1051-1056 is out of scope (live bank, no counterpart)."""
+    return _BANK_BOOKING_LO <= int(local_code) <= _BANK_BOOKING_HI
+
+
+def spaar_mirror(country_id: int) -> dict[str, object] | None:
+    mirror = balance_config(country_id).get("mirror")
+    return dict(mirror) if mirror else None
+
+
+def spaar_mirror_target(country_id: int) -> int | None:
+    mirror = spaar_mirror(country_id)
+    return int(mirror["target_category"]) if mirror else None
+
+
+def spaar_mirror_posted_amount(source_bank_amount: Decimal) -> Decimal:
+    """1052 counterpart of a 1051 spaar row.
+
+    Source amount d is the live 1051 bank sign (out negative). The mirror
+    posts ``-d`` onto 1052 as stored, not through the activa booking sign:
+    money leaving 1051 (d = -X, X > 0) increases 1052 by X, so plug 2000
+    is unchanged.
+    """
+    return -source_bank_amount
+
+
+def spaar_source_exclude_clause(
+    country_id: int, alias: str = "t"
+) -> tuple[str, list[object]]:
+    """SQL that drops 1051 spaar-transfer rows (their counterpart is the 1052 mirror).
+
+    ``alias`` is the table alias in the caller (``t`` by default). Use ``""``
+    when the FROM table has no alias.
+    """
+    mirror = spaar_mirror(country_id)
+    if not mirror:
+        return "", []
+    col = f"{alias}." if alias else ""
+    return (
+        f" AND NOT ({col}account_id = ? AND "
+        f"LOWER(COALESCE({col}description, N'')) LIKE ?)",
+        [int(mirror["source_account_id"]), f"%{mirror['keyword']}%"],
+    )
+
+
+def journal_deltas(
+    cat_from: int, cat_to: int, amount: Decimal
+) -> tuple[Decimal, Decimal]:
+    """Signed (FROM, TO) effect that keeps plug 2000 still.
+
+    FROM always ``+= -X``. TO ``+= +X`` when both sides are the same invariance
+    class, else ``+= -X``. Classes: activa (1000-1999) vs everything else
+    (passiva 2000-2999 and resultaat 3000-4999, since Saldo feeds 2100).
+    Kosten and omzet use the same sign (Saldo is the numerical sum).
+    """
+    delta = amount
+    src_delta = -delta
+    dst_delta = delta if is_activa(cat_from) == is_activa(cat_to) else -delta
+    return src_delta, dst_delta
+
+
+def journal_leg_amount(
+    category_id: int, cat_from: int, cat_to: int, amount: Decimal
+) -> Decimal:
+    """Effect of one journal row on ``category_id`` (FROM or TO)."""
+    src_delta, dst_delta = journal_deltas(int(cat_from), int(cat_to), amount)
+    return src_delta if int(category_id) == int(cat_from) else dst_delta
+
+
+def booking_signed_amount(local_code: int, amount: Decimal) -> Decimal | None:
+    """Overlay for a bank booking of signed amount ``X`` on ``local_code``.
+
+    1000-1999 (except 1051-1056): ``+= -X``. 2001-2999: ``+= +X``.
+    1051-1056, 2000 and 2100: ``None`` (invalid or computed). P&L codes stay
+    on ``category_total`` (``+= +X``) and are not applied here.
+    """
+    code = int(local_code)
+    if is_invalid_bank_booking(code) or code in (2000, 2100):
+        return None
+    if 1000 <= code <= 1999:
+        return -amount
+    if 2001 <= code <= 2999:
+        return amount
+    return None
+
+
 def balance_config(country_id: int) -> dict[str, object]:
     """Per-country balance configuration (falls back to an empty config)."""
     return _BALANCE_COUNTRIES.get(int(country_id), dict(_EMPTY_CONFIG))
@@ -162,6 +357,20 @@ def category_labels(country_id: int, cursor: object) -> dict[int, str]:
         (int(country_id),),
     )
     return {int(r[0]): str(r[1]) for r in cursor.fetchall()}
+
+
+def category_roles(country_id: int, cursor: object) -> dict[int, str]:
+    """category_id → ``matrix_role`` text (empty string when NULL)."""
+    cursor.execute(
+        "SELECT category_id, matrix_role FROM dbo.dim_category "
+        "WHERE country_id = ? AND category_id BETWEEN 1000 AND 4999",
+        (int(country_id),),
+    )
+    return {
+        int(r[0]): str(r[1] or "").strip()
+        for r in cursor.fetchall()
+        if r[0] is not None
+    }
 
 
 def category_map(
@@ -246,9 +455,68 @@ def _opening_balances(country_id: int, year: int, cursor: object) -> dict[int, D
     return {int(r[0]): _decimal(r[1]) for r in cursor.fetchall()}
 
 
+def spaar_source_sums(
+    country_id: int, year: int, cursor: object, *, as_of: date | None = None
+) -> dict[int, Decimal]:
+    """category_id → bank-sign sum of 1051 spaar-keyword rows.
+
+    Those rows already move live 1051. Their counterpart is the 1052 mirror
+    (``-d`` as stored). They must not also move HIT categories or Saldo.
+    """
+    mirror = spaar_mirror(country_id)
+    table = transaction_table(country_id, cursor)
+    if mirror is None or table is None:
+        return {}
+    cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        return {}
+    q = (
+        f"SELECT t.category_id, SUM(t.amount) FROM {table} t "
+        "JOIN dbo.person p ON p.id = t.person_id "
+        "JOIN dbo.center n ON n.center_id = p.center_id "
+        "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
+        "AND t.account_id = ? AND LOWER(COALESCE(t.description, N'')) LIKE ?"
+    )
+    p: list[object] = [
+        int(country_id),
+        int(year),
+        int(mirror["source_account_id"]),
+        f"%{mirror['keyword']}%",
+    ]
+    if as_of is not None:
+        q += " AND t.booked_on <= ?"
+        p.append(as_of.isoformat() if hasattr(as_of, "isoformat") else str(as_of))
+    q += " GROUP BY t.category_id"
+    cursor.execute(q, tuple(p))
+    return {
+        int(category_id): _decimal(amount)
+        for category_id, amount in cursor.fetchall()
+        if category_id is not None
+    }
+
+
+def spaar_source_result_amounts(
+    country_id: int, year: int, cursor: object, *, as_of: date | None = None
+) -> dict[int, Decimal]:
+    """Spaar-source sums that landed on 3000-4999 (must not enter Saldo/2100)."""
+    return {
+        code: amount
+        for code, amount in spaar_source_sums(
+            country_id, year, cursor, as_of=as_of
+        ).items()
+        if is_resultaat(code)
+    }
+
+
 def _journal_balances(
     country_id: int, year: int, cursor: object, *, as_of: date | None = None
 ) -> dict[int, Decimal]:
+    """category_id → stored ``dbo.balance_transaction`` sum (spaar-mirror as-is).
+
+    1052 amounts are already ``-d`` from generate time; they are not passed
+    through the activa booking sign.
+    """
     q = (
         "SELECT category_id, SUM(amount) FROM dbo.balance_transaction "
         "WHERE country_id = ? AND year = ?"
@@ -265,11 +533,13 @@ def _journal_balances(
 def _booking_balances(
     country_id: int, year: int, cursor: object, *, as_of: date | None = None
 ) -> dict[int, Decimal]:
-    """category_id → net amount from the country's booking table (1000-2999).
+    """category_id → signed overlay from the country's booking table (1000-2999).
 
-    Consolidated rows only (``bank_id IS NULL``). P&L codes (3000-4999) are
-    excluded so they stay on the resultaat sheet. ``{}`` when the transaction
-    table is missing.
+    Consolidated rows only (``bank_id IS NULL``). Amount X is the bank sign
+    (in +, out -). Activa 1000-1999 get ``-X``; passiva 2001-2999 get ``+X``.
+    Codes 1051-1056 (live bank), 2000 and 2100 are skipped. 1051 spaar-keyword
+    rows are excluded (their counterpart is the 1052 mirror). P&L (3000-4999)
+    stays on the resultaat sheet as ``+X``. ``{}`` when the table is missing.
     """
     table = transaction_table(country_id, cursor)
     if table is None:
@@ -279,24 +549,32 @@ def _booking_balances(
     if row is None or row[0] is None:
         return {}
     q = (
-        f"SELECT t.category_id, SUM(t.amount) FROM {table} t "
+        f"SELECT t.category_id, d.local_code, SUM(t.amount) FROM {table} t "
         "JOIN dbo.person p ON p.id = t.person_id "
         "JOIN dbo.center n ON n.center_id = p.center_id "
         "JOIN dbo.dim_category d ON d.category_id = t.category_id "
         "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
-        "AND d.local_code BETWEEN 1000 AND 2999"
+        "AND d.local_code BETWEEN 1000 AND 2999 "
+        "AND d.matrix_role IS NULL"
     )
     p: list[object] = [int(country_id), int(year)]
+    exclude_sql, exclude_params = spaar_source_exclude_clause(country_id)
+    q += exclude_sql
+    p.extend(exclude_params)
     if as_of is not None:
         q += " AND t.booked_on <= ?"
         p.append(as_of.isoformat())
-    q += " GROUP BY t.category_id"
+    q += " GROUP BY t.category_id, d.local_code"
     cursor.execute(q, tuple(p))
-    return {
-        int(category_id): _decimal(amount)
-        for category_id, amount in cursor.fetchall()
-        if category_id is not None
-    }
+    result: dict[int, Decimal] = {}
+    for category_id, local_code, amount in cursor.fetchall():
+        if category_id is None or local_code is None:
+            continue
+        signed = booking_signed_amount(int(local_code), _decimal(amount))
+        if signed is None:
+            continue
+        result[int(category_id)] = signed
+    return result
 
 
 def _journal_table_exists(cursor: object) -> bool:
@@ -309,10 +587,11 @@ def _journal_effect(
 ) -> dict[int, Decimal]:
     """category_id → net effect from the hand-edited dbo.balance_journal.
 
-    Each row moves money FROM ``category_from`` TO ``category_to``: the FROM
-    category decreases by ``amount`` and the TO category increases by ``amount``.
-    The sum over all categories is therefore zero (the sheet stays balanced).
-    With ``as_of`` only rows dated on or before that day are included.
+    Amount X is a transfer whose signs keep Eigen vermogen (2000) still:
+    FROM ``+= -X``; TO ``+= +X`` when FROM and TO are the same class (both
+    activa, or both passiva/resultaat), else TO ``+= -X``. FROM 1110 TO 3110
+    of 9000 therefore moves -9000 onto both 1110 and 3110. With ``as_of`` only
+    rows dated on or before that day are included.
     """
     if not _journal_table_exists(cursor):
         return {}
@@ -327,9 +606,12 @@ def _journal_effect(
     cursor.execute(q, tuple(p))
     effect: dict[int, Decimal] = {}
     for cat_from, cat_to, amount in cursor.fetchall():
-        d = _decimal(amount)
-        effect[cat_from] = effect.get(cat_from, Decimal("0")) - d
-        effect[cat_to] = effect.get(cat_to, Decimal("0")) + d
+        src, dst = int(cat_from), int(cat_to)
+        if is_journal_forbidden_code(src) or is_journal_forbidden_code(dst):
+            continue
+        src_delta, dst_delta = journal_deltas(src, dst, _decimal(amount))
+        effect[src] = effect.get(src, Decimal("0")) + src_delta
+        effect[dst] = effect.get(dst, Decimal("0")) + dst_delta
     return effect
 
 
@@ -356,14 +638,18 @@ def balance_category_breakdown(
     Bank categories carry the live ``dbo.account.balance`` (with ``as_of``:
     current minus later movements); non-bank categories carry their opening
     balance. ``dbo.balance_transaction`` sums, ``dbo.balance_journal`` effects,
-    and booking rows from ``dbo.transaction_{country}`` (codes 1000-2999) are
-    added to non-bank posts. Bank-linked posts skip the booking sum so the
-    live account is not counted twice. The computed posts (``result_id`` /
-    ``balance_id``, i.e. Verlies and Eigen vermogen) are excluded.
+    and signed booking rows from ``dbo.transaction_{country}`` (codes 1000-2999,
+    activa ``-X`` / passiva ``+X``) are added to non-bank posts. Bank-linked
+    posts skip the booking sum so the live account is not counted twice.
+    Bookings onto 1051-1056 are ignored. The spaar-mirror target (1052) is
+    always opening + stored ``balance_transaction`` (already ``-d``), never a
+    live account and never the activa booking sign. The computed posts
+    (``result_id`` / ``balance_id``, i.e. Verlies and Eigen vermogen) are excluded.
     """
     cfg = balance_config(country_id)
     result_id = int(cfg.get("result_id") or 2100)
     balance_id = int(cfg.get("balance_id") or 2000)
+    mirror_target = spaar_mirror_target(country_id)
     mapping = category_map(country_id, cursor)
     opening = _opening_balances(country_id, year, cursor)
     journal = _journal_balances(country_id, year, cursor, as_of=as_of)
@@ -379,7 +665,8 @@ def balance_category_breakdown(
         if cat_id in (balance_id, result_id):
             continue
         side, account_id = mapping[cat_id]
-        if account_id is not None:
+        is_mirror = mirror_target is not None and cat_id == mirror_target
+        if account_id is not None and not is_mirror:
             amount = acct.get(account_id, Decimal("0"))
             source = f"account:{account_id}"
         else:
@@ -395,7 +682,7 @@ def balance_category_breakdown(
             amount += effect_amount
             if "+journal" not in source:
                 source += "+journal"
-        if account_id is None:
+        if account_id is None and not is_mirror:
             booking_amount = bookings.get(cat_id)
             if booking_amount is not None:
                 amount += booking_amount
@@ -434,46 +721,48 @@ def result_overlay_cents(
 ) -> dict[int, int]:
     """Resultaat effect cents per 3000-4999 category from the balance tables.
 
-    Mirrors the journal/mirror rows into the P&L so the sheet's Verlies post
-    agrees with the client's "Saldo" (kosten minus opbrengsten).
-    ``dbo.balance_journal`` rows move money FROM ``category_from`` TO
-    ``category_to``: the TO category gets the range sign, the FROM category the
-    opposite. ``dbo.balance_transaction`` rows contribute their amount with the
-    range sign. Sign: 3000-3999 (Kosten) positive, 4000-4999 (Opbrengsten)
-    negative. With ``as_of`` (YYYY-MM-DD) only rows dated on or before that day
-    are included. Returns ``{}`` when either table is missing.
+    Journals use ``journal_deltas`` so Saldo (and passiva 2100) stay the
+    numerical sum of 3000-4999: K and O share the same sign. Mirror rows in
+    ``dbo.balance_transaction`` add their amount as stored. With ``as_of``
+    (YYYY-MM-DD) only rows dated on or before that day are included. Returns
+    ``{}`` when either table is missing.
     """
     for table in ("dbo.balance_journal", "dbo.balance_transaction"):
         cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
         if cursor.fetchone()[0] is None:
             return {}
     dateq = " AND date <= ?" if as_of is not None else ""
+    params: list[object] = [int(country_id), int(year)]
     if as_of is not None:
-        p: list[object] = [int(country_id), int(year), as_of] * 3
-    else:
-        p = [int(country_id), int(year)] * 3
-    cursor.execute(
-        "SELECT c, s, k FROM ("
-        f" SELECT category_to AS c, amount AS s, 'T' AS k"
-        f" FROM dbo.balance_journal WHERE country_id = ? AND year = ?{dateq}"
-        " UNION ALL"
-        f" SELECT category_from AS c, amount AS s, 'F' AS k"
-        f" FROM dbo.balance_journal WHERE country_id = ? AND year = ?{dateq}"
-        " UNION ALL"
-        f" SELECT category_id AS c, amount AS s, 'X' AS k"
-        f" FROM dbo.balance_transaction WHERE country_id = ? AND year = ?{dateq}"
-        ") u WHERE c BETWEEN 3000 AND 4999",
-        tuple(p),
-    )
+        params.append(as_of)
     overlay: dict[int, int] = {}
-    for category_id, amount, kind in cursor.fetchall():
+    cursor.execute(
+        "SELECT category_from, category_to, amount FROM dbo.balance_journal "
+        f"WHERE country_id = ? AND year = ?{dateq}",
+        tuple(params),
+    )
+    for cat_from, cat_to, amount in cursor.fetchall():
         try:
-            code = int(category_id)
-            cents = round(float(amount or 0) * 100)
+            src, dst = int(cat_from), int(cat_to)
         except (TypeError, ValueError):
             continue
-        side = -1 if code >= 4000 else 1  # K positive, O negative
-        if kind == "F":
-            side = -side  # FROM inverts the side sign
-        overlay[code] = overlay.get(code, 0) + side * cents
+        src_delta, dst_delta = journal_deltas(src, dst, _decimal(amount))
+        if is_resultaat(src):
+            overlay[src] = overlay.get(src, 0) + _to_cents(src_delta)
+        if is_resultaat(dst):
+            overlay[dst] = overlay.get(dst, 0) + _to_cents(dst_delta)
+    cursor.execute(
+        "SELECT category_id, amount FROM dbo.balance_transaction "
+        f"WHERE country_id = ? AND year = ?{dateq} "
+        "AND category_id BETWEEN 3000 AND 4999",
+        tuple(params),
+    )
+    for category_id, amount in cursor.fetchall():
+        try:
+            code = int(category_id)
+        except (TypeError, ValueError):
+            continue
+        if not is_resultaat(code):
+            continue
+        overlay[code] = overlay.get(code, 0) + _to_cents(_decimal(amount))
     return overlay

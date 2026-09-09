@@ -329,6 +329,8 @@ def settings(center: str) -> dict[str, Any]:
         typerules: list[dict[str, str]] = []
         codes: list[int] = []
         remainder = ""
+        raw_roles = general_file.get("matrix_roles")
+        matrix_roles = raw_roles if isinstance(raw_roles, dict) else {}
         for pack in people_list:
             with bind_scope(pack):
                 from app.core.categorize import _account_modality, _personal_category_maps
@@ -362,6 +364,7 @@ def settings(center: str) -> dict[str, Any]:
             "valid_category_codes": codes,
             "remainder_category": remainder,
             "typerules": typerules,
+            "matrix_roles": matrix_roles,
             "table_header_terms": table_header_terms(people_list),
         }
 
