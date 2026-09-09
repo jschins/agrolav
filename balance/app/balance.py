@@ -256,6 +256,49 @@ def _recorded_result(country_id: int, year: int) -> Decimal:
     return base + _result_overlay(country_id, year)
 
 
+def list_result_rows(country_id: int, year: int) -> list[dict[str, Any]]:
+    """Per-category Resultaat rows (3000-4999) for the Excel export.
+
+    Same derivation as ``_recorded_result`` but grouped per category: the
+    recorded ``dbo.category_total`` (consolidated, ``bank_id IS NULL``) plus
+    the beheer journal/mirror overlay. The grand total therefore equals the
+    sheet's Verlies post.
+    """
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT ct.category_id, ROUND(SUM(CAST(ct.amount AS decimal(19, 2))), 2)
+            FROM dbo.category_total ct
+            JOIN dbo.person p ON p.id = ct.person_id
+            JOIN dbo.center c ON c.center_id = p.center_id
+            WHERE c.country_id = ?
+              AND ct.year = ?
+              AND ct.bank_id IS NULL
+              AND ct.category_id BETWEEN 3000 AND 4999
+            GROUP BY ct.category_id
+            """,
+            country_id,
+            year,
+        )
+        records = {int(r[0]): Decimal(str(r[1] or 0)) for r in cur.fetchall()}
+        overlay = result_overlay_cents(country_id, year, cur)
+    labels = _category_labels(country_id)
+    combined: dict[int, Decimal] = {}
+    for code, amount in records.items():
+        combined[code] = combined.get(code, Decimal("0")) + amount
+    for code, cents in overlay.items():
+        combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
+    return [
+        {
+            "code": code,
+            "label": labels.get(code, f"cat_{code}"),
+            "amount": float(amount),
+        }
+        for code, amount in sorted(combined.items())
+    ]
+
+
 def country_title(country_id: int) -> str:
     """Display title from dbo.country (falls back to the username)."""
     with connect() as conn:

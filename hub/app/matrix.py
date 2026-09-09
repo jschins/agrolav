@@ -316,7 +316,15 @@ def build_matrix(
                 except Exception:  # noqa: BLE001
                     balance_cents = None
     if sql_matrix is not None:
-        totals_map, dates, balances = sql_matrix
+        totals_map, dates, balances, used_codes, account_persons = sql_matrix
+        used = {
+            name: [
+                person
+                for person, codes in used_codes.items()
+                if (code := _category_code(name)) is not None and code in codes
+            ]
+            for name in booking
+        }
         for pack in packs:
             key = pack.person_name
             totals = totals_map.get(key) or {}
@@ -328,6 +336,7 @@ def build_matrix(
                 cells[balance_name][pack.person_name] = balances.get(key) or ""
             cells[date_name][pack.person_name] = dates.get(key) or ""
     else:
+        used = {name: [] for name in booking}
         for pack in packs:
             view_pack = scope_for_account_view(pack, bank, center=ws) if bank else pack
             try:
@@ -336,6 +345,8 @@ def build_matrix(
                 totals = {}
             for name in booking:
                 cells[name][pack.person_name] = _amount_for_category(totals, name)
+                if _amount_for_category(totals, name) != "0.00":
+                    used[name].append(pack.person_name)
             if is_resultaat:
                 cells[balance_name][pack.person_name] = _sum_totals(totals, resultaat)
             else:
@@ -349,10 +360,47 @@ def build_matrix(
                 cents = balance_cents.get(code)
                 if cents is not None:
                     cells[name][family] = f"{cents / 100:.2f}"
+    # Which categories carry at least one drill-down row decides the greyed-out
+    # state, not the net amount displayed: dbo.transaction_{country} (booking
+    # rows, per person), dbo.balance_transaction and dbo.balance_journal
+    # (balance-access and spaar-mirror rows, country-wide). A bank-linked
+    # category follows its account rows instead of rows posted to that code.
+    entries_names: set[str] = set()
+    if sql_matrix is not None and balance_country is not None and y_int is not None:
+        name_by_code = {
+            code: name for name in booking if (code := _category_code(name)) is not None
+        }
+        try:
+            from app.sql_replica import balance_entry_codes
+            from shared.balance_values import balance_config as _balance_cfg
+            from shared.balance_values import category_map as _balance_category_map
+
+            cursor = user_store._sql_connect().cursor()
+            configured = {
+                int(c): (str(s), (int(a) if a is not None else None))
+                for c, (s, a) in (_balance_cfg(balance_country).get("category_map") or {}).items()
+            }
+            entry_codes = balance_entry_codes(balance_country, y_int, cursor)
+            for code, (_side, _acc) in _balance_category_map(
+                balance_country, cursor
+            ).items():
+                name = name_by_code.get(code)
+                if name is None:
+                    continue
+                entry = configured.get(code)
+                account_id = int(entry[1]) if (entry is not None and entry[1] is not None) else None
+                if account_id is not None:
+                    used[name] = sorted(account_persons.get(account_id, ()))
+                elif 1000 <= code <= 1999 and code in entry_codes:
+                    entries_names.add(name)
+        except Exception as exc:  # noqa: BLE001
+            print(f"matrix: drill presence lookup failed: {exc}")
     payload: dict[str, Any] = {
         "categories": category_list,
         "people": columns,
         "cells": cells,
+        "used": {name: sorted(set(person)) for name, person in used.items()},
+        "entries": sorted(entries_names),
         "footers": {"balance": balance_name, "last_booked": date_name},
         "table_header_terms": table_header_terms(packs),
     }

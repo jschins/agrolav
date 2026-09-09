@@ -124,6 +124,42 @@ function categoryCodeFromName(name: string): number | null {
   return parseInt(match[1], 10);
 }
 
+function amountHasValue(raw: string): boolean {
+  const t = raw.trim();
+  if (!t) return false;
+  const n = Number(t.replace(",", "."));
+  return Number.isFinite(n) && n !== 0;
+}
+
+function categoryHasAmounts(matrix: MatrixResponse, category: string, person?: string): boolean {
+  const names = person ? [person] : matrix.people.map((p) => p.person_name);
+  return names.some((name) => amountHasValue(matrix.cells[category]?.[name] ?? ""));
+}
+
+function personHasTransactions(matrix: MatrixResponse, category: string, person: string): boolean {
+  if ((matrix.entries ?? []).includes(category)) return true;
+  if (matrix.used !== undefined) return (matrix.used[category] ?? []).includes(person);
+  return amountHasValue(matrix.cells[category]?.[person] ?? "");
+}
+
+function categoryHasTransactions(
+  matrix: MatrixResponse,
+  category: string,
+  person?: string
+): boolean {
+  if (person) return personHasTransactions(matrix, category, person);
+  if (matrix.used !== undefined) {
+    return (matrix.used[category]?.length ?? 0) > 0 || (matrix.entries ?? []).includes(category);
+  }
+  return categoryHasAmounts(matrix, category);
+}
+
+function categoryRowGreyed(matrix: MatrixResponse, category: string, person?: string): boolean {
+  if (isMatrixFooter(matrix, category)) return false;
+  if (isBalancePassivaCategory(category)) return true;
+  return !categoryHasTransactions(matrix, category, person);
+}
+
 function patchDetail(
   detail: TransactionsResponse,
   patch: {
@@ -2766,7 +2802,7 @@ function MatrixTable({
         {categories.map((cat) => (
           <tr
             key={cat}
-            className={`${selection?.category === cat ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${isBalancePassivaCategory(cat) ? " balance-passiva-row" : ""}`}
+            className={`${selection?.category === cat ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${isBalancePassivaCategory(cat) ? " balance-passiva-row" : ""}${categoryRowGreyed(matrix, cat) ? " empty-category-row" : ""}`}
           >
             <td className="cat">{displayCategoryName(cat)}</td>
             {people.map((p) => {
@@ -2776,11 +2812,11 @@ function MatrixTable({
               const clickable =
                 !isMatrixFooter(matrix, cat) &&
                 !isBalancePassivaCategory(cat) &&
-                amount !== "";
+                personHasTransactions(matrix, cat, p.person_name);
               return (
                 <td
                   key={p.person_name}
-                  className={`num${clickable ? " clickable" : ""}${isActive ? " active-cell" : ""}`}
+                  className={`num${clickable ? " clickable" : " empty-cell"}${isActive ? " active-cell" : ""}`}
                   onClick={clickable ? () => onPick(p.person_name, cat) : undefined}
                 >
                   {displayMatrixCell(matrix, cat, amount)}
@@ -2819,7 +2855,7 @@ function PersonColumnTable({
         {categories.map((cat) => (
           <tr
             key={cat}
-            className={`${cat === selectedCategory ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${isBalancePassivaCategory(cat) ? " balance-passiva-row" : ""}`}
+            className={`${cat === selectedCategory ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${isBalancePassivaCategory(cat) ? " balance-passiva-row" : ""}${categoryRowGreyed(matrix, cat, person_name) ? " empty-category-row" : ""}`}
           >
             <td className="cat">{displayCategoryName(cat)}</td>
             {(() => {
@@ -2827,10 +2863,10 @@ function PersonColumnTable({
               const clickable =
                 !isMatrixFooter(matrix, cat) &&
                 !isBalancePassivaCategory(cat) &&
-                amount !== "";
+                personHasTransactions(matrix, cat, person_name);
               return (
                 <td
-                  className={`num${clickable ? " clickable" : ""}`}
+                  className={`num${clickable ? " clickable" : " empty-cell"}`}
                   onClick={clickable ? () => onPick(cat) : undefined}
                 >
                   {displayMatrixCell(matrix, cat, amount)}
@@ -3224,13 +3260,7 @@ function PTable({
         </strong>
       </div>
       {transactions.length === 0 ? (
-        <p>
-          Geen automatisch geregistreerde transacties in deze categorie;
-          <br />
-          hier vallen derhalve NIET onder: handmatig ingevoerde transacties via de balans-toegang,
-          <br />
-          en automatisch berekende spiegeltransacties voor de spaarrekening.
-        </p>
+        <p>Geen transacties in deze categorie.</p>
       ) : (
         <table className="p-table">
           <colgroup>

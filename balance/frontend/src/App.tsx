@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getDates, getMeta, getSheet, getYears, rebuildSpaarMirror } from "./api";
+import { getDates, getMeta, getResult, getSheet, getYears, rebuildSpaarMirror } from "./api";
 import JournalEditor from "./JournalEditor";
-import type { BalanceSheet } from "./types";
+import type { BalanceSheet, ResultResponse } from "./types";
+import { buildXlsx, downloadBlob, euro2, type XlsxSheet } from "./xlsx";
 
 const EUR = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -54,6 +55,34 @@ function exportSheetCsv(sheet: BalanceSheet, year: number): void {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function excelSheets(sheet: BalanceSheet, result: ResultResponse): XlsxSheet[] {
+  const rows: (string | number)[][] = [];
+  rows.push([`Balans ${sheet.year}${sheet.as_of ? ` per ${fmtDate(sheet.as_of)}` : ""}`]);
+  rows.push(["Zijde", "Code", "Post", "Bedrag"]);
+  for (const line of sheet.activa) {
+    rows.push(["Activa", String(line.code), line.label, euro2(line.amount)]);
+  }
+  rows.push(["Activa", "", "Totaal Activa", euro2(sheet.total_activa)]);
+  rows.push([]);
+  for (const line of sheet.passiva) {
+    rows.push(["Passiva", String(line.code), line.label, euro2(line.amount)]);
+  }
+  rows.push(["Passiva", "", "Totaal Passiva", euro2(sheet.total_passiva)]);
+
+  const resultRows: (string | number)[][] = [];
+  resultRows.push([`Resultaat ${result.year}`]);
+  resultRows.push(["Code", "Post", "Bedrag"]);
+  for (const line of result.rows) {
+    resultRows.push([String(line.code), line.label, euro2(line.amount)]);
+  }
+  resultRows.push(["", "Totaal", euro2(result.total)]);
+
+  return [
+    { name: "Balans", rows, widths: [8, 10, 60, 14] },
+    { name: "Resultaat", rows: resultRows, widths: [10, 60, 14] },
+  ];
 }
 
 interface MenuItem {
@@ -230,6 +259,20 @@ export default function App() {
     }
   };
 
+  const onExportExcel = async () => {
+    if (year == null || !sheet) return;
+    setError(null);
+    try {
+      const result = await getResult(year);
+      downloadBlob(
+        `balans-${year}${sheet.as_of ? "-" + sheet.as_of : ""}.xlsx`,
+        buildXlsx(excelSheets(sheet, result))
+      );
+    } catch (e) {
+      setError(toMessage(e));
+    }
+  };
+
   const menuItems: MenuItem[] = [
     {
       id: "refresh",
@@ -250,6 +293,12 @@ export default function App() {
       onClick: () => {
         if (year != null && sheet) exportSheetCsv(sheet, year);
       },
+    },
+    {
+      id: "export-excel",
+      label: "Export naar excel",
+      disabled: year == null || !sheet,
+      onClick: onExportExcel,
     },
   ];
 

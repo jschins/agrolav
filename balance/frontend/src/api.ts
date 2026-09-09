@@ -1,4 +1,12 @@
-import type { BalanceSheet, YearsResponse, DatesResponse, JournalResponse, JournalRow, CategoriesResponse } from "./types";
+import type {
+  BalanceSheet,
+  YearsResponse,
+  DatesResponse,
+  JournalResponse,
+  JournalRow,
+  CategoriesResponse,
+  ResultResponse,
+} from "./types";
 
 function apiBase(): string {
   const p = window.location.pathname;
@@ -55,6 +63,10 @@ export function getSheet(year: number, date?: string): Promise<BalanceSheet> {
     ? `?date=${encodeURIComponent(date)}`
     : "";
   return getJson(`/api/balance/${year}${q}`);
+}
+
+export function getResult(year: number): Promise<ResultResponse> {
+  return getJson(`/api/balance/${year}/result`);
 }
 
 export function getDates(year: number): Promise<DatesResponse> {

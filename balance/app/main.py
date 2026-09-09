@@ -131,6 +131,22 @@ def balance_sheet(
     return compute(resolve_country(slug), year, as_of=date)
 
 
+@app.get("/balance/{slug}/api/balance/{year}/result")
+def balance_result_rows(
+    slug: str,
+    year: int,
+    _: None = Depends(_api_key),
+) -> dict[str, Any]:
+    from app.balance import list_result_rows
+
+    rows = list_result_rows(resolve_country(slug), year)
+    return {
+        "year": year,
+        "rows": rows,
+        "total": round(sum(r["amount"] for r in rows), 2),
+    }
+
+
 @app.get("/balance/{slug}/api/balance/{year}/dates")
 def balance_dates(
     slug: str,

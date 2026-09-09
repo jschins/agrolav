@@ -523,6 +523,41 @@ def _balance_overlay_cents(
     return result_overlay_cents(country_id, year, cursor)
 
 
+def balance_entry_codes(country_id: int, year: int, cursor: Any) -> set[int]:
+    """Category ids that hold at least one row in the balance-access tables.
+
+    Union of ``dbo.balance_transaction.category_id`` (hand-entered balance
+    transactions; the materialized spaar-mirror rows live here too) and
+    ``dbo.balance_journal`` (category_from/category_to) for the country/year.
+    A category counts as "has transactions" even when its rows net to zero, so
+    these are distinct ids, not sums. Returns ``{}`` when a table is missing.
+    """
+    codes: set[int] = set()
+    cursor.execute("SELECT OBJECT_ID(N'dbo.balance_transaction', N'U')")
+    if cursor.fetchone()[0] is not None:
+        cursor.execute(
+            "SELECT DISTINCT category_id FROM dbo.balance_transaction "
+            "WHERE country_id = ? AND year = ?",
+            (int(country_id), int(year)),
+        )
+        for (category_id,) in cursor.fetchall():
+            if category_id is not None:
+                codes.add(int(category_id))
+    cursor.execute("SELECT OBJECT_ID(N'dbo.balance_journal', N'U')")
+    if cursor.fetchone()[0] is not None:
+        cursor.execute(
+            "SELECT category_from, category_to FROM dbo.balance_journal "
+            "WHERE country_id = ? AND year = ?",
+            (int(country_id), int(year)),
+        )
+        for cat_from, cat_to in cursor.fetchall():
+            if cat_from is not None:
+                codes.add(int(cat_from))
+            if cat_to is not None:
+                codes.add(int(cat_to))
+    return codes
+
+
 def load_bound_category_totals(general_names: list[str]) -> dict[str, str] | None:
     """Per-category sums in SQL. ``None`` if SQL is unused for this bind."""
     from app import user_store
@@ -639,8 +674,10 @@ def load_center_year_matrix(
     country: str,
     year: int,
     general_names: list[str],
-) -> tuple[dict[str, dict[str, str]], dict[str, str], dict[str, str]] | None:
-    """Totals, ``dbo.account.last_booked``, and IBAN balances for every person in a center/year.
+) -> tuple[dict[str, dict[str, str]], dict[str, str], dict[str, str], dict[str, set[int]], dict[int, set[str]]] | None:
+    """Totals, ``dbo.account.last_booked``, IBAN balances, the per-person set of
+    categories with at least one booking row, and account_id → persons with at
+    least one booking row on that account, for a center/year.
 
     One connection, three grouped queries. Does not download booking rows.
     """
@@ -677,6 +714,7 @@ def load_center_year_matrix(
         }
         booking_names = [name for name in general_names if _category_code(name) is not None]
         totals_cents: dict[str, dict[str, int]] = {}
+        used_codes: dict[str, set[int]] = {}
         for username, local_code, amount in cursor.fetchall():
             person = str(username or "").strip()
             if not person:
@@ -692,6 +730,24 @@ def load_center_year_matrix(
             bucket = totals_cents.setdefault(person, {name: 0 for name in booking_names})
             label = name_by_code.get(code, str(code))
             bucket[label] = bucket.get(label, 0) + cents
+            used_codes.setdefault(person, set()).add(code)
+        cursor.execute(
+            f"""
+            SELECT DISTINCT p.username, t.account_id
+            FROM {table} t
+            JOIN dbo.person p ON p.id = t.person_id
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.username = ? COLLATE Latin1_General_CI_AI AND t.year = ?
+              AND t.bank_id IS NULL
+            """,
+            (ws, int(year)),
+        )
+        account_persons: dict[int, set[str]] = {}
+        for username, account_id in cursor.fetchall():
+            person = str(username or "").strip()
+            if not person or account_id is None:
+                continue
+            account_persons.setdefault(int(account_id), set()).add(person)
         if table == "dbo.transaction_beheer":
             country_id = _country_id_for_username(cursor, country) or 4
             for code, cents in _balance_overlay_cents(int(year), cursor, country_id=country_id).items():
@@ -751,7 +807,7 @@ def load_center_year_matrix(
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to load center matrix: {exc}")
         return None
-    return totals, last_booked, balances
+    return totals, last_booked, balances, used_codes, account_persons
 
 
 def _executemany_commit(conn, cursor, sql: str, params: list[tuple[Any, ...]]) -> None:

@@ -6,6 +6,8 @@ export interface MatrixResponse {
   categories: string[];
   people: PersonInfo[];
   cells: Record<string, Record<string, string>>;
+  used?: Record<string, string[]>;
+  entries?: string[];
   footers?: { balance: string; last_booked: string };
   table_header_terms?: Record<string, string>;
 }

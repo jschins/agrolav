@@ -55,3 +55,15 @@ export interface JournalResponse {
 export interface CategoriesResponse {
   categories: CategoryInfo[];
 }
+
+export interface ResultRow {
+  code: number;
+  label: string;
+  amount: number;
+}
+
+export interface ResultResponse {
+  year: number;
+  rows: ResultRow[];
+  total: number;
+}
