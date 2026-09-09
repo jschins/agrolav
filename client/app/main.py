@@ -612,6 +612,18 @@ def api_banks(year: str | None = Query(default=None)) -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+@app.get("/api/export-excel")
+def api_export_excel(year: int | None = Query(default=None)) -> dict[str, Any]:
+    import datetime
+
+    from app.centrale_sync import export_excel_data
+
+    try:
+        return export_excel_data(int(year) if year else int(datetime.date.today().year))
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 @app.get("/api/matrix")
 def api_matrix(
     year: str | None = Query(default=None),

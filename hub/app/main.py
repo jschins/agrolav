@@ -492,6 +492,29 @@ def api_balance_slug(
     }
 
 
+@app.get("/api/local/{center}/export-data")
+def api_export_data(
+    center: str,
+    year: int | None = Query(default=None),
+    country: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    import datetime
+
+    from app.runtime import request_country
+    from app.sql_catalog import export_matrix_excel_data
+
+    key = (country or "").strip() or str(request_country() or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="country is required")
+    try:
+        return export_matrix_excel_data(
+            key, int(year) if year else int(datetime.date.today().year)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/events")
 def api_events(
     since_id: int = Query(default=0),

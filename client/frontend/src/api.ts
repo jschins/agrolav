@@ -83,6 +83,29 @@ export function getMatrix(year?: string, bank?: string): Promise<MatrixResponse>
   return getJson(q ? `/api/matrix?${q}` : "/api/matrix");
 }
 
+export interface ExportExcelLine {
+  code: number;
+  label: string;
+  amount: number;
+  source?: string;
+}
+
+export interface ExportExcelData {
+  year: number;
+  has_balance: boolean;
+  activa: ExportExcelLine[];
+  passiva: ExportExcelLine[];
+  total_activa: number;
+  total_passiva: number;
+  resultaat: ExportExcelLine[];
+  total_resultaat: number;
+}
+
+export function getExportExcel(year?: string): Promise<ExportExcelData> {
+  const q = year ? `?year=${encodeURIComponent(year)}` : "";
+  return getJson(`/api/export-excel${q}`);
+}
+
 export function recalculate(): Promise<MatrixResponse> {
   return sendJson("/api/recalculate", "POST", {});
 }

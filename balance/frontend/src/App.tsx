@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getDates, getMeta, getSheet, getYears, rebuildSpaarMirror } from "./api";
 import JournalEditor from "./JournalEditor";
 import type { BalanceSheet } from "./types";
@@ -54,6 +54,64 @@ function exportSheetCsv(sheet: BalanceSheet, year: number): void {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+interface MenuItem {
+  id: string;
+  label: string;
+  disabled?: boolean;
+  onClick?: () => void;
+}
+
+function Menu({ items, label }: { items: MenuItem[]; label: string }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(ev: Event) {
+      if (!rootRef.current?.contains(ev.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="bal-actions" ref={rootRef}>
+      <button
+        type="button"
+        className="bal-actions-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span aria-hidden>▾</span>
+        <span>{label}</span>
+      </button>
+      {open && (
+        <ul className="bal-actions-list" role="menu">
+          {items.map((item) => (
+            <li key={item.id}>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={item.disabled}
+                onClick={() => {
+                  if (item.disabled) return;
+                  setOpen(false);
+                  item.onClick?.();
+                }}
+              >
+                {item.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function SideTable({
@@ -172,6 +230,29 @@ export default function App() {
     }
   };
 
+  const menuItems: MenuItem[] = [
+    {
+      id: "refresh",
+      label: busy ? "Bezig…" : "Verversen",
+      disabled: busy || year == null,
+      onClick: onRebuild,
+    },
+    {
+      id: "journal",
+      label: "Bewerk grootboek",
+      disabled: year == null,
+      onClick: () => setView("journal"),
+    },
+    {
+      id: "export-csv",
+      label: "Export naar CSV",
+      disabled: year == null || !sheet,
+      onClick: () => {
+        if (year != null && sheet) exportSheetCsv(sheet, year);
+      },
+    },
+  ];
+
   return (
     <>
       {view === "journal" ? (
@@ -201,22 +282,9 @@ export default function App() {
                 ))}
               </div>
             )}
+            <Menu items={menuItems} label="menu" />
             {year != null && (
               <div className="toolbar">
-                <button onClick={onRebuild} disabled={busy || year == null}>
-                  {busy ? "Bezig…" : "Verversen"}
-                </button>
-                <button onClick={() => setView("journal")} disabled={year == null}>
-                  Bewerk grootboek
-                </button>
-                <button
-                  onClick={() => {
-                    if (year != null && sheet) exportSheetCsv(sheet, year);
-                  }}
-                  disabled={year == null || !sheet}
-                >
-                  Export naar CSV
-                </button>
                 {dates.length > 0 && (
                   <select
                     className="asof-select"

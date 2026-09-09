@@ -610,6 +610,11 @@ def hub_put(suffix: str, body: dict[str, Any], *, timeout: float = 120.0) -> dic
     return hub_request("PUT", center_path(suffix), body=body, timeout=timeout)
 
 
+def export_excel_data(year: int) -> dict[str, Any]:
+    """Two-sheet export payload (Balans + Resultaat) for a year from the hub."""
+    return hub_get(f"/export-data?year={int(year)}", timeout=90.0)
+
+
 def refresh_capabilities() -> dict[str, Any]:
     global _cached_has_secrets, _last_error
     try:

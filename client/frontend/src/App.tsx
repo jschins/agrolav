@@ -9,6 +9,9 @@ import {
   getCentraleStatus,
   getBanks,
   getCatalog,
+  getExportExcel,
+  type ExportExcelData,
+  type ExportExcelLine,
   getIpAccess,
   addIpAccess,
   deleteIpAccess,
@@ -49,6 +52,7 @@ import type {
   Transaction,
   TransactionsResponse,
 } from "./types";
+import { buildXlsx, downloadBlob, euro2, type XlsxSheet } from "./xlsx";
 
 const CHANNEL = "boekhouding";
 const REFRESH_STATUS_KEY = "boekhouding-refresh-status";
@@ -75,31 +79,33 @@ function displayCategoryName(name: string): string {
   return shownLabel(parseInt(match[1], 10), match[2]);
 }
 
-function csvEscape(value: string): string {
-  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
-}
-
-function matrixToProfitLossCsv(matrix: MatrixResponse): string {
-  const people = matrix.people.map((p) => p.person_name);
-  const header = ["Category", ...people].map(csvEscape).join(",");
-  const rows = matrix.categories.map((cat) => {
-    const amounts = people.map((name) => csvEscape(matrix.cells[cat]?.[name] ?? ""));
-    return [csvEscape(displayCategoryName(cat)), ...amounts].join(",");
-  });
-  return [header, ...rows].join("\r\n") + "\r\n";
-}
-
-function downloadCsv(filename: string, csv: string): void {
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+function excelSheets(data: ExportExcelData): XlsxSheet[] {
+  const sheets: XlsxSheet[] = [];
+  const codeOf = (line: ExportExcelLine) => String(line.code);
+  if (data.has_balance) {
+    const rows: (string | number)[][] = [];
+    rows.push([`Balans ${data.year}`]);
+    rows.push(["Zijde", "Code", "Post", "Bedrag"]);
+    for (const line of data.activa) {
+      rows.push(["Activa", codeOf(line), line.label, euro2(line.amount)]);
+    }
+    rows.push(["Activa", "", "Totaal Activa", euro2(data.total_activa)]);
+    rows.push([]);
+    for (const line of data.passiva) {
+      rows.push(["Passiva", codeOf(line), line.label, euro2(line.amount)]);
+    }
+    rows.push(["Passiva", "", "Totaal Passiva", euro2(data.total_passiva)]);
+    sheets.push({ name: "Balans", rows, widths: [8, 10, 60, 14] });
+  }
+  const rows: (string | number)[][] = [];
+  rows.push([`Resultaat ${data.year}`]);
+  rows.push(["Code", "Post", "Bedrag"]);
+  for (const line of data.resultaat) {
+    rows.push([codeOf(line), line.label, euro2(line.amount)]);
+  }
+  rows.push(["", "Totaal", euro2(data.total_resultaat)]);
+  sheets.push({ name: "Resultaat", rows, widths: [10, 60, 14] });
+  return sheets;
 }
 
 function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
@@ -802,14 +808,15 @@ function SyncNotifyShell({
     });
   }
 
-  function exportProfitLoss() {
+  function exportExcel() {
     if (!activeYear) return;
     setScratchError(null);
-    const bankQuery = bankView !== "consolidated" ? bankView : undefined;
-    getMatrix(activeYear, bankQuery)
-      .then((payload) => {
-        const suffix = bankQuery ? `-${bankQuery}` : "";
-        downloadCsv(`profit-loss-${activeYear}${suffix}.csv`, matrixToProfitLossCsv(payload));
+    getExportExcel(activeYear)
+      .then((data) => {
+        const filename = data.has_balance
+          ? `balans-${data.year}.xlsx`
+          : `resultaat-${data.year}.xlsx`;
+        downloadBlob(filename, buildXlsx(excelSheets(data)));
       })
       .catch((e: Error) => setScratchError(e.message));
   }
@@ -876,9 +883,14 @@ function SyncNotifyShell({
     }
     if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView) {
       items.push({
-        id: "export-profit-loss",
-        label: "Export Profit-Loss",
-        onClick: exportProfitLoss,
+        id: "export-excel",
+        label: "Export naar excel",
+        onClick: exportExcel,
+      });
+      items.push({
+        id: "back-to-matrix",
+        label: "Terug",
+        onClick: () => openView("main"),
       });
     }
     if (access === "country") {

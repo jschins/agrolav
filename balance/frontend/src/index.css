@@ -13,11 +13,30 @@ body { margin: 0; }
 h1 { font-size: 1.5rem; margin: 0; }
 h1 small { font-weight: 400; color: #666; }
 .sheet-view header .year-switch { display: flex; gap: 6px; margin-left: auto; align-items: center; }
-.year-switch button, .toolbar button, .toolbar .asof-select {
+.year-switch button, .toolbar .asof-select {
   font: inherit; cursor: pointer; border-radius: 6px;
   padding: 6px 12px; border: 1px solid #c4c9d0; background: #fff;
 }
 .year-switch button.active { background: #2a5a8c; color: #fff; border-color: #2a5a8c; }
+.bal-actions { position: relative; }
+.bal-actions-trigger {
+  font: inherit; font-weight: 600; cursor: pointer; border-radius: 6px;
+  padding: 6px 12px; border: 1px solid #c4c9d0; background: #ffecbc;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.bal-actions-trigger:hover { background: #fff4d6; }
+.bal-actions-list {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
+  list-style: none; margin: 0; padding: 4px; min-width: 200px;
+  background: #fff; border: 1px solid #c4c9d0; border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+.bal-actions-list button {
+  width: 100%; text-align: left; font: inherit; padding: 6px 10px;
+  border: none; background: transparent; border-radius: 4px; cursor: pointer;
+}
+.bal-actions-list button:hover:not(:disabled) { background: #eef2ff; }
+.bal-actions-list button:disabled { opacity: 0.6; cursor: default; }
 .sheet-view .toolbar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
 .toolbar .balance-badge { font-size: 0.9rem; }
 .balance-badge.ok { color: #1a7f37; font-weight: 600; }

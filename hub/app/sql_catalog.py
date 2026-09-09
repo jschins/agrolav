@@ -1059,6 +1059,142 @@ def country_has_balance(country: str) -> bool:
         return False
 
 
+def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
+    """One JSON payload for the client's "Export naar excel" workbook.
+
+    Balance countries (``dbo.country.has_balance``) get the two-sheet set:
+    ``activa``/``passiva`` exactly like the balance app's sheet (including the
+    computed Verlies and Eigen vermogen posts) plus per-category
+    ``resultaat`` rows (3000-4999). Plain countries get ``resultaat`` only.
+    The Resultaat rows come from the recorded ``dbo.category_total`` plus the
+    beheer journal/mirror overlay, so their grand total equals the sheet's
+    Verlies post.
+    """
+    name = (country or "").strip()
+    if not name or not _sql_ready():
+        raise ValueError("country is required")
+
+    def _run() -> dict[str, Any]:
+        from decimal import Decimal
+
+        from shared.balance_values import (
+            balance_category_breakdown,
+            category_labels,
+            category_map,
+            country_has_balance,
+            eigen_vermogen_id,
+            result_overlay_cents,
+            verlies_id,
+        )
+
+        cursor = _cursor()
+        country_id = _country_id_for(cursor, name)
+        if country_id is None:
+            raise ValueError(f"unknown country: {name}")
+        has_balance = country_has_balance(country_id, cursor)
+
+        cursor.execute(
+            """
+            SELECT ct.category_id, SUM(CAST(ct.amount AS decimal(19, 2)))
+            FROM dbo.category_total ct
+            JOIN dbo.person p ON p.id = ct.person_id
+            JOIN dbo.center c ON c.center_id = p.center_id
+            WHERE c.country_id = ?
+              AND ct.year = ?
+              AND ct.bank_id IS NULL
+              AND ct.category_id BETWEEN 3000 AND 4999
+            GROUP BY ct.category_id
+            """,
+            (int(country_id), int(year)),
+        )
+        recorded = {int(r[0]): Decimal(str(r[1] or 0)) for r in cursor.fetchall()}
+        overlay = result_overlay_cents(country_id, int(year), cursor)
+        labels = category_labels(country_id, cursor)
+
+        combined: dict[int, Decimal] = {}
+        for code, amount in recorded.items():
+            combined[code] = combined.get(code, Decimal("0")) + amount
+        for code, cents in overlay.items():
+            combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
+        result_rows = [
+            {
+                "code": code,
+                "label": labels.get(code, f"cat_{code}"),
+                "amount": float(combined[code]),
+            }
+            for code in sorted(combined)
+        ]
+        total_result = float(sum(combined.values()))
+
+        if not has_balance:
+            return {
+                "year": int(year),
+                "has_balance": False,
+                "activa": [],
+                "passiva": [],
+                "total_activa": 0.0,
+                "total_passiva": 0.0,
+                "resultaat": result_rows,
+                "total_resultaat": total_result,
+            }
+
+        result_id = verlies_id(country_id)
+        balance_id = eigen_vermogen_id(country_id)
+        breakdown = balance_category_breakdown(country_id, int(year), cursor)
+        cmap = category_map(country_id, cursor)
+
+        activa: list[dict[str, Any]] = []
+        passiva: list[dict[str, Any]] = []
+        for cat_id in sorted(cmap):
+            if cat_id in (balance_id, result_id):
+                continue
+            side, _account_id = cmap[cat_id]
+            cents, _source = breakdown.get(cat_id, (0, "opening"))
+            row = {
+                "code": cat_id,
+                "label": labels.get(cat_id, f"cat_{cat_id}"),
+                "amount": float(Decimal(cents) / Decimal(100)),
+            }
+            (passiva if side == "passiva" else activa).append(row)
+
+        total_activa = sum(Decimal(str(row["amount"])) for row in activa) or Decimal("0")
+        passiva.append(
+            {
+                "code": result_id,
+                "label": labels.get(result_id, "Verlies"),
+                "amount": float(total_result),
+                "source": "category_total",
+            }
+        )
+        total_passiva_others = sum(Decimal(str(row["amount"])) for row in passiva) or Decimal("0")
+        passiva.append(
+            {
+                "code": balance_id,
+                "label": labels.get(balance_id, "Eigen vermogen"),
+                "amount": float(total_activa - total_passiva_others),
+                "source": "computed",
+            }
+        )
+        total_passiva = total_activa  # Verlies + Eigen vermogen close the sheet
+        return {
+            "year": int(year),
+            "has_balance": True,
+            "activa": activa,
+            "passiva": passiva,
+            "total_activa": float(total_activa),
+            "total_passiva": float(total_passiva),
+            "resultaat": result_rows,
+            "total_resultaat": total_result,
+        }
+
+    try:
+        return _sql_retry(_run)
+    except ValueError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(str(exc)) from exc
+
+
 def display_digits(rows: list[dict[str, Any]]) -> int:
     """Frontend code-padding width for a country's local codes.
 
