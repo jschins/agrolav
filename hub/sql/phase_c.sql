@@ -65,7 +65,7 @@ CREATE TABLE dbo.dim_category (
     CONSTRAINT ux_dim_category_label UNIQUE (country_id, label),
     CONSTRAINT ck_dim_category_role CHECK (
         category_role IS NULL OR category_role IN (
-            N'balance', N'last_booked', N'never', N'profit', N'no_hit', N'source', N'mirror', N'remainder'
+            N'balance', N'last_booked', N'equity', N'never', N'profit', N'bank', N'no_hit', N'source', N'mirror', N'remainder'
         )
     )
 );

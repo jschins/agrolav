@@ -1470,7 +1470,7 @@ def category_names() -> list[str]:
 
 
 def category_code_set() -> frozenset[int]:
-    """HIT-eligible category numbers (excludes never / no_hit / footers)."""
+    """HIT-eligible category numbers (excludes equity / bank / footers)."""
     roles = _category_roles()
     return frozenset(
         code

@@ -1,7 +1,7 @@
 """Present-day balance values shared by the balance app and the hub.
 
 Both services compute the balance sheet from the same tables (``dbo.mapping``,
-``dbo.balance_opening``, ``dbo.balance_transaction``, ``dbo.balance_journal``,
+``dbo.balance_opening``, ``dbo.transaction_mirror``, ``dbo.journal``,
 the country's ``dbo.transaction_*`` bookings on codes 1000-2999, and the live
 ``dbo.account.balance``), so the derivation lives here once instead of being
 duplicated with drift risk:
@@ -86,56 +86,79 @@ def infer_side(cat_id: int) -> str:
 #   remainder       unclassified / default HIT target
 #   balance         matrix saldo footer
 #   last_booked     matrix datum footer
-#   never           Eigen vermogen: never HIT, never journal
-#   profit          Verlies / resultaat plug: never HIT, never journal
-#   no_hit          live bank posts: never HIT; journals allowed (as A)
-#   source          spaar source account (same HIT/journal rules as no_hit)
-#   mirror          spaar mirror post (same HIT/journal rules as no_hit)
+#   equity          Eigen vermogen: no HIT, no journal
+#   profit          Verlies / resultaat plug: no HIT, no journal
+#   bank            live bank posts: no HIT; journals allowed (as A)
+#   source          spaar source account (same HIT/journal rules as bank)
+#   mirror          spaar mirror post: HIT allowed; journals allowed (as A)
 CATEGORY_ROLE_REMAINDER = "remainder"
-CATEGORY_ROLE_NEVER = "never"
+CATEGORY_ROLE_EQUITY = "equity"
 CATEGORY_ROLE_PROFIT = "profit"
-CATEGORY_ROLE_NO_HIT = "no_hit"
+CATEGORY_ROLE_BANK = "bank"
 CATEGORY_ROLE_SOURCE = "source"
 CATEGORY_ROLE_MIRROR = "mirror"
 CATEGORY_FOOTER_ROLES = frozenset({"balance", "last_booked"})
-CATEGORY_NO_HIT_ROLES = frozenset(
-    {CATEGORY_ROLE_NO_HIT, CATEGORY_ROLE_SOURCE, CATEGORY_ROLE_MIRROR}
+CATEGORY_BANK_ROLES = frozenset(
+    {CATEGORY_ROLE_BANK, CATEGORY_ROLE_SOURCE, CATEGORY_ROLE_MIRROR}
 )
-CATEGORY_COMPUTED_ROLES = frozenset({CATEGORY_ROLE_NEVER, CATEGORY_ROLE_PROFIT})
+CATEGORY_COMPUTED_ROLES = frozenset({CATEGORY_ROLE_EQUITY, CATEGORY_ROLE_PROFIT})
 CATEGORY_HIT_FORBIDDEN_ROLES = frozenset(
-    {*CATEGORY_COMPUTED_ROLES, *CATEGORY_NO_HIT_ROLES, *CATEGORY_FOOTER_ROLES}
+    {
+        *CATEGORY_COMPUTED_ROLES,
+        CATEGORY_ROLE_BANK,
+        CATEGORY_ROLE_SOURCE,
+        *CATEGORY_FOOTER_ROLES,
+    }
 )
+# CHECK keeps the old stamps so the column can be renamed in place.
 CATEGORY_ROLE_CHECK_VALUES = (
-    "N'balance', N'last_booked', N'never', N'profit', N'no_hit', N'source', "
-    "N'mirror', N'remainder'"
+    "N'balance', N'last_booked', N'equity', N'never', N'profit', N'bank', "
+    "N'no_hit', N'source', N'mirror', N'remainder'"
 )
+_ROLE_ALIASES = {
+    CATEGORY_ROLE_EQUITY: (CATEGORY_ROLE_EQUITY, "never"),
+    "never": (CATEGORY_ROLE_EQUITY, "never"),
+    CATEGORY_ROLE_BANK: (CATEGORY_ROLE_BANK, "no_hit"),
+    "no_hit": (CATEGORY_ROLE_BANK, "no_hit"),
+}
+
 
 def category_role_text(role: object) -> str:
     return str(role or "").strip().lower()
 
 
+def category_role_canonical(role: object) -> str:
+    """Map stored ``category_role`` to the current name (``never``→``equity``)."""
+    text = category_role_text(role)
+    if text in (CATEGORY_ROLE_EQUITY, "never"):
+        return CATEGORY_ROLE_EQUITY
+    if text in (CATEGORY_ROLE_BANK, "no_hit"):
+        return CATEGORY_ROLE_BANK
+    return text
+
+
 def is_footer_role(role: object) -> bool:
-    return category_role_text(role) in CATEGORY_FOOTER_ROLES
+    return category_role_canonical(role) in CATEGORY_FOOTER_ROLES
 
 
 def is_remainder_role(role: object) -> bool:
-    return category_role_text(role) == CATEGORY_ROLE_REMAINDER
+    return category_role_canonical(role) == CATEGORY_ROLE_REMAINDER
 
 
-def is_never_role(role: object) -> bool:
-    return category_role_text(role) == CATEGORY_ROLE_NEVER
+def is_equity_role(role: object) -> bool:
+    return category_role_canonical(role) == CATEGORY_ROLE_EQUITY
 
 
 def is_profit_role(role: object) -> bool:
-    return category_role_text(role) == CATEGORY_ROLE_PROFIT
+    return category_role_canonical(role) == CATEGORY_ROLE_PROFIT
 
 
 def is_computed_post_role(role: object) -> bool:
-    return category_role_text(role) in CATEGORY_COMPUTED_ROLES
+    return category_role_canonical(role) in CATEGORY_COMPUTED_ROLES
 
 
 def is_hit_forbidden_role(role: object) -> bool:
-    return category_role_text(role) in CATEGORY_HIT_FORBIDDEN_ROLES
+    return category_role_canonical(role) in CATEGORY_HIT_FORBIDDEN_ROLES
 
 
 def is_journal_forbidden_role(role: object) -> bool:
@@ -169,7 +192,7 @@ def category_display_name(
 
 
 def ensure_category_role_booking_rules(cursor: object) -> None:
-    """Widen ``ck_dim_category_role`` and stamp never / profit / no_hit / source / mirror / remainder."""
+    """Widen ``ck_dim_category_role`` and stamp equity / profit / bank / source / mirror / remainder."""
     cursor.execute(
         "SELECT OBJECT_ID(N'dbo.dim_category', N'U')"
     )
@@ -185,9 +208,9 @@ def ensure_category_role_booking_rules(cursor: object) -> None:
     definition = str(existing[0] or "") if existing else ""
     low = definition.lower()
     tokens = (
-        "never",
+        "equity",
         "profit",
-        "no_hit",
+        "bank",
         "source",
         "mirror",
         "remainder",
@@ -364,15 +387,17 @@ def role_category_row(
     wanted = category_role_text(role)
     if not wanted:
         return None
+    aliases = _ROLE_ALIASES.get(wanted, (wanted,))
+    placeholders = ",".join("?" for _ in aliases)
     cursor.execute(
-        """
+        f"""
         SELECT TOP (1) category_id, local_code
         FROM dbo.dim_category
         WHERE country_id = ?
-          AND LOWER(LTRIM(RTRIM(category_role))) = ?
+          AND LOWER(LTRIM(RTRIM(category_role))) IN ({placeholders})
         ORDER BY local_code, category_id
         """,
-        (int(country_id), wanted),
+        (int(country_id), *aliases),
     )
     row = cursor.fetchone()
     if row is None or row[0] is None or row[1] is None:
@@ -403,10 +428,10 @@ def verlies_id(country_id: int, cursor: object | None = None) -> int | None:
 
 
 def eigen_vermogen_id(country_id: int, cursor: object | None = None) -> int | None:
-    """Eigen vermogen plug (``category_role = never``), or ``None``."""
+    """Eigen vermogen plug (``category_role = equity``), or ``None``."""
     if cursor is None:
         return None
-    return role_category_id(country_id, CATEGORY_ROLE_NEVER, cursor)
+    return role_category_id(country_id, CATEGORY_ROLE_EQUITY, cursor)
 
 
 def country_has_balance(country_id: int, cursor: object) -> bool:
@@ -522,7 +547,7 @@ def category_map(
         if is_computed_post_role(role):
             result.pop(cat_id, None)
             continue
-        if category_role_text(role) in CATEGORY_NO_HIT_ROLES and cat_id not in result:
+        if category_role_canonical(role) in CATEGORY_BANK_ROLES and cat_id not in result:
             result[cat_id] = (infer_side(codes.get(cat_id, cat_id)), None)
     for cat_id, account_id in account_links(country_id, cursor).items():
         side, _ = result.get(
@@ -647,13 +672,13 @@ def spaar_source_result_amounts(
 def _journal_balances(
     country_id: int, year: int, cursor: object, *, as_of: date | None = None
 ) -> dict[int, Decimal]:
-    """category_id → stored ``dbo.balance_transaction`` sum (spaar-mirror as-is).
+    """category_id → stored ``dbo.transaction_mirror`` sum (spaar-mirror as-is).
 
     Mirror amounts are already ``-d`` from generate time; they are not passed
     through the activa booking sign.
     """
     q = (
-        "SELECT category_id, SUM(amount) FROM dbo.balance_transaction "
+        "SELECT category_id, SUM(amount) FROM dbo.transaction_mirror "
         "WHERE country_id = ? AND year = ?"
     )
     p: list[object] = [int(country_id), int(year)]
@@ -677,10 +702,11 @@ def _booking_balances(
 
     Consolidated rows only (``bank_id IS NULL``). Amount X is the bank sign
     (in +, out -). Activa 1000-1999 get ``-X``; passiva 2001-2999 get ``+X``.
-    Codes with a HIT-forbidden ``category_role`` (live bank, spaar pair,
-    ``never``, ``profit``) are skipped. Source-account spaar-keyword rows are excluded (their
-    counterpart is the mirror post). P&L (3000-4999)
-    stays on the resultaat sheet as ``+X``. ``{}`` when the table is missing.
+    Codes with a HIT-forbidden ``category_role`` (live bank, ``source``,
+    ``equity``, ``profit``) are skipped. ``mirror`` HIT rows are included.
+    Source-account spaar-keyword rows are excluded (their counterpart is the
+    mirror post). P&L (3000-4999) stays on the resultaat sheet as ``+X``.
+    ``{}`` when the table is missing.
     """
     table = transaction_table(country_id, cursor)
     if table is None:
@@ -696,7 +722,8 @@ def _booking_balances(
         "JOIN dbo.dim_category d ON d.category_id = t.category_id "
         "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
         "AND d.local_code BETWEEN 1000 AND 2999 "
-        "AND (d.category_role IS NULL OR d.category_role = N'remainder')"
+        "AND (d.category_role IS NULL OR d.category_role IN "
+        "(N'remainder', N'mirror'))"
     )
     p: list[object] = [int(country_id), int(year)]
     exclude_sql, exclude_params = spaar_source_exclude_clause(
@@ -730,14 +757,14 @@ def _booking_balances(
 
 
 def _journal_table_exists(cursor: object) -> bool:
-    cursor.execute("SELECT OBJECT_ID(N'dbo.balance_journal')")
+    cursor.execute("SELECT OBJECT_ID(N'dbo.journal')")
     return cursor.fetchone()[0] is not None
 
 
 def _journal_effect(
     country_id: int, year: int, cursor: object, *, as_of: date | None = None
 ) -> dict[int, Decimal]:
-    """category_id → net effect from the hand-edited dbo.balance_journal.
+    """category_id → net effect from the hand-edited dbo.journal.
 
     Amount X is a transfer whose signs keep Eigen vermogen (2000) still:
     FROM ``+= -X``; TO ``+= +X`` when FROM and TO are the same class (both
@@ -748,7 +775,7 @@ def _journal_effect(
     if not _journal_table_exists(cursor):
         return {}
     q = (
-        "SELECT category_from, category_to, amount FROM dbo.balance_journal "
+        "SELECT category_from, category_to, amount FROM dbo.journal "
         "WHERE country_id = ? AND year = ?"
     )
     p: list[object] = [int(country_id), int(year)]
@@ -796,14 +823,14 @@ def balance_category_breakdown(
 
     Bank categories carry the live ``dbo.account.balance`` (with ``as_of``:
     current minus later movements); non-bank categories carry their opening
-    balance. ``dbo.balance_transaction`` sums, ``dbo.balance_journal`` effects,
+    balance. ``dbo.transaction_mirror`` sums, ``dbo.journal`` effects,
     and signed booking rows from ``dbo.transaction_{country}`` (codes 1000-2999,
     activa ``-X`` / passiva ``+X``) are added to non-bank posts. Bank-linked
     posts skip the booking sum so the live account is not counted twice.
     Bookings onto live-bank / spaar roles are ignored. The spaar ``mirror``
-    post is always opening + stored ``balance_transaction`` (already ``-d``),
+    post is always opening + stored ``transaction_mirror`` (already ``-d``),
     never a live account and never the activa booking sign. The computed
-    posts (``never`` / ``profit``) are excluded.
+    posts (``equity`` / ``profit``) are excluded.
     """
     roles = category_roles(country_id, cursor)
     result_id = verlies_id(country_id, cursor)
@@ -896,11 +923,11 @@ def result_overlay_cents(
 
     Journals use ``journal_deltas`` so Saldo (and passiva 2100) stay the
     numerical sum of 3000-4999: K and O share the same sign. Mirror rows in
-    ``dbo.balance_transaction`` add their amount as stored. With ``as_of``
+    ``dbo.transaction_mirror`` add their amount as stored. With ``as_of``
     (YYYY-MM-DD) only rows dated on or before that day are included. Returns
     ``{}`` when either table is missing.
     """
-    for table in ("dbo.balance_journal", "dbo.balance_transaction"):
+    for table in ("dbo.journal", "dbo.transaction_mirror"):
         cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
         if cursor.fetchone()[0] is None:
             return {}
@@ -911,7 +938,7 @@ def result_overlay_cents(
     overlay: dict[int, int] = {}
     codes = category_local_codes(country_id, cursor)
     cursor.execute(
-        "SELECT category_from, category_to, amount FROM dbo.balance_journal "
+        "SELECT category_from, category_to, amount FROM dbo.journal "
         f"WHERE country_id = ? AND year = ?{dateq}",
         tuple(params),
     )
@@ -928,7 +955,7 @@ def result_overlay_cents(
         if is_resultaat(codes.get(dst, dst)):
             overlay[dst] = overlay.get(dst, 0) + _to_cents(dst_delta)
     cursor.execute(
-        "SELECT category_id, amount FROM dbo.balance_transaction "
+        "SELECT category_id, amount FROM dbo.transaction_mirror "
         f"WHERE country_id = ? AND year = ?{dateq}",
         tuple(params),
     )

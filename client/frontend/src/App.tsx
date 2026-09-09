@@ -68,15 +68,10 @@ function isBookingCategoryName(name: string): boolean {
   return /^\d{4}/.test(name);
 }
 
-function categoryCodeOf(name: string): number | null {
-  const match = String(name).match(/^(\d{4})/);
-  return match ? parseInt(match[1], 10) : null;
-}
-
 function isHitCategoryName(name: string, settings: SettingsResponse): boolean {
   if (!isBookingCategoryName(name)) return false;
   const role = String(settings.category_roles?.[name] ?? "").toLowerCase();
-  if (role === "never" || role === "profit" || role === "no_hit" || role === "source" || role === "mirror" || role === "balance" || role === "last_booked") {
+  if (role === "equity" || role === "never" || role === "profit" || role === "bank" || role === "no_hit" || role === "source" || role === "balance" || role === "last_booked") {
     return false;
   }
   return true;

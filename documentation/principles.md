@@ -13,7 +13,7 @@ other category in the range stays put.
 | **P** | 2001–2999 | Passiva other than 2000 |
 | **R** | 3000–4999 | Resultaat (kosten and omzet, same sign) |
 | **2000** | Eigen vermogen | Plug, never booked |
-| **2100** | Verlies | Equals Saldo = numerical sum of R |
+| **2100** | Resultaat | Equals Saldo = numerical sum of R |
 
 Kosten (3000–3999) and omzet (4000–4999) use the same sign. Saldo is the
 numerical sum of all amounts in 3000–4999; passiva **2100** is that same
@@ -75,38 +75,39 @@ spaarrekening.
 
 **Transfers 1051 ↔ 1052.** They appear only on the 1051 statement (description
 contains `spaarrekening`). The 1052 side is reconstructed into
-`dbo.balance_transaction` by mirroring those 1051 rows with the sign flipped:
+`dbo.transaction_mirror` by mirroring those 1051 rows with the sign flipped:
 if X > 0 leaves 1051, live 1051 decreases by X and the mirror increases 1052
 by X. Δ activa = 0, so 2000 is unchanged. Those 1051 spaar rows are not also
 booked as A / P / R.
 
-**Interest on 1052.** Written by hand into `dbo.balance_journal` (not mirrored
+**Interest on 1052.** Written by hand into `dbo.journal` (not mirrored
 from the 1051 statement).
 
-HIT onto 1051–1056 is invalid: the five checking posts already move with the
-live account; 1052 moves only via the mirror and journals.
+HIT onto 1051 and 1053–1056 is invalid: those checking posts already move with
+the live account. 1052 (`mirror`) may be a HIT target; it also moves via the
+reconstructed spaar rows and journals.
 
 These rules are stored on `dbo.dim_category.category_role`:
 
-| Role | Meaning | HIT | Journal |
+| Role | Meaning | HIT (`transaction_*`) | Journal (`journal`) |
 |---|---|---|---|
 | `remainder` | Unclassified / default HIT target | yes | yes |
-| `never` | Eigen vermogen (plug) | no | no |
-| `profit` | Verlies / resultaat plug (was 2100) | no | no |
-| `no_hit` | Live bank posts other than the spaar pair | no | yes (as A) |
+| `equity` | Eigen vermogen (plug) | no | no |
+| `profit` | Resultaat plug (was 2100) | no | no |
+| `bank` | Live bank posts other than the spaar pair | no | yes (as A) |
 | `source` | Spaar source account (the checking statement that shows the transfers) | no | yes (as A) |
-| `mirror` | Spaar mirror post (reconstructed counterpart) | no | yes (as A) |
+| `mirror` | Spaar mirror post (reconstructed counterpart) | yes | yes (as A) |
 
-`source` and `mirror` are treated like `no_hit` for HIT and journals. Runtime
-code reads the spaar pair from those roles (plus `dbo.mapping` for the source
-account), Eigen vermogen from `never`, and Verlies from `profit`, not from
-hardcoded local codes.
+`source` is treated like `bank` for HIT and journals. `mirror` allows HIT.
+Runtime code reads the spaar pair from those roles (plus `dbo.mapping` for
+the source account), Eigen vermogen from `equity`, and Resultaat from
+`profit`, not from hardcoded local codes.
 
-`never` / `profit` / `no_hit` / `source` / `mirror` keep their coded names on
+`equity` / `profit` / `bank` / `source` / `mirror` keep their coded names on
 the matrix (`1051 Bank algemeen`). Only `balance` / `last_booked` are footer
 labels.
 
-Runtime reads Eigen vermogen from `never` and Verlies from `profit`, not from
+Runtime reads Eigen vermogen from `equity` and Resultaat from `profit`, not from
 hardcoded local codes.
 
 ---
@@ -121,9 +122,9 @@ The HIT category is the counterpart:
 |---|---|
 | **R** (3000–4999) | increases with X → Saldo increases with X → 2100 increases with X |
 | **P** (2001–2999) | increases with X |
-| **A** (1000–1999, not 1051–1056) | decreases with X |
+| **A** (1000–1999, not 1051, 1053–1056) | decreases with X |
 
-HIT onto 1051–1056 or 2000 is not used.
+HITS may not involve 1051, 1053–1056 (`bank` and `source`) nor 2000 (`equity`): not the bank accounts, because their values are overwritten by the automatic downloads, nor equity, which is overwritten by the difference of Activa (Assets) and Passiva (Liabilities)
 
 ---
 

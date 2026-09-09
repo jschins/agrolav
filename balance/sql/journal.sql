@@ -1,8 +1,8 @@
 USE agrolav;
 GO
 
-IF OBJECT_ID(N'dbo.balance_journal', N'U') IS NULL
-CREATE TABLE dbo.balance_journal (
+IF OBJECT_ID(N'dbo.journal', N'U') IS NULL
+CREATE TABLE dbo.journal (
     journal_id      INT           IDENTITY(1,1) PRIMARY KEY,
     country_id      INT           NOT NULL,
     year            INT           NOT NULL,
@@ -17,11 +17,11 @@ GO
 
 IF NOT EXISTS (
     SELECT 1 FROM sys.indexes
-    WHERE name = 'ix_balance_journal_country_year'
-      AND object_id = OBJECT_ID(N'dbo.balance_journal')
+    WHERE name = 'ix_journal_country_year'
+      AND object_id = OBJECT_ID(N'dbo.journal')
 )
-    CREATE NONCLUSTERED INDEX ix_balance_journal_country_year
-        ON dbo.balance_journal (country_id, year);
+    CREATE NONCLUSTERED INDEX ix_journal_country_year
+        ON dbo.journal (country_id, year);
 GO
 
 -- A hand-edited journal entry moves money from one balance category to another:

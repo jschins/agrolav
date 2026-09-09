@@ -379,8 +379,8 @@ CHECK (
     [category_role] IN (
         N'last_booked',
         N'balance',
-        N'never',
-        N'no_hit',
+        N'equity',
+        N'bank',
         N'mirror',
         N'source',
         N'remainder',

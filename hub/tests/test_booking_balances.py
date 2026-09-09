@@ -77,12 +77,12 @@ class _FakeJournalCursor:
         if "local_code" in sql and "category_role" not in sql:
             return [(2000, 2000), (2100, 2100)]
         if "dim_category" in sql:
-            return [(2000, "never"), (2100, "profit")]
+            return [(2000, "equity"), (2100, "profit")]
         return list(self.rows)
 
 
 class _FakeOverlayCursor:
-    """OBJECT_ID probes, then journal pairs, then balance_transaction rows."""
+    """OBJECT_ID probes, then journal pairs, then transaction_mirror rows."""
 
     def __init__(
         self,
@@ -141,15 +141,15 @@ class BookingBalancesTests(unittest.TestCase):
             {1110: Decimal("-9000")},
         )
 
-    def test_bank_codes_1051_1056_skipped(self):
+    def test_bank_and_source_skipped_mirror_kept(self):
         cursor = _FakeBookingCursor(
             rows=[
                 (1051, 1051, Decimal("10"), "source"),
                 (1052, 1052, Decimal("20"), "mirror"),
-                (1056, 1056, Decimal("30"), "no_hit"),
+                (1056, 1056, Decimal("30"), "bank"),
             ]
         )
-        self.assertEqual(_booking_balances(4, 2026, cursor), {})
+        self.assertEqual(_booking_balances(4, 2026, cursor), {1052: Decimal("-20")})
 
     def test_sql_excludes_spaar_source_rows(self):
         cursor = _FakeBookingCursor(rows=[])
@@ -180,7 +180,6 @@ class SpaarMirrorTests(unittest.TestCase):
 
     def test_posted_amount_is_not_activa_booking_sign(self):
         source = Decimal("-2500")
-        self.assertIsNone(booking_signed_amount(1052, source, "mirror"))
         self.assertEqual(spaar_mirror_posted_amount(source), Decimal("2500"))
 
     def test_exclude_clause_from_category_roles(self):
@@ -199,7 +198,9 @@ class BookingSignedAmountTests(unittest.TestCase):
         self.assertEqual(booking_signed_amount(1110, x), Decimal("-100"))
         self.assertEqual(booking_signed_amount(2500, x), Decimal("100"))
         self.assertIsNone(booking_signed_amount(1051, x, "source"))
-        self.assertIsNone(booking_signed_amount(1052, x, "mirror"))
+        self.assertEqual(booking_signed_amount(1052, x, "mirror"), Decimal("-100"))
+        self.assertIsNone(booking_signed_amount(1056, x, "bank"))
+        self.assertIsNone(booking_signed_amount(2000, x, "equity"))
         self.assertIsNone(booking_signed_amount(1056, x, "no_hit"))
         self.assertIsNone(booking_signed_amount(2000, x, "never"))
         self.assertIsNone(booking_signed_amount(2100, x, "profit"))
@@ -327,9 +328,9 @@ class CategoryRoleTests(unittest.TestCase):
         self.assertEqual(category_display_name("saldo", 22, "balance"), "saldo")
         self.assertEqual(category_display_name("datum", 23, "last_booked"), "datum")
 
-    def test_never_and_no_hit_keep_coded_names(self):
+    def test_equity_and_bank_keep_coded_names(self):
         self.assertEqual(
-            category_display_name("Eigen vermogen", 2000, "never"),
+            category_display_name("Eigen vermogen", 2000, "equity"),
             "2000 Eigen vermogen",
         )
         self.assertEqual(
@@ -345,10 +346,13 @@ class CategoryRoleTests(unittest.TestCase):
         self.assertEqual(category_display_name("Gebouwen", 1000, None), "1000 Gebouwen")
 
     def test_hit_and_journal_rules(self):
+        self.assertTrue(is_hit_forbidden_code(2000, "equity"))
+        self.assertTrue(is_journal_forbidden_code(2000, "equity"))
         self.assertTrue(is_hit_forbidden_code(2000, "never"))
         self.assertTrue(is_journal_forbidden_code(2000, "never"))
         self.assertTrue(is_hit_forbidden_code(1051, "source"))
-        self.assertTrue(is_hit_forbidden_code(1052, "mirror"))
+        self.assertFalse(is_hit_forbidden_code(1052, "mirror"))
+        self.assertTrue(is_hit_forbidden_code(1056, "bank"))
         self.assertTrue(is_hit_forbidden_code(1056, "no_hit"))
         self.assertFalse(is_journal_forbidden_code(1051, "source"))
         self.assertFalse(is_journal_forbidden_code(1052, "mirror"))

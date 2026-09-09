@@ -84,13 +84,13 @@ Categories covered by this table:
 | 2055 | Reserve FF-OG | manual |
 | 2500 | Schulden particulieren | manual |
 
-### 3b. `dbo.balance_transaction` — journal entries
+### 3b. `dbo.transaction_mirror` — journal entries
 
 Future: depreciation, transfers between categories, corrections. Not built yet.
 
 ```sql
-IF OBJECT_ID(N'dbo.balance_transaction', N'U') IS NULL
-CREATE TABLE dbo.balance_transaction (
+IF OBJECT_ID(N'dbo.transaction_mirror', N'U') IS NULL
+CREATE TABLE dbo.transaction_mirror (
     transaction_id  INT           IDENTITY(1,1) PRIMARY KEY,
     year            INT           NOT NULL,
     date            DATE          NOT NULL,
@@ -101,18 +101,18 @@ CREATE TABLE dbo.balance_transaction (
 );
 ```
 
-### 3c. `dbo.balance_journal` — hand-edited linking transactions
+### 3c. `dbo.journal` — hand-edited linking transactions
 
 Hand-edited journal entries that move money from one balance category to another
 (used for person `sdog` in center `beh_stichtingen`; a future `instudo` person
 will share the same structure). Each row has a FROM category, a TO category, an
 amount and a description. These are deliberately **separate** from
 `transaction_beheer` (bank bookings) and from the auto-generated spaar-mirror
-rows in `balance_transaction`.
+rows in `transaction_mirror`.
 
 ```sql
-IF OBJECT_ID(N'dbo.balance_journal', N'U') IS NULL
-CREATE TABLE dbo.balance_journal (
+IF OBJECT_ID(N'dbo.journal', N'U') IS NULL
+CREATE TABLE dbo.journal (
     journal_id      INT           IDENTITY(1,1) PRIMARY KEY,
     year            INT           NOT NULL,
     date            DATE          NOT NULL,
@@ -124,7 +124,7 @@ CREATE TABLE dbo.balance_journal (
 );
 ```
 
-DDL file: `balance/sql/balance_journal.sql`. For each row the **FROM** category
+DDL file: `balance/sql/journal.sql`. For each row the **FROM** category
 decreases by `amount` and the **TO** category increases by `amount`, so the sum
 across all categories is zero and the sheet stays balanced. In `balance_sheet`
 these effects are folded into each category total (source becomes
@@ -222,7 +222,7 @@ country** (`dbo.country.username` with `has_balance = 1`). Current slugs:
 The `source` field indicates where the amount came from:
 - `"opening"` — from `dbo.balance_opening` (bank and non-bank categories)
 - `"account:{id}"` — fallback to `dbo.account.balance` when no opening row exists for a bank category/year
-- `"opening+journal"` — opening + sum of `dbo.balance_transaction` for that category/year
+- `"opening+journal"` — opening + sum of `dbo.transaction_mirror` for that category/year
 - `"computed"` — the Verlies post, computed so the two sides balance
 
 Note: each bank category's amount is the initial/opening balance recorded in
@@ -240,7 +240,7 @@ The checking account 1051 (account 18, NL34..667) has a linked spaarrekening
 spaarrekening side is invisible in the bank data. These transfers are not
 included in the balance/PL because their combined total is unaffected by
 transfers between them. We therefore reconstruct the spaarrekening ledger as
-**faked** journal entries in `dbo.balance_transaction`.
+**faked** journal entries in `dbo.transaction_mirror`.
 
 ### Detection
 
@@ -273,7 +273,7 @@ So `1052 = -1051_amount`. Each generated row is stamped with the marker prefix
 sum of its mirror journal:
 
 ```
-1052 = balance_opening(1052, year) + SUM(balance_transaction where category=1052)
+1052 = balance_opening(1052, year) + SUM(transaction_mirror where category=1052)
 ```
 
 Current 2026 figures: opening 688 269.91, mirror journal net −80 000.00
@@ -310,7 +310,7 @@ country:
 From the overview toolbar the **Herbouw spaarrekening (1052)** knob rebuilds the
 1052 mirror journal, and the **Edit transactions** knob opens a full-screen
 journal editor (same window, replacing the sheet) for the hand-edited
-`balance_journal` rows of the selected year. The editor follows the client's
+`journal` rows of the selected year. The editor follows the client's
 category-edit pattern (draft table with inline inputs, add/remove rows, Save
 does a full-replace for the year). After returning to the sheet the totals are
 reloaded so the journal effects show up.
@@ -354,7 +354,7 @@ computed by the hub so the two sides always balance.
 
 ## 9. Implementation phases
 
-1. **Schema** — create `dbo.balance_opening` and `dbo.balance_transaction` tables. ✅
+1. **Schema** — create `dbo.balance_opening` and `dbo.transaction_mirror` tables. ✅
 2. **Hub skeleton** — FastAPI on :8100, `/api/balance/{year}` endpoint that reads
    account balances and opening balances, returns the two-sided sheet. ✅
 3. **Opening balance editor** — PUT endpoint for non-bank categories. ✅ (API)
@@ -389,8 +389,8 @@ balance/
       types.ts
       index.css
   sql/
-    schema.sql            ← balance_opening + balance_transaction DDL
-    balance_journal.sql   ← dbo.balance_journal DDL
+    schema.sql            ← balance_opening + transaction_mirror DDL
+    journal.sql           ← dbo.journal DDL
 ```
 
 The balance hub is standalone: it depends only on fastapi/uvicorn/pydantic/

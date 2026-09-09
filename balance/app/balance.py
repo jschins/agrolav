@@ -3,8 +3,8 @@
 Each balance country reads bank account balances from ``dbo.account`` (linked
 to balance categories through ``dbo.mapping``) and non-bank opening balances
 from ``dbo.balance_opening``, plus hand-edited journal rows
-(``dbo.balance_journal``) and auto spaar-mirror rows
-(``dbo.balance_transaction``).  Resultaat R is the sum of P&L category
+(``dbo.journal``) and auto spaar-mirror rows
+(``dbo.transaction_mirror``).  Resultaat R is the sum of P&L category
 amounts (``category_id`` 3000-4999) in ``dbo.category_total``.  Passiva 2100
 Verlies is that same R.  Eigen vermogen is the plug:
 ``total_activa - sum(other passiva)``.
@@ -152,7 +152,7 @@ def _spaar_mirror_rows(country_id: int, year: int) -> list[tuple[int, str, Decim
     """Derive the faked spaarrekening mirror transactions for a country.
 
     Each source-account row whose description contains the keyword gives one
-    target-category ``balance_transaction`` of ``-d`` (d = source bank amount):
+    target-category ``transaction_mirror`` of ``-d`` (d = source bank amount):
     a transfer out (d = -X, X > 0) increases the mirror by X so plug 2000 is still.
     """
     table = _transaction_table(country_id)
@@ -198,7 +198,7 @@ def _opening_plug_amount(
     balance_id: int,
     local_code: int,
 ) -> Decimal:
-    """``dbo.balance_opening.amount`` for Eigen vermogen (``never`` / 2000).
+    """``dbo.balance_opening.amount`` for Eigen vermogen (``equity`` / 2000).
 
     Crashes when the row is missing or the stored amount is not greater than 0.
     """
@@ -521,7 +521,7 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
         local_codes = shared_category_local_codes(country_id, cur)
         if balance_id is None:
             raise RuntimeError(
-                f"no Eigen vermogen category (category_role=never) for country_id={country_id}"
+                f"no Eigen vermogen category (category_role=equity) for country_id={country_id}"
             )
         start_plug = _opening_plug_amount(
             cur,
@@ -559,7 +559,7 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
             "source": source,
         }
         if balance_id is not None and cat_id == balance_id:
-            row["role"] = "never"
+            row["role"] = "equity"
             row["unchanged"] = start_plug is not None and _amounts_equal(
                 amount, start_plug
             )
@@ -591,7 +591,7 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
         "amount": float(balance_amount),
         "source": "computed",
         "unchanged": bool(plug_unchanged),
-        "role": "never",
+        "role": "equity",
     })
 
     total_passiva = _sum_amount(passiva)
@@ -626,7 +626,7 @@ def list_years(country_id: int) -> list[int]:
 
 
 def list_categories(country_id: int) -> list[dict[str, Any]]:
-    """Journal-eligible categories (1000-4999), excluding ``never`` / ``profit``."""
+    """Journal-eligible categories (1000-4999), excluding ``equity`` / ``profit``."""
     labels = _category_labels(country_id)
     roles = _category_roles(country_id)
     acct = _account_balances(country_id)
@@ -724,7 +724,7 @@ def generate_spaarmirror(country_id: int, year: int) -> dict[str, Any]:
         mirror = spaar_mirror(country_id, cur)
         if mirror:
             cur.execute(
-                "DELETE FROM dbo.balance_transaction "
+                "DELETE FROM dbo.transaction_mirror "
                 "WHERE year = ? AND country_id = ? AND category_id = ? "
                 "AND description LIKE ? ESCAPE '!'",
                 year,
@@ -734,7 +734,7 @@ def generate_spaarmirror(country_id: int, year: int) -> dict[str, Any]:
             )
         for category_id, booked_on, amount, description in rows:
             cur.execute(
-                "INSERT INTO dbo.balance_transaction "
+                "INSERT INTO dbo.transaction_mirror "
                 "(year, country_id, date, category_id, amount, description, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
                 year,
@@ -756,7 +756,7 @@ def list_journal(country_id: int, year: int) -> list[dict[str, Any]]:
         cur = conn.cursor()
         cur.execute(
             "SELECT journal_id, date, category_from, category_to, amount, description "
-            "FROM dbo.balance_journal WHERE country_id = ? AND year = ? "
+            "FROM dbo.journal WHERE country_id = ? AND year = ? "
             "ORDER BY date, journal_id",
             country_id,
             year,
@@ -781,7 +781,7 @@ def save_journal(country_id: int, year: int, items: list[dict[str, Any]]) -> dic
 
     Each item: {"date", "category_from", "category_to", "amount", "description"}.
     All existing rows for the country/year are deleted first, then the
-    submitted set is inserted. Does not touch dbo.balance_transaction (the auto
+    submitted set is inserted. Does not touch dbo.transaction_mirror (the auto
     spaar-mirror).
     """
     with connect() as conn:
@@ -801,13 +801,13 @@ def save_journal(country_id: int, year: int, items: list[dict[str, Any]]) -> dic
             description = str(item.get("description") or "")[:512]
             parsed.append((date, cat_from, cat_to, amount, description))
         cur.execute(
-            "DELETE FROM dbo.balance_journal WHERE country_id = ? AND year = ?",
+            "DELETE FROM dbo.journal WHERE country_id = ? AND year = ?",
             country_id,
             year,
         )
         for date, cat_from, cat_to, amount, description in parsed:
             cur.execute(
-                "INSERT INTO dbo.balance_journal "
+                "INSERT INTO dbo.journal "
                 "(year, country_id, date, category_from, category_to, amount, description, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
                 year, country_id, date, cat_from, cat_to, amount, description,

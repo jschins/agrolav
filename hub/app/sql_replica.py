@@ -424,8 +424,8 @@ def _load_nonbank_category_rows(
 ) -> list[dict[str, Any]]:
     """Journal + mirror + booked rows that move money in/out of a non-bank category.
 
-    Sources (three, independent): ``dbo.balance_journal`` (hand-edited rows),
-    ``dbo.balance_transaction`` (spaar-mirror rows) and the bound transaction
+    Sources (three, independent): ``dbo.journal`` (hand-edited rows),
+    ``dbo.transaction_mirror`` (spaar-mirror rows) and the bound transaction
     table (rows posted to this category, e.g. kruisposten). Each source is
     queried in its own ``try`` so a column mismatch in one table can never wipe
     out the rows already collected from the other tables.
@@ -449,7 +449,7 @@ def _load_nonbank_category_rows(
     try:
         bound.cursor.execute(
             "SELECT journal_id, date, category_from, category_to, amount, description "
-            "FROM dbo.balance_journal "
+            "FROM dbo.journal "
             "WHERE country_id = ? AND year = ? "
             "AND (category_from IN (?, ?) OR category_to IN (?, ?)) "
             "ORDER BY date, journal_id",
@@ -484,13 +484,13 @@ def _load_nonbank_category_rows(
                 }
             )
     except Exception as exc:  # noqa: BLE001
-        print(f"sql replica: balance_journal load failed: {exc}")
+        print(f"sql replica: journal load failed: {exc}")
     try:
         # Only the columns the balance app actually uses are selected: this table
         # has no bookkeeping columns (no day-book sign, no bank/account link).
         bound.cursor.execute(
             "SELECT date, category_id, amount, description "
-            "FROM dbo.balance_transaction "
+            "FROM dbo.transaction_mirror "
             "WHERE country_id = ? AND year = ? AND category_id IN (?, ?) "
             "ORDER BY date, amount",
             (country_id, bound.year, id_a, id_b),
@@ -515,7 +515,7 @@ def _load_nonbank_category_rows(
                 }
             )
     except Exception as exc:  # noqa: BLE001
-        print(f"sql replica: balance_transaction load failed: {exc}")
+        print(f"sql replica: transaction_mirror load failed: {exc}")
     try:
         # Booked rows posted to this category (e.g. kruisposten): scoped to the
         # selected account when one is bound, otherwise every row for the person.
@@ -580,27 +580,27 @@ def _balance_overlay_cents(
 def balance_entry_codes(country_id: int, year: int, cursor: Any) -> set[int]:
     """Category ids that hold at least one row in the balance-access tables.
 
-    Union of ``dbo.balance_transaction.category_id`` (hand-entered balance
+    Union of ``dbo.transaction_mirror.category_id`` (hand-entered balance
     transactions; the materialized spaar-mirror rows live here too) and
-    ``dbo.balance_journal`` (category_from/category_to) for the country/year.
+    ``dbo.journal`` (category_from/category_to) for the country/year.
     A category counts as "has transactions" even when its rows net to zero, so
     these are distinct ids, not sums. Returns ``{}`` when a table is missing.
     """
     codes: set[int] = set()
-    cursor.execute("SELECT OBJECT_ID(N'dbo.balance_transaction', N'U')")
+    cursor.execute("SELECT OBJECT_ID(N'dbo.transaction_mirror', N'U')")
     if cursor.fetchone()[0] is not None:
         cursor.execute(
-            "SELECT DISTINCT category_id FROM dbo.balance_transaction "
+            "SELECT DISTINCT category_id FROM dbo.transaction_mirror "
             "WHERE country_id = ? AND year = ?",
             (int(country_id), int(year)),
         )
         for (category_id,) in cursor.fetchall():
             if category_id is not None:
                 codes.add(int(category_id))
-    cursor.execute("SELECT OBJECT_ID(N'dbo.balance_journal', N'U')")
+    cursor.execute("SELECT OBJECT_ID(N'dbo.journal', N'U')")
     if cursor.fetchone()[0] is not None:
         cursor.execute(
-            "SELECT category_from, category_to FROM dbo.balance_journal "
+            "SELECT category_from, category_to FROM dbo.journal "
             "WHERE country_id = ? AND year = ?",
             (int(country_id), int(year)),
         )

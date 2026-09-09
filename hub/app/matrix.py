@@ -389,7 +389,7 @@ def build_matrix(
                     cells[name][family] = f"{cents / 100:.2f}"
     # Which categories carry at least one drill-down row decides the greyed-out
     # state, not the net amount displayed: dbo.transaction_{country} (booking
-    # rows), dbo.balance_transaction and dbo.balance_journal (balance-access
+    # rows), dbo.transaction_mirror and dbo.journal (balance-access
     # and spaar-mirror rows, country-wide). Join on local_code so category_id
     # (country*10000+code, or the bare code) still matches the matrix name.
     # A bank-linked category follows its mapped account rows instead of rows
