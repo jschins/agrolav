@@ -132,6 +132,12 @@ On the server:
 ls -lh /tmp/agrolav.bak
 ```
 
+
+Claim ownership:
+```bash
+sudo chown agrolav:agrolav /opt/sql_backups/agrolav20260909_1039.bak
+```
+
 ---
 
 ## 7. Copy the backup into the container

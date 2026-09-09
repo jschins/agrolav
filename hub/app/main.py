@@ -2710,6 +2710,9 @@ def run() -> None:
             "/capabilities",
             "/consent-ready",
             "/session/heartbeat",
+            "GET /api/local/beh_stichtingen/balance-slug",
+            "GET /api/local/beh_stichtingen/people/",
+            "GET /api/auth/user?username=",
         )
 
         def filter(self, record: logging.LogRecord) -> bool:

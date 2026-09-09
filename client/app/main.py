@@ -1077,6 +1077,7 @@ def run() -> None:
             "GET /api/centrale/status",
             "GET /api/centrale/notifications",
             "GET /api/centrale/refusals",
+            "GET /api/banks",
         )
 
         def filter(self, record: logging.LogRecord) -> bool:
