@@ -228,14 +228,14 @@ def person_last_booked(pack: PersonScope) -> str | None:
 def _footer_labels(
     categories: list[str], roles: dict[str, str] | None = None
 ) -> tuple[str, str]:
-    """Saldo / datum footer keys: ``matrix_role`` first, else uncoded names."""
+    """Saldo / datum footer keys: ``category_role`` first, else uncoded names."""
     from app.core.categorize import _category_code
-    from shared.balance_values import MATRIX_FOOTER_ROLES, matrix_role_text
+    from shared.balance_values import CATEGORY_FOOTER_ROLES, category_role_text
 
     by_role: dict[str, str] = {}
     for name in categories:
-        role = matrix_role_text((roles or {}).get(name))
-        if role in MATRIX_FOOTER_ROLES and role not in by_role:
+        role = category_role_text((roles or {}).get(name))
+        if role in CATEGORY_FOOTER_ROLES and role not in by_role:
             by_role[role] = name
     if by_role:
         return (
@@ -268,7 +268,7 @@ def build_matrix(
 
     categories = category_names(packs)
     country = active_country() or (packs[0].country if packs else "")
-    roles_raw = load_general_file(packs).get("matrix_roles")
+    roles_raw = load_general_file(packs).get("category_roles")
     roles = roles_raw if isinstance(roles_raw, dict) else {}
     balance_name, date_name = _footer_labels(categories, roles)
     booking = [name for name in categories if _category_code(name) is not None]
@@ -283,6 +283,8 @@ def build_matrix(
     sql_matrix = None
     balance_cents: dict[int, int] | None = None
     balance_names: dict[int, str] = {}
+    balance_country: int | None = None
+    y_int: int | None = None
     if not bank:
         from app import user_store
         from app.sql_replica import load_center_year_matrix
@@ -318,6 +320,8 @@ def build_matrix(
         if y_int is not None and country:
             balance_country = _balance_matrix_country_id(country)
             if balance_country is not None:
+                from shared.balance_values import category_local_codes as _local_codes
+
                 balance_names = {
                     code: name
                     for name in booking
@@ -327,7 +331,15 @@ def build_matrix(
                     from shared.balance_values import present_balance_cents
 
                     cursor = user_store._sql_connect().cursor()
-                    balance_cents = present_balance_cents(balance_country, y_int, cursor)
+                    id_to_local = _local_codes(balance_country, cursor)
+                    raw_cents = present_balance_cents(
+                        balance_country, y_int, cursor, keep_bank_sign=True
+                    )
+                    balance_cents = {}
+                    for cat_id, cents in raw_cents.items():
+                        local = id_to_local.get(int(cat_id), int(cat_id))
+                        balance_cents[local] = cents
+                        balance_cents[int(cat_id)] = cents
                 except Exception:  # noqa: BLE001
                     balance_cents = None
     if sql_matrix is not None:
@@ -378,38 +390,45 @@ def build_matrix(
     # Which categories carry at least one drill-down row decides the greyed-out
     # state, not the net amount displayed: dbo.transaction_{country} (booking
     # rows), dbo.balance_transaction and dbo.balance_journal (balance-access
-    # and spaar-mirror rows, country-wide). Activa and passiva (1000-2999)
-    # share this path. A bank-linked category follows its account rows instead
-    # of rows posted to that code.
+    # and spaar-mirror rows, country-wide). Join on local_code so category_id
+    # (country*10000+code, or the bare code) still matches the matrix name.
+    # A bank-linked category follows its mapped account rows instead of rows
+    # posted to that code.
     entries_names: set[str] = set()
-    if sql_matrix is not None and balance_country is not None and y_int is not None:
-        name_by_code = {
+    if balance_country is not None and y_int is not None:
+        name_by_local = {
             code: name for name in booking if (code := _category_code(name)) is not None
         }
         try:
             from app.sql_replica import balance_entry_codes
-            from shared.balance_values import balance_config as _balance_cfg
-            from shared.balance_values import category_map as _balance_category_map
+            from shared.balance_values import (
+                category_local_codes,
+                category_map as _balance_category_map,
+            )
 
             cursor = user_store._sql_connect().cursor()
-            configured = {
-                int(c): (str(s), (int(a) if a is not None else None))
-                for c, (s, a) in (_balance_cfg(balance_country).get("category_map") or {}).items()
-            }
-            entry_codes = balance_entry_codes(balance_country, y_int, cursor)
-            for code, (_side, _acc) in _balance_category_map(
-                balance_country, cursor
-            ).items():
-                name = name_by_code.get(code)
-                if name is None:
+            id_to_local = category_local_codes(balance_country, cursor)
+            mapped = _balance_category_map(balance_country, cursor)
+            entry_ids = balance_entry_codes(balance_country, y_int, cursor)
+            entry_locals = {id_to_local.get(i, i) for i in entry_ids} | set(entry_ids)
+            txn_locals: set[int] = set()
+            if sql_matrix is not None:
+                for person_codes in used_codes.values():
+                    txn_locals.update(person_codes)
+            for local, name in name_by_local.items():
+                cat_id = next(
+                    (cid for cid, lc in id_to_local.items() if lc == local),
+                    local,
+                )
+                _side, account_id = mapped.get(cat_id) or mapped.get(local) or (None, None)
+                if account_id is not None and sql_matrix is not None:
+                    used[name] = sorted(account_persons.get(int(account_id), ()))
                     continue
-                entry = configured.get(code)
-                account_id = int(entry[1]) if (entry is not None and entry[1] is not None) else None
-                if account_id is not None:
-                    used[name] = sorted(account_persons.get(account_id, ()))
-                elif 1000 <= code <= 2999 and (
-                    code in entry_codes
-                    or any(code in codes for codes in used_codes.values())
+                if (
+                    local in entry_locals
+                    or cat_id in entry_ids
+                    or local in txn_locals
+                    or cat_id in txn_locals
                 ):
                     entries_names.add(name)
         except Exception as exc:  # noqa: BLE001

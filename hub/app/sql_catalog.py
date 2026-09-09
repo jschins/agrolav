@@ -608,7 +608,7 @@ def category_codes_for_country(country: str) -> frozenset[int]:
     cursor = _cursor()
     cursor.execute(
         """
-        SELECT d.local_code, d.matrix_role
+        SELECT d.local_code, d.category_role
         FROM dbo.dim_category d
         JOIN dbo.country c ON c.country_id = d.country_id
         WHERE c.username = ? COLLATE Latin1_General_CI_AI
@@ -632,7 +632,7 @@ def categories_payload(country: str) -> dict[str, Any]:
         "categories": {},
         "table_header_terms": {},
         "typerules": [],
-        "matrix_roles": {},
+        "category_roles": {},
     }
     if not name or not _sql_ready():
         return empty
@@ -656,18 +656,18 @@ def categories_payload(country: str) -> dict[str, Any]:
         country_id = int(row[0])
 
         categories: dict[str, list[str]] = {}
-        matrix_roles: dict[str, str] = {}
+        category_roles: dict[str, str] = {}
         id_to_label: dict[int, str] = {}
         from shared.balance_values import (
             category_display_name,
-            ensure_matrix_role_booking_rules,
+            ensure_category_role_booking_rules,
             is_hit_forbidden_code,
         )
 
-        ensure_matrix_role_booking_rules(cursor)
+        ensure_category_role_booking_rules(cursor)
         cursor.execute(
             """
-            SELECT category_id, local_code, label, matrix_role
+            SELECT category_id, local_code, label, category_role
             FROM dbo.dim_category
             WHERE country_id = ?
             ORDER BY local_code, label
@@ -682,7 +682,7 @@ def categories_payload(country: str) -> dict[str, Any]:
             id_to_label[int(category_id)] = cat_name
             role_text = str(role or "").strip()
             if role_text:
-                matrix_roles[cat_name] = role_text
+                category_roles[cat_name] = role_text
 
         cursor.execute(
             """
@@ -716,7 +716,7 @@ def categories_payload(country: str) -> dict[str, Any]:
 
         cursor.execute(
             """
-            SELECT r.bank_type, d.local_code, d.label, d.matrix_role
+            SELECT r.bank_type, d.local_code, d.label, d.category_role
             FROM dbo.type_rule r
             JOIN dbo.dim_category d ON d.category_id = r.category_id
             WHERE r.country_id = ?
@@ -735,7 +735,7 @@ def categories_payload(country: str) -> dict[str, Any]:
             "categories": categories,
             "table_header_terms": headers,
             "typerules": typerules,
-            "matrix_roles": matrix_roles,
+            "category_roles": category_roles,
         }
 
     try:
@@ -760,7 +760,7 @@ def personal_categories_payload(username: str) -> dict[str, list[str]]:
         cursor = _cursor()
         cursor.execute(
             """
-            SELECT d.label, d.local_code, d.matrix_role, t.term
+            SELECT d.label, d.local_code, d.category_role, t.term
             FROM dbo.category_term t
             JOIN dbo.person p ON p.id = t.person_id
             JOIN dbo.dim_category d ON d.category_id = t.category_id
@@ -803,7 +803,7 @@ def personal_category_maps(username: str) -> dict[str | None, dict[str, list[str
         cursor = _cursor()
         cursor.execute(
             """
-            SELECT d.label, d.local_code, d.matrix_role, t.term, t.term_id, a.uid
+            SELECT d.label, d.local_code, d.category_role, t.term, t.term_id, a.uid
             FROM dbo.category_term t
             JOIN dbo.person p ON p.id = t.person_id
             JOIN dbo.dim_category d ON d.category_id = t.category_id
@@ -1093,7 +1093,6 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             country_has_balance,
             eigen_vermogen_id,
             result_overlay_cents,
-            spaar_source_result_amounts,
             verlies_id,
         )
 
@@ -1118,10 +1117,6 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             (int(country_id), int(year)),
         )
         recorded = {int(r[0]): Decimal(str(r[1] or 0)) for r in cursor.fetchall()}
-        for code, amount in spaar_source_result_amounts(
-            country_id, int(year), cursor
-        ).items():
-            recorded[code] = recorded.get(code, Decimal("0")) - amount
         overlay = result_overlay_cents(country_id, int(year), cursor)
         labels = category_labels(country_id, cursor)
 
@@ -1152,15 +1147,16 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                 "total_resultaat": total_result,
             }
 
-        result_id = verlies_id(country_id)
-        balance_id = eigen_vermogen_id(country_id)
+        result_id = verlies_id(country_id, cursor)
+        balance_id = eigen_vermogen_id(country_id, cursor)
         breakdown = balance_category_breakdown(country_id, int(year), cursor)
         cmap = category_map(country_id, cursor)
 
         activa: list[dict[str, Any]] = []
         passiva: list[dict[str, Any]] = []
+        skip_ids = {i for i in (balance_id, result_id) if i is not None}
         for cat_id in sorted(cmap):
-            if cat_id in (balance_id, result_id):
+            if cat_id in skip_ids:
                 continue
             side, _account_id = cmap[cat_id]
             cents, _source = breakdown.get(cat_id, (0, "opening"))
@@ -1172,23 +1168,25 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             (passiva if side == "passiva" else activa).append(row)
 
         total_activa = sum(Decimal(str(row["amount"])) for row in activa) or Decimal("0")
-        passiva.append(
-            {
-                "code": result_id,
-                "label": labels.get(result_id, "Verlies"),
-                "amount": float(total_result),
-                "source": "category_total",
-            }
-        )
+        if result_id is not None:
+            passiva.append(
+                {
+                    "code": result_id,
+                    "label": labels.get(result_id, "Verlies"),
+                    "amount": float(total_result),
+                    "source": "category_total",
+                }
+            )
         total_passiva_others = sum(Decimal(str(row["amount"])) for row in passiva) or Decimal("0")
-        passiva.append(
-            {
-                "code": balance_id,
-                "label": labels.get(balance_id, "Eigen vermogen"),
-                "amount": float(total_activa - total_passiva_others),
-                "source": "computed",
-            }
-        )
+        if balance_id is not None:
+            passiva.append(
+                {
+                    "code": balance_id,
+                    "label": labels.get(balance_id, "Eigen vermogen"),
+                    "amount": float(total_activa - total_passiva_others),
+                    "source": "computed",
+                }
+            )
         total_passiva = total_activa  # Verlies + Eigen vermogen close the sheet
         condensed = _export_condensed_balance(
             cursor,
@@ -1373,7 +1371,7 @@ def display_digits(rows: list[dict[str, Any]]) -> int:
 
 
 def booking_categories_payload(country: str) -> dict[str, Any]:
-    """Booking rows in ``dbo.dim_category`` (excludes footers and never/no_hit)."""
+    """Booking rows in ``dbo.dim_category`` (excludes footers and role stamps)."""
     name = (country or "").strip()
     empty: dict[str, Any] = {
         "country": name,
@@ -1392,7 +1390,7 @@ def booking_categories_payload(country: str) -> dict[str, Any]:
             return empty
         cursor.execute(
             """
-            SELECT category_id, local_code, label, is_remainder, matrix_role
+            SELECT category_id, local_code, label, category_role
             FROM dbo.dim_category
             WHERE country_id = ?
             ORDER BY local_code, label
@@ -1401,11 +1399,13 @@ def booking_categories_payload(country: str) -> dict[str, Any]:
         )
         rows: list[dict[str, Any]] = []
         remainder_id: int | None = None
-        for category_id, local_code, label, is_remainder, role in cursor.fetchall():
-            if str(role or "").strip():
+        from shared.balance_values import is_hit_forbidden_role, is_remainder_role
+
+        for category_id, local_code, label, role in cursor.fetchall():
+            if is_hit_forbidden_role(role):
                 continue
             cid = int(category_id)
-            remainder = bool(int(is_remainder or 0))
+            remainder = is_remainder_role(role)
             if remainder:
                 remainder_id = cid
             rows.append(
@@ -1454,25 +1454,27 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
                 raise ValueError(f"Cannot derive transaction table for {name!r}")
             cursor.execute(
                 """
-                SELECT category_id, local_code, label, is_remainder, matrix_role
+                SELECT category_id, local_code, label, category_role
                 FROM dbo.dim_category
                 WHERE country_id = ?
                 """,
                 (country_id,),
             )
             existing: dict[int, dict[str, Any]] = {}
-            footer_ids: set[int] = set()
-            for category_id, local_code, label, is_remainder, role in cursor.fetchall():
+            protected_ids: set[int] = set()
+            from shared.balance_values import is_hit_forbidden_role, is_remainder_role
+
+            for category_id, local_code, label, role in cursor.fetchall():
                 cid = int(category_id)
-                if str(role or "").strip():
-                    footer_ids.add(cid)
+                if is_hit_forbidden_role(role):
+                    protected_ids.add(cid)
                     continue
                 existing[cid] = {
                     "local_code": int(local_code),
                     "label": str(label or "").strip(),
-                    "is_remainder": bool(int(is_remainder or 0)),
+                    "is_remainder": is_remainder_role(role),
                 }
-            used_ids = set(existing) | footer_ids
+            used_ids = set(existing) | protected_ids
             lo, hi = _alloc_category_id_bounds(cursor, table, country_id, used_ids)
             allocated: list[dict[str, Any]] = []
             for item in parsed:
@@ -1484,8 +1486,8 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
                     used_ids.add(cid)
                     item = {**item, "category_id": cid, "is_new": True}
                 else:
-                    if cid in footer_ids:
-                        raise ValueError(f"Cannot edit footer category_id {cid}")
+                    if cid in protected_ids:
+                        raise ValueError(f"Cannot edit protected category_id {cid}")
                     if cid not in existing:
                         raise ValueError(f"Unknown category_id {cid}")
                     item = {**item, "is_new": False}
@@ -1553,12 +1555,12 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
                 cursor.execute(
                     """
                     UPDATE dbo.dim_category
-                    SET local_code = ?, label = ?, is_remainder = ?
+                    SET local_code = ?, label = ?, category_role = ?
                     WHERE category_id = ?
                     """,
                     int(item["local_code"]),
                     str(item["label"]),
-                    1 if item["is_remainder"] else 0,
+                    "remainder" if item["is_remainder"] else None,
                     cid,
                 )
             conn.commit()
@@ -1677,14 +1679,14 @@ def _insert_dim_category(cursor, country_id: int, item: dict[str, Any]) -> None:
     cursor.execute(
         """
         INSERT INTO dbo.dim_category
-            (category_id, country_id, local_code, label, is_remainder, matrix_role)
-        VALUES (?, ?, ?, ?, ?, NULL)
+            (category_id, country_id, local_code, label, category_role)
+        VALUES (?, ?, ?, ?, ?)
         """,
         int(item["category_id"]),
         country_id,
         int(item["local_code"]),
         str(item["label"]),
-        1 if item["is_remainder"] else 0,
+        "remainder" if item["is_remainder"] else None,
     )
 
 

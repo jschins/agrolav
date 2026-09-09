@@ -4,6 +4,14 @@ export interface BalanceLine {
   label: string;
   amount: number;
   source: string;
+  unchanged?: boolean;
+  role?: string;
+}
+
+export interface PlugDebug {
+  opening: string;
+  calculated: string;
+  equal: boolean;
 }
 
 export interface BalanceSheet {
@@ -14,6 +22,7 @@ export interface BalanceSheet {
   total_activa: number;
   total_passiva: number;
   balanced: boolean;
+  plug_debug?: PlugDebug;
 }
 
 export interface CategoryInfo {

@@ -204,14 +204,14 @@ def _ensure_categories(cursor, country_id: int) -> dict[int, int]:
         code = _local_code(str(label))
         if code is None:
             raise LoadError(f"{catalog}: expected numbered category, got {label!r}")
-        is_remainder = 1 if code == DEFAULT_CATEGORY else 0
+        category_role = "remainder" if code == DEFAULT_CATEGORY else None
         cursor.execute(
             """
             INSERT INTO dbo.dim_category
-                (category_id, country_id, local_code, label, is_remainder, matrix_role)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (category_id, country_id, local_code, label, category_role)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (category_id, country_id, code, str(label), is_remainder, None),
+            (category_id, country_id, code, str(label), category_role),
         )
         by_code[code] = category_id
         seen: set[str] = set()

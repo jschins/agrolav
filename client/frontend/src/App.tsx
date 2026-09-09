@@ -75,12 +75,10 @@ function categoryCodeOf(name: string): number | null {
 
 function isHitCategoryName(name: string, settings: SettingsResponse): boolean {
   if (!isBookingCategoryName(name)) return false;
-  const role = String(settings.matrix_roles?.[name] ?? "").toLowerCase();
-  if (role === "never" || role === "no_hit" || role === "balance" || role === "last_booked") {
+  const role = String(settings.category_roles?.[name] ?? "").toLowerCase();
+  if (role === "never" || role === "profit" || role === "no_hit" || role === "source" || role === "mirror" || role === "balance" || role === "last_booked") {
     return false;
   }
-  const code = categoryCodeOf(name);
-  if (code === 2000 || (code !== null && code >= 1051 && code <= 1056)) return false;
   return true;
 }
 

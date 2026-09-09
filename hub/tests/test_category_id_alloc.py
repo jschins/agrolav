@@ -15,11 +15,11 @@ class CategoryIdAllocTests(unittest.TestCase):
     def test_beheer_formula_was_40000_block(self) -> None:
         lo, hi = category_id_bounds(4)
         self.assertEqual((lo, hi), (40000, 49999))
-        used = {3001, 3300, 3997, 3998, 3999}
+        used = {3001, 3300, 3500, 3501, 3502}
         self.assertEqual(_next_booking_category_id(used, lo, hi), 40003)
 
     def test_beheer_new_row_uses_local_code(self) -> None:
-        used = {3001, 3997, 3998, 3999, 4000}
+        used = {3001, 3500, 3501, 3502, 4000}
         self.assertEqual(_new_booking_category_id(used, 3300, 1000, 9999), 3300)
 
     def test_parse_beheer_check(self) -> None:

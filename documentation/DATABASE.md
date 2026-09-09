@@ -112,8 +112,8 @@ Country-specific catalog. One row per (country, local code).
 | `country_id` | `INT` FK | |
 | `local_code` | `INT` NOT NULL | UI code (8, 9, 12, 18, …) |
 | `label` | `NVARCHAR(128)` NOT NULL | `"12 Vervoer"`; footers `"saldo"` / `"datum"` |
-| `is_remainder` | `BIT` | NL 109 / UK remainder |
-| `matrix_role` | `NVARCHAR(32)` NULL | `NULL` ordinary booking; `balance` / `last_booked` matrix footers; `never` (2000, no HIT no journal); `no_hit` (1051–1056, no HIT, journals allowed) |
+| `is_remainder` | `BIT` | unused; remainder is `category_role = remainder` |
+| `category_role` | `NVARCHAR(32)` NULL | `NULL` ordinary booking; `remainder` unclassified; `balance` / `last_booked` footers; `never` Eigen vermogen (no HIT no journal); `profit` Verlies (no HIT no journal); `no_hit` / `source` / `mirror` (no HIT, journals allowed). `source` and `mirror` identify the spaar pair. |
 
 Unique: `(country_id, local_code)`. Unique: `(country_id, label)`.
 Footer rows have empty `category_term` lists and must not be assigned to
@@ -396,12 +396,12 @@ SELECT a.account_name, a.balance, a.last_booked
 FROM dbo.account a
 WHERE a.person_id = @person_id;
 
--- header labels from dim_category.matrix_role (NL saldo/datum; UK later
--- balance/date on the same local_codes 22 and 23). never / no_hit stay
--- coded matrix rows, not footers.
-SELECT local_code, label, matrix_role
+-- header labels from dim_category.category_role (NL saldo/datum; UK later
+-- balance/date on the same local_codes 22 and 23). never / no_hit / source /
+-- mirror stay coded matrix rows, not footers.
+SELECT local_code, label, category_role
 FROM dbo.dim_category
-WHERE country_id = @country_id AND matrix_role IN ('balance', 'last_booked');
+WHERE country_id = @country_id AND category_role IN ('balance', 'last_booked');
 ```
 
 ---
@@ -431,6 +431,6 @@ UPDATE dbo.country SET digits = 4 WHERE country_id = 4;
 
 UPDATE dbo.dim_category
 SET label = SUBSTRING(label, 4, LEN(label))
-WHERE matrix_role IS NULL
+WHERE category_role IS NULL
   AND label LIKE '[0-9][0-9][0-9][0-9] %';
 ```

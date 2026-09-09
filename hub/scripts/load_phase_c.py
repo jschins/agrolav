@@ -472,34 +472,34 @@ def seed_categories(cursor, root: Path) -> tuple[dict[tuple[int, int], int], dic
         for index, (label, terms) in enumerate(categories.items()):
             category_id = country_id * 100 + index
             code = local_code_from_label(label)
-            matrix_role = None
+            category_role = None
             if code is None:
                 if footers == 0:
                     code = 22
-                    matrix_role = "balance"
+                    category_role = "balance"
                 elif footers == 1:
                     code = 23
-                    matrix_role = "last_booked"
+                    category_role = "last_booked"
                 else:
                     raise LoadError(f"{path}: extra footer label {label!r}")
                 footers += 1
-            is_remainder = 1 if code == DEFAULT_CATEGORY else 0
+            if code == DEFAULT_CATEGORY:
+                category_role = "remainder"
             cursor.execute(
                 """
                 INSERT INTO dbo.dim_category
-                    (category_id, country_id, local_code, label, is_remainder, matrix_role)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (category_id, country_id, local_code, label, category_role)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 category_id,
                 country_id,
                 code,
                 str(label),
-                is_remainder,
-                matrix_role,
+                category_role,
             )
             by_code[(country_id, code)] = category_id
             by_label[(country_id, str(label))] = category_id
-            if isinstance(terms, list) and matrix_role is None:
+            if isinstance(terms, list) and category_role is None:
                 for sort_order, term in enumerate(terms):
                     text = str(term)
                     if text:
@@ -943,7 +943,7 @@ def verify(cursor) -> None:
             SELECT d.category_id
             FROM dbo.dim_category d
             JOIN dbo.country c ON c.country_id = d.country_id
-            WHERE c.username = ? AND d.is_remainder = 1
+            WHERE c.username = ? AND d.category_role = N'remainder'
             """,
             folder,
         )

@@ -59,12 +59,14 @@ CREATE TABLE dbo.dim_category (
     local_code INT NOT NULL,
     label NVARCHAR(128) NOT NULL,
     is_remainder BIT NOT NULL CONSTRAINT df_dim_category_remainder DEFAULT (0),
-    matrix_role NVARCHAR(32) NULL,
+    category_role NVARCHAR(32) NULL,
     CONSTRAINT fk_dim_category_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
     CONSTRAINT ux_dim_category_code UNIQUE (country_id, local_code),
     CONSTRAINT ux_dim_category_label UNIQUE (country_id, label),
     CONSTRAINT ck_dim_category_role CHECK (
-        matrix_role IS NULL OR matrix_role IN (N'balance', N'last_booked', N'never', N'no_hit')
+        category_role IS NULL OR category_role IN (
+            N'balance', N'last_booked', N'never', N'profit', N'no_hit', N'source', N'mirror', N'remainder'
+        )
     )
 );
 

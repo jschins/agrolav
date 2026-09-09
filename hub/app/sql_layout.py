@@ -33,46 +33,43 @@ def _valid_currency(currency: str) -> str:
 
 
 def _seed_system_categories(cursor, country_id: int) -> None:
-    """Balance, Updated, and unclassified entry (local codes 98, 99, 18)."""
+    """Balance, Updated, and unclassified entry (role remainder; seed local_code only)."""
     base = country_id * 10000
     cursor.execute(
         """
         INSERT INTO dbo.dim_category
-            (category_id, country_id, local_code, label, is_remainder, matrix_role)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (category_id, country_id, local_code, label, category_role)
+        VALUES (?, ?, ?, ?, ?)
         """,
         base,
         country_id,
         98,
         "Balance",
-        0,
         "balance",
     )
     cursor.execute(
         """
         INSERT INTO dbo.dim_category
-            (category_id, country_id, local_code, label, is_remainder, matrix_role)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (category_id, country_id, local_code, label, category_role)
+        VALUES (?, ?, ?, ?, ?)
         """,
         base + 1,
         country_id,
         99,
         "Updated",
-        0,
         "last_booked",
     )
     cursor.execute(
         """
         INSERT INTO dbo.dim_category
-            (category_id, country_id, local_code, label, is_remainder, matrix_role)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (category_id, country_id, local_code, label, category_role)
+        VALUES (?, ?, ?, ?, ?)
         """,
         base + 2,
         country_id,
         DEFAULT_CATEGORY,
         "Unclassified",
-        1,
-        None,
+        "remainder",
     )
 
 

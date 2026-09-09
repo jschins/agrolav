@@ -42,6 +42,28 @@ h1 small { font-weight: 400; color: #666; }
 .balance-badge.ok { color: #1a7f37; font-weight: 600; }
 .balance-badge.bad { color: #b42318; font-weight: 600; }
 .error { color: #b42318; background: #fdecea; border: 1px solid #f5c6c2; padding: 10px 12px; border-radius: 6px; margin-bottom: 16px; white-space: pre-wrap; }
+.plug-debug {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+.plug-debug h2 {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9cdcfe;
+}
+.plug-debug dl { margin: 0; display: grid; gap: 4px; }
+.plug-debug dl > div { display: grid; grid-template-columns: 12em 1fr; gap: 12px; }
+.plug-debug dt { color: #808080; }
+.plug-debug dd { margin: 0; color: #ce9178; font-variant-numeric: tabular-nums; }
 .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .sheet .column { background: #fff; border: 1px solid #e0e3e8; border-radius: 8px; overflow: hidden; }
 .sheet .column h2 { margin: 0; padding: 10px 14px; font-size: 1rem; background: #ffecbc; border-bottom: 1px solid #e0e3e8; }
@@ -49,8 +71,16 @@ h1 small { font-weight: 400; color: #666; }
 .sheet th, .sheet td { text-align: left; padding: 7px 14px; font-size: 0.92rem; border-bottom: 1px solid #eef0f3; }
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.code { color: #666; width: 3.5em; }
+.sheet td.plug-still { font-weight: 700; color: #1a1a1a; }
+.sheet td.plug-moved { font-weight: 700; color: #b91c1c; }
 .sheet tfoot td { border-top: 2px solid #2a5a8c; font-weight: 700; }
-.sheet tfoot .computed { color: #7a4fbf; }
+@media print {
+  .sheet td.plug-still,
+  .sheet td.plug-moved {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
 .loading { padding: 40px; text-align: center; color: #666; }
 .ok { color: #1a7f37; background: #e6f4ea; border: 1px solid #b7e0c3; padding: 10px 12px; border-radius: 6px; margin-bottom: 16px; }
 

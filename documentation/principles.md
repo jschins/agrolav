@@ -45,6 +45,16 @@ Whatever the mutation, **2000 stays the same**. That is the same statement as
 on every event. The booking and journal signs below are the counterparts that
 make this true. 2100 moves with R, so a change in R is a change in passiva.
 
+On the balance sheet the computed 2000 amount is compared to the Eigen
+vermogen row in ``dbo.balance_opening`` for that year.
+
+- **bold black** when it equals that opening amount — the identity held
+- **bold red** when it differs
+
+Red means the live calculation left the path in this file. Every mutation
+above is written so 2000 does not move; if the plug is not still the opening
+amount, a sign or an extra leg is wrong. 2000 itself is never booked.
+
 ---
 
 ## 3. Bank accounts 1051–1056
@@ -76,15 +86,28 @@ from the 1051 statement).
 HIT onto 1051–1056 is invalid: the five checking posts already move with the
 live account; 1052 moves only via the mirror and journals.
 
-These two rules are stored on `dbo.dim_category.matrix_role`:
+These rules are stored on `dbo.dim_category.category_role`:
 
-| Role | Codes | HIT | Journal |
+| Role | Meaning | HIT | Journal |
 |---|---|---|---|
-| `never` | 2000 | no | no |
-| `no_hit` | 1051–1056 | no | yes (as A) |
+| `remainder` | Unclassified / default HIT target | yes | yes |
+| `never` | Eigen vermogen (plug) | no | no |
+| `profit` | Verlies / resultaat plug (was 2100) | no | no |
+| `no_hit` | Live bank posts other than the spaar pair | no | yes (as A) |
+| `source` | Spaar source account (the checking statement that shows the transfers) | no | yes (as A) |
+| `mirror` | Spaar mirror post (reconstructed counterpart) | no | yes (as A) |
 
-`never` / `no_hit` keep their coded names on the matrix (`1051 Bank algemeen`).
-Only `balance` / `last_booked` are footer labels.
+`source` and `mirror` are treated like `no_hit` for HIT and journals. Runtime
+code reads the spaar pair from those roles (plus `dbo.mapping` for the source
+account), Eigen vermogen from `never`, and Verlies from `profit`, not from
+hardcoded local codes.
+
+`never` / `profit` / `no_hit` / `source` / `mirror` keep their coded names on
+the matrix (`1051 Bank algemeen`). Only `balance` / `last_booked` are footer
+labels.
+
+Runtime reads Eigen vermogen from `never` and Verlies from `profit`, not from
+hardcoded local codes.
 
 ---
 

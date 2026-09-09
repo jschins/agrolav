@@ -143,6 +143,21 @@ function Menu({ items, label }: { items: MenuItem[]; label: string }) {
   );
 }
 
+function isPlug(line: BalanceSheet["activa"][number]): boolean {
+  return (
+    line.role === "never" ||
+    line.source === "computed" ||
+    line.unchanged === true ||
+    line.unchanged === false ||
+    Number(line.code) === 2000
+  );
+}
+
+function amountClass(line: BalanceSheet["activa"][number]): string {
+  if (!isPlug(line)) return "num";
+  return line.unchanged === true ? "num plug-still" : "num plug-moved";
+}
+
 function SideTable({
   title,
   lines,
@@ -168,13 +183,7 @@ function SideTable({
             <tr key={line.category_id}>
               <td className="code">{line.code}</td>
               <td>{line.label}</td>
-              <td
-                className={
-                  line.source === "computed" ? "num computed" : "num"
-                }
-              >
-                {EUR.format(line.amount)}
-              </td>
+              <td className={amountClass(line)}>{EUR.format(line.amount)}</td>
             </tr>
           ))}
         </tbody>
@@ -357,6 +366,26 @@ export default function App() {
           {error && <div className="error">{error}</div>}
 
           {!sheet && !error && <div className="loading">Laden…</div>}
+
+          {sheet?.plug_debug && (
+            <aside className="plug-debug" aria-label="2000 debug">
+              <h2>2000 debug</h2>
+              <dl>
+                <div>
+                  <dt>balance_opening</dt>
+                  <dd>{sheet.plug_debug.opening}</dd>
+                </div>
+                <div>
+                  <dt>calculated</dt>
+                  <dd>{sheet.plug_debug.calculated}</dd>
+                </div>
+                <div>
+                  <dt>equal</dt>
+                  <dd>{sheet.plug_debug.equal ? "yes" : "no"}</dd>
+                </div>
+              </dl>
+            </aside>
+          )}
 
           {sheet && (
             <div className="sheet">

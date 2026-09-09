@@ -49,13 +49,67 @@ def _api_key(authorization: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+_PLUG_DEBUG_SNIPPET = """
+<style>
+#plug-debug-window {
+  position: sticky; top: 0; z-index: 9999;
+  background: #1e1e1e; color: #ce9178;
+  font: 14px/1.45 ui-monospace, Menlo, Consolas, monospace;
+  padding: 10px 16px; border-bottom: 3px solid #f59e0b;
+}
+#plug-debug-window b { color: #9cdcfe; }
+#plug-debug-window .eq-no { color: #f87171; font-weight: 700; }
+#plug-debug-window .eq-yes { color: #86efac; }
+</style>
+<div id="plug-debug-window">
+  <b>2000 debug</b>
+  &nbsp; balance_opening: <span id="plug-dbg-opening">waiting for sheet…</span>
+  &nbsp; calculated: <span id="plug-dbg-calc">…</span>
+  &nbsp; equal: <span id="plug-dbg-eq">…</span>
+</div>
+<script>
+(function () {
+  function paint(d) {
+    if (!d) return;
+    var o = document.getElementById("plug-dbg-opening");
+    var c = document.getElementById("plug-dbg-calc");
+    var eq = document.getElementById("plug-dbg-eq");
+    if (!o || !c || !eq) return;
+    o.textContent = d.opening;
+    c.textContent = d.calculated;
+    eq.textContent = d.equal ? "yes" : "no";
+    eq.className = d.equal ? "eq-yes" : "eq-no";
+  }
+  var orig = window.fetch;
+  window.fetch = function () {
+    return orig.apply(this, arguments).then(function (resp) {
+      try {
+        var first = arguments[0];
+        var url = (first && first.url) ? String(first.url) : String(first);
+        if (/\\/api\\/balance\\/\\d+(?:\\?|$)/.test(url)) {
+          resp.clone().json().then(function (data) {
+            paint(data.plug_debug);
+          }).catch(function () {});
+        }
+      } catch (e) {}
+      return resp;
+    });
+  };
+})();
+</script>
+"""
+
+
 def _serve_index() -> Any:
     index = _DIST / "index.html"
-    if index.is_file():
-        return FileResponse(
-            str(index), headers={"Cache-Control": "no-cache"}
-        )
-    return HTMLResponse("<h1>balance frontend not built</h1>", status_code=500)
+    if not index.is_file():
+        return HTMLResponse("<h1>balance frontend not built</h1>", status_code=500)
+    html = index.read_text(encoding="utf-8")
+    if "</body>" in html:
+        html = html.replace("</body>", _PLUG_DEBUG_SNIPPET + "</body>", 1)
+    else:
+        html += _PLUG_DEBUG_SNIPPET
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/health")

@@ -27,16 +27,17 @@ from shared.balance_values import (
     balance_category_breakdown,
     balance_config,
     category_labels as shared_category_labels,
+    category_local_codes as shared_category_local_codes,
     category_map as shared_category_map,
     category_roles as shared_category_roles,
     country_has_balance as shared_country_has_balance,
     eigen_vermogen_id as shared_eigen_vermogen_id,
-    ensure_matrix_role_booking_rules,
+    ensure_category_role_booking_rules,
     is_journal_forbidden_code,
     result_overlay_cents,
+    spaar_mirror,
     spaar_mirror_posted_amount,
     spaar_source_exclude_clause,
-    spaar_source_result_amounts,
     sql_ident,
     verlies_id as shared_verlies_id,
 )
@@ -100,12 +101,18 @@ def _country_config(country_id: int) -> dict[str, Any]:
     return dict(balance_config(country_id))
 
 
-def _verlies_id(country_id: int) -> int:
-    return shared_verlies_id(country_id)
+def _verlies_id(country_id: int, cursor: object | None = None) -> int | None:
+    if cursor is not None:
+        return shared_verlies_id(country_id, cursor)
+    with connect() as conn:
+        return shared_verlies_id(country_id, conn.cursor())
 
 
-def _balance_id(country_id: int) -> int:
-    return shared_eigen_vermogen_id(country_id)
+def _balance_id(country_id: int, cursor: object | None = None) -> int | None:
+    if cursor is not None:
+        return shared_eigen_vermogen_id(country_id, cursor)
+    with connect() as conn:
+        return shared_eigen_vermogen_id(country_id, conn.cursor())
 
 
 def _sql_ident(text: str) -> str | None:
@@ -145,18 +152,19 @@ def _spaar_mirror_rows(country_id: int, year: int) -> list[tuple[int, str, Decim
     """Derive the faked spaarrekening mirror transactions for a country.
 
     Each source-account row whose description contains the keyword gives one
-    target-category ``balance_transaction`` of ``-d`` (d = 1051 bank amount):
-    a transfer out (d = -X, X > 0) increases 1052 by X so plug 2000 is still.
+    target-category ``balance_transaction`` of ``-d`` (d = source bank amount):
+    a transfer out (d = -X, X > 0) increases the mirror by X so plug 2000 is still.
     """
-    mirror = _country_config(country_id).get("mirror")
-    if not mirror:
-        return []
     table = _transaction_table(country_id)
     if table is None:
         return []
     rows: list[tuple[int, str, Decimal, str]] = []
     with connect() as conn:
         cur = conn.cursor()
+        ensure_category_role_booking_rules(cur)
+        mirror = spaar_mirror(country_id, cur)
+        if not mirror:
+            return []
         cur.execute(
             f"SELECT booked_on, amount, description FROM {table} "
             "WHERE year = ? AND account_id = ? "
@@ -183,6 +191,64 @@ def _sum_amount(items: list[dict[str, Any]]) -> Decimal:
     return sum(Decimal(str(item["amount"])) for item in items)
 
 
+def _opening_plug_amount(
+    cursor: object,
+    country_id: int,
+    year: int,
+    balance_id: int,
+    local_code: int,
+) -> Decimal:
+    """``dbo.balance_opening.amount`` for Eigen vermogen (``never`` / 2000).
+
+    Crashes when the row is missing or the stored amount is not greater than 0.
+    """
+    cursor.execute(
+        """
+        SELECT TOP (1) o.amount
+        FROM dbo.balance_opening o
+        LEFT JOIN dbo.dim_category d
+          ON d.category_id = o.category_id AND d.country_id = o.country_id
+        WHERE o.country_id = ? AND o.year = ?
+          AND (
+            o.category_id IN (?, ?)
+            OR d.local_code IN (?, ?)
+          )
+        """,
+        (
+            int(country_id),
+            int(year),
+            int(balance_id),
+            int(local_code),
+            int(balance_id),
+            int(local_code),
+        ),
+    )
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        raise RuntimeError(
+            "dbo.balance_opening has no Eigen vermogen amount "
+            f"for country_id={country_id} year={year} "
+            f"category_id={balance_id} local_code={local_code}"
+        )
+    amount = Decimal(str(row[0]))
+    if amount <= 0:
+        raise RuntimeError(
+            "dbo.balance_opening Eigen vermogen must be > 0, "
+            f"got {amount} for country_id={country_id} year={year} "
+            f"category_id={balance_id} local_code={local_code}"
+        )
+    return amount
+
+
+def _amounts_equal(left: object, right: object) -> bool:
+    """True when both values match at eurocent precision."""
+    quantum = Decimal("0.01")
+    try:
+        return Decimal(str(left)).quantize(quantum) == Decimal(str(right)).quantize(quantum)
+    except Exception:
+        return False
+
+
 def _category_labels(country_id: int) -> dict[int, str]:
     """category_id → label from dbo.dim_category (balance categories)."""
     with connect() as conn:
@@ -193,7 +259,7 @@ def _category_labels(country_id: int) -> dict[int, str]:
 def _category_roles(country_id: int) -> dict[int, str]:
     with connect() as conn:
         cur = conn.cursor()
-        ensure_matrix_role_booking_rules(cur)
+        ensure_category_role_booking_rules(cur)
         return shared_category_roles(country_id, cur)
 
 
@@ -202,7 +268,7 @@ def _dim_category_ids(country_id: int) -> set[int]:
         cur = conn.cursor()
         cur.execute(
             "SELECT DISTINCT category_id FROM dbo.dim_category "
-            "WHERE country_id = ? AND category_id BETWEEN 1000 AND 4999",
+            "WHERE country_id = ? AND local_code BETWEEN 1000 AND 4999",
             country_id,
         )
         return {int(r[0]) for r in cur.fetchall()}
@@ -262,12 +328,8 @@ def _recorded_result(country_id: int, year: int) -> Decimal:
             year,
         )
         row = cur.fetchone()
-        spaar_pnl = sum(
-            spaar_source_result_amounts(country_id, year, cur).values(),
-            Decimal("0"),
-        )
     base = Decimal("0") if row is None or row[0] is None else Decimal(str(row[0]))
-    return base - spaar_pnl + _result_overlay(country_id, year)
+    return base + _result_overlay(country_id, year)
 
 
 def list_result_rows(country_id: int, year: int) -> list[dict[str, Any]]:
@@ -296,8 +358,6 @@ def list_result_rows(country_id: int, year: int) -> list[dict[str, Any]]:
             year,
         )
         records = {int(r[0]): Decimal(str(r[1] or 0)) for r in cur.fetchall()}
-        for code, amount in spaar_source_result_amounts(country_id, year, cur).items():
-            records[code] = records.get(code, Decimal("0")) - amount
         overlay = result_overlay_cents(country_id, year, cur)
     labels = _category_labels(country_id)
     combined: dict[int, Decimal] = {}
@@ -419,7 +479,9 @@ def _result_amount(country_id: int, year: int, cutoff: date) -> Decimal:
     if table is not None:
         with connect() as conn:
             cur = conn.cursor()
-            exclude_sql, exclude_params = spaar_source_exclude_clause(country_id)
+            exclude_sql, exclude_params = spaar_source_exclude_clause(
+                country_id, cursor=cur
+            )
             cur.execute(
                 f"SELECT category_id, amount FROM {table} t "
                 f"WHERE t.year = ? AND t.booked_on <= ?{exclude_sql}",
@@ -454,9 +516,26 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
         cur = conn.cursor()
         breakdown = balance_category_breakdown(country_id, year, cur, as_of=cutoff)
         category_map = shared_category_map(country_id, cur)
+        balance_id = _balance_id(country_id, cur)
+        result_id = _verlies_id(country_id, cur)
+        local_codes = shared_category_local_codes(country_id, cur)
+        if balance_id is None:
+            raise RuntimeError(
+                f"no Eigen vermogen category (category_role=never) for country_id={country_id}"
+            )
+        start_plug = _opening_plug_amount(
+            cur,
+            country_id,
+            year,
+            balance_id,
+            local_codes.get(int(balance_id), int(balance_id)),
+        )
     labels = _category_labels(country_id)
-    balance_id = _balance_id(country_id)
-    result_id = _verlies_id(country_id)
+
+    def display_code(cat_id: int | None) -> int | None:
+        if cat_id is None:
+            return None
+        return local_codes.get(int(cat_id), int(cat_id))
 
     activa: list[dict[str, Any]] = []
     passiva: list[dict[str, Any]] = []
@@ -465,15 +544,25 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
         side, account_id = category_map[cat_id]
         label = labels.get(cat_id, f"cat_{cat_id}")
 
-        if cat_id in (balance_id, result_id):
+        if cat_id in {i for i in (balance_id, result_id) if i is not None}:
             # computed later
             continue
 
         cents, source = breakdown.get(cat_id, (0, "opening"))
         amount = cents / 100
 
-        row = {"category_id": cat_id, "code": cat_id, "label": label,
-               "amount": float(amount), "source": source}
+        row = {
+            "category_id": cat_id,
+            "code": display_code(cat_id),
+            "label": label,
+            "amount": float(amount),
+            "source": source,
+        }
+        if balance_id is not None and cat_id == balance_id:
+            row["role"] = "never"
+            row["unchanged"] = start_plug is not None and _amounts_equal(
+                amount, start_plug
+            )
         if side == "activa":
             activa.append(row)
         else:
@@ -481,23 +570,28 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
 
     total_activa = _sum_amount(activa)
 
-    passiva.append({
-        "category_id": result_id,
-        "code": result_id,
-        "label": labels.get(result_id, _VERLIES_SUFFIX),
-        "amount": float(result_amount),
-        "source": result_source,
-    })
+    if result_id is not None:
+        passiva.append({
+            "category_id": result_id,
+            "code": display_code(result_id),
+            "label": labels.get(result_id, _VERLIES_SUFFIX),
+            "amount": float(result_amount),
+            "source": result_source,
+            "role": "profit",
+        })
 
     total_passiva_others = _sum_amount(passiva)
 
     balance_amount = total_activa - total_passiva_others
+    plug_unchanged = _amounts_equal(balance_amount, start_plug)
     passiva.append({
         "category_id": balance_id,
-        "code": balance_id,
+        "code": display_code(balance_id),
         "label": labels.get(balance_id, "Eigen vermogen"),
         "amount": float(balance_amount),
         "source": "computed",
+        "unchanged": bool(plug_unchanged),
+        "role": "never",
     })
 
     total_passiva = _sum_amount(passiva)
@@ -511,6 +605,11 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
         "total_activa": float(total_activa),
         "total_passiva": float(total_passiva),
         "balanced": total_activa == total_passiva,
+        "plug_debug": {
+            "opening": str(start_plug),
+            "calculated": str(balance_amount),
+            "equal": bool(plug_unchanged),
+        },
     }
 
 
@@ -527,7 +626,7 @@ def list_years(country_id: int) -> list[int]:
 
 
 def list_categories(country_id: int) -> list[dict[str, Any]]:
-    """Journal-eligible categories (1000-4999), excluding ``never`` (2000)."""
+    """Journal-eligible categories (1000-4999), excluding ``never`` / ``profit``."""
     labels = _category_labels(country_id)
     roles = _category_roles(country_id)
     acct = _account_balances(country_id)
@@ -578,10 +677,10 @@ def update_opening(country_id: int, year: int, items: list[dict[str, Any]]) -> N
     with a live account link (bank categories) are skipped too: their amount is
     the live ``dbo.account.balance``, never an opening row in balance_opening.
     """
-    balance_id = _balance_id(country_id)
-    result_id = _verlies_id(country_id)
     with connect() as conn:
         cur = conn.cursor()
+        balance_id = _balance_id(country_id, cur)
+        result_id = _verlies_id(country_id, cur)
         account_linked = {
             cat_id
             for cat_id, (_side, account_id) in shared_category_map(country_id, cur).items()
@@ -619,9 +718,10 @@ def generate_spaarmirror(country_id: int, year: int) -> dict[str, Any]:
     balance sheet correct after bank data is refreshed.
     """
     rows = _spaar_mirror_rows(country_id, year)
-    mirror = _country_config(country_id).get("mirror")
     with connect() as conn:
         cur = conn.cursor()
+        ensure_category_role_booking_rules(cur)
+        mirror = spaar_mirror(country_id, cur)
         if mirror:
             cur.execute(
                 "DELETE FROM dbo.balance_transaction "
@@ -686,7 +786,7 @@ def save_journal(country_id: int, year: int, items: list[dict[str, Any]]) -> dic
     """
     with connect() as conn:
         cur = conn.cursor()
-        ensure_matrix_role_booking_rules(cur)
+        ensure_category_role_booking_rules(cur)
         roles = shared_category_roles(country_id, cur)
         parsed: list[tuple[str, int, int, Decimal, str]] = []
         for item in items:

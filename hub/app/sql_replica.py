@@ -35,6 +35,14 @@ def _transaction_table(country_name: str) -> str | None:
     return f"dbo.transaction_{ident}"
 
 
+def _remainder_local_code(cursor: Any, country_id: int | None) -> int | None:
+    if not country_id:
+        return None
+    from shared.balance_values import remainder_local_code
+
+    return remainder_local_code(int(country_id), cursor)
+
+
 def _country_id_for_username(cursor: Any, country: str) -> int | None:
     """``dbo.country.country_id`` for a country username (case/accent-insensitive)."""
     cursor.execute(
@@ -235,8 +243,18 @@ def load_bound_transactions(*, category_code: int | None = None) -> list[dict[st
         params: list[Any] = list(where_params)
         extra = ""
         if category_code is not None:
-            extra = " AND COALESCE(d.local_code, 18) = ?"
-            params.append(int(category_code))
+            from app import runtime as paths
+
+            country_id = _country_id_for_username(
+                bound.cursor, str(paths.BOUND_COUNTRY or "").strip()
+            )
+            fallback = _remainder_local_code(bound.cursor, country_id)
+            if fallback is not None:
+                extra = " AND COALESCE(d.local_code, ?) = ?"
+                params.extend([fallback, int(category_code)])
+            else:
+                extra = " AND d.local_code = ?"
+                params.append(int(category_code))
         bound.cursor.execute(
             f"""
             SELECT
@@ -321,7 +339,6 @@ def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any
     """
     from app import runtime as paths
     from app import user_store
-    from shared.balance_values import balance_config as _balance_cfg
 
     if not user_store.database_url():
         return []
@@ -333,14 +350,27 @@ def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any
     if country_id is None:
         return []
     try:
-        # Use the *configured* beheer map (before dbo.mapping overrides) to
-        # decide routing: a category with a configured account_id shows all
-        # transactions on that mapped bank account; categories without one show
-        # their journal + mirror rows. dbo.mapping may link 1052 to an account
-        # for display purposes, but the drill-down for spaarrekening must show
-        # the balance_transaction/balance_journal rows, not account transactions.
-        configured_map = (_balance_cfg(country_id).get("category_map") or {})
-        entry = configured_map.get(category_code)
+        from shared.balance_values import (
+            category_local_codes,
+            category_map,
+            spaar_mirror,
+        )
+
+        codes = category_local_codes(country_id, bound.cursor)
+        mapped = category_map(country_id, bound.cursor)
+        pair = spaar_mirror(country_id, bound.cursor)
+        if pair:
+            target_id = int(pair["target_category"])
+            target_local = codes.get(target_id, target_id)
+            if int(category_code) in {target_id, target_local}:
+                return _load_nonbank_category_rows(bound, country_id, category_code)
+        # Bank-linked posts show that account's live rows. The spaar mirror
+        # post is handled above even if dbo.mapping also points at an account.
+        cat_id = next(
+            (cid for cid, local in codes.items() if local == int(category_code)),
+            int(category_code),
+        )
+        entry = mapped.get(cat_id) or mapped.get(int(category_code))
         account_id = int(entry[1]) if (entry is not None and entry[1] is not None) else None
     except Exception:  # noqa: BLE001
         account_id = None
@@ -401,26 +431,41 @@ def _load_nonbank_category_rows(
     out the rows already collected from the other tables.
     """
     from shared.balance_values import (
-        booking_signed_amount,
+        category_local_codes,
         journal_leg_amount,
         spaar_source_exclude_clause,
     )
 
     rows: list[dict[str, Any]] = []
     try:
+        codes = category_local_codes(country_id, bound.cursor)
+    except Exception:  # noqa: BLE001
+        codes = {}
+    cat_id = next(
+        (cid for cid, local in codes.items() if local == int(category_code)),
+        int(category_code),
+    )
+    id_a, id_b = int(category_code), int(cat_id)
+    try:
         bound.cursor.execute(
             "SELECT journal_id, date, category_from, category_to, amount, description "
             "FROM dbo.balance_journal "
-            "WHERE country_id = ? AND year = ? AND (category_from = ? OR category_to = ?) "
+            "WHERE country_id = ? AND year = ? "
+            "AND (category_from IN (?, ?) OR category_to IN (?, ?)) "
             "ORDER BY date, journal_id",
-            (country_id, bound.year, category_code, category_code),
+            (country_id, bound.year, id_a, id_b, id_a, id_b),
         )
         for journal_id, booked_on, cat_from, cat_to, amount, description in bound.cursor.fetchall():
             delta = _decimal_amount(amount)
             if delta is None:
                 continue
+            src = int(cat_from)
+            dst = int(cat_to)
             delta = journal_leg_amount(
-                category_code, int(cat_from), int(cat_to), delta
+                codes.get(cat_id, id_a),
+                codes.get(src, src),
+                codes.get(dst, dst),
+                delta,
             )
             rows.append(
                 {
@@ -446,9 +491,9 @@ def _load_nonbank_category_rows(
         bound.cursor.execute(
             "SELECT date, category_id, amount, description "
             "FROM dbo.balance_transaction "
-            "WHERE country_id = ? AND year = ? AND category_id = ? "
+            "WHERE country_id = ? AND year = ? AND category_id IN (?, ?) "
             "ORDER BY date, amount",
-            (country_id, bound.year, category_code),
+            (country_id, bound.year, id_a, id_b),
         )
         for n, (booked_on, cat_id, amount, description) in enumerate(
             bound.cursor.fetchall(), start=1
@@ -478,7 +523,9 @@ def _load_nonbank_category_rows(
         account_param: tuple[Any, ...] = (
             (bound.account_id,) if bound.account_id is not None else ()
         )
-        exclude_sql, exclude_params = spaar_source_exclude_clause(country_id)
+        exclude_sql, exclude_params = spaar_source_exclude_clause(
+            country_id, cursor=bound.cursor
+        )
         bound.cursor.execute(
             f"""
             SELECT
@@ -500,7 +547,7 @@ def _load_nonbank_category_rows(
             LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
             LEFT JOIN dbo.account a ON a.account_id = t.account_id
             WHERE t.person_id = ? AND t.year = ? AND t.bank_id IS NULL
-              AND COALESCE(d.local_code, 18) = ?{account_sql}{exclude_sql}
+              AND d.local_code = ?{account_sql}{exclude_sql}
             ORDER BY t.booked_on DESC, t.source_id DESC
             """,
             (bound.person_id, bound.year, category_code, *account_param, *exclude_params),
@@ -509,9 +556,6 @@ def _load_nonbank_category_rows(
             row = _booked_row_shape(item)
             row["modification"] = -1
             row["account_uid"] = row.get("account_uid") or ""
-            signed = booking_signed_amount(category_code, Decimal(row["amount"]))
-            if signed is not None:
-                row["amount"] = _json_amount(signed)
             rows.append(row)
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: booked category rows load failed: {exc}")
@@ -586,14 +630,17 @@ def load_bound_category_totals(general_names: list[str]) -> dict[str, str] | Non
         country_id = _country_id_for_username(
             bound.cursor, str(paths.BOUND_COUNTRY or "").strip()
         )
-        exclude_sql, exclude_params = spaar_source_exclude_clause(country_id or 0)
+        exclude_sql, exclude_params = spaar_source_exclude_clause(
+            country_id or 0, cursor=bound.cursor
+        )
+        fallback = _remainder_local_code(bound.cursor, country_id)
         bound.cursor.execute(
             f"""
-            SELECT COALESCE(d.local_code, 18), SUM(t.amount)
+            SELECT d.local_code, SUM(t.amount)
             FROM {bound.table} t
             LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
             WHERE {where_sql}{exclude_sql}
-            GROUP BY COALESCE(d.local_code, 18)
+            GROUP BY d.local_code
             """,
             tuple(where_params) + tuple(exclude_params),
         )
@@ -602,15 +649,24 @@ def load_bound_category_totals(general_names: list[str]) -> dict[str, str] | Non
             try:
                 code = int(local_code)
             except (TypeError, ValueError):
-                code = 18
+                if fallback is None:
+                    continue
+                code = fallback
             try:
                 cents = round(float(amount or 0) * 100)
             except (TypeError, ValueError):
                 cents = 0
             by_code[code] = cents
         if bound.table == "dbo.transaction_beheer" and bound.account_id is None:
-            for code, cents in _balance_overlay_cents(bound.year, bound.cursor).items():
-                by_code[code] = by_code.get(code, 0) + cents
+            from shared.balance_values import category_local_codes as _local_codes
+
+            overlay_country = int(country_id or 4)
+            id_to_local = _local_codes(overlay_country, bound.cursor)
+            for code, cents in _balance_overlay_cents(
+                bound.year, bound.cursor, country_id=overlay_country
+            ).items():
+                local = id_to_local.get(int(code), int(code))
+                by_code[local] = by_code.get(local, 0) + cents
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to load category totals: {exc}")
         return {}
@@ -650,7 +706,7 @@ def sync_person_category_totals(bound: _BoundScope) -> None:
         from shared.balance_values import spaar_source_exclude_clause
 
         exclude_sql, exclude_params = spaar_source_exclude_clause(
-            int(country_row[0]) if country_row else 0
+            int(country_row[0]) if country_row else 0, cursor=cursor
         )
         for y in years:
             cursor.execute(
@@ -727,17 +783,20 @@ def load_center_year_matrix(
         from shared.balance_values import spaar_source_exclude_clause
 
         country_id = _country_id_for_username(cursor, country) or 0
-        exclude_sql, exclude_params = spaar_source_exclude_clause(country_id)
+        exclude_sql, exclude_params = spaar_source_exclude_clause(
+            country_id, cursor=cursor
+        )
+        fallback = _remainder_local_code(cursor, country_id or None)
         cursor.execute(
             f"""
-            SELECT p.username, COALESCE(d.local_code, 18), SUM(t.amount)
+            SELECT p.username, d.local_code, SUM(t.amount)
             FROM {table} t
             JOIN dbo.person p ON p.id = t.person_id
             JOIN dbo.center n ON n.center_id = p.center_id
             LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
             WHERE n.username = ? COLLATE Latin1_General_CI_AI AND t.year = ?
               AND t.bank_id IS NULL{exclude_sql}
-            GROUP BY p.username, COALESCE(d.local_code, 18)
+            GROUP BY p.username, d.local_code
             """,
             (ws, int(year), *exclude_params),
         )
@@ -754,7 +813,9 @@ def load_center_year_matrix(
             try:
                 code = int(local_code)
             except (TypeError, ValueError):
-                code = 18
+                if fallback is None:
+                    continue
+                code = fallback
             try:
                 cents = round(float(amount or 0) * 100)
             except (TypeError, ValueError):
@@ -782,8 +843,12 @@ def load_center_year_matrix(
             account_persons.setdefault(int(account_id), set()).add(person)
         if table == "dbo.transaction_beheer":
             country_id = _country_id_for_username(cursor, country) or 4
+            from shared.balance_values import category_local_codes as _local_codes
+
+            id_to_local = _local_codes(country_id, cursor)
             for code, cents in _balance_overlay_cents(int(year), cursor, country_id=country_id).items():
-                cur_label = name_by_code.get(code, str(code))
+                local = id_to_local.get(int(code), int(code))
+                cur_label = name_by_code.get(local) or name_by_code.get(int(code), str(local))
                 for bucket in totals_cents.values():
                     bucket[cur_label] = bucket.get(cur_label, 0) + cents
         totals = {
@@ -866,7 +931,6 @@ def _executemany_commit(conn, cursor, sql: str, params: list[tuple[Any, ...]]) -
 def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
     """UPDATE ``transaction_*`` for the person/year(/bank) bound in ``app.runtime``."""
     from app import user_store
-    from app.core.categorize import DEFAULT_CATEGORY
 
     if not user_store.database_url():
         return
@@ -876,7 +940,7 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
             return
         bound.cursor.execute(
             """
-            SELECT d.local_code, d.category_id, d.is_remainder, d.matrix_role
+            SELECT d.local_code, d.category_id, d.category_role
             FROM dbo.dim_category d
             JOIN dbo.country c ON c.country_id = d.country_id
             JOIN dbo.person u ON u.country_id = c.country_id
@@ -884,19 +948,18 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
             """,
             bound.person_id,
         )
-        from shared.balance_values import is_hit_forbidden_code
+        from shared.balance_values import is_hit_forbidden_code, is_remainder_role
 
         by_code: dict[int, int] = {}
         remainder_id: int | None = None
-        for local_code, category_id, is_remainder, role in bound.cursor.fetchall():
+        for local_code, category_id, role in bound.cursor.fetchall():
             code = int(local_code)
             cid = int(category_id)
-            if int(is_remainder):
+            if is_remainder_role(role):
                 remainder_id = cid
             if is_hit_forbidden_code(code, role):
                 continue
             by_code[code] = cid
-        remainder_id = remainder_id or by_code.get(DEFAULT_CATEGORY)
         if remainder_id is None:
             print(f"sql replica: no remainder category for {bound.username!r}")
             return
@@ -954,11 +1017,9 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
 
 def _category_lookup(cursor, person_id: int) -> tuple[dict[int, int], int | None]:
     """Map the person's country ``local_code`` -> ``category_id`` plus the remainder id."""
-    from app.core.categorize import DEFAULT_CATEGORY
-
     cursor.execute(
         """
-        SELECT d.local_code, d.category_id, d.is_remainder
+        SELECT d.local_code, d.category_id, d.category_role
         FROM dbo.dim_category d
         JOIN dbo.country c ON c.country_id = d.country_id
         JOIN dbo.person u ON u.country_id = c.country_id
@@ -966,13 +1027,15 @@ def _category_lookup(cursor, person_id: int) -> tuple[dict[int, int], int | None
         """,
         person_id,
     )
+    from shared.balance_values import is_remainder_role
+
     by_code: dict[int, int] = {}
     remainder_id: int | None = None
-    for local_code, category_id, is_remainder in cursor.fetchall():
+    for local_code, category_id, role in cursor.fetchall():
         by_code[int(local_code)] = int(category_id)
-        if int(is_remainder):
+        if is_remainder_role(role):
             remainder_id = int(category_id)
-    return by_code, remainder_id or by_code.get(DEFAULT_CATEGORY)
+    return by_code, remainder_id
 
 
 def _remainder_id(cursor, person_id: int) -> int | None:

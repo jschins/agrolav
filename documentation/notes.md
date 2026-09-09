@@ -74,18 +74,11 @@ agrolav@agrolav:/opt/agrolav$
 
 ==================remote database backup
 
-DECLARE @path NVARCHAR(4000) = N'/var/opt/mssql/backup/agrolav_full_' +
-        CONVERT(NVARCHAR(8), GETDATE(), 112) + '_' +
-        REPLACE(CONVERT(NVARCHAR(8), GETDATE(), 108), ':', '') + '.bak';
-
-BACKUP DATABASE agrolav
-TO DISK = @path
-WITH FORMAT, INIT, NAME = N'agrolav-full', COMPRESSION, STATS = 10;
-
--- Optional verify:
-RESTORE VERIFYONLY FROM DISK = @path;
-
-SELECT @path AS backup_path;
+```sql
+BACKUP DATABASE [agrolav]
+TO DISK = N'/var/opt/mssql/backup/agrolav.bak'
+WITH INIT, COMPRESSION;
+```
 
 then copy the file to local disk (from terminal): 
 PS C:\Coding\agrolav> scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/*.bak "C:\SQLBackups\remote_backups\"
@@ -368,3 +361,36 @@ INSERT INTO dbo.dim_category VALUES
 (11023, 5, 1023, 'Jan Luijken', 'False', NULL),
 (11024, 5, 1024, 'Leidenhoven', 'False', NULL),
 (11025, 5, 1025, 'Den Eker', 'False', NULL),
+
+
+ALTER TABLE dbo.dim_category
+DROP CONSTRAINT ck_dim_category_role;
+
+EXEC sp_rename
+    'dbo.dim_category.matrix_role',
+    'category_role',
+    'COLUMN';
+
+============then:
+
+ALTER TABLE dbo.dim_category
+ADD CONSTRAINT ck_dim_category_role
+CHECK (
+    [category_role] IN (
+        N'last_booked',
+        N'balance',
+        N'never',
+        N'no_hit',
+        N'mirror',
+        N'source',
+        N'remainder',
+        N'profit'
+    )
+);
+
+
+ALTER TABLE dbo.dim_category
+DROP CONSTRAINT df_dim_category_remainder;
+
+ALTER TABLE dbo.dim_category
+DROP COLUMN is_remainder;

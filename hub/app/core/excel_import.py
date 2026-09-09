@@ -14,7 +14,6 @@ from xml.etree import ElementTree as ET
 
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 EXCEL_EPOCH = datetime(1899, 12, 30)
-DEFAULT_CATEGORY = 18
 
 DATE_ALIASES = ("datum",)
 DESC_ALIASES = ("beschrijving", "row labels", "row label")
@@ -165,16 +164,23 @@ def parse_amount(value: str | None) -> float | None:
     return amount
 
 
+def _remainder_code() -> int:
+    from app.core.categorize import remainder_category_code
+
+    return remainder_category_code() or 0
+
+
 def category_code(value: str | None, registered: set[int]) -> int:
     text = str(value or "").strip()
+    fallback = _remainder_code()
     if not text:
-        return DEFAULT_CATEGORY
+        return fallback
     try:
         code = int(float(text.replace(",", ".")))
     except ValueError:
-        return DEFAULT_CATEGORY
+        return fallback
     if code not in registered:
-        return DEFAULT_CATEGORY
+        return fallback
     return code
 
 
@@ -442,12 +448,13 @@ def list_xlsx_files(folder: Path) -> list[Path]:
 def _public_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
     record = {key: value for key, value in transaction.items() if not str(key).startswith("_")}
     category = record.get("category")
+    fallback = _remainder_code()
     try:
-        has_sheet_category = category is not None and int(category) != DEFAULT_CATEGORY
+        has_sheet_category = category is not None and int(category) != fallback
     except (TypeError, ValueError):
         has_sheet_category = False
     if not has_sheet_category:
-        record["category"] = DEFAULT_CATEGORY
+        record["category"] = fallback
     else:
         record["category"] = int(category)
     # Spreadsheet category is authoritative (bidarra / palacios and any excel upload).

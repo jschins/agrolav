@@ -20,8 +20,8 @@ def _sql_categories() -> dict[str, Any]:
     return categories_payload(country)
 
 
-def _matrix_roles() -> dict[str, str]:
-    raw = _categories_file().get("matrix_roles")
+def _category_roles() -> dict[str, str]:
+    raw = _categories_file().get("category_roles")
     if not isinstance(raw, dict):
         return {}
     return {str(k): str(v) for k, v in raw.items()}
@@ -33,7 +33,7 @@ def _is_hit_category_name(name: str, roles: dict[str, str] | None = None) -> boo
     code = _category_code(name)
     if code is None:
         return False
-    lookup = roles if roles is not None else _matrix_roles()
+    lookup = roles if roles is not None else _category_roles()
     return not is_hit_forbidden_code(code, lookup.get(name))
 
 
@@ -418,7 +418,7 @@ def type_rules_payload() -> list[dict[str, str]]:
 
 def _type_rule_category_map() -> dict[str, int]:
     """Map lowercased bank ``type`` strings to category codes."""
-    roles = _matrix_roles()
+    roles = _category_roles()
     mapping: dict[str, int] = {}
     for rule in type_rules_payload():
         name = rule["category"]
@@ -494,7 +494,7 @@ def _best_keyword_hit(
     general: dict[str, list[str]],
     personal: dict[str, list[str]],
 ) -> tuple[int, str] | None:
-    roles = _matrix_roles()
+    roles = _category_roles()
     best_key: tuple | None = None
     best: tuple[int, str] | None = None
     for is_personal, group in ((False, general), (True, personal)):
@@ -527,7 +527,8 @@ def categorize_with_hit(
     keyword_match = _best_keyword_hit(haystack, general, personal)
     if keyword_match is not None:
         return keyword_match
-    return DEFAULT_CATEGORY, None
+    code = remainder_category_code()
+    return (code if code is not None else 0), None
 
 
 def categorize(
@@ -798,7 +799,7 @@ def _simplify_uncategorized(raw_transactions: list[dict[str, Any]]) -> list[dict
     rows: list[dict[str, Any]] = []
     for transaction in raw_transactions:
         record = simplify_transaction(transaction)
-        record["category"] = DEFAULT_CATEGORY
+        record["category"] = remainder_category_code() or 0
         record["hit"] = None
         record["modification"] = MOD_UNCALCULATED
         rows.append(record)
@@ -1351,7 +1352,9 @@ def append_category_term(
     if category_name not in category_names():
         raise ValueError(f"Unknown category: {category_name!r}")
     code = _category_code(category_name)
-    if code is None or code == DEFAULT_CATEGORY:
+    from shared.balance_values import is_remainder_role
+
+    if code is None or is_remainder_role(_category_roles().get(category_name)):
         raise ValueError(f"Cannot add terms to category {category_name!r}")
 
     if group == "general":
@@ -1468,7 +1471,7 @@ def category_names() -> list[str]:
 
 def category_code_set() -> frozenset[int]:
     """HIT-eligible category numbers (excludes never / no_hit / footers)."""
-    roles = _matrix_roles()
+    roles = _category_roles()
     return frozenset(
         code
         for name in category_names()
@@ -1478,11 +1481,18 @@ def category_code_set() -> frozenset[int]:
 
 
 def remainder_category_name() -> str:
-    """Display name of the default / unmatched category (``DEFAULT_CATEGORY``)."""
-    for name in category_names():
-        if _category_code(name) == DEFAULT_CATEGORY:
+    """Display name of the unmatched category (``category_role = remainder``)."""
+    from shared.balance_values import is_remainder_role
+
+    for name, role in _category_roles().items():
+        if is_remainder_role(role):
             return name
-    return f"{DEFAULT_CATEGORY:04d} Unclassified expenses"
+    return ""
+
+
+def remainder_category_code() -> int | None:
+    name = remainder_category_name()
+    return _category_code(name) if name else None
 
 
 def _validate_category_code(code: Any) -> int:
