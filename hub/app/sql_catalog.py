@@ -1062,10 +1062,11 @@ def country_has_balance(country: str) -> bool:
 def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     """One JSON payload for the client's "Export naar excel" workbook.
 
-    Balance countries (``dbo.country.has_balance``) get the two-sheet set:
+    Balance countries (``dbo.country.has_balance``) get three sheets:
     ``activa``/``passiva`` exactly like the balance app's sheet (including the
-    computed Verlies and Eigen vermogen posts) plus per-category
-    ``resultaat`` rows (3000-4999). Plain countries get ``resultaat`` only.
+    computed Verlies and Eigen vermogen posts), per-category ``resultaat``
+    rows (3000-4999), and ``gecondenseerd`` from ``dbo.map_condensed_balance``.
+    Plain countries get ``resultaat`` only.
     The Resultaat rows come from the recorded ``dbo.category_total`` plus the
     beheer journal/mirror overlay, so their grand total equals the sheet's
     Verlies post.
@@ -1176,6 +1177,11 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             }
         )
         total_passiva = total_activa  # Verlies + Eigen vermogen close the sheet
+        condensed = _export_condensed_balance(
+            cursor,
+            country_id,
+            {row["code"]: Decimal(str(row["amount"])) for row in activa + passiva},
+        )
         return {
             "year": int(year),
             "has_balance": True,
@@ -1185,6 +1191,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             "total_passiva": float(total_passiva),
             "resultaat": result_rows,
             "total_resultaat": total_result,
+            "gecondenseerd": condensed,
         }
 
     try:
@@ -1193,6 +1200,153 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         raise
     except Exception as exc:  # noqa: BLE001
         raise ValueError(str(exc)) from exc
+
+
+_BEHEER_CONDENSED_SEED: tuple[tuple[str, str, str], ...] = (
+    ("Gebouwen", "1000", "Vaste activa"),
+    ("Verbouwingen", "1005", "Vaste activa"),
+    ("Inventaris", "1010", "Vaste activa"),
+    ("Auto's", "1015", "Vaste activa"),
+    ("Bank en Giro", "1051,1053,1054,1055,1056", "Vlottende activa"),
+    ("Kapitaalrekening", "1052", "Vlottende activa"),
+    ("Debiteuren", "1110,1111", "Vlottende activa"),
+    ("Eigen vermogen", "2000,2100", "Passiva"),
+    ("Voorzieningen", "2050,2055", "Passiva"),
+    ("Langlopende schulden", "2500", "Passiva"),
+    ("Kortlopende schulden", "", "Passiva"),
+)
+
+
+def _ensure_map_condensed_balance(cursor) -> None:
+    """Create ``dbo.map_condensed_balance`` and seed Beheer posts if empty."""
+    cursor.execute("SELECT OBJECT_ID(N'dbo.map_condensed_balance', N'U')")
+    if cursor.fetchone()[0] is None:
+        cursor.execute(
+            """
+            CREATE TABLE dbo.map_condensed_balance (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                country_id INT NOT NULL,
+                post_name VARCHAR(64) NOT NULL,
+                sum_local_code VARCHAR(256) NULL,
+                section_name VARCHAR(64) NOT NULL,
+                CONSTRAINT fk_map_condensed_country
+                    FOREIGN KEY (country_id) REFERENCES dbo.country (country_id)
+            )
+            """
+        )
+    cursor.execute(
+        """
+        SELECT country_id FROM dbo.country
+        WHERE username = ? COLLATE Latin1_General_CI_AI
+        """,
+        ("beheer",),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return
+    country_id = int(row[0])
+    cursor.execute(
+        "SELECT 1 FROM dbo.map_condensed_balance WHERE country_id = ?",
+        (country_id,),
+    )
+    if cursor.fetchone() is not None:
+        return
+    for post_name, codes, section in _BEHEER_CONDENSED_SEED:
+        cursor.execute(
+            """
+            INSERT INTO dbo.map_condensed_balance
+                (country_id, post_name, sum_local_code, section_name)
+            VALUES (?, ?, ?, ?)
+            """,
+            (country_id, post_name, codes or None, section),
+        )
+
+
+def _export_condensed_balance(
+    cursor,
+    country_id: int,
+    amounts_by_id: dict[int, Any],
+) -> dict[str, Any]:
+    """Gecondenseerde balans posts for one balance country/year.
+
+    Reads ``dbo.map_condensed_balance`` in ``id`` order. ``sum_local_code``
+    is a comma-separated list of ``dbo.dim_category.local_code`` values summed
+    into the post; the empty string or NULL is a post without categories
+    (shown blank). Sections group posts by ``section_name``; a section's side
+    comes from its codes (any code >= 2000 makes it passiva) and empty
+    sections inherit the previous side. Missing table or no rows → empty
+    ``sections`` (third sheet still rendered).
+    """
+    from decimal import Decimal
+
+    empty = {"sections": [], "total_activa": 0.0, "total_passiva": 0.0}
+    try:
+        _ensure_map_condensed_balance(cursor)
+        cursor.execute(
+            "SELECT post_name, sum_local_code, section_name "
+            "FROM dbo.map_condensed_balance WHERE country_id = ? ORDER BY id",
+            (int(country_id),),
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            return empty
+        cursor.execute(
+            "SELECT local_code, category_id FROM dbo.dim_category WHERE country_id = ?",
+            (int(country_id),),
+        )
+        local_to_cat = {
+            int(local_code): int(category_id)
+            for local_code, category_id in cursor.fetchall()
+            if local_code is not None and category_id is not None
+        }
+    except Exception as exc:  # noqa: BLE001
+        print(f"export: condensed balance lookup failed: {exc}")
+        return empty
+
+    sections: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for post_name, sum_local_code, section_name in rows:
+        codes = [int(token) for token in str(sum_local_code or "").split(",") if token.strip()]
+        amount = Decimal("0")
+        for code in codes:
+            category_id = local_to_cat.get(code)
+            if category_id is not None:
+                amount += amounts_by_id.get(category_id, Decimal("0"))
+        if current is None or current["name"] != section_name:
+            if current is not None:
+                current["total"] = float(current.pop("_sum"))
+            current = {
+                "name": str(section_name),
+                "side": "passiva",
+                "lines": [],
+                "_sum": Decimal("0"),
+                "_codes": set(codes),
+            }
+            sections.append(current)
+        else:
+            current["_codes"].update(codes)
+        current["lines"].append(
+            {"post_name": str(post_name), "amount": float(amount) if codes else None}
+        )
+        current["_sum"] += amount
+    if current is not None:
+        current["total"] = float(current.pop("_sum"))
+
+    previous_side = "activa"
+    for section in sections:
+        codes = section.pop("_codes") or set()
+        if codes:
+            side = "passiva" if min(codes) >= 2000 else "activa"
+        else:
+            side = previous_side
+        section["side"] = side
+        previous_side = side
+
+    return {
+        "sections": sections,
+        "total_activa": float(sum(s["total"] for s in sections if s["side"] == "activa")),
+        "total_passiva": float(sum(s["total"] for s in sections if s["side"] == "passiva")),
+    }
 
 
 def display_digits(rows: list[dict[str, Any]]) -> int:

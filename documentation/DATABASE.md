@@ -119,6 +119,26 @@ Unique: `(country_id, local_code)`. Unique: `(country_id, label)`.
 Footer rows have empty `category_term` lists and must not be assigned to
 transactions.
 
+### `map_condensed_balance`
+
+Drives the third "Export naar excel" sheet (Gecondenseerde balans) for
+balance countries. Rows render in `id` order; `sum_local_code` is a
+comma-separated list of `dim_category.local_code` values summed into the post
+(NULL/empty = post without categories, shown blank); `section_name` groups
+posts on the sheet. The activa/passiva side is derived from the codes
+(codes >= 2000 are passiva), empty sections inherit the previous side.
+
+| column | type | notes |
+|:-------|:-----|:------|
+| `id` | `INT` PK | identity, render order |
+| `country_id` | `INT` FK | |
+| `post_name` | `VARCHAR(64)` NOT NULL | printed post label |
+| `sum_local_code` | `VARCHAR(256)` NULL | e.g. `'1051,1053,1054,1055,1056'` |
+| `section_name` | `VARCHAR(64)` NOT NULL | `Vaste activa` / `Vlottende activa` / `Passiva` |
+
+Seed lives in `balance/sql/map_condensed_balance.sql`. The hub also creates
+and seeds this table on first "Export naar excel" if it is missing.
+
 ### `category_term`
 
 Keyword lists that assign bookings to categories.

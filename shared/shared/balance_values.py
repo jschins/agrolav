@@ -1,9 +1,10 @@
 """Present-day balance values shared by the balance app and the hub.
 
 Both services compute the balance sheet from the same tables (``dbo.mapping``,
-``dbo.balance_opening``, ``dbo.balance_transaction``, ``dbo.balance_journal``
-and the live ``dbo.account.balance``), so the derivation lives here once
-instead of being duplicated with drift risk:
+``dbo.balance_opening``, ``dbo.balance_transaction``, ``dbo.balance_journal``,
+the country's ``dbo.transaction_*`` bookings on codes 1000-2999, and the live
+``dbo.account.balance``), so the derivation lives here once instead of being
+duplicated with drift risk:
 
 - the balance app uses it for the sheet (``balance_sheet``);
 - the hub uses it to fill the 1000-2999 categories in the client matrix and to
@@ -261,6 +262,43 @@ def _journal_balances(
     return {int(r[0]): _decimal(r[1]) for r in cursor.fetchall()}
 
 
+def _booking_balances(
+    country_id: int, year: int, cursor: object, *, as_of: date | None = None
+) -> dict[int, Decimal]:
+    """category_id → net amount from the country's booking table (1000-2999).
+
+    Consolidated rows only (``bank_id IS NULL``). P&L codes (3000-4999) are
+    excluded so they stay on the resultaat sheet. ``{}`` when the transaction
+    table is missing.
+    """
+    table = transaction_table(country_id, cursor)
+    if table is None:
+        return {}
+    cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        return {}
+    q = (
+        f"SELECT t.category_id, SUM(t.amount) FROM {table} t "
+        "JOIN dbo.person p ON p.id = t.person_id "
+        "JOIN dbo.center n ON n.center_id = p.center_id "
+        "JOIN dbo.dim_category d ON d.category_id = t.category_id "
+        "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
+        "AND d.local_code BETWEEN 1000 AND 2999"
+    )
+    p: list[object] = [int(country_id), int(year)]
+    if as_of is not None:
+        q += " AND t.booked_on <= ?"
+        p.append(as_of.isoformat())
+    q += " GROUP BY t.category_id"
+    cursor.execute(q, tuple(p))
+    return {
+        int(category_id): _decimal(amount)
+        for category_id, amount in cursor.fetchall()
+        if category_id is not None
+    }
+
+
 def _journal_table_exists(cursor: object) -> bool:
     cursor.execute("SELECT OBJECT_ID(N'dbo.balance_journal')")
     return cursor.fetchone()[0] is not None
@@ -317,9 +355,11 @@ def balance_category_breakdown(
 
     Bank categories carry the live ``dbo.account.balance`` (with ``as_of``:
     current minus later movements); non-bank categories carry their opening
-    balance. ``dbo.balance_transaction`` sums and the ``dbo.balance_journal``
-    effect are added to both. The computed posts (``result_id``/``balance_id``,
-    i.e. Verlies and Eigen vermogen) are excluded.
+    balance. ``dbo.balance_transaction`` sums, ``dbo.balance_journal`` effects,
+    and booking rows from ``dbo.transaction_{country}`` (codes 1000-2999) are
+    added to non-bank posts. Bank-linked posts skip the booking sum so the
+    live account is not counted twice. The computed posts (``result_id`` /
+    ``balance_id``, i.e. Verlies and Eigen vermogen) are excluded.
     """
     cfg = balance_config(country_id)
     result_id = int(cfg.get("result_id") or 2100)
@@ -328,6 +368,7 @@ def balance_category_breakdown(
     opening = _opening_balances(country_id, year, cursor)
     journal = _journal_balances(country_id, year, cursor, as_of=as_of)
     effect = _journal_effect(country_id, year, cursor, as_of=as_of)
+    bookings = _booking_balances(country_id, year, cursor, as_of=as_of)
     if as_of is None:
         acct = _account_balances(country_id, cursor)
     else:
@@ -354,6 +395,12 @@ def balance_category_breakdown(
             amount += effect_amount
             if "+journal" not in source:
                 source += "+journal"
+        if account_id is None:
+            booking_amount = bookings.get(cat_id)
+            if booking_amount is not None:
+                amount += booking_amount
+                if "+bookings" not in source:
+                    source += "+bookings"
         amounts[cat_id] = (_to_cents(amount), source)
     return amounts
 

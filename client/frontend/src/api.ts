@@ -90,6 +90,24 @@ export interface ExportExcelLine {
   source?: string;
 }
 
+export interface CondensedLine {
+  post_name: string;
+  amount: number | null;
+}
+
+export interface CondensedSection {
+  name: string;
+  side: "activa" | "passiva";
+  lines: CondensedLine[];
+  total: number;
+}
+
+export interface GecondenseerdData {
+  sections: CondensedSection[];
+  total_activa: number;
+  total_passiva: number;
+}
+
 export interface ExportExcelData {
   year: number;
   has_balance: boolean;
@@ -99,6 +117,7 @@ export interface ExportExcelData {
   total_passiva: number;
   resultaat: ExportExcelLine[];
   total_resultaat: number;
+  gecondenseerd?: GecondenseerdData;
 }
 
 export function getExportExcel(year?: string): Promise<ExportExcelData> {

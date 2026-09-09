@@ -105,17 +105,43 @@ function excelSheets(data: ExportExcelData): XlsxSheet[] {
   }
   rows.push(["", "Totaal", euro2(data.total_resultaat)]);
   sheets.push({ name: "Resultaat", rows, widths: [10, 60, 14] });
+  if (data.has_balance) {
+    const condensed = data.gecondenseerd;
+    const condensedRows: (string | number)[][] = [];
+    condensedRows.push([`Gecondenseerde balans ${data.year}`]);
+    condensedRows.push([]);
+    if (condensed && condensed.sections.length > 0) {
+      for (const section of condensed.sections) {
+        if (section.side !== "activa") continue;
+        condensedRows.push([section.name]);
+        for (const line of section.lines) {
+          condensedRows.push([line.post_name, line.amount == null ? "" : euro2(line.amount)]);
+        }
+        condensedRows.push(["", euro2(section.total)]);
+        condensedRows.push([]);
+      }
+      condensedRows.push(["Totaal", euro2(condensed.total_activa)]);
+      condensedRows.push([]);
+      const passivaName =
+        condensed.sections.find((section) => section.side === "passiva")?.name ?? "Passiva";
+      condensedRows.push([passivaName]);
+      for (const section of condensed.sections) {
+        for (const line of section.lines) {
+          if (section.side === "passiva") {
+            condensedRows.push([line.post_name, line.amount == null ? "" : euro2(line.amount)]);
+          }
+        }
+      }
+      condensedRows.push(["Totaal", euro2(condensed.total_passiva)]);
+    }
+    sheets.push({ name: "Gecondenseerde balans", rows: condensedRows, widths: [60, 14] });
+  }
   return sheets;
 }
 
 function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
   const footers = matrixFooterNames(matrix);
   return category === footers.balance || category === footers.last_booked;
-}
-
-function isBalancePassivaCategory(name: string): boolean {
-  const code = categoryCodeFromName(name);
-  return code != null && code >= 2000 && code <= 2999;
 }
 
 function categoryCodeFromName(name: string): number | null {
@@ -156,7 +182,6 @@ function categoryHasTransactions(
 
 function categoryRowGreyed(matrix: MatrixResponse, category: string, person?: string): boolean {
   if (isMatrixFooter(matrix, category)) return false;
-  if (isBalancePassivaCategory(category)) return true;
   return !categoryHasTransactions(matrix, category, person);
 }
 
@@ -1685,7 +1710,7 @@ function MainApp({
   }, []);
 
   function selectCell(person_name: string, category: string) {
-    if (matrix && (isMatrixFooter(matrix, category) || isBalancePassivaCategory(category))) return;
+    if (matrix && isMatrixFooter(matrix, category)) return;
     const sel = { person_name, category };
     setSelection(sel);
     setError(null);
@@ -2802,7 +2827,7 @@ function MatrixTable({
         {categories.map((cat) => (
           <tr
             key={cat}
-            className={`${selection?.category === cat ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${isBalancePassivaCategory(cat) ? " balance-passiva-row" : ""}${categoryRowGreyed(matrix, cat) ? " empty-category-row" : ""}`}
+            className={`${selection?.category === cat ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${categoryRowGreyed(matrix, cat) ? " empty-category-row" : ""}`}
           >
             <td className="cat">{displayCategoryName(cat)}</td>
             {people.map((p) => {
@@ -2810,9 +2835,7 @@ function MatrixTable({
               const isActive =
                 selection?.person_name === p.person_name && selection?.category === cat;
               const clickable =
-                !isMatrixFooter(matrix, cat) &&
-                !isBalancePassivaCategory(cat) &&
-                personHasTransactions(matrix, cat, p.person_name);
+                !isMatrixFooter(matrix, cat) && personHasTransactions(matrix, cat, p.person_name);
               return (
                 <td
                   key={p.person_name}
@@ -2855,15 +2878,13 @@ function PersonColumnTable({
         {categories.map((cat) => (
           <tr
             key={cat}
-            className={`${cat === selectedCategory ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${isBalancePassivaCategory(cat) ? " balance-passiva-row" : ""}${categoryRowGreyed(matrix, cat, person_name) ? " empty-category-row" : ""}`}
+            className={`${cat === selectedCategory ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${categoryRowGreyed(matrix, cat, person_name) ? " empty-category-row" : ""}`}
           >
             <td className="cat">{displayCategoryName(cat)}</td>
             {(() => {
               const amount = cells[cat]?.[person_name] ?? "";
               const clickable =
-                !isMatrixFooter(matrix, cat) &&
-                !isBalancePassivaCategory(cat) &&
-                personHasTransactions(matrix, cat, person_name);
+                !isMatrixFooter(matrix, cat) && personHasTransactions(matrix, cat, person_name);
               return (
                 <td
                   className={`num${clickable ? " clickable" : " empty-cell"}`}

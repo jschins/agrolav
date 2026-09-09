@@ -611,7 +611,7 @@ def hub_put(suffix: str, body: dict[str, Any], *, timeout: float = 120.0) -> dic
 
 
 def export_excel_data(year: int) -> dict[str, Any]:
-    """Two-sheet export payload (Balans + Resultaat) for a year from the hub."""
+    """Workbook payload (Balans + Resultaat + Gecondenseerde balans) for a year from the hub."""
     return hub_get(f"/export-data?year={int(year)}", timeout=90.0)
 
 

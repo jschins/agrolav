@@ -362,9 +362,10 @@ def build_matrix(
                     cells[name][family] = f"{cents / 100:.2f}"
     # Which categories carry at least one drill-down row decides the greyed-out
     # state, not the net amount displayed: dbo.transaction_{country} (booking
-    # rows, per person), dbo.balance_transaction and dbo.balance_journal
-    # (balance-access and spaar-mirror rows, country-wide). A bank-linked
-    # category follows its account rows instead of rows posted to that code.
+    # rows), dbo.balance_transaction and dbo.balance_journal (balance-access
+    # and spaar-mirror rows, country-wide). Activa and passiva (1000-2999)
+    # share this path. A bank-linked category follows its account rows instead
+    # of rows posted to that code.
     entries_names: set[str] = set()
     if sql_matrix is not None and balance_country is not None and y_int is not None:
         name_by_code = {
@@ -391,7 +392,10 @@ def build_matrix(
                 account_id = int(entry[1]) if (entry is not None and entry[1] is not None) else None
                 if account_id is not None:
                     used[name] = sorted(account_persons.get(account_id, ()))
-                elif 1000 <= code <= 1999 and code in entry_codes:
+                elif 1000 <= code <= 2999 and (
+                    code in entry_codes
+                    or any(code in codes for codes in used_codes.values())
+                ):
                     entries_names.add(name)
         except Exception as exc:  # noqa: BLE001
             print(f"matrix: drill presence lookup failed: {exc}")

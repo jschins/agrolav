@@ -311,10 +311,10 @@ def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any
     - A bank-linked category (its ``category_map`` entry has an ``account_id``)
       returns EVERY transaction on that mapped account for the bound person and
       year, whatever their P&L category.
-    - A non-bank category (1000-series without an account link) returns the
-      hand-edited journal rows and spaar-mirror rows that move money in/out of
-      it, as read-only pseudo-transactions (``modification`` -1).
-    - A passiva category (2000-2999) has no bookable rows and returns ``[]``.
+    - A non-bank category (1000-2999 without an account link) returns the
+      hand-edited journal rows, spaar-mirror rows, and booked rows that move
+      money in/out of it, as read-only pseudo-transactions (``modification`` -1).
+      Activa (1000-1999) and passiva (2000-2999) use this same path.
 
     ``[]`` is also returned when SQL is unused or the bound scope fails, so
     callers never fall back to categorized JSON for these categories.
@@ -331,8 +331,6 @@ def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any
     country_name = str(paths.BOUND_COUNTRY or "").strip()
     country_id = _country_id_for_username(bound.cursor, country_name)
     if country_id is None:
-        return []
-    if 2000 <= category_code <= 2999:
         return []
     try:
         # Use the *configured* beheer map (before dbo.mapping overrides) to
@@ -494,7 +492,7 @@ def _load_nonbank_category_rows(
             LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
             LEFT JOIN dbo.account a ON a.account_id = t.account_id
             WHERE t.person_id = ? AND t.year = ? AND t.bank_id IS NULL
-              AND t.category_id = ?{account_sql}
+              AND COALESCE(d.local_code, 18) = ?{account_sql}
             ORDER BY t.booked_on DESC, t.source_id DESC
             """,
             (bound.person_id, bound.year, category_code, *account_param),

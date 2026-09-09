@@ -1175,9 +1175,9 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
     from app.sql_replica import load_bound_balance_transactions, load_bound_transactions
 
     if 1000 <= code <= 2999:
-        # Balance-plan category: bank-linked categories list every row on the
-        # mapped account; non-bank categories list their journal/mirror rows;
-        # passiva categories (2000-2999) are not clickable and return nothing.
+        # Balance-plan category (activa and passiva): bank-linked categories
+        # list every row on the mapped account; non-bank categories list their
+        # journal, mirror, and booked rows.
         rows = load_bound_balance_transactions(category_code=code)
     else:
         rows = load_bound_transactions(category_code=code) or []
