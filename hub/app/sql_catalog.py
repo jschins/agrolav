@@ -1191,7 +1191,10 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         condensed = _export_condensed_balance(
             cursor,
             country_id,
-            {row["code"]: Decimal(str(row["amount"])) for row in activa + passiva},
+            {
+                row["code"]: Decimal(str(row["amount"]))
+                for row in activa + passiva + result_rows
+            },
         )
         return {
             "year": int(year),
@@ -1306,7 +1309,10 @@ def _export_condensed_balance(
     ``post_name`` starts with ``Totaal `` are totals: group-level when the path
     has a group, side-level otherwise. Sides and groups keep their
     first-appearance order; group matching is case-insensitive so totals land
-    in the group they belong to. Missing table or no rows → empty ``sides``.
+    in the group they belong to. ``amounts_by_id`` carries the balance amounts
+    (activa/passiva) plus the 3000-4999 P&L category amounts read from the
+    database, so posts may sum any ``local_code`` including P&L categories.
+    Missing table or no rows → empty ``sides``.
     """
     from decimal import Decimal
 
