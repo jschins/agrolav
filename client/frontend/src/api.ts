@@ -104,7 +104,11 @@ export interface CondensedGroup {
 export interface CondensedSide {
   name: string;
   groups: CondensedGroup[];
-  totals: CondensedLine[];
+  lines: CondensedSideLine[];
+}
+
+export interface CondensedSideLine extends CondensedLine {
+  is_total: boolean;
 }
 
 export interface GecondenseerdData {

@@ -1309,7 +1309,10 @@ def _export_condensed_balance(
     ``post_name`` starts with ``Totaal `` are totals: group-level when the path
     has a group, side-level otherwise. Sides and groups keep their
     first-appearance order; group matching is case-insensitive so totals land
-    in the group they belong to. ``amounts_by_id`` carries the balance amounts
+    in the group they belong to. Side-level (no-group) rows are kept in DB
+    ``id`` order in ``side.lines`` with an ``is_total`` flag, so a side may end
+    with a non-total footer line such as ``Operationeel resultaat``.
+    ``amounts_by_id`` carries the balance amounts
     (activa/passiva) plus the 3000-4999 P&L category amounts read from the
     database, so posts may sum any ``local_code`` including P&L categories.
     Missing table or no rows → empty ``sides``.
@@ -1365,7 +1368,7 @@ def _export_condensed_balance(
         side_key = side_name.lower()
         side = side_by_key.get(side_key)
         if side is None:
-            side = {"name": side_name, "groups": [], "totals": []}
+            side = {"name": side_name, "groups": [], "lines": []}
             side_by_key[side_key] = side
             sides.append(side)
         if group_name:
@@ -1376,11 +1379,15 @@ def _export_condensed_balance(
                 group_by_key[group_key] = group
                 side["groups"].append(group)
             (group["totals"] if is_total else group["posts"]).append(line)
-        elif is_total:
-            side["totals"].append(line)
+        else:
+            side["lines"].append({**line, "is_total": is_total})
 
     def _side_total(side: dict[str, Any]) -> float:
-        totals = [Decimal(str(line["amount"])) for line in side["totals"] if line["amount"] is not None]
+        totals = [
+            Decimal(str(line["amount"]))
+            for line in side["lines"]
+            if line["is_total"] and line["amount"] is not None
+        ]
         if totals:
             return float(sum(totals))
         amounts = [

@@ -138,8 +138,8 @@ function excelSheets(data: ExportExcelData): XlsxSheet[] {
           }
           condensedRows.push([]);
         }
-        for (const line of side.totals) {
-          condensedRows.push([line.post_name, line.amount == null ? "" : euro2(line.amount)]);
+        for (const line of side.lines) {
+          condensedRows.push(["", line.post_name, line.amount == null ? "" : euro2(line.amount)]);
         }
         condensedRows.push([]);
       }
