@@ -354,22 +354,18 @@ def booking_signed_amount(
     local_code: int,
     amount: Decimal,
     role: object = None,
-    *,
-    keep_bank_sign: bool = False,
 ) -> Decimal | None:
     """Overlay for a bank booking of signed amount ``X`` on ``local_code``.
 
     Transfer from stored category totals (bank sign X) onto the balance
     sheet follows the APR table: A 1000-1999 (except live-bank / spaar)
-    ``+= -X``; P 2001-2999 ``+= +X``. ``keep_bank_sign`` skips the A flip
-    so the client matrix / transaction list still show the stored sum.
-    Bank/spaar and computed posts: ``None``.
+    ``+= -X``; P 2001-2999 ``+= +X``. Bank/spaar and computed posts: ``None``.
     """
     code = int(local_code)
     if is_hit_forbidden_role(role):
         return None
     if 1000 <= code <= 1999:
-        return amount if keep_bank_sign else -amount
+        return -amount
     if 2001 <= code <= 2999:
         return amount
     return None
@@ -696,7 +692,6 @@ def _booking_balances(
     cursor: object,
     *,
     as_of: date | None = None,
-    keep_bank_sign: bool = False,
 ) -> dict[int, Decimal]:
     """category_id → signed overlay from the country's booking table (1000-2999).
 
@@ -748,7 +743,6 @@ def _booking_balances(
             int(local_code),
             _decimal(amount),
             role,
-            keep_bank_sign=keep_bank_sign,
         )
         if signed is None:
             continue
@@ -817,7 +811,6 @@ def balance_category_breakdown(
     cursor: object,
     *,
     as_of: date | None = None,
-    keep_bank_sign: bool = False,
 ) -> dict[int, tuple[int, str]]:
     """cat_id → (cents, source) for every non-computed balance category.
 
@@ -846,9 +839,7 @@ def balance_category_breakdown(
     opening = _opening_balances(country_id, year, cursor)
     journal = _journal_balances(country_id, year, cursor, as_of=as_of)
     effect = _journal_effect(country_id, year, cursor, as_of=as_of)
-    bookings = _booking_balances(
-        country_id, year, cursor, as_of=as_of, keep_bank_sign=keep_bank_sign
-    )
+    bookings = _booking_balances(country_id, year, cursor, as_of=as_of)
     if as_of is None:
         acct = _account_balances(country_id, cursor)
     else:
@@ -892,13 +883,12 @@ def present_balance_cents(
     cursor: object,
     *,
     as_of: date | None = None,
-    keep_bank_sign: bool = False,
 ) -> dict[int, int]:
     """cat_id → present-day balance cents for a country/year.
 
     ``as_of`` restricts the account, journal and mirror amounts to a cutoff
-    date; ``None`` means the live, full-year values. Default applies the APR
-    sign (A ``-X``). ``keep_bank_sign`` keeps stored X for the client matrix.
+    date; ``None`` means the live, full-year values. Same APR signs as the
+    balance sheet (A ``-X``).
     """
     return {
         cat: cents
@@ -907,7 +897,6 @@ def present_balance_cents(
             year,
             cursor,
             as_of=as_of,
-            keep_bank_sign=keep_bank_sign,
         ).items()
     }
 

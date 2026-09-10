@@ -332,9 +332,7 @@ def build_matrix(
 
                     cursor = user_store._sql_connect().cursor()
                     id_to_local = _local_codes(balance_country, cursor)
-                    raw_cents = present_balance_cents(
-                        balance_country, y_int, cursor, keep_bank_sign=True
-                    )
+                    raw_cents = present_balance_cents(balance_country, y_int, cursor)
                     balance_cents = {}
                     for cat_id, cents in raw_cents.items():
                         local = id_to_local.get(int(cat_id), int(cat_id))
