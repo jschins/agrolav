@@ -5,8 +5,13 @@ from unittest.mock import patch
 from app.core import categorize
 
 _GENERAL = {
-    "18 Unclassified expenses": ["1800"],
-    "1005 Zorgverlening": ["1005"],
+    "categories": {
+        "18 Unclassified expenses": ["1800"],
+        "1005 Zorgverlening": ["1005"],
+    },
+    "category_roles": {
+        "18 Unclassified expenses": "remainder",
+    },
 }
 
 _ACCOUNT_A = "7ca377ed-1a28-499d-a155-d19e9f4cacb5"
@@ -107,6 +112,60 @@ class AccountModalityRecategorizeTests(unittest.TestCase):
             self.assertIn("P:", str(by_id[row_id]["hit"]))
 
 
+class IrcftUnlockedRescoreTests(unittest.TestCase):
+    def test_add_term_rescores_every_unlocked_row_with_same_text(self):
+        """A stored hit must not shield an unlocked sibling from all-term match."""
+        general = {
+            "18 Unclassified expenses": [],
+            "1110 Kruisposten": ["same text"],
+            "3110 Kosten": ["ghost"],
+        }
+        store = {
+            "transactions": [
+                _row(
+                    "331",
+                    account_uid=_ACCOUNT_A,
+                    description="Same text here",
+                    category=18,
+                    modification=categorize.MOD_NONE,
+                    hit=None,
+                ),
+                _row(
+                    "524",
+                    account_uid=_ACCOUNT_A,
+                    description="Same text here",
+                    category=3110,
+                    modification=categorize.MOD_NONE,
+                    hit="G:ghost",
+                ),
+            ]
+        }
+        persisted: list[dict] = []
+        with (
+            patch.object(categorize, "_categories_file", return_value=general),
+            patch.object(categorize, "_account_modality", return_value=False),
+            patch.object(categorize, "_personal_category_map", return_value={}),
+            patch.object(categorize, "_load_categorized_store", return_value=store),
+            patch.object(
+                categorize,
+                "_persist_categorized_store",
+                side_effect=persisted.append,
+            ),
+            patch.object(categorize, "_write_category_totals", return_value={}),
+        ):
+            categorize.apply_ircft_terms(
+                added=["same text"],
+                removed=[],
+                personal=False,
+                category_name="1110 Kruisposten",
+            )
+        by_id = _transactions_of(persisted)
+        self.assertEqual(by_id["331"]["category"], 1110)
+        self.assertEqual(by_id["524"]["category"], 1110)
+        self.assertEqual(by_id["331"]["hit"], "G:same text")
+        self.assertEqual(by_id["524"]["hit"], "G:same text")
+
+
 class AccountModalityIrcftTests(unittest.TestCase):
     def test_add_term_outranks_and_reweights_own_account_only(self):
         store = {
@@ -129,7 +188,10 @@ class AccountModalityIrcftTests(unittest.TestCase):
                 ),
             ]
         }
-        personal_maps = {_ACCOUNT_A: {}, _ACCOUNT_B: {}}
+        personal_maps = {
+            _ACCOUNT_A: {"1005 Zorgverlening": ["leidenhoven"]},
+            _ACCOUNT_B: {},
+        }
         persisted: list[dict] = []
         with (
             patch.object(categorize, "_categories_file", return_value=_GENERAL),

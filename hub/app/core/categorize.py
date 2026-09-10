@@ -7,7 +7,7 @@ from typing import Any
 from app import runtime as paths
 
 DEFAULT_CATEGORY = 18
-CATEGORIZE_LOGIC_VERSION = "2026-08-26-ircft-personal-and-last-stick"
+CATEGORIZE_LOGIC_VERSION = "2026-09-10-terms-before-type-ap-over-r"
 _TERM_AND_SEP = " && "
 _ACCOUNT_INDEX_FIELD = "_account_index"
 
@@ -460,33 +460,15 @@ def parse_hit(hit: Any) -> tuple[bool, str] | None:
 
 
 def _priority_key(term: str, *, personal: bool, category_name: str) -> tuple:
-    """Higher wins: personal, then ``&&``, then category-alphabetical last-stick."""
+    """Higher wins: personal, then ``&&``, then A/P over R, then last-stick."""
+    code = _category_code(category_name) or 0
     return (
         1 if personal else 0,
         1 if _TERM_AND_SEP in term else 0,
+        0 if code >= 3000 else 1,
         category_name,
         term,
     )
-
-
-def _name_by_code(general: dict[str, list[str]]) -> dict[int, str]:
-    return {
-        code: name
-        for name in general
-        if (code := _category_code(name)) is not None
-    }
-
-
-def _existing_priority_key(
-    record: dict[str, Any], name_by_code: dict[int, str]
-) -> tuple | None:
-    parsed = parse_hit(record.get("hit"))
-    if parsed is None:
-        return None
-    personal, term = parsed
-    code = _as_category_code(record.get("category"))
-    category_name = name_by_code.get(code, "") if code is not None else ""
-    return _priority_key(term, personal=personal, category_name=category_name)
 
 
 def _best_keyword_hit(
@@ -520,13 +502,13 @@ def categorize_with_hit(
     general: dict[str, list[str]],
     personal: dict[str, list[str]],
 ) -> tuple[int, str | None]:
-    type_match = _category_from_type_rules(record)
-    if type_match is not None:
-        return type_match, None
     haystack = _haystack_for_categorization(record)
     keyword_match = _best_keyword_hit(haystack, general, personal)
     if keyword_match is not None:
         return keyword_match
+    type_match = _category_from_type_rules(record)
+    if type_match is not None:
+        return type_match, None
     code = remainder_category_code()
     return (code if code is not None else 0), None
 
@@ -967,25 +949,22 @@ def ircft_add_term(
     personal_maps: dict[str | None, dict[str, list[str]]] | None = None,
     account: str | None = None,
 ) -> bool:
-    """Apply one newly added term without recategorizing every row.
+    """Re-score every unlocked row against all terms after a term is saved.
 
-    Call after the term is already saved. Unlocked rows with no ``hit`` are
-    backfilled with a full categorize (the new term is already in the maps).
-    Rows that already have a hit are updated only when the new term matches
-    and outranks the stored hit. In account modality ``personal_maps`` is the
-    account-keyed map and ``account`` restricts a P term to one account.
+    Unlocked means ``modification`` 0, -1, or 2 (no direct category). ``1`` is a
+    direct category assignment; ``3`` is that plus a description edit. Those
+    stay put. Excel rows stay put. In account modality a P term is then
+    applied only on ``account``; every such row is matched against the full
+    general + personal maps, not only the new term vs a stored ``hit``.
     """
+    del category_name
     normalized = _normalize_term(term)
     if not normalized:
         return False
-    new_key = _priority_key(normalized, personal=personal, category_name=category_name)
-    new_hit = format_hit(normalized, personal=personal)
-    name_by_code = _name_by_code(general)
-    new_code = _category_code(category_name)
 
     payload = _load_categorized_store()
     transactions = payload.get("transactions")
-    if not isinstance(transactions, list) or new_code is None:
+    if not isinstance(transactions, list):
         return False
 
     changed = False
@@ -1000,13 +979,7 @@ def ircft_add_term(
             effective_personal = _personal_map_for_account(canonical, personal_maps)
         else:
             effective_personal = personal_map or {}
-        if _user_set_category(flag):
-            next_rows.append(canonical)
-            continue
-        if _category_from_type_rules(canonical) is not None:
-            if canonical.get("hit") not in (None, ""):
-                canonical["hit"] = None
-                changed = True
+        if _user_set_category(flag) or _is_excel_row(canonical):
             next_rows.append(canonical)
             continue
         if (
@@ -1018,32 +991,14 @@ def ircft_add_term(
             next_rows.append(canonical)
             continue
 
-        existing = parse_hit(canonical.get("hit"))
-        if existing is None:
-            code, hit = categorize_with_hit(canonical, general, effective_personal)
-            if canonical.get("category") != code or canonical.get("hit") != hit:
-                canonical["category"] = code
-                canonical["hit"] = hit
-                changed = True
-            if flag == MOD_UNCALCULATED:
-                canonical["modification"] = MOD_NONE
-                changed = True
-            next_rows.append(canonical)
-            continue
-
-        haystack = _haystack_for_categorization(canonical)
-        if not _matches_word(normalized, haystack):
-            next_rows.append(canonical)
-            continue
-        existing_key = _existing_priority_key(canonical, name_by_code)
-        if existing_key is not None and existing_key >= new_key:
-            next_rows.append(canonical)
-            continue
-        canonical["category"] = new_code
-        canonical["hit"] = new_hit
+        code, hit = categorize_with_hit(canonical, general, effective_personal)
+        if canonical.get("category") != code or canonical.get("hit") != hit:
+            canonical["category"] = code
+            canonical["hit"] = hit
+            changed = True
         if flag == MOD_UNCALCULATED:
             canonical["modification"] = MOD_NONE
-        changed = True
+            changed = True
         next_rows.append(canonical)
 
     if not changed:
@@ -1103,9 +1058,8 @@ def ircft_remove_term(
             continue
         parsed = parse_hit(canonical.get("hit"))
         stored = format_hit(parsed[1], personal=parsed[0]) if parsed else None
-        type_rule = _category_from_type_rules(canonical) is not None
 
-        if _user_set_category(flag) or type_rule:
+        if _user_set_category(flag):
             if stored == expected:
                 canonical["hit"] = None
                 changed = True
