@@ -25,45 +25,13 @@ SPAAR_MARKER = "[spaar-mirror]"
 _IDENT = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
-# category_id → (side, account_id | None)
-# side: "activa" or "passiva"
-_BEHEER_CATEGORY_MAP: dict[int, tuple[str, int | None]] = {
-    1000: ("activa", None),       # Gebouwen
-    1005: ("activa", None),       # Verbouwingen
-    1010: ("activa", None),       # Inventaris
-    1015: ("activa", None),       # Autos
-    1110: ("activa", None),       # Kruisposten
-    1111: ("activa", None),       # r/c K218
-    2050: ("passiva", None),      # Reserve Vergeer
-    2055: ("passiva", None),      # Reserve FF-OG
-    2500: ("passiva", None),      # Schulden particulieren
-}
+class CatalogError(ValueError):
+    """Required ``dim_category`` role or mapping row is missing."""
+
 
 # Description fragment on the source-account statement that marks a transfer
 # whose counterpart is reconstructed onto the ``mirror`` category.
 SPAAR_KEYWORD = "spaarrekening"
-
-# Per-country balance configuration:
-#   category_map: ordinary (non-role) category_id → (side, account_id | None).
-#                 Bank / plug posts are not listed here; they come from
-#                 ``dbo.dim_category.category_role`` plus ``dbo.mapping``.
-#                 When empty, every dim_category row 1000-4999 is used (side by
-#                 range, no account link).
-#
-# Whether a country carries a balance sheet at all is declared in the database
-# on ``dbo.country.has_balance`` (set to 1 for sdog and instudo, 0 elsewhere).
-_BALANCE_COUNTRIES: dict[int, dict[str, object]] = {
-    4: {
-        "category_map": _BEHEER_CATEGORY_MAP,
-    },
-    5: {
-        "category_map": {},
-    },
-}
-
-_EMPTY_CONFIG: dict[str, object] = {
-    "category_map": {},
-}
 
 
 def sql_ident(text: str) -> str | None:
@@ -240,6 +208,11 @@ def is_activa(cat_id: int) -> bool:
     return 1000 <= int(cat_id) <= 1999
 
 
+def is_balance_sheet_code(cat_id: int) -> bool:
+    """A/P local codes (1000-2999). Resultaat 3000-4999 stays off the sheet."""
+    return 1000 <= int(cat_id) <= 2999
+
+
 def is_resultaat(cat_id: int) -> bool:
     return 3000 <= int(cat_id) <= 4999
 
@@ -359,21 +332,18 @@ def booking_signed_amount(
 
     Transfer from stored category totals (bank sign X) onto the balance
     sheet follows the APR table: A 1000-1999 (except live-bank / spaar)
-    ``+= -X``; P 2001-2999 ``+= +X``. Bank/spaar and computed posts: ``None``.
+    ``+= -X``; P 2000-2999 ``+= +X``. The equity post
+    (``category_role = equity``) is skipped via its role, not via local_code
+    2000. Bank/spaar and computed posts: ``None``.
     """
     code = int(local_code)
     if is_hit_forbidden_role(role):
         return None
     if 1000 <= code <= 1999:
         return -amount
-    if 2001 <= code <= 2999:
+    if 2000 <= code <= 2999:
         return amount
     return None
-
-
-def balance_config(country_id: int) -> dict[str, object]:
-    """Per-country balance configuration (falls back to an empty config)."""
-    return _BALANCE_COUNTRIES.get(int(country_id), dict(_EMPTY_CONFIG))
 
 
 def role_category_row(
@@ -414,6 +384,20 @@ def remainder_category_id(country_id: int, cursor: object) -> int | None:
 def remainder_local_code(country_id: int, cursor: object) -> int | None:
     found = role_category_row(country_id, CATEGORY_ROLE_REMAINDER, cursor)
     return None if found is None else found[1]
+
+
+def require_remainder_row(country_id: int, cursor: object) -> tuple[int, int]:
+    """``(category_id, local_code)`` for ``category_role = remainder``.
+
+    Raises ``CatalogError`` when the country has no such row.
+    """
+    found = role_category_row(country_id, CATEGORY_ROLE_REMAINDER, cursor)
+    if found is None:
+        raise CatalogError(
+            "No dim_category row with category_role='remainder' "
+            f"for country_id={int(country_id)}"
+        )
+    return found
 
 
 def verlies_id(country_id: int, cursor: object | None = None) -> int | None:
@@ -519,37 +503,35 @@ def category_map(
 ) -> dict[int, tuple[str, int | None]]:
     """category_id → (side, account_id | None) for a balance country.
 
-    Configured categories win; otherwise every dim_category row 1000-4999 is
-    used with the side inferred from its code range. ``dbo.mapping`` overrides
-    the account link per category.
+    Every A/P ``dim_category`` row (local_code 1000-2999) is included; side
+    comes from the code range. Resultaat 3000-4999 is not a sheet post.
+    ``dbo.mapping`` overrides the account link per category.
     """
     codes = category_local_codes(country_id, cursor)
-    configured = balance_config(country_id).get("category_map") or {}
-    if configured:
-        result = {
-            resolve_category_id(codes, int(c)): (
-                str(s),
-                (int(a) if a is not None else None),
-            )
-            for c, (s, a) in configured.items()
-        }
-    else:
-        result = {
-            cat: (infer_side(codes.get(cat, cat)), None)
-            for cat in _dim_category_ids(country_id, cursor)
-        }
+    result: dict[int, tuple[str, int | None]] = {}
+    for cat in _dim_category_ids(country_id, cursor):
+        local = codes.get(cat, cat)
+        if not is_balance_sheet_code(local):
+            continue
+        result[cat] = (infer_side(local), None)
     roles = category_roles(country_id, cursor)
     for cat_id, role in roles.items():
         if is_computed_post_role(role):
             result.pop(cat_id, None)
             continue
-        if category_role_canonical(role) in CATEGORY_BANK_ROLES and cat_id not in result:
-            result[cat_id] = (infer_side(codes.get(cat_id, cat_id)), None)
+        local = codes.get(cat_id, cat_id)
+        if (
+            category_role_canonical(role) in CATEGORY_BANK_ROLES
+            and cat_id not in result
+            and is_balance_sheet_code(local)
+        ):
+            result[cat_id] = (infer_side(local), None)
     for cat_id, account_id in account_links(country_id, cursor).items():
-        side, _ = result.get(
-            cat_id, (infer_side(codes.get(cat_id, cat_id)), None)
-        )
-        result[int(cat_id)] = (side, account_id)
+        local = codes.get(int(cat_id), int(cat_id))
+        if not is_balance_sheet_code(local):
+            continue
+        side, _ = result.get(int(cat_id), (infer_side(local), None))
+        result[int(cat_id)] = (side, int(account_id))
     return result
 
 
@@ -696,7 +678,7 @@ def _booking_balances(
     """category_id → signed overlay from the country's booking table (1000-2999).
 
     Consolidated rows only (``bank_id IS NULL``). Amount X is the bank sign
-    (in +, out -). Activa 1000-1999 get ``-X``; passiva 2001-2999 get ``+X``.
+    (in +, out -). Activa 1000-1999 get ``-X``; passiva 2000-2999 get ``+X``.
     Codes with a HIT-forbidden ``category_role`` (live bank, ``source``,
     ``equity``, ``profit``) are skipped. ``mirror`` HIT rows are included.
     Source-account spaar-keyword rows are excluded (their counterpart is the

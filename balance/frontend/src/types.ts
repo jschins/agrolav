@@ -63,6 +63,7 @@ export interface JournalResponse {
 
 export interface CategoriesResponse {
   categories: CategoryInfo[];
+  remainder_id: number;
 }
 
 export interface ResultRow {

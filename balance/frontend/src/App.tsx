@@ -146,11 +146,9 @@ function Menu({ items, label }: { items: MenuItem[]; label: string }) {
 function isPlug(line: BalanceSheet["activa"][number]): boolean {
   return (
     line.role === "equity" ||
-    line.role === "never" ||
     line.source === "computed" ||
     line.unchanged === true ||
-    line.unchanged === false ||
-    Number(line.code) === 2000
+    line.unchanged === false
   );
 }
 

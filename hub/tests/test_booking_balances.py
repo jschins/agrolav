@@ -10,6 +10,7 @@ from shared.balance_values import (
     booking_signed_amount,
     category_display_name,
     is_activa,
+    is_balance_sheet_code,
     is_hit_forbidden_code,
     is_journal_forbidden_code,
     journal_deltas,
@@ -141,6 +142,14 @@ class BookingBalancesTests(unittest.TestCase):
             {1110: Decimal("-9000")},
         )
 
+    def test_ordinary_2000_is_passiva_overlay(self):
+        cursor = _FakeBookingCursor(rows=[(2000, 2000, Decimal("40"), "remainder")])
+        self.assertEqual(_booking_balances(4, 2026, cursor), {2000: Decimal("40")})
+
+    def test_equity_role_skipped_whatever_local_code(self):
+        cursor = _FakeBookingCursor(rows=[(2199, 2199, Decimal("40"), "equity")])
+        self.assertEqual(_booking_balances(4, 2026, cursor), {})
+
     def test_bank_and_source_skipped_mirror_kept(self):
         cursor = _FakeBookingCursor(
             rows=[
@@ -197,10 +206,13 @@ class BookingSignedAmountTests(unittest.TestCase):
         x = Decimal("100")
         self.assertEqual(booking_signed_amount(1110, x), Decimal("-100"))
         self.assertEqual(booking_signed_amount(2500, x), Decimal("100"))
+        self.assertEqual(booking_signed_amount(2000, x), Decimal("100"))
+        self.assertEqual(booking_signed_amount(2000, x, "remainder"), Decimal("100"))
         self.assertIsNone(booking_signed_amount(1051, x, "source"))
         self.assertEqual(booking_signed_amount(1052, x, "mirror"), Decimal("-100"))
         self.assertIsNone(booking_signed_amount(1056, x, "bank"))
         self.assertIsNone(booking_signed_amount(2000, x, "equity"))
+        self.assertIsNone(booking_signed_amount(2199, x, "equity"))
         self.assertIsNone(booking_signed_amount(1056, x, "no_hit"))
         self.assertIsNone(booking_signed_amount(2000, x, "never"))
         self.assertIsNone(booking_signed_amount(2100, x, "profit"))
@@ -214,6 +226,13 @@ class InvarianceClassTests(unittest.TestCase):
         self.assertFalse(is_activa(2500))
         self.assertFalse(is_activa(3110))
         self.assertFalse(is_activa(4110))
+
+    def test_sheet_excludes_resultaat(self):
+        self.assertTrue(is_balance_sheet_code(1110))
+        self.assertTrue(is_balance_sheet_code(2000))
+        self.assertTrue(is_balance_sheet_code(2500))
+        self.assertFalse(is_balance_sheet_code(3110))
+        self.assertFalse(is_balance_sheet_code(4110))
 
 
 class JournalDeltaTests(unittest.TestCase):

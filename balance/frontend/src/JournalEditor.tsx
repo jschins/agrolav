@@ -13,11 +13,11 @@ type Draft = {
 
 let keySeq = 1;
 
-const emptyBox = (): Draft => ({
+const emptyBox = (remainderId: number): Draft => ({
   key: `box-${keySeq++}`,
   date: new Date().toISOString().slice(0, 10),
-  category_from: 1000,
-  category_to: 1110,
+  category_from: remainderId,
+  category_to: remainderId,
   amount: "",
   description: "",
 });
@@ -72,7 +72,8 @@ export default function JournalEditor({
   const [cats, setCats] = useState<CategoryInfo[]>([]);
   const [labels, setLabels] = useState<Record<number, string>>({});
   const [rows, setRows] = useState<Draft[]>([]);
-  const [box, setBox] = useState<Draft>(emptyBox);
+  const [remainderId, setRemainderId] = useState<number | null>(null);
+  const [box, setBox] = useState<Draft | null>(null);
   const [editKey, setEditKey] = useState<string | null>(null);
   const [filters, setFilters] = useState({ date: "", from: "", to: "", amount: "", desc: "" });
   const [loaded, setLoaded] = useState(false);
@@ -81,23 +82,28 @@ export default function JournalEditor({
 
   useEffect(() => {
     let cancelled = false;
-    getCategories()
-      .then((d) => {
+    setLoaded(false);
+    setError(null);
+    Promise.all([getCategories(), getJournal(year)])
+      .then(([catsResp, journal]) => {
         if (cancelled) return;
-        setCats(d.categories);
+        if (catsResp.remainder_id == null) {
+          setError("No dim_category row with category_role='remainder'");
+          return;
+        }
+        setCats(catsResp.categories);
         setLabels(
           Object.fromEntries(
-            d.categories.map((c) => [c.code, `${String(c.code).padStart(4, "0")} ${c.label} (${sideShort(c.side)})`])
+            catsResp.categories.map((c) => [
+              c.code,
+              `${String(c.code).padStart(4, "0")} ${c.label} (${sideShort(c.side)})`,
+            ])
           )
         );
-      })
-      .catch(() => {});
-    getJournal(year)
-      .then((d) => {
-        if (cancelled) return;
-        setRows(d.rows.map(draftFromRow));
+        setRemainderId(catsResp.remainder_id);
+        setRows(journal.rows.map(draftFromRow));
         setEditKey(null);
-        setBox(emptyBox());
+        setBox(emptyBox(catsResp.remainder_id));
         setLoaded(true);
       })
       .catch((e) => {
@@ -114,8 +120,10 @@ export default function JournalEditor({
       set.add(r.category_from);
       set.add(r.category_to);
     }
-    set.add(box.category_from);
-    set.add(box.category_to);
+    if (box) {
+      set.add(box.category_from);
+      set.add(box.category_to);
+    }
     return set;
   }
 
@@ -154,10 +162,11 @@ export default function JournalEditor({
   }
 
   function saveNew() {
+    if (!box || remainderId == null) return;
     if (box.amount === "" && box.description.trim() === "") return;
     const next = [...rows, { ...box }];
     setRows(next);
-    setBox(emptyBox());
+    setBox(emptyBox(remainderId));
     persist(next).catch((e) => setError(toMessage(e)));
   }
 
@@ -166,7 +175,7 @@ export default function JournalEditor({
   }
 
   function patchBox(patch: Partial<Draft>) {
-    setBox((b) => ({ ...b, ...patch }));
+    setBox((b) => (b ? { ...b, ...patch } : b));
   }
 
   function matchesFilter(r: Draft): boolean {
@@ -229,7 +238,7 @@ export default function JournalEditor({
         </aside>
         <main className="journal-content">
           {error && <div className="error">{error}</div>}
-          {loaded ? (
+          {loaded && box ? (
             <table className="journal-table">
               <colgroup>
                 <col className="col-date" />

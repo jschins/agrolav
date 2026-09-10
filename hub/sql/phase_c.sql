@@ -196,8 +196,7 @@ CREATE TABLE dbo.transaction_nederland (
     CONSTRAINT fk_txn_nl_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
     CONSTRAINT fk_txn_nl_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
     CONSTRAINT ck_txn_nl_year CHECK (year >= 1990 AND year <= 2100),
-    CONSTRAINT ck_txn_nl_mod CHECK (modification IN (-1, 0, 1, 2, 3)),
-    CONSTRAINT ck_txn_nl_cat CHECK (category_id BETWEEN 100 AND 199)
+    CONSTRAINT ck_txn_nl_mod CHECK (modification IN (-1, 0, 1, 2, 3))
 );
 
 CREATE UNIQUE INDEX ux_txn_nl_consolidated
@@ -230,8 +229,7 @@ CREATE TABLE dbo.transaction_uk (
     CONSTRAINT fk_txn_uk_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
     CONSTRAINT fk_txn_uk_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
     CONSTRAINT ck_txn_uk_year CHECK (year >= 1990 AND year <= 2100),
-    CONSTRAINT ck_txn_uk_mod CHECK (modification IN (-1, 0, 1, 2, 3)),
-    CONSTRAINT ck_txn_uk_cat CHECK (category_id BETWEEN 200 AND 299)
+    CONSTRAINT ck_txn_uk_mod CHECK (modification IN (-1, 0, 1, 2, 3))
 );
 
 CREATE UNIQUE INDEX ux_txn_uk_consolidated

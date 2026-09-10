@@ -24,8 +24,8 @@ from typing import Any
 from app.db import connect
 from shared.balance_values import (
     SPAAR_MARKER,
+    CatalogError,
     balance_category_breakdown,
-    balance_config,
     category_labels as shared_category_labels,
     category_local_codes as shared_category_local_codes,
     category_map as shared_category_map,
@@ -33,7 +33,9 @@ from shared.balance_values import (
     country_has_balance as shared_country_has_balance,
     eigen_vermogen_id as shared_eigen_vermogen_id,
     ensure_category_role_booking_rules,
+    is_balance_sheet_code,
     is_journal_forbidden_code,
+    require_remainder_row,
     result_overlay_cents,
     spaar_mirror,
     spaar_mirror_posted_amount,
@@ -75,7 +77,7 @@ def balance_country_ids() -> list[int]:
             ids = [int(r[0]) for r in cur.fetchall()]
     except Exception:
         ids = []
-    return ids or [4]
+    return ids
 
 
 def active_country_id() -> int:
@@ -94,11 +96,9 @@ def active_country_id() -> int:
         if country_id > 0:
             return country_id
     ids = balance_country_ids()
-    return ids[0] if ids else 4
-
-
-def _country_config(country_id: int) -> dict[str, Any]:
-    return dict(balance_config(country_id))
+    if not ids:
+        raise CatalogError("No country with has_balance = 1")
+    return ids[0]
 
 
 def _verlies_id(country_id: int, cursor: object | None = None) -> int | None:
@@ -275,12 +275,7 @@ def _dim_category_ids(country_id: int) -> set[int]:
 
 
 def _category_ids(country_id: int) -> set[int]:
-    ids = _dim_category_ids(country_id)
-    ids.update(
-        c for c in (_country_config(country_id).get("category_map") or {})
-        if isinstance(c, int)
-    )
-    return {i for i in ids if 1000 <= i <= 4999}
+    return {i for i in _dim_category_ids(country_id) if 1000 <= i <= 4999}
 
 
 def _category_map(country_id: int) -> dict[int, tuple[str, int | None]]:
@@ -541,7 +536,12 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
     passiva: list[dict[str, Any]] = []
 
     for cat_id in sorted(category_map):
-        side, account_id = category_map[cat_id]
+        side, _account_id = category_map[cat_id]
+        local = display_code(cat_id)
+        if local is None or not is_balance_sheet_code(local):
+            continue
+        if side not in ("activa", "passiva"):
+            continue
         label = labels.get(cat_id, f"cat_{cat_id}")
 
         if cat_id in {i for i in (balance_id, result_id) if i is not None}:
@@ -625,15 +625,20 @@ def list_years(country_id: int) -> list[int]:
         return [int(r[0]) for r in cur.fetchall()]
 
 
-def list_categories(country_id: int) -> list[dict[str, Any]]:
-    """Journal-eligible categories (1000-4999), excluding ``equity`` / ``profit``."""
+def list_categories(country_id: int) -> dict[str, Any]:
+    """Journal-eligible categories, plus remainder ``category_id`` for defaults."""
     labels = _category_labels(country_id)
     roles = _category_roles(country_id)
     acct = _account_balances(country_id)
     category_map = _category_map(country_id)
     ids = _category_ids(country_id)
+    with connect() as conn:
+        remainder_id, _remainder_code = require_remainder_row(
+            country_id, conn.cursor()
+        )
+    ids.add(int(remainder_id))
     result = []
-    for cat_id in sorted(i for i in ids if 1000 <= i <= 4999):
+    for cat_id in sorted(ids):
         if is_journal_forbidden_code(cat_id, roles.get(cat_id)):
             continue
         side, account_id = category_map.get(cat_id, (_infer_side(cat_id), None))
@@ -648,7 +653,7 @@ def list_categories(country_id: int) -> list[dict[str, Any]]:
             row["iban"] = _iban_for_account(account_id)
             row["account_balance"] = float(acct.get(account_id, Decimal("0")))
         result.append(row)
-    return result
+    return {"categories": result, "remainder_id": int(remainder_id)}
 
 
 def _infer_side(cat_id: int) -> str:

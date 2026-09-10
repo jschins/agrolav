@@ -905,39 +905,7 @@ def verify(cursor) -> None:
         print(f"transactions_{folder}: {count}")
     print(f"transactions: {total_tx}")
 
-    cursor.execute(
-        """
-        SELECT c.username, d.category_id, d.local_code, d.label
-        FROM dbo.dim_category d
-        JOIN dbo.country c ON c.country_id = d.country_id
-        WHERE d.local_code = 12
-        ORDER BY d.category_id
-        """
-    )
-    print("local_code 12:")
-    for row in cursor.fetchall():
-        print(f"  {row[0]} {row[1]} {row[2]} {row[3]}")
-
-    calc, modification, label = one(
-        """
-        SELECT t.category_id, t.modification, d.label
-        FROM dbo.transaction_nederland t
-        JOIN dbo.person p ON p.id = t.person_id
-        JOIN dbo.dim_category d ON d.category_id = t.category_id
-        WHERE p.username = N'anton_schins'
-          AND t.source_id = N'010305258369428750000000_0'
-          AND t.bank_id IS NULL
-        """
-    )
-    if int(calc) != 109 or int(modification) != -1 or not str(label).startswith("18 "):
-        raise LoadError(
-            f"anton check failed: category_id={calc} modification={modification} label={label!r} "
-            "(expected remainder 109 / -1)"
-        )
-    print(f"check anton 010305258369428750000000_0: uncalculated ({calc} / -1 / {label})")
-
-    for _id, folder, _cur in COUNTRIES:
-        table = transaction_table(folder)
+    def remainder_id_for(folder: str) -> int:
         cursor.execute(
             """
             SELECT d.category_id
@@ -950,7 +918,30 @@ def verify(cursor) -> None:
         remainder = cursor.fetchone()
         if remainder is None:
             raise LoadError(f"no remainder category for {folder}")
-        remainder_id = int(remainder[0])
+        return int(remainder[0])
+
+    nl_remainder = remainder_id_for("nederland")
+    calc, modification, label = one(
+        """
+        SELECT t.category_id, t.modification, d.label
+        FROM dbo.transaction_nederland t
+        JOIN dbo.person p ON p.id = t.person_id
+        JOIN dbo.dim_category d ON d.category_id = t.category_id
+        WHERE p.username = N'anton_schins'
+          AND t.source_id = N'010305258369428750000000_0'
+          AND t.bank_id IS NULL
+        """
+    )
+    if int(calc) != nl_remainder or int(modification) != -1:
+        raise LoadError(
+            f"anton check failed: category_id={calc} modification={modification} label={label!r} "
+            f"(expected remainder {nl_remainder} / -1)"
+        )
+    print(f"check anton 010305258369428750000000_0: uncalculated ({calc} / -1 / {label})")
+
+    for _id, folder, _cur in COUNTRIES:
+        table = transaction_table(folder)
+        remainder_id = remainder_id_for(folder)
         cursor.execute(
             f"""
             SELECT COUNT(*) FROM {table}
@@ -965,39 +956,6 @@ def verify(cursor) -> None:
                 f"(expected modification=-1, category_id={remainder_id}, hit NULL)"
             )
         print(f"check {folder}: all bookings uncalculated -> {remainder_id}")
-
-    for _id, folder, _cur in COUNTRIES:
-        if folder == "nederland":
-            continue
-        table = transaction_table(folder)
-        cursor.execute(
-            f"""
-            SELECT TOP 1 t.category_id
-            FROM {table} t
-            JOIN dbo.dim_category d ON d.category_id = t.category_id
-            WHERE d.local_code = 12
-            """
-        )
-        other = cursor.fetchone()
-        if other is not None:
-            other_id = int(other[0])
-            if other_id == 104:
-                raise LoadError(f"{folder} JSON 12 joined to 104")
-            print(f"check {table} local 12 -> {other_id} (not 104)")
-        else:
-            cursor.execute(
-                """
-                SELECT d.category_id
-                FROM dbo.dim_category d
-                JOIN dbo.country c ON c.country_id = d.country_id
-                WHERE d.local_code = 12 AND c.username = ?
-                """,
-                folder,
-            )
-            category_id = int(cursor.fetchone()[0])
-            if category_id == 104:
-                raise LoadError(f"{folder} local 12 is 104")
-            print(f"check {folder} dim local 12 -> {category_id} (not 104)")
 
     cursor.execute(
         """

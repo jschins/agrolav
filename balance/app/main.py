@@ -14,10 +14,17 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
+from shared.balance_values import CatalogError
+
 app = FastAPI(title="balance-hub", version="0.1")
+
+
+@app.exception_handler(CatalogError)
+async def _catalog_error(_request, exc: CatalogError) -> JSONResponse:
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
 def _dist_dir() -> Path:
@@ -170,7 +177,7 @@ def balance_years(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]:
 def balance_categories(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]:
     from app.balance import list_categories
 
-    return {"categories": list_categories(resolve_country(slug))}
+    return list_categories(resolve_country(slug))
 
 
 @app.get("/balance/{slug}/api/balance/{year}")
