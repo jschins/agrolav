@@ -95,15 +95,20 @@ export interface CondensedLine {
   amount: number | null;
 }
 
-export interface CondensedSection {
+export interface CondensedGroup {
   name: string;
-  side: "activa" | "passiva";
-  lines: CondensedLine[];
-  total: number;
+  posts: CondensedLine[];
+  totals: CondensedLine[];
+}
+
+export interface CondensedSide {
+  name: string;
+  groups: CondensedGroup[];
+  totals: CondensedLine[];
 }
 
 export interface GecondenseerdData {
-  sections: CondensedSection[];
+  sides: CondensedSide[];
   total_activa: number;
   total_passiva: number;
 }
@@ -407,4 +412,50 @@ export function addIpAccess(body: { ip: string; target: string }): Promise<IpAcc
 export function deleteIpAccess(ip: string, target: string): Promise<IpAccessResponse> {
   const q = new URLSearchParams({ ip, target });
   return sendJson(`/api/ip-access?${q.toString()}`, "DELETE");
+}
+
+export interface JournalCategory {
+  category_id: number;
+  code: number;
+  label: string;
+  side: string;
+  account_id: number | null;
+}
+
+export interface JournalRow {
+  journal_id: number;
+  year: number;
+  date: string;
+  category_from: number;
+  category_to: number;
+  amount: number;
+  description: string;
+  from_label: string;
+  to_label: string;
+}
+
+export interface JournalItemPayload {
+  date: string;
+  category_from: number;
+  category_to: number;
+  amount: number;
+  description: string;
+}
+
+export interface JournalData {
+  year: number;
+  categories: JournalCategory[];
+  remainder_id: number | null;
+  rows: JournalRow[];
+}
+
+export function getJournalData(year: number): Promise<JournalData> {
+  return getJson(`/api/journal?year=${encodeURIComponent(String(year))}`);
+}
+
+export function saveJournalData(
+  year: number,
+  items: JournalItemPayload[]
+): Promise<{ ok: boolean; saved: number }> {
+  return sendJson(`/api/journal?year=${encodeURIComponent(String(year))}`, "PUT", { items });
 }

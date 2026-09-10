@@ -1,7 +1,7 @@
 """Balance sheet calculation for balance countries (Beheer country_id=4, …).
 
 Each balance country reads bank account balances from ``dbo.account`` (linked
-to balance categories through ``dbo.mapping``) and non-bank opening balances
+to balance categories through ``dbo.mapping_banks``) and non-bank opening balances
 from ``dbo.balance_opening``, plus hand-edited journal rows
 (``dbo.journal``) and auto spaar-mirror rows
 (``dbo.transaction_mirror``).  Resultaat R is the sum of P&L category

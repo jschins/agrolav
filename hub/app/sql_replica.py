@@ -365,7 +365,7 @@ def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any
             if int(category_code) in {target_id, target_local}:
                 return _load_nonbank_category_rows(bound, country_id, category_code)
         # Bank-linked posts show that account's live rows. The spaar mirror
-        # post is handled above even if dbo.mapping also points at an account.
+        # post is handled above even if dbo.mapping_banks also points at an account.
         cat_id = next(
             (cid for cid, local in codes.items() if local == int(category_code)),
             int(category_code),

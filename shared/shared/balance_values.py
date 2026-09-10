@@ -1,6 +1,6 @@
 """Present-day balance values shared by the balance app and the hub.
 
-Both services compute the balance sheet from the same tables (``dbo.mapping``,
+Both services compute the balance sheet from the same tables (``dbo.mapping_banks``,
 ``dbo.balance_opening``, ``dbo.transaction_mirror``, ``dbo.journal``,
 the country's ``dbo.transaction_*`` bookings on codes 1000-2999, and the live
 ``dbo.account.balance``), so the derivation lives here once instead of being
@@ -220,7 +220,7 @@ def is_resultaat(cat_id: int) -> bool:
 def spaar_mirror(
     country_id: int, cursor: object | None = None
 ) -> dict[str, object] | None:
-    """Spaar pair from ``category_role`` ``source`` / ``mirror`` and ``dbo.mapping``.
+    """Spaar pair from ``category_role`` ``source`` / ``mirror`` and ``dbo.mapping_banks``.
 
     Returns ``source_category``, ``target_category``, ``source_account_id``,
     and ``keyword``, or ``None`` when the country has no complete pair.
@@ -231,7 +231,7 @@ def spaar_mirror(
         """
         SELECT d.category_id, d.category_role, m.account_id
         FROM dbo.dim_category d
-        LEFT JOIN dbo.mapping m
+        LEFT JOIN dbo.mapping_banks m
           ON m.category_id = d.category_id AND m.country_id = d.country_id
         WHERE d.country_id = ?
           AND d.category_role IN (N'source', N'mirror')
@@ -425,13 +425,13 @@ def country_has_balance(country_id: int, cursor: object) -> bool:
 
 
 def account_links(country_id: int, cursor: object) -> dict[int, int]:
-    """category_id → account_id from ``dbo.mapping`` for a country.
+    """category_id → account_id from ``dbo.mapping_banks`` for a country.
 
     The mapping table records which live bank account feeds each balance
     category (the ``source`` post is the spaar checking account).
     """
     cursor.execute(
-        "SELECT category_id, account_id FROM dbo.mapping WHERE country_id = ?",
+        "SELECT category_id, account_id FROM dbo.mapping_banks WHERE country_id = ?",
         (int(country_id),),
     )
     return {int(r[0]): int(r[1]) for r in cursor.fetchall()}
@@ -505,7 +505,7 @@ def category_map(
 
     Every A/P ``dim_category`` row (local_code 1000-2999) is included; side
     comes from the code range. Resultaat 3000-4999 is not a sheet post.
-    ``dbo.mapping`` overrides the account link per category.
+    ``dbo.mapping_banks`` overrides the account link per category.
     """
     codes = category_local_codes(country_id, cursor)
     result: dict[int, tuple[str, int | None]] = {}

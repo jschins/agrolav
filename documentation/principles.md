@@ -99,7 +99,7 @@ These rules are stored on `dbo.dim_category.category_role`:
 | `mirror` | Spaar mirror post (reconstructed counterpart) | yes | yes (as A) |
 
 `source` is treated like `bank` for HIT and journals. `mirror` allows HIT.
-Runtime code reads the spaar pair from those roles (plus `dbo.mapping` for
+Runtime code reads the spaar pair from those roles (plus `dbo.mapping_banks` for
 the source account), Eigen vermogen from `equity`, and Resultaat from
 `profit`, not from hardcoded local codes.
 

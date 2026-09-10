@@ -615,6 +615,69 @@ def export_excel_data(year: int) -> dict[str, Any]:
     return hub_get(f"/export-data?year={int(year)}", timeout=90.0)
 
 
+def _balance_api(
+    path: str,
+    *,
+    method: str = "GET",
+    body: dict[str, Any] | None = None,
+    timeout: float = 60.0,
+) -> dict[str, Any]:
+    """Call the balance backend for the active country and return its JSON.
+
+    Resolves the balance slug for the current center through the hub
+    (``/api/local/{center}/balance-slug``) and forwards to
+    ``BALANCE_URL/balance/{slug}/api/balance/...`` with the shared
+    ``CENTRALE_API_KEY`` as bearer. Raises RuntimeError when the center has no
+    balance sheet or the balance app is unreachable.
+    """
+    settings = load_base_settings()
+    if not settings.get("enabled"):
+        raise RuntimeError("hub sync disabled (set CENTRALE_SYNC=1 or unset it)")
+    info = hub_get("/balance-slug", timeout=5.0)
+    if not isinstance(info, dict) or not info.get("has_balance"):
+        raise RuntimeError("current center has no balance sheet")
+    slug = str(info.get("slug") or "").strip()
+    if not slug:
+        raise RuntimeError("current center has no balance sheet")
+    base = _balance_base_url()
+    api_key = str(settings.get("api_key") or "")
+    url = f"{base}/balance/{urllib.parse.quote(slug)}/api/balance/{path.lstrip('/')}"
+    headers = {"Accept": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"balance {exc.code}: {detail or exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"balance unreachable: {exc.reason}") from exc
+
+
+def balance_journal(year: int) -> dict[str, Any]:
+    """Balance categories + journal rows for ``year`` of the active balance country."""
+    cats = _balance_api("categories")
+    rows = _balance_api(f"{int(year)}/journal")
+    return {
+        "year": int(year),
+        "categories": cats.get("categories") or [],
+        "remainder_id": cats.get("remainder_id"),
+        "rows": rows.get("rows") or [],
+    }
+
+
+def balance_save_journal(year: int, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Replace the journal for ``year`` of the active balance country."""
+    return _balance_api(f"{int(year)}/journal", method="PUT", body={"items": items})
+
+
 def refresh_capabilities() -> dict[str, Any]:
     global _cached_has_secrets, _last_error
     try:

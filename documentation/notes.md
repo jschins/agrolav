@@ -345,7 +345,7 @@ INSERT INTO dbo.dim_category VALUES
 (14070, 5, 4070, 'Giften', 'False', NULL),
 (14085, 5, 4085, 'Overige baten', 'False', NULL)
 
-INSERT INTO dbo.mapping VALUES (5, 11021, 39),(5, 11025, 40),(5, 11023, 41),(5, 11024, 42),(5, 11022, 43);
+INSERT INTO dbo.mapping_banks VALUES (5, 11021, 39),(5, 11025, 40),(5, 11023, 41),(5, 11024, 42),(5, 11022, 43);
 
 because
 39	24	NL46INGB0001726568	Stichting Instudo

@@ -1309,3 +1309,122 @@ textarea.cell-edit {
   cursor: pointer;
   border-radius: 4px;
 }
+
+/* --- Journal editor (manual journal posts) --- */
+.journal { height: calc(100vh - 3rem); overflow: hidden; background: #fbf6e3; display: flex; flex-direction: column; }
+
+.journal-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.6rem;
+  padding: 0.4rem 0.85rem;
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid #e3e3e6;
+}
+.journal-bar button {
+  font: inherit; font-weight: 600; font-size: 0.85rem;
+  cursor: pointer; border-radius: 6px;
+  padding: 7px 14px; border: 1px solid #cbd5e1; background: #c1f4ff; color: #0f172a;
+}
+.journal-bar button:hover { background: #eef2ff; border-color: #2563eb; }
+.journal-bar button.journal-primary { background: #ffecbc; border-color: #f0c060; }
+.journal-bar button:disabled { cursor: progress; opacity: 0.7; }
+
+.journal-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 12% 1fr;
+}
+.journal-panel {
+  border-right: 1px solid #e3e3e6;
+  background: #ffffff;
+  padding: 1rem;
+  overflow-y: auto;
+}
+.journal-panel h2 { margin: 0 0 0.75rem; font-size: 0.95rem; color: #475569; }
+
+.journal-filters { display: flex; flex-direction: column; gap: 0.6rem; }
+.journal-filters label {
+  display: flex; flex-direction: column; gap: 0.2rem;
+  font-size: 0.72rem; font-weight: 600; color: #475569;
+}
+.journal-filters input,
+.journal-filters select {
+  font: inherit; font-weight: 400; padding: 4px 6px;
+  border: 1px solid #cbd5e1; border-radius: 4px; width: 100%;
+}
+
+.journal-content {
+  padding: 0.75rem;
+  overflow: auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.journal-table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+  background: #fbfdef;
+  font-size: 0.8rem;
+}
+.journal-table th, .journal-table td {
+  border: 1px solid #e3e3e6;
+  padding: 0.3rem 0.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.journal-table th { background: #ffecbc; }
+.journal-table col.col-date { width: 90px; }
+.journal-table col.col-cat { width: 90px; }
+.journal-table col.col-amount { width: 100px; }
+.journal-table col.col-act { width: 90px; }
+.journal-table col.col-desc { width: auto; }
+.journal-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.journal-table td.code { color: #475569; text-align: center; }
+.journal-table td.desc.editing { color: #2563eb; font-weight: 700; }
+
+.journal-table input[type="date"],
+.journal-table input[type="number"],
+.journal-table select {
+  font: inherit; padding: 3px 5px; border: 1px solid #cbd5e1; border-radius: 4px;
+}
+.journal-table input[type="date"], .journal-table select { width: 100%; }
+.journal-table input[type="number"] { width: 90px; text-align: right; }
+.journal-table input.journal-desc {
+  font: inherit; padding: 3px 5px; border: 1px solid #cbd5e1; border-radius: 4px;
+  width: 100%;
+}
+
+.journal-table th.desc, .journal-table td.desc {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.journal-table tr.box-line { background: #fff; }
+.journal-table tr.box-line td { border-top: 2px dashed #d4bd6a; }
+
+.journal-x {
+  font: inherit; color: #b91c1c; cursor: pointer; line-height: 1;
+  width: 1.5rem; height: 1.5rem; padding: 0;
+  border: 1px solid #fca5a5; border-radius: 4px; background: #fff;
+  font-size: 1.1rem;
+}
+.journal-x:hover { background: #fef2f2; border-color: #ef4444; }
+.journal-edit {
+  font: inherit; cursor: pointer; font-size: 0.75rem;
+  padding: 2px 8px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; color: #0f172a;
+}
+.journal-edit:hover { background: #eef2ff; border-color: #2563eb; }
+.journal-save {
+  font: inherit; cursor: pointer; font-size: 0.75rem; font-weight: 600;
+  padding: 3px 10px; border: 1px solid #86efac; border-radius: 4px; background: #dcfce7; color: #14532d;
+}
+.journal-save:hover:not(:disabled) { background: #bbf7d0; border-color: #22c55e; }
+.journal-save:disabled { cursor: progress; opacity: 0.7; }
+.box-label { font-size: 0.7rem; color: #64748b; font-weight: 600; }

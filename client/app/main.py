@@ -624,6 +624,49 @@ def api_export_excel(year: int | None = Query(default=None)) -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+class JournalItem(BaseModel):
+    date: str
+    category_from: int
+    category_to: int
+    amount: float = 0.0
+    description: str = ""
+
+
+class JournalPayload(BaseModel):
+    items: list[JournalItem] = Field(default_factory=list)
+
+
+@app.get("/api/journal")
+def api_journal(year: int | None = Query(default=None)) -> dict[str, Any]:
+    import datetime
+
+    from app.centrale_sync import balance_journal
+
+    try:
+        return balance_journal(int(year) if year else int(datetime.date.today().year))
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.put("/api/journal")
+def api_journal_put(
+    body: JournalPayload,
+    year: int | None = Query(default=None),
+) -> dict[str, Any]:
+    import datetime
+
+    from app.centrale_sync import balance_save_journal
+
+    target_year = int(year) if year else int(datetime.date.today().year)
+    try:
+        return balance_save_journal(
+            target_year,
+            [item.model_dump() for item in body.items],
+        )
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 @app.get("/api/matrix")
 def api_matrix(
     year: str | None = Query(default=None),

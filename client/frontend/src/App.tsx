@@ -53,6 +53,7 @@ import type {
   TransactionsResponse,
 } from "./types";
 import { buildXlsx, downloadBlob, euro2, type XlsxSheet } from "./xlsx";
+import JournalEditor from "./JournalEditor";
 
 const CHANNEL = "boekhouding";
 const REFRESH_STATUS_KEY = "boekhouding-refresh-status";
@@ -119,31 +120,31 @@ function excelSheets(data: ExportExcelData): XlsxSheet[] {
     const condensedRows: (string | number)[][] = [];
     condensedRows.push([`Gecondenseerde balans ${data.year}`]);
     condensedRows.push([]);
-    if (condensed && condensed.sections.length > 0) {
-      for (const section of condensed.sections) {
-        if (section.side !== "activa") continue;
-        condensedRows.push([section.name]);
-        for (const line of section.lines) {
+    if (condensed && condensed.sides.length > 0) {
+      for (const side of condensed.sides) {
+        condensedRows.push([side.name]);
+        for (const group of side.groups) {
+          condensedRows.push(["", group.name]);
+          for (const line of group.posts) {
+            condensedRows.push([
+              "",
+              "",
+              line.post_name,
+              line.amount == null ? "" : euro2(line.amount),
+            ]);
+          }
+          for (const line of group.totals) {
+            condensedRows.push(["", line.post_name, line.amount == null ? "" : euro2(line.amount)]);
+          }
+          condensedRows.push([]);
+        }
+        for (const line of side.totals) {
           condensedRows.push([line.post_name, line.amount == null ? "" : euro2(line.amount)]);
         }
-        condensedRows.push(["", euro2(section.total)]);
         condensedRows.push([]);
       }
-      condensedRows.push(["Totaal", euro2(condensed.total_activa)]);
-      condensedRows.push([]);
-      const passivaName =
-        condensed.sections.find((section) => section.side === "passiva")?.name ?? "Passiva";
-      condensedRows.push([passivaName]);
-      for (const section of condensed.sections) {
-        for (const line of section.lines) {
-          if (section.side === "passiva") {
-            condensedRows.push([line.post_name, line.amount == null ? "" : euro2(line.amount)]);
-          }
-        }
-      }
-      condensedRows.push(["Totaal", euro2(condensed.total_passiva)]);
     }
-    sheets.push({ name: "Gecondenseerde balans", rows: condensedRows, widths: [60, 14] });
+    sheets.push({ name: "Gecondenseerde balans", rows: condensedRows, widths: [12, 34, 44, 15] });
   }
   return sheets;
 }
@@ -229,7 +230,7 @@ type HeaderAction = {
   onClick?: () => void;
 };
 
-type AppView = "main" | "terms" | "categories" | "ip" | "split" | "password";
+type AppView = "main" | "terms" | "categories" | "ip" | "split" | "password" | "journal";
 
 const VIEW_CHANGE_EVENT = "boekhouding-view";
 
@@ -640,6 +641,7 @@ function SyncNotifyShell({
   ipView = false,
   splitView = false,
   passwordView = false,
+  journalView = false,
   onLogout,
   initialTitle = "",
 }: {
@@ -657,6 +659,7 @@ function SyncNotifyShell({
   ipView?: boolean;
   splitView?: boolean;
   passwordView?: boolean;
+  journalView?: boolean;
   onLogout?: () => void;
   initialTitle?: string;
 }) {
@@ -950,8 +953,13 @@ function SyncNotifyShell({
         onClick: () =>
           window.open(status.balance_url!, "_blank", "noopener,noreferrer"),
       });
+      items.push({
+        id: "journal",
+        label: "Manual journal posts",
+        onClick: () => openView("journal"),
+      });
     }
-    if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView) {
+    if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView) {
       items.push({
         id: "export-excel",
         label: "Export naar excel",
@@ -1005,7 +1013,7 @@ function SyncNotifyShell({
       });
     }
     return items;
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, status?.balance_url]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, status?.balance_url]);
 
   return (
     <HeaderActionsContext.Provider value={setHeaderActions}>
@@ -1020,7 +1028,7 @@ function SyncNotifyShell({
                 onSelect={handleSelect}
               />
             ) : null}
-            {!termsView && !categoriesView && !ipView && !splitView && !passwordView && activeYear ? (
+            {!termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && activeYear ? (
               <YearSwitcher
                 year={activeYear}
                 years={yearOptions}
@@ -1030,7 +1038,7 @@ function SyncNotifyShell({
                 }}
               />
             ) : null}
-            {showBankSwitcher && !termsView && !categoriesView && !ipView && !splitView && !passwordView ? (
+            {showBankSwitcher && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView ? (
               <BankSwitcher
                 view={bankView}
                 accounts={bankOptions}
@@ -1140,18 +1148,20 @@ function parseAppView(search = window.location.search): AppView {
     view === "categories" ||
     view === "ip" ||
     view === "split" ||
-    view === "password"
+    view === "password" ||
+    view === "journal"
   ) {
     return view;
   }
   return "main";
 }
 
-function viewUrl(target: "main" | "terms" | "categories" | "ip" | "password"): string {
+function viewUrl(target: "main" | "terms" | "categories" | "ip" | "password" | "journal"): string {
   if (target === "terms") return `${window.location.pathname}?view=terms`;
   if (target === "categories") return `${window.location.pathname}?view=categories`;
   if (target === "ip") return `${window.location.pathname}?view=ip`;
   if (target === "password") return `${window.location.pathname}?view=password`;
+  if (target === "journal") return `${window.location.pathname}?view=journal`;
   return window.location.pathname;
 }
 
@@ -1164,7 +1174,7 @@ function showInThisWindow(url: string) {
   window.dispatchEvent(new Event(VIEW_CHANGE_EVENT));
 }
 
-function openView(target: "main" | "terms" | "categories" | "ip" | "password") {
+function openView(target: "main" | "terms" | "categories" | "ip" | "password" | "journal") {
   showInThisWindow(viewUrl(target));
 }
 
@@ -1191,6 +1201,7 @@ export default function App() {
   const isIp = appView === "ip";
   const isSplit = appView === "split";
   const isPassword = appView === "password";
+  const isJournal = appView === "journal";
   const [wsEpoch, setWsEpoch] = useState(0);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -1258,6 +1269,7 @@ export default function App() {
       ipView={isIp}
       splitView={isSplit}
       passwordView={isPassword}
+      journalView={isJournal}
       onLogout={
         authRequired
           ? () => {
@@ -1286,6 +1298,8 @@ export default function App() {
           <SetPasswordApp key={wsEpoch} />
         ) : isSplit ? (
           <SplitApp key={wsEpoch} />
+        ) : isJournal ? (
+          <JournalEditor key={wsEpoch} year={Number(year)} onBack={() => openView("main")} />
         ) : (
           <MainApp
             key={wsEpoch}

@@ -1074,7 +1074,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     Balance countries (``dbo.country.has_balance``) get three sheets:
     ``activa``/``passiva`` exactly like the balance app's sheet (including the
     computed Verlies and Eigen vermogen posts), per-category ``resultaat``
-    rows (3000-4999), and ``gecondenseerd`` from ``dbo.map_condensed_balance``.
+    rows (3000-4999), and ``gecondenseerd`` from ``dbo.condensed_balance``.
     Plain countries get ``resultaat`` only.
     The Resultaat rows come from the recorded ``dbo.category_total`` plus the
     beheer journal/mirror overlay (R). Passiva 2100 Verlies uses that same R.
@@ -1214,27 +1214,45 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
 
 
 _BEHEER_CONDENSED_SEED: tuple[tuple[str, str, str], ...] = (
-    ("Gebouwen", "1000", "Vaste activa"),
-    ("Verbouwingen", "1005", "Vaste activa"),
-    ("Inventaris", "1010", "Vaste activa"),
-    ("Auto's", "1015", "Vaste activa"),
-    ("Bank en Giro", "1051,1053,1054,1055,1056", "Vlottende activa"),
-    ("Kapitaalrekening", "1052", "Vlottende activa"),
-    ("Debiteuren", "1110,1111", "Vlottende activa"),
-    ("Eigen vermogen", "2000,2100", "Passiva"),
-    ("Voorzieningen", "2050,2055", "Passiva"),
-    ("Langlopende schulden", "2500", "Passiva"),
-    ("Kortlopende schulden", "", "Passiva"),
+    ("Gebouwen", "1000", "Activa, Vaste activa"),
+    ("Verbouwingen", "1005", "Activa, Vaste activa"),
+    ("Inventaris", "1010", "Activa, Vaste activa"),
+    ("Auto's", "1015", "Activa, Vaste activa"),
+    ("Bank en Giro", "1051,1053,1054,1055,1056", "Activa, Vlottende activa"),
+    ("Kapitaalrekening", "1052", "Activa, Vlottende activa"),
+    ("Debiteuren", "1110,1111", "Activa, Vlottende activa"),
+    ("Eigen vermogen", "2000,2100", "Passiva, Eigen vermogen en voorzieningen"),
+    ("Voorzieningen", "2050,2055", "Passiva, Eigen vermogen en voorzieningen"),
+    ("Langlopende schulden", "2500", "Passiva, schulden"),
+    ("Kortlopende schulden", "", "Passiva, schulden"),
+    ("Totaal vaste activa", "1000,1005,1010,1015", "Activa, Vaste activa"),
+    (
+        "Totaal vlottende activa",
+        "1110,1111,1051,1052,1053,1054,1055,1056",
+        "Activa, Vlottende activa",
+    ),
+    (
+        "Totaal activa",
+        "1000,1005,1010,1015,1110,1111,1051,1052,1053,1054,1055,1056",
+        "Activa",
+    ),
+    ("Totaal passiva", "2000,2050,2055,2100,2500", "Passiva"),
+    (
+        "Totaal eigen vermogen en voorzieningen",
+        "2000,2050,2055,2100",
+        "Passiva, Eigen vermogen en voorzieningen",
+    ),
+    ("Totaal schulden", "2500", "Passiva, Schulden"),
 )
 
 
-def _ensure_map_condensed_balance(cursor) -> None:
-    """Create ``dbo.map_condensed_balance`` and seed Beheer posts if empty."""
-    cursor.execute("SELECT OBJECT_ID(N'dbo.map_condensed_balance', N'U')")
+def _ensure_condensed_balance(cursor) -> None:
+    """Create ``dbo.condensed_balance`` and seed Beheer posts if empty."""
+    cursor.execute("SELECT OBJECT_ID(N'dbo.condensed_balance', N'U')")
     if cursor.fetchone()[0] is None:
         cursor.execute(
             """
-            CREATE TABLE dbo.map_condensed_balance (
+            CREATE TABLE dbo.condensed_balance (
                 id INT IDENTITY(1,1) PRIMARY KEY,
                 country_id INT NOT NULL,
                 post_name VARCHAR(64) NOT NULL,
@@ -1257,7 +1275,7 @@ def _ensure_map_condensed_balance(cursor) -> None:
         return
     country_id = int(row[0])
     cursor.execute(
-        "SELECT 1 FROM dbo.map_condensed_balance WHERE country_id = ?",
+        "SELECT 1 FROM dbo.condensed_balance WHERE country_id = ?",
         (country_id,),
     )
     if cursor.fetchone() is not None:
@@ -1265,7 +1283,7 @@ def _ensure_map_condensed_balance(cursor) -> None:
     for post_name, codes, section in _BEHEER_CONDENSED_SEED:
         cursor.execute(
             """
-            INSERT INTO dbo.map_condensed_balance
+            INSERT INTO dbo.condensed_balance
                 (country_id, post_name, sum_local_code, section_name)
             VALUES (?, ?, ?, ?)
             """,
@@ -1280,22 +1298,24 @@ def _export_condensed_balance(
 ) -> dict[str, Any]:
     """Gecondenseerde balans posts for one balance country/year.
 
-    Reads ``dbo.map_condensed_balance`` in ``id`` order. ``sum_local_code``
-    is a comma-separated list of ``dbo.dim_category.local_code`` values summed
-    into the post; the empty string or NULL is a post without categories
-    (shown blank). Sections group posts by ``section_name``; a section's side
-    comes from its codes (any code >= 2000 makes it passiva) and empty
-    sections inherit the previous side. Missing table or no rows → empty
-    ``sections`` (third sheet still rendered).
+    Reads ``dbo.condensed_balance`` in ``id`` order. ``sum_local_code`` is a
+    comma-separated list of ``dbo.dim_category.local_code`` values summed into
+    the post; NULL/empty means a post without categories (shown blank).
+    ``section_name`` is a comma-separated path: the first part is the side
+    (``Activa`` / ``Passiva``), an optional second part the group. Posts whose
+    ``post_name`` starts with ``Totaal `` are totals: group-level when the path
+    has a group, side-level otherwise. Sides and groups keep their
+    first-appearance order; group matching is case-insensitive so totals land
+    in the group they belong to. Missing table or no rows → empty ``sides``.
     """
     from decimal import Decimal
 
-    empty = {"sections": [], "total_activa": 0.0, "total_passiva": 0.0}
+    empty = {"sides": [], "total_activa": 0.0, "total_passiva": 0.0}
     try:
-        _ensure_map_condensed_balance(cursor)
+        _ensure_condensed_balance(cursor)
         cursor.execute(
             "SELECT post_name, sum_local_code, section_name "
-            "FROM dbo.map_condensed_balance WHERE country_id = ? ORDER BY id",
+            "FROM dbo.condensed_balance WHERE country_id = ? ORDER BY id",
             (int(country_id),),
         )
         rows = cursor.fetchall()
@@ -1314,49 +1334,66 @@ def _export_condensed_balance(
         print(f"export: condensed balance lookup failed: {exc}")
         return empty
 
-    sections: list[dict[str, Any]] = []
-    current: dict[str, Any] | None = None
-    for post_name, sum_local_code, section_name in rows:
-        codes = [int(token) for token in str(sum_local_code or "").split(",") if token.strip()]
-        amount = Decimal("0")
+    def _amount_of(codes: list[int]) -> float | None:
+        if not codes:
+            return None
+        total = Decimal("0")
         for code in codes:
             category_id = local_to_cat.get(code)
             if category_id is not None:
-                amount += amounts_by_id.get(category_id, Decimal("0"))
-        if current is None or current["name"] != section_name:
-            if current is not None:
-                current["total"] = float(current.pop("_sum"))
-            current = {
-                "name": str(section_name),
-                "side": "passiva",
-                "lines": [],
-                "_sum": Decimal("0"),
-                "_codes": set(codes),
-            }
-            sections.append(current)
-        else:
-            current["_codes"].update(codes)
-        current["lines"].append(
-            {"post_name": str(post_name), "amount": float(amount) if codes else None}
-        )
-        current["_sum"] += amount
-    if current is not None:
-        current["total"] = float(current.pop("_sum"))
+                total += amounts_by_id.get(category_id, Decimal("0"))
+        return float(total)
 
-    previous_side = "activa"
-    for section in sections:
-        codes = section.pop("_codes") or set()
-        if codes:
-            side = "passiva" if min(codes) >= 2000 else "activa"
-        else:
-            side = previous_side
-        section["side"] = side
-        previous_side = side
+    sides: list[dict[str, Any]] = []
+    side_by_key: dict[str, dict[str, Any]] = {}
+    group_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for post_name, sum_local_code, section_name in rows:
+        codes = [int(token) for token in str(sum_local_code or "").split(",") if token.strip()]
+        parts = [part.strip() for part in str(section_name or "").split(",") if part.strip()]
+        side_name = parts[0] if parts else ""
+        group_name = parts[1] if len(parts) > 1 else None
+        if not side_name:
+            continue
+        line = {"post_name": str(post_name), "amount": _amount_of(codes)}
+        is_total = str(post_name).strip().lower().startswith("totaal")
+        side_key = side_name.lower()
+        side = side_by_key.get(side_key)
+        if side is None:
+            side = {"name": side_name, "groups": [], "totals": []}
+            side_by_key[side_key] = side
+            sides.append(side)
+        if group_name:
+            group_key = (side_key, group_name.lower())
+            group = group_by_key.get(group_key)
+            if group is None:
+                group = {"name": group_name, "posts": [], "totals": []}
+                group_by_key[group_key] = group
+                side["groups"].append(group)
+            (group["totals"] if is_total else group["posts"]).append(line)
+        elif is_total:
+            side["totals"].append(line)
+
+    def _side_total(side: dict[str, Any]) -> float:
+        totals = [Decimal(str(line["amount"])) for line in side["totals"] if line["amount"] is not None]
+        if totals:
+            return float(sum(totals))
+        amounts = [
+            Decimal(str(line["amount"]))
+            for group in side["groups"]
+            for line in group["totals"] + group["posts"]
+            if line["amount"] is not None
+        ]
+        return float(sum(amounts))
+
+    totals: dict[str, float] = {}
+    for side in sides:
+        key = "passiva" if side["name"].lower().startswith("pas") else "activa"
+        totals[key] = _side_total(side)
 
     return {
-        "sections": sections,
-        "total_activa": float(sum(s["total"] for s in sections if s["side"] == "activa")),
-        "total_passiva": float(sum(s["total"] for s in sections if s["side"] == "passiva")),
+        "sides": sides,
+        "total_activa": totals.get("activa", 0.0),
+        "total_passiva": totals.get("passiva", 0.0),
     }
 
 
