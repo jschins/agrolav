@@ -307,15 +307,15 @@ def spaar_source_exclude_clause(
 def journal_deltas(
     cat_from: int, cat_to: int, amount: Decimal
 ) -> tuple[Decimal, Decimal]:
-    """Signed (FROM, TO) effect that keeps plug 2000 still.
+    """Signed (FROM, TO) effect for a hand journal of signed amount ``X``.
 
-    TO always ``+= -X``. FROM takes the APR product of the two class signs
-    (A = −1, P = R = +1): same class ``+= +X``, cross class ``+= -X``.
-    Kosten and omzet use the same sign (Saldo is the numerical sum).
+    TO always ``+= +X``. FROM takes the **negative** APR product of the two
+    class signs (A = −1, P = R = +1): same class ``+= -X``, cross class
+    ``+= +X``.
     """
     x = amount
-    src_delta = apr_class_sign(cat_from) * apr_class_sign(cat_to) * x
-    dst_delta = -x
+    src_delta = -apr_class_sign(cat_from) * apr_class_sign(cat_to) * x
+    dst_delta = x
     return src_delta, dst_delta
 
 
@@ -746,11 +746,10 @@ def _journal_effect(
 ) -> dict[int, Decimal]:
     """category_id → net effect from the hand-edited dbo.journal.
 
-    Amount X is a transfer whose signs keep Eigen vermogen (2000) still:
-    TO ``+= -X``; FROM ``+= +X`` when FROM and TO are the same class (both
-    activa, or both passiva/resultaat), else FROM ``+= -X``. FROM 2500 TO 3110
-    of 9000 therefore moves +9000 onto 2500 and -9000 onto 3110. With ``as_of``
-    only rows dated on or before that day are included.
+    Amount X: TO ``+= +X``; FROM takes the negative APR product of the two
+    class signs (A = −1, P = R = +1). FROM 1052 TO 4050 of 9000 moves +9000
+    onto both. With ``as_of`` only rows dated on or before that day are
+    included.
     """
     if not _journal_table_exists(cursor):
         return {}

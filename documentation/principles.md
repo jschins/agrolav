@@ -128,28 +128,32 @@ HITS may not involve 1051, 1053–1056 (`bank` and `source`) nor 2000 (`equity`)
 
 ---
 
-## 5. Journal mutations (amount X)
+## 5. Journal mutations (signed amount X)
 
-Class signs: **A = −1**, **P = R = +1**. TO always decreases with X
-(`+= −X`). FROM takes the product of the two class signs
-(A → A is (−1)×(−1) = +1, A → P is (−1)×(+1) = −1, and so on).
+TO always increases with X (`+= +X`). FROM takes the **negative** product of
+the two class signs (A = −1, P = R = +1).
 
 | FROM \\ TO | A | P | R |
 |---|---|---|---|
-| **A** | + | − | − |
-| **P** | − | + | + |
-| **R** | − | + | + |
+| **A** | − | + | + |
+| **P** | + | − | − |
+| **R** | + | − | − |
+
+The table is FROM's sign; TO is `+X` in every cell.
+
+1052 (`mirror`, A) → 4050 (R) of X: 1052 +X, 4050 +X. 4050 → 1052 of X:
+4050 +X, 1052 +X.
 
 ---
 
 ## Why 2000 stays still (sketch)
 
-Bank HIT of X on 1051:
+Bank HIT of X on 1051 still keeps ΔA = ΔP_other (P_other includes 2100):
 
 - booked as R: 1051 +X, 2100 +X
 - booked as P: 1051 +X, that P +X
 - booked as A: 1051 +X, that A −X
 
-Journal of X: each row above has ΔA = ΔP_other (P_other includes 2100).
+Journals follow §5 (TO `+X`, FROM = minus APR product).
 
 1051 → 1052 transfer of X > 0: 1051 −X, 1052 +X.

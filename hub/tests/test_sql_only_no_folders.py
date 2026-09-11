@@ -390,24 +390,24 @@ class BalanceOverlayTests(unittest.TestCase):
             {},
         )
 
-    def test_activa_to_kosten_decreases_saldo(self):
+    def test_activa_to_kosten_increases_saldo(self):
         from app.sql_replica import _balance_overlay_cents
 
         self.assertEqual(
             _balance_overlay_cents(
                 2026, _FakeOverlayCursor(journals=[(1110, 3100, 60)])
             ),
-            {3100: -6000},
+            {3100: 6000},
         )
 
-    def test_from_kosten_always_minus_x(self):
+    def test_from_kosten_to_activa_increases_saldo(self):
         from app.sql_replica import _balance_overlay_cents
 
         self.assertEqual(
             _balance_overlay_cents(
                 2026, _FakeOverlayCursor(journals=[(3200, 1110, 40)])
             ),
-            {3200: -4000},
+            {3200: 4000},
         )
 
     def test_kosten_and_omzet_same_sign(self):
@@ -417,7 +417,7 @@ class BalanceOverlayTests(unittest.TestCase):
             _balance_overlay_cents(
                 2026, _FakeOverlayCursor(journals=[(1110, 4050, 100)])
             ),
-            {4050: -10000},
+            {4050: 10000},
         )
 
     def test_transaction_rows_keep_stored_amount(self):
