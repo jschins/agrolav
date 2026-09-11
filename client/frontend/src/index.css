@@ -599,7 +599,6 @@ th {
 
 .matrix-table {
   width: max-content;
-  min-width: 100%;
 }
 
 .totals-table .num {
