@@ -117,7 +117,7 @@ function condensedNamedCell(text: string, line: import("./api").CondensedLine): 
 function condensedAmountCell(line: import("./api").CondensedLine): XlsxCell {
   if (line.amount == null) return "";
   const style = condensedFontStyle(line.font_size, line.bold === true, line.background_color) ?? {};
-  style.format = '"€" #.##0';
+  style.format = '"€" #,##0;"€" -#,##0';
   return { value: euro2(line.amount), style };
 }
 
