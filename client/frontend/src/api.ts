@@ -90,20 +90,31 @@ export interface ExportExcelLine {
   source?: string;
 }
 
-export interface CondensedCell {
-  row: number;
-  column: number;
-  text?: string;
-  amount?: number;
-  special?: string;
-  bold?: boolean;
-  color?: string;
-  font_size?: number;
-  background_color?: string;
+export interface CondensedLine {
+  post_name: string;
+  amount: number | null;
+}
+
+export interface CondensedGroup {
+  name: string;
+  posts: CondensedLine[];
+  totals: CondensedLine[];
+}
+
+export interface CondensedSide {
+  name: string;
+  groups: CondensedGroup[];
+  lines: CondensedSideLine[];
+}
+
+export interface CondensedSideLine extends CondensedLine {
+  is_total: boolean;
 }
 
 export interface GecondenseerdData {
-  cells: CondensedCell[];
+  sides: CondensedSide[];
+  total_activa: number;
+  total_passiva: number;
 }
 
 export interface ExportExcelData {

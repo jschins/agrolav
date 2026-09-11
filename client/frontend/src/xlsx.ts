@@ -59,7 +59,10 @@ interface ResolvedStyle {
 
 function hexColor(value: string | undefined, fallback: string): string {
   if (!value) return fallback;
-  return value.replace(/^#/, "").toUpperCase();
+  const hex = value.replace(/^#/, "").toUpperCase();
+  if (/^[0-9A-F]{8}$/.test(hex)) return hex;
+  if (/^[0-9A-F]{6}$/.test(hex)) return `FF${hex}`;
+  return fallback;
 }
 
 function resolveStyle(cell: XlsxCell): ResolvedStyle {

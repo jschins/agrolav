@@ -15,9 +15,45 @@ Schema sources in the repo:
 
 ## Write a backup
 
+Two folders on the Windows host, one bind-mount on each SQL container:
+
+| host path | what it holds |
+|:----------|:--------------|
+| `C:\SQLBackups\local_backups` | `.bak` written from the **local** database |
+| `C:\SQLBackups\remote_backups` | `.bak` **pulled from the server** |
+
+Local container (`agrolav-sql` in `docker-compose.sqlserver.yml`):
+
+```text
+volumes:
+  - "C:/SQLBackups:/var/opt/mssql/backup"
+```
+
+so `/var/opt/mssql/backup/local_backups` = `C:\SQLBackups\local_backups`.
+
+Remote container (`MSSQL2022`): `/opt/sql_backups` → `/var/opt/mssql/backup`.
+SQL Server runs as uid `10001`. Each `BACKUP DATABASE` **rewrites** the `.bak`
+as `10001`, so `scp` as `agrolav` cannot read it until you `chown` — every
+time, not once. Each `scp` **onto** the server creates the file as `agrolav`,
+so restore cannot read it until you `chown` it back to `10001` — again every
+time.
+
+SSH / `scp` always use port **4523**:
+
+```bash
+ssh agrolav@209.38.39.105 -p 4523
+```
+
+Restoring a `.bak` over the live remote database is in `deployment.md`.
+
+### Remote → local
+
+On the **remote** instance (SSMS at `209.38.39.105,1433`), write the backup
+inside the container:
+
 ```sql
-BACKUP DATABASE agrolav
-TO DISK = '/var/opt/mssql/backup/local_backups/agrolav.bak'
+BACKUP DATABASE [agrolav]
+TO DISK = N'/var/opt/mssql/backup/agrolav.bak'
 WITH
     INIT,
     COMPRESSION,
@@ -25,20 +61,47 @@ WITH
     STATS = 10;
 ```
 
-The destination folder on disk (`C:/SQLBackups`) is the Docker volume in
-`docker-compose.sqlserver.yml`:
+That file is `/opt/sql_backups/agrolav.bak` on the host. Claim it so `scp`
+as `agrolav` can read it (needed after every backup):
 
-```text
-volumes:
-  - "C:/SQLBackups:/var/opt/mssql/backup"
+```bash
+sudo ls -lh /opt/sql_backups/agrolav.bak
+sudo chown agrolav:agrolav /opt/sql_backups/agrolav.bak
 ```
 
-Because of that mapping the container path `/var/opt/mssql/backup/local_backups`
-= `C:\SQLBackups\local_backups`, where **backups made from the local DB** are
-kept. A second folder, `C:\SQLBackups\remote_backups`, holds `.bak` files
-**pulled from the server** (see `deployment.md` §8b).
+From Windows, copy into `remote_backups`:
 
-Restoring a backup over the remote database is in `deployment.md`.
+```powershell
+scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolav.bak
+```
+
+### Local → remote
+
+On the **local** instance, write into `local_backups`:
+
+```sql
+BACKUP DATABASE [agrolav]
+TO DISK = N'/var/opt/mssql/backup/local_backups/agrolav.bak'
+WITH
+    INIT,
+    COMPRESSION,
+    CHECKSUM,
+    STATS = 10;
+```
+
+From Windows, copy onto the server mount:
+
+```powershell
+scp -P 4523 C:/SQLBackups/local_backups/agrolav.bak agrolav@209.38.39.105:/opt/sql_backups/agrolav.bak
+```
+
+On the server, give the file back to SQL Server after every copy (otherwise
+restore fails with *Operating system error 5*):
+
+```bash
+sudo chown 10001:10001 /opt/sql_backups/agrolav.bak
+sudo ls -lh /opt/sql_backups/agrolav.bak
+```
 
 ---
 
