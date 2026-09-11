@@ -12,6 +12,7 @@ import {
   getExportExcel,
   type ExportExcelData,
   type ExportExcelLine,
+  type CondensedCell,
   getIpAccess,
   addIpAccess,
   deleteIpAccess,
@@ -52,7 +53,14 @@ import type {
   Transaction,
   TransactionsResponse,
 } from "./types";
-import { buildXlsx, downloadBlob, euro2, type XlsxSheet } from "./xlsx";
+import {
+  buildXlsx,
+  downloadBlob,
+  euro2,
+  type XlsxCell,
+  type XlsxSheet,
+  type XlsxStyle,
+} from "./xlsx";
 import JournalEditor from "./JournalEditor";
 
 const CHANNEL = "boekhouding";
@@ -117,36 +125,51 @@ function excelSheets(data: ExportExcelData): XlsxSheet[] {
   sheets.push({ name: "Resultaat", rows, widths: [10, 60, 14] });
   if (data.has_balance) {
     const condensed = data.gecondenseerd;
-    const condensedRows: (string | number)[][] = [];
-    condensedRows.push([`Gecondenseerde balans ${data.year}`]);
-    condensedRows.push([]);
-    if (condensed && condensed.sides.length > 0) {
-      for (const side of condensed.sides) {
-        condensedRows.push([side.name]);
-        for (const group of side.groups) {
-          condensedRows.push(["", group.name]);
-          for (const line of group.posts) {
-            condensedRows.push([
-              "",
-              "",
-              line.post_name,
-              line.amount == null ? "" : euro2(line.amount),
-            ]);
-          }
-          for (const line of group.totals) {
-            condensedRows.push(["", line.post_name, line.amount == null ? "" : euro2(line.amount)]);
-          }
+    const condensedRows: XlsxCell[][] = [];
+    if (condensed && condensed.cells.length > 0) {
+      const maxRow = condensed.cells.reduce((m, cell) => Math.max(m, cell.row), 0);
+      const maxCol = condensed.cells.reduce((m, cell) => Math.max(m, cell.column), 0);
+      for (let r = 1; r <= maxRow; r += 1) {
+        const rowCells = condensed.cells.filter((cell) => cell.row === r);
+        if (rowCells.length === 0) {
           condensedRows.push([]);
+          continue;
         }
-        for (const line of side.lines) {
-          condensedRows.push(["", line.post_name, line.amount == null ? "" : euro2(line.amount)]);
+        const borderRow = rowCells.some(
+          (cell) => cell.special !== undefined && /separation/i.test(cell.special)
+        );
+        const rowArr: XlsxCell[] = [];
+        for (let c = 1; c <= maxCol; c += 1) {
+          const found = rowCells.find((cell) => cell.column === c);
+          if (!found) {
+            rowArr.push(borderRow ? { value: "", style: { borderBottom: true } } : "");
+            continue;
+          }
+          const base = condensedCellStyle(found);
+          if (found.special !== undefined) {
+            rowArr.push({ value: "", style: { ...base, borderBottom: true } });
+          } else if (found.amount != null) {
+            rowArr.push({ value: euro2(found.amount), style: base });
+          } else {
+            rowArr.push({ value: found.text ?? "", style: base });
+          }
         }
-        condensedRows.push([]);
+        condensedRows.push(rowArr);
       }
+      condensedRows.push([]);
     }
     sheets.push({ name: "Gecondenseerde balans", rows: condensedRows, widths: [12, 34, 44, 15] });
   }
   return sheets;
+}
+
+function condensedCellStyle(cell: CondensedCell): XlsxStyle {
+  const style: XlsxStyle = {};
+  if (cell.bold) style.bold = true;
+  if (cell.font_size) style.fontSize = cell.font_size;
+  if (cell.color) style.fontColor = cell.color.replace(/^#/, "");
+  if (cell.background_color) style.background = cell.background_color.replace(/^#/, "");
+  return style;
 }
 
 function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {

@@ -1,4 +1,18 @@
-export type XlsxCell = string | number;
+export type XlsxCellValue = string | number;
+
+export interface XlsxStyle {
+  bold?: boolean;
+  fontSize?: number;
+  /** Hex color without leading "#", e.g. "FF0000". */
+  fontColor?: string;
+  /** Hex color without leading "#", e.g. "FFFF00". */
+  background?: string;
+  borderBottom?: boolean;
+}
+
+export type XlsxCell =
+  | XlsxCellValue
+  | { value: XlsxCellValue; style?: XlsxStyle };
 
 export interface XlsxSheet {
   name: string;
@@ -29,7 +43,160 @@ function colLetter(idx: number): string {
   return result;
 }
 
-function sheetXml(sheet: XlsxSheet): string {
+const DEFAULT_FONT_SIZE = 11;
+const DEFAULT_FONT_COLOR = "FF1A1A1A";
+const CURRENCY_NUM_FMT = 164;
+const CURRENCY_FORMAT = "#,##0.00";
+
+interface ResolvedStyle {
+  bold: boolean;
+  fontSize: number;
+  fontColor: string;
+  background: string;
+  borderBottom: boolean;
+  isNumber: boolean;
+}
+
+function hexColor(value: string | undefined, fallback: string): string {
+  if (!value) return fallback;
+  return value.replace(/^#/, "").toUpperCase();
+}
+
+function resolveStyle(cell: XlsxCell): ResolvedStyle {
+  const style =
+    typeof cell === "object" && cell !== null ? cell.style ?? {} : {};
+  const value =
+    typeof cell === "object" && cell !== null ? cell.value : cell;
+  return {
+    bold: style.bold === true,
+    fontSize: style.fontSize ?? DEFAULT_FONT_SIZE,
+    fontColor: hexColor(style.fontColor, DEFAULT_FONT_COLOR),
+    background: hexColor(style.background, ""),
+    borderBottom: style.borderBottom === true,
+    isNumber: typeof value === "number",
+  };
+}
+
+interface StyleRegistry {
+  fonts: ResolvedStyle[];
+  fills: string[];
+  xfs: { fontId: number; fillId: number; numFmtId: number; borderId: number }[];
+  styleIdOf: (cell: XlsxCell) => number;
+}
+
+function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
+  const fonts: ResolvedStyle[] = [];
+  const fills: string[] = [];
+  const xfs: { fontId: number; fillId: number; numFmtId: number; borderId: number }[] = [];
+  const fontIds = new Map<string, number>();
+  const fillIds = new Map<string, number>();
+  const xfIds = new Map<string, number>();
+  const styleIds = new Map<string, number>();
+
+  function fontIdOf(style: ResolvedStyle): number {
+    const key = `b${+style.bold}|s${style.fontSize}|c${style.fontColor}`;
+    let id = fontIds.get(key);
+    if (id === undefined) {
+      id = fonts.length;
+      fonts.push(style);
+      fontIds.set(key, id);
+    }
+    return id;
+  }
+
+  function fillIdOf(background: string): number {
+    if (!background) return 0;
+    let idx = fillIds.get(background);
+    if (idx === undefined) {
+      idx = fills.length;
+      fills.push(background);
+      fillIds.set(background, idx);
+    }
+    return idx + 2; // 0 none, 1 gray125
+  }
+
+  function xfIdOf(fontId: number, fillId: number, numFmtId: number, borderId: number): number {
+    const key = `${fontId}|${fillId}|${numFmtId}|${borderId}`;
+    let id = xfIds.get(key);
+    if (id === undefined) {
+      id = xfs.length;
+      xfs.push({ fontId, fillId, numFmtId, borderId });
+      xfIds.set(key, id);
+    }
+    return id;
+  }
+
+  function styleIdOf(cell: XlsxCell): number {
+    const style = resolveStyle(cell);
+    const key =
+      `s${style.fontSize}|b${+style.bold}|c${style.fontColor}` +
+      `|g${style.background}|n${+style.isNumber}|br${+style.borderBottom}`;
+    let id = styleIds.get(key);
+    if (id === undefined) {
+      const fontId = fontIdOf(style);
+      const fillId = fillIdOf(style.background);
+      const numFmtId = style.isNumber ? CURRENCY_NUM_FMT : 0;
+      const borderId = style.borderBottom ? 1 : 0;
+      id = xfIdOf(fontId, fillId, numFmtId, borderId);
+      styleIds.set(key, id);
+    }
+    return id;
+  }
+
+  styleIdOf(""); // register the plain default style at xf index 0
+  for (const sheet of sheets) {
+    for (const row of sheet.rows) {
+      for (const cell of row) styleIdOf(cell);
+    }
+  }
+  return { fonts, fills, xfs, styleIdOf };
+}
+
+function fontXml(style: ResolvedStyle): string {
+  const bold = style.bold ? "<b/>" : "";
+  return (
+    `<font>${bold}<sz val="${style.fontSize}"/>` +
+    `<color rgb="${style.fontColor}"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font>`
+  );
+}
+
+function xfXml(x: { fontId: number; fillId: number; numFmtId: number; borderId: number }): string {
+  const applyFont = x.fontId !== 0 ? ' applyFont="1"' : "";
+  const applyFill = x.fillId !== 0 ? ' applyFill="1"' : "";
+  const applyBorder = x.borderId !== 0 ? ' applyBorder="1"' : "";
+  const applyNumberFormat = x.numFmtId !== 0 ? ' applyNumberFormat="1"' : "";
+  return (
+    `<xf numFmtId="${x.numFmtId}" fontId="${x.fontId}" fillId="${x.fillId}"` +
+    ` borderId="${x.borderId}" xfId="0"${applyFont}${applyFill}${applyBorder}${applyNumberFormat}/>`
+  );
+}
+
+function stylesXml(reg: StyleRegistry): string {
+  const numFmts = `<numFmts count="1"><numFmt numFmtId="${CURRENCY_NUM_FMT}" formatCode="${CURRENCY_FORMAT}"/></numFmts>`;
+  const fonts = `<fonts count="${reg.fonts.length}">${reg.fonts.map(fontXml).join("")}</fonts>`;
+  const fills =
+    `<fills count="${reg.fills.length + 2}">` +
+    `<fill><patternFill patternType="none"/></fill>` +
+    `<fill><patternFill patternType="gray125"/></fill>` +
+    reg.fills
+      .map(
+        (color) =>
+          `<fill><patternFill patternType="solid"><fgColor rgb="${color}"/><bgColor indexed="64"/></patternFill></fill>`
+      )
+      .join("") +
+    `</fills>`;
+  const borders =
+    `<borders count="2">` +
+    `<border><left/><right/><top/><bottom/><diagonal/></border>` +
+    `<border><left/><right/><top/><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border>` +
+    `</borders>`;
+  const cellStyleXfs = `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>`;
+  const cellXfs = `<cellXfs count="${reg.xfs.length}">${reg.xfs.map(xfXml).join("")}</cellXfs>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${numFmts}${fonts}${fills}${borders}${cellStyleXfs}${cellXfs}<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+}
+
+function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): string {
   const rowsXml = sheet.rows
     .map((row, ri) => {
       if (row.length === 0) return "";
@@ -37,10 +204,17 @@ function sheetXml(sheet: XlsxSheet): string {
       const cellsXml = row
         .map((cell, ci) => {
           const ref = `${colLetter(ci)}${r}`;
-          if (typeof cell === "number") {
-            return `<c r="${ref}" s="1"><v>${cell}</v></c>`;
+          const styleId = styleIdOf(cell);
+          if (typeof cell === "object") {
+            if (typeof cell.value === "number") {
+              return `<c r="${ref}" s="${styleId}"><v>${cell.value}</v></c>`;
+            }
+            return `<c r="${ref}" s="${styleId}" t="inlineStr"><is><t>${escXml(String(cell.value))}</t></is></c>`;
           }
-          return `<c r="${ref}" t="inlineStr"><is><t>${escXml(String(cell))}</t></is></c>`;
+          if (typeof cell === "number") {
+            return `<c r="${ref}" s="${styleId}"><v>${cell}</v></c>`;
+          }
+          return `<c r="${ref}" s="${styleId}" t="inlineStr"><is><t>${escXml(cell)}</t></is></c>`;
         })
         .join("");
       return `<row r="${r}">${cellsXml}</row>`;
@@ -104,11 +278,6 @@ function contentTypesXml(sheetCount: number): string {
   );
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${overrides.join("")}</Types>`;
-}
-
-function stylesXml(): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><color rgb="FF1A1A1A"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 }
 
 function rootRelsXml(): string {
@@ -207,6 +376,7 @@ function zipBlob(files: { name: string; data: Uint8Array }[]): Blob {
 }
 
 export function buildXlsx(sheets: XlsxSheet[]): Blob {
+  const registry = buildRegistry(sheets);
   const files: { name: string; data: Uint8Array }[] = [
     { name: "[Content_Types].xml", data: encoder.encode(contentTypesXml(sheets.length)) },
     { name: "_rels/.rels", data: encoder.encode(rootRelsXml()) },
@@ -215,12 +385,12 @@ export function buildXlsx(sheets: XlsxSheet[]): Blob {
       name: "xl/_rels/workbook.xml.rels",
       data: encoder.encode(workbookRelsXml(sheets.length)),
     },
-    { name: "xl/styles.xml", data: encoder.encode(stylesXml()) },
+    { name: "xl/styles.xml", data: encoder.encode(stylesXml(registry)) },
   ];
   sheets.forEach((sheet, i) => {
     files.push({
       name: `xl/worksheets/sheet${i + 1}.xml`,
-      data: encoder.encode(sheetXml(sheet)),
+      data: encoder.encode(sheetXml(sheet, registry.styleIdOf)),
     });
   });
   return zipBlob(files);
