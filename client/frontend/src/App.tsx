@@ -1322,6 +1322,18 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      // Overlays that already handle Escape keep that behavior.
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.(".term-context-backdrop, .term-assign-overlay")) return;
+      openView("main");
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (!authChecked) {
     return <div className="login-screen"><p className="login-muted">Loading…</p></div>;
   }
@@ -3045,6 +3057,14 @@ function displayMatrixCell(matrix: MatrixResponse, category: string, raw: string
   return formatDisplayNumber(raw);
 }
 
+function transactionCents(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? Math.round(value * 100) : 0;
+  const text = String(value ?? "").trim();
+  if (!text) return 0;
+  const n = Number(text.replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}
+
 function closeSplitPage() {
   openView("main");
 }
@@ -3284,6 +3304,18 @@ function PTable({
     )
   );
 
+  const consolidated = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const t of transactions) {
+      const name = formatCell(t.name).trim();
+      if (!name) continue;
+      totals.set(name, (totals.get(name) ?? 0) + transactionCents(t.amount));
+    }
+    return [...totals.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([name, cents]) => ({ name, cents }));
+  }, [transactions]);
+
   function safeHighlight(text: string): ReactNode {
     try {
       return highlight(text, keywords);
@@ -3388,32 +3420,60 @@ function PTable({
       {transactions.length === 0 ? (
         <p>Geen transacties in deze categorie.</p>
       ) : (
-        <table className="p-table">
-          <colgroup>
-            {columns.map((c) => (
-              <col key={c} className={columnColClass(c)} />
-            ))}
-          </colgroup>
-          <thead>
-            <tr>
-              {columns.map((c) => (
-                <th key={c} className={columnCellClass(c)}>
-                  {columnHeaderLabel(c, detail.table_header_terms)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {transactions.map((t) => {
-              const descModified = descriptionModified.has(String(t.id));
-              return (
-                <tr key={String(t.id)} className={descModified ? "modified" : undefined}>
-                  {columns.map((c) => renderCell(t, c))}
+        <>
+          {consolidated.length > 0 && (
+            <div className="p-consolidated">
+              <strong>Totale bijdrage per rekeninghouder</strong>
+              <table className="p-table">
+                <thead>
+                  <tr>
+                    <th className="num">Bedrag</th>
+                    <th>Naam</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {consolidated.map(({ name, cents }) => (
+                    <tr key={name}>
+                      <td className={cents < 0 ? "amount num neg" : "amount num"}>
+                        {formatUnity(cents / 100)}
+                      </td>
+                      <td>{name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="p-details">
+            <strong>Details</strong>
+            <table className="p-table">
+              <colgroup>
+                {columns.map((c) => (
+                  <col key={c} className={columnColClass(c)} />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  {columns.map((c) => (
+                    <th key={c} className={columnCellClass(c)}>
+                      {columnHeaderLabel(c, detail.table_header_terms)}
+                    </th>
+                  ))}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {transactions.map((t) => {
+                  const descModified = descriptionModified.has(String(t.id));
+                  return (
+                    <tr key={String(t.id)} className={descModified ? "modified" : undefined}>
+                      {columns.map((c) => renderCell(t, c))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

@@ -687,6 +687,26 @@ th {
   text-overflow: ellipsis;
 }
 
+.p-consolidated {
+  margin: 1.25rem 0;
+}
+
+.p-consolidated .p-table {
+  min-width: 0;
+}
+
+.p-consolidated strong,
+.p-details strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #334155;
+  font-size: 0.8rem;
+}
+
+.p-details {
+  margin-top: 1.25rem;
+}
+
 .p-table td.desc .editable {
   display: inline;
   white-space: nowrap;
