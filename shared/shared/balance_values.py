@@ -208,6 +208,11 @@ def is_activa(cat_id: int) -> bool:
     return 1000 <= int(cat_id) <= 1999
 
 
+def apr_class_sign(cat_id: int) -> int:
+    """Journal class sign: A = −1, P = R = +1."""
+    return -1 if is_activa(cat_id) else 1
+
+
 def is_balance_sheet_code(cat_id: int) -> bool:
     """A/P local codes (1000-2999). Resultaat 3000-4999 stays off the sheet."""
     return 1000 <= int(cat_id) <= 2999
@@ -304,14 +309,13 @@ def journal_deltas(
 ) -> tuple[Decimal, Decimal]:
     """Signed (FROM, TO) effect that keeps plug 2000 still.
 
-    FROM always ``+= -X``. TO ``+= +X`` when both sides are the same invariance
-    class, else ``+= -X``. Classes: activa (1000-1999) vs everything else
-    (passiva 2000-2999 and resultaat 3000-4999, since Saldo feeds 2100).
+    TO always ``+= -X``. FROM takes the APR product of the two class signs
+    (A = −1, P = R = +1): same class ``+= +X``, cross class ``+= -X``.
     Kosten and omzet use the same sign (Saldo is the numerical sum).
     """
-    delta = amount
-    src_delta = -delta
-    dst_delta = delta if is_activa(cat_from) == is_activa(cat_to) else -delta
+    x = amount
+    src_delta = apr_class_sign(cat_from) * apr_class_sign(cat_to) * x
+    dst_delta = -x
     return src_delta, dst_delta
 
 
@@ -743,10 +747,10 @@ def _journal_effect(
     """category_id → net effect from the hand-edited dbo.journal.
 
     Amount X is a transfer whose signs keep Eigen vermogen (2000) still:
-    FROM ``+= -X``; TO ``+= +X`` when FROM and TO are the same class (both
-    activa, or both passiva/resultaat), else TO ``+= -X``. FROM 1110 TO 3110
-    of 9000 therefore moves -9000 onto both 1110 and 3110. With ``as_of`` only
-    rows dated on or before that day are included.
+    TO ``+= -X``; FROM ``+= +X`` when FROM and TO are the same class (both
+    activa, or both passiva/resultaat), else FROM ``+= -X``. FROM 2500 TO 3110
+    of 9000 therefore moves +9000 onto 2500 and -9000 onto 3110. With ``as_of``
+    only rows dated on or before that day are included.
     """
     if not _journal_table_exists(cursor):
         return {}

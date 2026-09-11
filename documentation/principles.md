@@ -130,11 +130,11 @@ HITS may not involve 1051, 1053–1056 (`bank` and `source`) nor 2000 (`equity`)
 
 ## 5. Journal mutations (amount X)
 
-Class signs: **A = −1**, **P = R = +1**. One side always decreases with X
-(`+= −X`). The other side takes the product of the two class signs
+Class signs: **A = −1**, **P = R = +1**. TO always decreases with X
+(`+= −X`). FROM takes the product of the two class signs
 (A → A is (−1)×(−1) = +1, A → P is (−1)×(+1) = −1, and so on).
 
-| | A | P | R |
+| FROM \\ TO | A | P | R |
 |---|---|---|---|
 | **A** | + | − | − |
 | **P** | − | + | + |

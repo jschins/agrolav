@@ -1,4 +1,4 @@
-"""Plug-2000 signs: FROM -X; TO +X iff same class (A vs P/R). K and O same."""
+"""Plug-2000 signs: TO -X; FROM +X iff same class (A vs P/R). K and O same."""
 from __future__ import annotations
 
 import unittest
@@ -11,9 +11,11 @@ from shared.balance_values import (
     category_display_name,
     is_activa,
     is_balance_sheet_code,
+    is_resultaat,
     is_hit_forbidden_code,
     is_journal_forbidden_code,
     journal_deltas,
+    journal_leg_amount,
     result_overlay_cents,
     spaar_mirror_posted_amount,
     spaar_source_exclude_clause,
@@ -236,7 +238,7 @@ class InvarianceClassTests(unittest.TestCase):
 
 
 class JournalDeltaTests(unittest.TestCase):
-    def test_from_always_minus_x(self):
+    def test_to_always_minus_x(self):
         x = Decimal("9000")
         for src, dst in (
             (1110, 1111),
@@ -249,24 +251,46 @@ class JournalDeltaTests(unittest.TestCase):
             (3110, 2500),
             (3110, 4110),
         ):
-            src_d, _dst_d = journal_deltas(src, dst, x)
-            self.assertEqual(src_d, Decimal("-9000"), f"{src}->{dst}")
+            _src_d, dst_d = journal_deltas(src, dst, x)
+            self.assertEqual(dst_d, Decimal("-9000"), f"{src}->{dst}")
 
-    def test_same_class_to_plus(self):
+    def test_same_class_from_plus(self):
         x = Decimal("9000")
-        self.assertEqual(journal_deltas(1110, 1111, x), (Decimal("-9000"), Decimal("9000")))
-        self.assertEqual(journal_deltas(2500, 2050, x), (Decimal("-9000"), Decimal("9000")))
-        self.assertEqual(journal_deltas(3110, 4110, x), (Decimal("-9000"), Decimal("9000")))
-        self.assertEqual(journal_deltas(2500, 3110, x), (Decimal("-9000"), Decimal("9000")))
-        self.assertEqual(journal_deltas(3110, 2500, x), (Decimal("-9000"), Decimal("9000")))
+        self.assertEqual(journal_deltas(1110, 1111, x), (Decimal("9000"), Decimal("-9000")))
+        self.assertEqual(journal_deltas(2500, 2050, x), (Decimal("9000"), Decimal("-9000")))
+        self.assertEqual(journal_deltas(3110, 4110, x), (Decimal("9000"), Decimal("-9000")))
+        self.assertEqual(journal_deltas(2500, 3110, x), (Decimal("9000"), Decimal("-9000")))
+        self.assertEqual(journal_deltas(3110, 2500, x), (Decimal("9000"), Decimal("-9000")))
 
-    def test_cross_class_to_minus(self):
+    def test_cross_class_from_minus(self):
         x = Decimal("9000")
         self.assertEqual(journal_deltas(1110, 2500, x), (Decimal("-9000"), Decimal("-9000")))
         self.assertEqual(journal_deltas(1110, 3110, x), (Decimal("-9000"), Decimal("-9000")))
         self.assertEqual(journal_deltas(2500, 1110, x), (Decimal("-9000"), Decimal("-9000")))
         self.assertEqual(journal_deltas(3110, 1110, x), (Decimal("-9000"), Decimal("-9000")))
         self.assertEqual(journal_deltas(1110, 4110, x), (Decimal("-9000"), Decimal("-9000")))
+
+    def test_plug_identity_on_every_pair(self):
+        x = Decimal("9000")
+        for src in (1110, 2500, 3110, 4110):
+            for dst in (1111, 2050, 3110, 4110):
+                src_d, dst_d = journal_deltas(src, dst, x)
+                delta_a = delta_p = delta_r = Decimal("0")
+                for cat, delta in ((src, src_d), (dst, dst_d)):
+                    if is_activa(cat):
+                        delta_a += delta
+                    elif is_resultaat(cat):
+                        delta_r += delta
+                    else:
+                        delta_p += delta
+                self.assertEqual(delta_a, delta_p + delta_r, f"{src}->{dst}")
+
+    def test_same_class_swap_puts_minus_on_to(self):
+        x = Decimal("9000")
+        self.assertEqual(journal_leg_amount(1110, 1110, 1111, x), x)
+        self.assertEqual(journal_leg_amount(1111, 1110, 1111, x), -x)
+        self.assertEqual(journal_leg_amount(1110, 1111, 1110, x), -x)
+        self.assertEqual(journal_leg_amount(1111, 1111, 1110, x), x)
 
 
 class JournalEffectTests(unittest.TestCase):
@@ -295,7 +319,7 @@ class JournalEffectTests(unittest.TestCase):
         cursor = _FakeJournalCursor(rows=[(2500, 3110, Decimal("9000"))])
         self.assertEqual(
             _journal_effect(4, 2026, cursor),
-            {2500: Decimal("-9000"), 3110: Decimal("9000")},
+            {2500: Decimal("9000"), 3110: Decimal("-9000")},
         )
 
     def test_skips_eigen_vermogen_2000(self):
@@ -316,9 +340,9 @@ class ResultOverlayTests(unittest.TestCase):
         cursor = _FakeOverlayCursor(journals=[(1110, 3110, Decimal("60"))])
         self.assertEqual(result_overlay_cents(4, 2026, cursor), {3110: -6000})
 
-    def test_passiva_to_kosten_increases_saldo(self):
+    def test_passiva_to_kosten_decreases_saldo(self):
         cursor = _FakeOverlayCursor(journals=[(2500, 3110, Decimal("60"))])
-        self.assertEqual(result_overlay_cents(4, 2026, cursor), {3110: 6000})
+        self.assertEqual(result_overlay_cents(4, 2026, cursor), {3110: -6000})
 
     def test_kosten_and_omzet_same_sign(self):
         cursor = _FakeOverlayCursor(journals=[(1110, 4110, Decimal("100"))])
