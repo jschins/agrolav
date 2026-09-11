@@ -184,24 +184,35 @@ transactions.
 
 ### `condensed_balance`
 
-Drives the third "Export naar excel" sheet (Gecondenseerde balans) for
-balance countries. Rows render in `id` order; `sum_local_code` is a
-comma-separated list of `dim_category.local_code` values summed into the post
-(NULL/empty = post without categories, shown blank). `section_name` is a
-comma-separated path: the first part is the side (`Activa` / `Passiva`), an
-optional second part the group. Posts whose `post_name` starts with
-`Totaal ` are totals: group-level when the path has a group, side-level
-otherwise. Sides and groups keep first-appearance order; group matching is
-case-insensitive so totals join their group (e.g. `Passiva, Schulden` lands
-in the `Passiva, schulden` group).
+Drives the "Export naar excel" sheets after the computed Balans (sheet 1) and
+Resultaat (sheet 2) for balance countries. Rows render in `id` order;
+`excel_page` buckets rows into one output sheet per page (NULL → page 3,
+rendered as "Gecondenseerde balans"; page 4 as "Gecondenseerd resultaat").
+`sum_local_code` is a comma-separated list of `dim_category.local_code`
+values summed into the post (NULL/empty = post without categories, shown
+blank). `section_name` is a comma-separated path: the first part is the side
+(`Activa` / `Passiva`), an optional second part the group; or a braced heading:
+`{Titel}` makes `post_name` the sheet title (its non-NULL `background_color`
+is the default background for the whole page), `{SideA,SideB,…}` makes
+`post_name` a bold heading printed before those sides. Posts whose
+`post_name` starts with `Totaal ` are totals: group-level when the path has a
+group, side-level otherwise. Sides and groups keep first-appearance order;
+group matching is case-insensitive so totals join their group (e.g.
+`Passiva, Schulden` lands in the `Passiva, schulden` group). `font_size` sets
+the font size of a heading/post row; `background_color` (6-hex RGB, optional
+`#`) fills that row's cells (page-level on `{Titel}`).
 
 | column | type | notes |
 |:-------|:-----|:------|
 | `id` | `INT` PK | identity, render order |
 | `country_id` | `INT` FK | |
-| `post_name` | `VARCHAR(64)` NOT NULL | printed post label |
+| `post_name` | `VARCHAR(64)` NOT NULL | printed post label / heading / title |
 | `sum_local_code` | `VARCHAR(256)` NULL | e.g. `'1051,1053,1054,1055,1056'` |
-| `section_name` | `VARCHAR(64)` NOT NULL | `Activa, Vaste activa` / `Passiva, schulden` / `Activa` |
+| `section_name` | `VARCHAR(64)` NOT NULL | `Activa, Vaste activa` / `Passiva, schulden` / `Activa` / `{Titel}` |
+| `font_size` | `INT` NULL | row font size (content rows: 12, headings/titles: 16) |
+| `excel_page` | `INT` NULL | output sheet page; NULL = 3 |
+| `background_color` | `VARCHAR(16)` NULL | row fill; page fill when set on a `{Titel}` row |
+| `bold` | `BIT` NULL | renders the row in bold when true |
 
 Seed lives in `balance/sql/condensed_balance.sql`. The hub also creates
 and seeds this table on first "Export naar excel" if it is missing.

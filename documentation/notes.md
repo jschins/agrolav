@@ -394,3 +394,59 @@ DROP CONSTRAINT df_dim_category_remainder;
 
 ALTER TABLE dbo.dim_category
 DROP COLUMN is_remainder;
+
+
+=============================
+
+
+
+CREATE TABLE dbo.condensed_balance (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    country_id INT NOT NULL,
+    post_name VARCHAR(64) NOT NULL,
+    sum_local_code VARCHAR(256) NULL,
+    section_name VARCHAR(64) NOT NULL,
+    CONSTRAINT fk_map_condensed_country
+        FOREIGN KEY (country_id) REFERENCES dbo.country (country_id)
+);
+
+
+INSERT INTO dbo.condensed_balance (country_id, post_name, sum_local_code, section_name) VALUES
+-- Activa
+(4, 'Gebouwen', '1000', 'Activa, Vaste activa'),
+(4, 'Verbouwingen', '1005', 'Activa, Vaste activa'),
+(4, 'Inventaris', '1010', 'Activa, Vaste activa'),
+(4, 'Auto''s', '1015', 'Activa, Vaste activa'),
+(4, 'Totaal vaste activa', '1000,1005,1010,1015', 'Activa, Vaste activa'),
+(4, 'Bank en Giro', '1051,1053,1054,1055,1056', 'Activa, Vlottende activa'),
+(4, 'Kapitaalrekening', '1052', 'Activa, Vlottende activa'),
+(4, 'Debiteuren', '1110,1111', 'Activa, Vlottende activa'),
+(4, 'Totaal vlottende activa', '1110,1111,1051,1052,1053,1054,1055,1056', 'Activa, Vlottende activa'),
+(4, 'Totaal activa', '1000,1005,1010,1015,1110,1111,1051,1052,1053,1054,1055,1056', 'Activa'),
+-- Passiva
+(4, 'Eigen vermogen', '2000,2100', 'Passiva, Eigen vermogen en voorzieningen'),
+(4, 'Voorzieningen', '2050,2055', 'Passiva, Eigen vermogen en voorzieningen'),
+(4, 'Totaal eigen vermogen en voorzieningen', '2000,2050,2055,2100', 'Passiva, Eigen vermogen en voorzieningen'),
+(4, 'Langlopende schulden', '2500', 'Passiva, schulden'),
+(4, 'Kortlopende schulden', NULL, 'Passiva, schulden'),
+(4, 'Totaal schulden', '2500', 'Passiva, schulden'),
+(4, 'Totaal passiva', '2000,2050,2055,2100,2500', 'Passiva'),
+(4, 'Resultaat', NULL, 'Passiva'),
+-- Lasten
+(4, 'Kosten OCTR en residentie', '3001,3002,3005,3010,3015,3020,3025,3026,3027,3035,3040,3045', 'Lasten, Ontmoetingscentrum en residentie'),
+(4, 'Steun aan derden', '3070,3210,3220', 'Lasten, Hulpfondsen'),
+(4, 'Steun Ontwikkelingsprojecten', '3240,3250', 'Lasten, Hulpfondsen'),
+(4, 'Afschrijvingen', '3080,3100,3101,3102', 'Lasten, Overige'),
+(4, 'Rente en bankkosten', '3050,3055', 'Lasten, Overige'),
+(4, 'Totaal lasten', '3001,3002,3005,3010,3015,3020,3025,3026,3027,3035,3040,3045,3050,3055,3080,3100,3101,3102,3240,3250,3070,3210,3220', 'Lasten'),
+-- Baten
+(4, 'Baten OCTR en residentie', '4020,4021', 'Baten, Ontmoetingscentrum en residentie'),
+(4, 'Fonds Pauselijke Universiteit', '4200,4220', 'Baten, Hulpfondsen'),
+(4, 'Fonds Ontwikkelingsprojecten', '4225', 'Baten, Hulpfondsen'),
+(4, 'Algemene giften en subsidies', '4004,4005,4006', 'Baten, Giften en subsidies'),
+(4, 'Overige baten', '4000', 'Baten, Overige'),
+(4, 'Totaal baten', '4200,4220,4020,4021,4225,4004,4005,4006,4000', 'Baten'),
+-- final line (placed under the last side so it renders last)
+(4, 'Operationeel resultaat', '3001,3002,3005,3010,3015,3020,3025,3026,3027,3035,3040,3045,3070,3210,3220,3240,3250,3110,3080,3100,3101,3102,3050,3055,4020,4021,4200,4220,4225,4004,4005,4006,4000,4050,4055', 'Baten');
+
+

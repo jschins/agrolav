@@ -8,6 +8,8 @@ export interface XlsxStyle {
   /** Hex color without leading "#", e.g. "FFFF00". */
   background?: string;
   borderBottom?: boolean;
+  /** OOXML number-format code for number cells; default "#,##0.00". */
+  format?: string;
 }
 
 export type XlsxCell =
@@ -45,7 +47,6 @@ function colLetter(idx: number): string {
 
 const DEFAULT_FONT_SIZE = 11;
 const DEFAULT_FONT_COLOR = "FF1A1A1A";
-const CURRENCY_NUM_FMT = 164;
 const CURRENCY_FORMAT = "#,##0.00";
 
 interface ResolvedStyle {
@@ -55,6 +56,7 @@ interface ResolvedStyle {
   background: string;
   borderBottom: boolean;
   isNumber: boolean;
+  formatCode: string;
 }
 
 function hexColor(value: string | undefined, fallback: string): string {
@@ -77,12 +79,14 @@ function resolveStyle(cell: XlsxCell): ResolvedStyle {
     background: hexColor(style.background, ""),
     borderBottom: style.borderBottom === true,
     isNumber: typeof value === "number",
+    formatCode: style.format ?? (typeof value === "number" ? CURRENCY_FORMAT : ""),
   };
 }
 
 interface StyleRegistry {
   fonts: ResolvedStyle[];
   fills: string[];
+  numFmts: { id: number; code: string }[];
   xfs: { fontId: number; fillId: number; numFmtId: number; borderId: number }[];
   styleIdOf: (cell: XlsxCell) => number;
 }
@@ -90,11 +94,26 @@ interface StyleRegistry {
 function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
   const fonts: ResolvedStyle[] = [];
   const fills: string[] = [];
+  const numFmts: { id: number; code: string }[] = [];
   const xfs: { fontId: number; fillId: number; numFmtId: number; borderId: number }[] = [];
   const fontIds = new Map<string, number>();
   const fillIds = new Map<string, number>();
+  const numFmtIds = new Map<string, number>();
   const xfIds = new Map<string, number>();
   const styleIds = new Map<string, number>();
+
+  function numFmtIdOf(code: string): number {
+    if (!code) return 0;
+    let id = numFmtIds.get(code);
+    if (id === undefined) {
+      id = 164 + numFmts.length;
+      numFmts.push({ id, code });
+      numFmtIds.set(code, id);
+    }
+    return id;
+  }
+
+  numFmtIdOf(CURRENCY_FORMAT); // reserve the default number format at id 164
 
   function fontIdOf(style: ResolvedStyle): number {
     const key = `b${+style.bold}|s${style.fontSize}|c${style.fontColor}`;
@@ -133,12 +152,13 @@ function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
     const style = resolveStyle(cell);
     const key =
       `s${style.fontSize}|b${+style.bold}|c${style.fontColor}` +
-      `|g${style.background}|n${+style.isNumber}|br${+style.borderBottom}`;
+      `|g${style.background}|n${+style.isNumber}|br${+style.borderBottom}` +
+      `|f${style.formatCode}`;
     let id = styleIds.get(key);
     if (id === undefined) {
       const fontId = fontIdOf(style);
       const fillId = fillIdOf(style.background);
-      const numFmtId = style.isNumber ? CURRENCY_NUM_FMT : 0;
+      const numFmtId = style.isNumber ? numFmtIdOf(style.formatCode) : 0;
       const borderId = style.borderBottom ? 1 : 0;
       id = xfIdOf(fontId, fillId, numFmtId, borderId);
       styleIds.set(key, id);
@@ -152,7 +172,7 @@ function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
       for (const cell of row) styleIdOf(cell);
     }
   }
-  return { fonts, fills, xfs, styleIdOf };
+  return { fonts, fills, numFmts, xfs, styleIdOf };
 }
 
 function fontXml(style: ResolvedStyle): string {
@@ -175,7 +195,14 @@ function xfXml(x: { fontId: number; fillId: number; numFmtId: number; borderId: 
 }
 
 function stylesXml(reg: StyleRegistry): string {
-  const numFmts = `<numFmts count="1"><numFmt numFmtId="${CURRENCY_NUM_FMT}" formatCode="${CURRENCY_FORMAT}"/></numFmts>`;
+  const numFmts = reg.numFmts.length
+    ? `<numFmts count="${reg.numFmts.length}">${reg.numFmts
+        .map(
+          (nt) =>
+            `<numFmt numFmtId="${nt.id}" formatCode="${escXml(nt.code)}"/>`
+        )
+        .join("")}</numFmts>`
+    : "";
   const fonts = `<fonts count="${reg.fonts.length}">${reg.fonts.map(fontXml).join("")}</fonts>`;
   const fills =
     `<fills count="${reg.fills.length + 2}">` +

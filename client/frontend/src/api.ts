@@ -93,6 +93,9 @@ export interface ExportExcelLine {
 export interface CondensedLine {
   post_name: string;
   amount: number | null;
+  font_size?: number | null;
+  background_color?: string | null;
+  bold?: boolean | null;
 }
 
 export interface CondensedGroup {
@@ -111,10 +114,27 @@ export interface CondensedSideLine extends CondensedLine {
   is_total: boolean;
 }
 
-export interface GecondenseerdData {
+export interface CondensedHeading {
+  name: string;
+  sections: string[];
+  font_size?: number | null;
+  background_color?: string | null;
+  bold?: boolean | null;
+}
+
+export interface CondensedPage {
+  excel_page: number;
+  title?: string | null;
+  title_font_size?: number | null;
+  title_bold?: boolean | null;
+  /** Page-wide default background; applied to every cell of the sheet. */
+  background_color?: string | null;
+  headings: CondensedHeading[];
   sides: CondensedSide[];
-  total_activa: number;
-  total_passiva: number;
+}
+
+export interface GecondenseerdData {
+  pages: CondensedPage[];
 }
 
 export interface ExportExcelData {

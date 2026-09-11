@@ -42,6 +42,7 @@ import {
   updateSettings,
   type CentralWinsAlert,
   type CentraleSyncStatus,
+  type CondensedPage,
   type SyncNotification,
 } from "./api";
 import type {
@@ -52,7 +53,14 @@ import type {
   Transaction,
   TransactionsResponse,
 } from "./types";
-import { buildXlsx, downloadBlob, euro2, type XlsxSheet } from "./xlsx";
+import {
+  buildXlsx,
+  downloadBlob,
+  euro2,
+  type XlsxCell,
+  type XlsxSheet,
+  type XlsxStyle,
+} from "./xlsx";
 import JournalEditor from "./JournalEditor";
 
 const CHANNEL = "boekhouding";
@@ -89,6 +97,106 @@ function displayCategoryName(name: string): string {
   return shownLabel(parseInt(match[1], 10), match[2]);
 }
 
+function condensedFontStyle(
+  font_size?: number | null,
+  bold?: boolean,
+  background?: string | null
+): XlsxStyle | undefined {
+  const style: XlsxStyle = {};
+  if (bold) style.bold = true;
+  if (font_size) style.fontSize = font_size;
+  if (background) style.background = background;
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+function condensedNamedCell(text: string, line: import("./api").CondensedLine): XlsxCell {
+  const style = condensedFontStyle(line.font_size, line.bold === true, line.background_color);
+  return style ? { value: text, style } : text;
+}
+
+function condensedAmountCell(line: import("./api").CondensedLine): XlsxCell {
+  if (line.amount == null) return "";
+  const style = condensedFontStyle(line.font_size, line.bold === true, line.background_color) ?? {};
+  style.format = '"€" #.##0';
+  return { value: euro2(line.amount), style };
+}
+
+function condensedSheetName(excel_page: number): string {
+  if (excel_page === 3) return "Gecondenseerde balans";
+  if (excel_page === 4) return "Gecondenseerd resultaat";
+  return `Gecondenseerd ${excel_page}`;
+}
+
+function condensedPageRows(page: CondensedPage): XlsxCell[][] {
+  const rows: XlsxCell[][] = [];
+  if (page.title) {
+    const titleStyle = condensedFontStyle(page.title_font_size, page.title_bold === true, page.background_color);
+    rows.push([titleStyle ? { value: page.title, style: titleStyle } : page.title]);
+    rows.push([]);
+  }
+  const emitted = new Array(page.headings.length).fill(false);
+  for (const side of page.sides) {
+    const headingIdx = page.headings.findIndex(
+      (heading, i) =>
+        !emitted[i] &&
+        heading.sections.some(
+          (section) => section.toLowerCase() === side.name.toLowerCase()
+        )
+    );
+    if (headingIdx !== -1) {
+      emitted[headingIdx] = true;
+      const heading = page.headings[headingIdx];
+      const style = condensedFontStyle(heading.font_size, heading.bold === true, heading.background_color);
+      rows.push([style ? { value: heading.name, style } : heading.name]);
+      rows.push([]);
+    } else {
+      rows.push([side.name]);
+    }
+    for (const group of side.groups) {
+      rows.push(["", group.name]);
+      for (const line of group.posts) {
+        rows.push(["", "", condensedNamedCell(line.post_name, line), condensedAmountCell(line)]);
+      }
+      for (const line of group.totals) {
+        rows.push(["", condensedNamedCell(line.post_name, line), condensedAmountCell(line)]);
+      }
+      rows.push([]);
+    }
+    for (const line of side.lines) {
+      rows.push(["", condensedNamedCell(line.post_name, line), condensedAmountCell(line)]);
+    }
+    rows.push([]);
+  }
+  return rows;
+}
+
+function condensedSheet(page: CondensedPage): XlsxSheet {
+  const content = condensedPageRows(page);
+  const pageColor = page.background_color || undefined;
+  const totalWidth = 4;
+  const rows: XlsxCell[][] = content.map((row) => {
+    const filled: XlsxCell[] = [];
+    for (let c = 0; c < totalWidth; c += 1) {
+      const cell = row[c];
+      if (cell === undefined) {
+        filled.push(pageColor ? { value: "", style: { background: pageColor } } : "");
+      } else if (typeof cell === "object") {
+        if (cell.style?.background || !pageColor) filled.push(cell);
+        else filled.push({ value: cell.value, style: { ...cell.style, background: pageColor } });
+      } else {
+        filled.push(pageColor ? { value: cell, style: { background: pageColor } } : cell);
+      }
+    }
+    return filled;
+  });
+  if (pageColor) {
+    for (let i = 0; i < 10; i += 1) {
+      rows.push(Array.from({ length: totalWidth }, () => ({ value: "", style: { background: pageColor } })));
+    }
+  }
+  return { name: condensedSheetName(page.excel_page), rows, widths: [12, 34, 44, 15] };
+}
+
 function excelSheets(data: ExportExcelData): XlsxSheet[] {
   const sheets: XlsxSheet[] = [];
   const codeOf = (line: ExportExcelLine) => String(line.code);
@@ -116,30 +224,9 @@ function excelSheets(data: ExportExcelData): XlsxSheet[] {
   rows.push(["", "Totaal", euro2(data.total_resultaat)]);
   sheets.push({ name: "Resultaat", rows, widths: [10, 60, 14] });
   if (data.has_balance) {
-    const condensed = data.gecondenseerd;
-    const condensedRows: (string | number)[][] = [];
-    condensedRows.push([`Gecondenseerde balans ${data.year}`]);
-    condensedRows.push([]);
-    if (condensed && condensed.sides.length > 0) {
-      for (const side of condensed.sides) {
-        condensedRows.push([side.name]);
-        for (const group of side.groups) {
-          condensedRows.push(["", group.name]);
-          for (const line of group.posts) {
-            condensedRows.push(["", "", line.post_name, line.amount == null ? "" : euro2(line.amount)]);
-          }
-          for (const line of group.totals) {
-            condensedRows.push(["", line.post_name, line.amount == null ? "" : euro2(line.amount)]);
-          }
-          condensedRows.push([]);
-        }
-        for (const line of side.lines) {
-          condensedRows.push(["", line.post_name, line.amount == null ? "" : euro2(line.amount)]);
-        }
-        condensedRows.push([]);
-      }
+    for (const page of data.gecondenseerd?.pages ?? []) {
+      sheets.push(condensedSheet(page));
     }
-    sheets.push({ name: "Gecondenseerde balans", rows: condensedRows, widths: [12, 34, 44, 15] });
   }
   return sheets;
 }
