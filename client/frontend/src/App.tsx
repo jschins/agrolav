@@ -61,6 +61,7 @@ import {
   type XlsxSheet,
   type XlsxStyle,
 } from "./xlsx";
+import AfschrijvingenEditor from "./AfschrijvingenEditor";
 import JournalEditor from "./JournalEditor";
 
 const CHANNEL = "boekhouding";
@@ -408,7 +409,7 @@ type HeaderAction = {
   onClick?: () => void;
 };
 
-type AppView = "main" | "terms" | "categories" | "ip" | "split" | "password" | "journal";
+type AppView = "main" | "terms" | "categories" | "ip" | "split" | "password" | "journal" | "afschrijvingen";
 
 const VIEW_CHANGE_EVENT = "boekhouding-view";
 
@@ -820,6 +821,7 @@ function SyncNotifyShell({
   splitView = false,
   passwordView = false,
   journalView = false,
+  afschrijvingenView = false,
   onLogout,
   initialTitle = "",
 }: {
@@ -838,6 +840,7 @@ function SyncNotifyShell({
   splitView?: boolean;
   passwordView?: boolean;
   journalView?: boolean;
+  afschrijvingenView?: boolean;
   onLogout?: () => void;
   initialTitle?: string;
 }) {
@@ -1135,8 +1138,13 @@ function SyncNotifyShell({
         label: "Manual journal posts",
         onClick: () => openView("journal"),
       });
+      items.push({
+        id: "afschrijvingen",
+        label: "Automatic journal posts",
+        onClick: () => openView("afschrijvingen"),
+      });
     }
-    if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView) {
+    if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
       items.push({
         id: "export-excel",
         label: "Export naar excel",
@@ -1190,7 +1198,7 @@ function SyncNotifyShell({
       });
     }
     return items;
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, status?.balance_url]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url]);
 
   return (
     <HeaderActionsContext.Provider value={setHeaderActions}>
@@ -1205,7 +1213,7 @@ function SyncNotifyShell({
                 onSelect={handleSelect}
               />
             ) : null}
-            {!termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && activeYear ? (
+            {!termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView && activeYear ? (
               <YearSwitcher
                 year={activeYear}
                 years={yearOptions}
@@ -1215,7 +1223,7 @@ function SyncNotifyShell({
                 }}
               />
             ) : null}
-            {showBankSwitcher && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView ? (
+            {showBankSwitcher && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView ? (
               <BankSwitcher
                 view={bankView}
                 accounts={bankOptions}
@@ -1326,19 +1334,21 @@ function parseAppView(search = window.location.search): AppView {
     view === "ip" ||
     view === "split" ||
     view === "password" ||
-    view === "journal"
+    view === "journal" ||
+    view === "afschrijvingen"
   ) {
     return view;
   }
   return "main";
 }
 
-function viewUrl(target: "main" | "terms" | "categories" | "ip" | "password" | "journal"): string {
+function viewUrl(target: "main" | "terms" | "categories" | "ip" | "password" | "journal" | "afschrijvingen"): string {
   if (target === "terms") return `${window.location.pathname}?view=terms`;
   if (target === "categories") return `${window.location.pathname}?view=categories`;
   if (target === "ip") return `${window.location.pathname}?view=ip`;
   if (target === "password") return `${window.location.pathname}?view=password`;
   if (target === "journal") return `${window.location.pathname}?view=journal`;
+  if (target === "afschrijvingen") return `${window.location.pathname}?view=afschrijvingen`;
   return window.location.pathname;
 }
 
@@ -1351,7 +1361,7 @@ function showInThisWindow(url: string) {
   window.dispatchEvent(new Event(VIEW_CHANGE_EVENT));
 }
 
-function openView(target: "main" | "terms" | "categories" | "ip" | "password" | "journal") {
+function openView(target: "main" | "terms" | "categories" | "ip" | "password" | "journal" | "afschrijvingen") {
   showInThisWindow(viewUrl(target));
 }
 
@@ -1379,6 +1389,7 @@ export default function App() {
   const isSplit = appView === "split";
   const isPassword = appView === "password";
   const isJournal = appView === "journal";
+  const isAfschrijvingen = appView === "afschrijvingen";
   const [wsEpoch, setWsEpoch] = useState(0);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -1476,6 +1487,7 @@ export default function App() {
       splitView={isSplit}
       passwordView={isPassword}
       journalView={isJournal}
+      afschrijvingenView={isAfschrijvingen}
       onLogout={
         authRequired
           ? () => {
@@ -1507,6 +1519,8 @@ export default function App() {
           <SplitApp key={wsEpoch} />
         ) : isJournal ? (
           <JournalEditor key={wsEpoch} year={Number(year)} onBack={() => openView("main")} />
+        ) : isAfschrijvingen ? (
+          <AfschrijvingenEditor key={wsEpoch} onBack={() => openView("main")} />
         ) : (
           <MainApp
             key={wsEpoch}

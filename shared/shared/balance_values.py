@@ -905,8 +905,8 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
     Existing marker rows are deleted first so the bron amount is the live
     sheet without last login's depreciation. Then one journal is written per
     rule and year: FROM ``local_code_van`` TO ``local_code_naar`` of
-    ``fraction * present(local_code_bron)``. ``0`` when the table is missing
-    or this country has no rules. Does not commit.
+    ``fraction * present(local_code_bron)``. Empty rules still wipe leftover
+    marker rows. ``0`` when the table is missing. Does not commit.
     """
     cursor.execute("SELECT OBJECT_ID(N'dbo.afschrijvingen', N'U')")
     row = cursor.fetchone()
@@ -921,8 +921,6 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
         (cid,),
     )
     rules = [r for r in cursor.fetchall() if r is not None]
-    if not rules:
-        return 0
     years: set[int] = set()
     cursor.execute(
         "SELECT DISTINCT year FROM dbo.balance_opening WHERE country_id = ?",

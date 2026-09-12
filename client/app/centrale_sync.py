@@ -678,6 +678,16 @@ def balance_save_journal(year: int, items: list[dict[str, Any]]) -> dict[str, An
     return _balance_api(f"{int(year)}/journal", method="PUT", body={"items": items})
 
 
+def balance_afschrijvingen() -> dict[str, Any]:
+    """``dbo.afschrijvingen`` rules for the active balance country."""
+    return _balance_api("afschrijvingen")
+
+
+def balance_save_afschrijvingen(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Replace ``dbo.afschrijvingen`` for the active balance country."""
+    return _balance_api("afschrijvingen", method="PUT", body={"items": items})
+
+
 def refresh_capabilities() -> dict[str, Any]:
     global _cached_has_secrets, _last_error
     try:

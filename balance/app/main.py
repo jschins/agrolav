@@ -248,6 +248,45 @@ def balance_subadministratie(
     }
 
 
+class AfschrijvingItem(BaseModel):
+    local_code_bron: int
+    fraction: float = 0.0
+    local_code_van: int
+    local_code_naar: int
+
+
+class AfschrijvingPayload(BaseModel):
+    items: list[AfschrijvingItem] = Field(default_factory=list)
+
+
+@app.get("/balance/{slug}/api/balance/afschrijvingen")
+@_present_sheet_errors("Afschrijvingen")
+def balance_afschrijvingen_get(
+    slug: str,
+    _: None = Depends(_api_key),
+) -> dict[str, Any]:
+    from app.balance import list_afschrijvingen_rules
+
+    return list_afschrijvingen_rules(resolve_country(slug))
+
+
+@app.put("/balance/{slug}/api/balance/afschrijvingen")
+def balance_afschrijvingen_put(
+    slug: str,
+    body: AfschrijvingPayload,
+    _: None = Depends(_api_key),
+) -> dict[str, Any]:
+    from app.balance import save_afschrijvingen_rules
+
+    try:
+        return save_afschrijvingen_rules(
+            resolve_country(slug),
+            [item.model_dump() for item in body.items],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/balance/{slug}/api/balance/{year}/popup")
 @_present_sheet_errors("Sheet popup")
 def balance_post_popup(

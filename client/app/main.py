@@ -636,6 +636,39 @@ class JournalPayload(BaseModel):
     items: list[JournalItem] = Field(default_factory=list)
 
 
+class AfschrijvingItem(BaseModel):
+    local_code_bron: int
+    fraction: float = 0.0
+    local_code_van: int
+    local_code_naar: int
+
+
+class AfschrijvingPayload(BaseModel):
+    items: list[AfschrijvingItem] = Field(default_factory=list)
+
+
+@app.get("/api/afschrijvingen")
+def api_afschrijvingen() -> dict[str, Any]:
+    from app.centrale_sync import balance_afschrijvingen
+
+    try:
+        return balance_afschrijvingen()
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.put("/api/afschrijvingen")
+def api_afschrijvingen_put(body: AfschrijvingPayload) -> dict[str, Any]:
+    from app.centrale_sync import balance_save_afschrijvingen
+
+    try:
+        return balance_save_afschrijvingen(
+            [item.model_dump() for item in body.items]
+        )
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 @app.get("/api/journal")
 def api_journal(year: int | None = Query(default=None)) -> dict[str, Any]:
     import datetime

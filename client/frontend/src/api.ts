@@ -483,3 +483,39 @@ export function saveJournalData(
 ): Promise<{ ok: boolean; saved: number }> {
   return sendJson(`/api/journal?year=${encodeURIComponent(String(year))}`, "PUT", { items });
 }
+
+export interface AfschrijvingCategory {
+  local_code: number;
+  label: string;
+  side: string;
+}
+
+export interface AfschrijvingRow {
+  id: number;
+  local_code_bron: number;
+  fraction: number;
+  local_code_van: number;
+  local_code_naar: number;
+}
+
+export interface AfschrijvingItemPayload {
+  local_code_bron: number;
+  fraction: number;
+  local_code_van: number;
+  local_code_naar: number;
+}
+
+export interface AfschrijvingData {
+  categories: AfschrijvingCategory[];
+  rows: AfschrijvingRow[];
+}
+
+export function getAfschrijvingen(): Promise<AfschrijvingData> {
+  return getJson("/api/afschrijvingen");
+}
+
+export function saveAfschrijvingen(
+  items: AfschrijvingItemPayload[]
+): Promise<{ ok: boolean; saved: number }> {
+  return sendJson("/api/afschrijvingen", "PUT", { items });
+}

@@ -929,6 +929,103 @@ def list_afschrijvingen(country_id: int, year: int) -> dict[str, Any]:
     return {"from_codes": from_codes, "journals": journals}
 
 
+def _afschrijving_category_options(country_id: int) -> list[dict[str, Any]]:
+    """local_code options 1000-4999 for the automatic-journal editor."""
+    labels = _category_labels(country_id)
+    with connect() as conn:
+        cur = conn.cursor()
+        codes = shared_category_local_codes(country_id, cur)
+        roles = shared_category_roles(country_id, cur)
+    out: list[dict[str, Any]] = []
+    for cat_id, local in codes.items():
+        try:
+            code = int(local)
+        except (TypeError, ValueError):
+            continue
+        if code < 1000 or code > 4999:
+            continue
+        if is_journal_forbidden_code(int(cat_id), roles.get(int(cat_id))):
+            continue
+        out.append({
+            "local_code": code,
+            "label": labels.get(int(cat_id), f"cat_{code}"),
+            "side": _infer_side(code),
+        })
+    out.sort(key=lambda row: int(row["local_code"]))
+    return out
+
+
+def list_afschrijvingen_rules(country_id: int) -> dict[str, Any]:
+    """Rows of ``dbo.afschrijvingen`` for a country, plus category options."""
+    categories = _afschrijving_category_options(country_id)
+    rows: list[dict[str, Any]] = []
+    with connect() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT id, local_code_bron, fraction, local_code_van, "
+                "local_code_naar FROM dbo.afschrijvingen "
+                "WHERE country_id = ? ORDER BY id",
+                int(country_id),
+            )
+        except Exception as exc:
+            if "42S02" in str(exc) or "Invalid object" in str(exc):
+                return {"categories": categories, "rows": []}
+            raise
+        for rule_id, bron, fraction, van, naar in cur.fetchall():
+            rows.append({
+                "id": int(rule_id),
+                "local_code_bron": int(bron),
+                "fraction": float(fraction),
+                "local_code_van": int(van),
+                "local_code_naar": int(naar),
+            })
+    return {"categories": categories, "rows": rows}
+
+
+def save_afschrijvingen_rules(
+    country_id: int, items: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Replace ``dbo.afschrijvingen`` for a country and rebuild those journals."""
+    parsed: list[tuple[int, Decimal, int, int]] = []
+    for item in items:
+        parsed.append((
+            int(item["local_code_bron"]),
+            Decimal(str(item.get("fraction") or 0)),
+            int(item["local_code_van"]),
+            int(item["local_code_naar"]),
+        ))
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT OBJECT_ID(N'dbo.afschrijvingen', N'U')")
+        found = cur.fetchone()
+        if found is None or found[0] is None:
+            raise ValueError("dbo.afschrijvingen is missing")
+        cur.execute(
+            "DELETE FROM dbo.afschrijvingen WHERE country_id = ?",
+            int(country_id),
+        )
+        for bron, fraction, van, naar in parsed:
+            cur.execute(
+                "INSERT INTO dbo.afschrijvingen "
+                "(country_id, local_code_bron, fraction, "
+                "local_code_van, local_code_naar) "
+                "VALUES (?, ?, ?, ?, ?)",
+                int(country_id),
+                bron,
+                fraction,
+                van,
+                naar,
+            )
+        apply_afschrijvingen(int(country_id), cur)
+        conn.commit()
+    return {
+        "ok": True,
+        "country_id": int(country_id),
+        "saved": len(parsed),
+    }
+
+
 def list_journal(country_id: int, year: int) -> list[dict[str, Any]]:
     """All hand-edited journal rows for a country/year (oldest first)."""
     labels = _category_labels(country_id)
