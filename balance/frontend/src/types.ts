@@ -89,3 +89,15 @@ export interface SubadministratieResponse {
   local_code: number | null;
   rows: SubadministratieRow[];
 }
+
+export interface CategoryTransactionRow {
+  date: string;
+  description: string;
+  amount: number;
+}
+
+export interface CategoryTransactionsResponse {
+  country_id: number;
+  local_code: number;
+  rows: CategoryTransactionRow[];
+}

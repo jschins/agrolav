@@ -7,6 +7,7 @@ import type {
   CategoriesResponse,
   ResultResponse,
   SubadministratieResponse,
+  CategoryTransactionsResponse,
 } from "./types";
 
 function apiBase(): string {
@@ -87,6 +88,14 @@ export function getSubadministratie(
 ): Promise<SubadministratieResponse> {
   const q = localCode != null ? `?local_code=${localCode}` : "";
   return getJson(`/api/balance/subadministratie${q}`);
+}
+
+export function getCategoryTransactions(
+  localCode: number
+): Promise<CategoryTransactionsResponse> {
+  return getJson(
+    `/api/balance/transactions?local_code=${encodeURIComponent(localCode)}`
+  );
 }
 
 export function getJournal(year: number): Promise<JournalResponse> {

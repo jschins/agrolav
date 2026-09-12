@@ -780,6 +780,33 @@ def list_subadministratie(country_id: int, local_code: int | None = None) -> lis
     return rows
 
 
+def list_category_transactions(country_id: int, local_code: int) -> list[dict[str, Any]]:
+    """All ``dbo.transaction_{country}`` rows for a local_code (oldest first)."""
+    table = _transaction_table(country_id)
+    if table is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT t.booked_on, t.description, t.counterparty_name, t.amount "
+            f"FROM {table} t "
+            f"JOIN dbo.dim_category c ON c.category_id = t.category_id "
+            f"WHERE c.country_id = ? AND c.local_code = ? "
+            f"ORDER BY t.booked_on",
+            country_id,
+            local_code,
+        )
+        for booked_on, description, counterparty_name, amount in cur.fetchall():
+            desc = (description or "").strip()
+            rows.append({
+                "date": str(booked_on),
+                "description": desc or str(counterparty_name or ""),
+                "amount": float(amount),
+            })
+    return rows
+
+
 def list_journal(country_id: int, year: int) -> list[dict[str, Any]]:
     """All hand-edited journal rows for a country/year (oldest first)."""
     labels = _category_labels(country_id)

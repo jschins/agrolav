@@ -142,10 +142,21 @@ button.subadmin-amount:focus-visible {
   background: #fff;
 }
 .subadmin-close:hover { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
-.subadmin-table-wrap {
+.subadmin-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+}
+.subadmin-trans {
+  border-top: 1px solid #e0e3e8;
+}
+.subadmin-trans h3 {
+  margin: 0;
+  padding: 14px 16px 6px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
 }
 .subadmin-table { width: 100%; border-collapse: collapse; }
 .subadmin-table th,
@@ -163,6 +174,7 @@ button.subadmin-amount:focus-visible {
   z-index: 1;
 }
 .subadmin-table .code { color: #666; width: 3.5em; }
+.subadmin-table td.date { white-space: nowrap; color: #666; }
 .subadmin-table th.num,
 .subadmin-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .subadmin-empty { padding: 20px 16px; text-align: center; color: #666; }

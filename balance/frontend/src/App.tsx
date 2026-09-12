@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  getCategoryTransactions,
   getDates,
   getMeta,
   getSheet,
   getSubadministratie,
   getYears,
 } from "./api";
-import type { BalanceSheet, SubadministratieRow } from "./types";
+import type {
+  BalanceSheet,
+  CategoryTransactionRow,
+  SubadministratieRow,
+} from "./types";
 
 const EUR = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -111,6 +116,9 @@ export default function App() {
   const [subadminRows, setSubadminRows] = useState<SubadministratieRow[]>([]);
   const [openCode, setOpenCode] = useState<number | null>(null);
   const [openLabel, setOpenLabel] = useState("");
+  const [txRows, setTxRows] = useState<CategoryTransactionRow[]>([]);
+  const [txError, setTxError] = useState<string | null>(null);
+  const [txLoading, setTxLoading] = useState(false);
 
   const load = useCallback((y: number, date?: string | null) => {
     setError(null);
@@ -167,6 +175,13 @@ export default function App() {
   const openSubadmin = (code: number, label: string) => {
     setOpenCode(code);
     setOpenLabel(label);
+    setTxRows([]);
+    setTxError(null);
+    setTxLoading(true);
+    getCategoryTransactions(code)
+      .then((r) => setTxRows(r.rows))
+      .catch((e) => setTxError(toMessage(e)))
+      .finally(() => setTxLoading(false));
   };
 
   useEffect(() => {
@@ -290,7 +305,7 @@ export default function App() {
                 ✕
               </button>
             </div>
-            <div className="subadmin-table-wrap">
+            <div className="subadmin-body">
               {openRows.length ? (
                 <table className="subadmin-table">
                   <thead>
@@ -323,6 +338,46 @@ export default function App() {
               ) : (
                 <p className="subadmin-empty">Geen regels.</p>
               )}
+
+              <div className="subadmin-trans">
+                <h3>Transacties</h3>
+                {txLoading ? (
+                  <p className="subadmin-empty">Laden…</p>
+                ) : txError ? (
+                  <p className="subadmin-empty">{txError}</p>
+                ) : txRows.length ? (
+                  <table className="subadmin-table">
+                    <thead>
+                      <tr>
+                        <th className="date">Datum</th>
+                        <th>Omschrijving</th>
+                        <th className="num">Bedrag</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {txRows.map((r, i) => (
+                        <tr key={`${r.date}-${i}`}>
+                          <td className="date">{fmtDate(r.date)}</td>
+                          <td>{r.description}</td>
+                          <td className="num">{EURC.format(r.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={2}>Totaal</td>
+                        <td className="num">
+                          {EURC.format(
+                            txRows.reduce((sum, r) => sum + r.amount, 0)
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                ) : (
+                  <p className="subadmin-empty">Geen transacties.</p>
+                )}
+              </div>
             </div>
             <div className="subadmin-foot">
               <button
