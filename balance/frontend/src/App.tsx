@@ -178,7 +178,8 @@ export default function App() {
     setTxRows([]);
     setTxError(null);
     setTxLoading(true);
-    getCategoryTransactions(code)
+    if (year == null) return;
+    getCategoryTransactions(year, code, asOf ?? undefined)
       .then((r) => setTxRows(r.rows))
       .catch((e) => setTxError(toMessage(e)))
       .finally(() => setTxLoading(false));
@@ -198,20 +199,21 @@ export default function App() {
       ? subadminRows.filter((r) => r.local_code === openCode)
       : [];
 
-  const combinedRows = [
-    ...openRows.map((r) => ({
-      key: r.name,
-      code: r.local_code,
-      name: r.name,
-      amount: r.amount,
-    })),
-    ...txRows.map((r, i) => ({
-      key: `tx-${i}`,
+  const combinedRows = useMemo(() => {
+    const byName = new Map<string, number>();
+    for (const r of openRows) {
+      byName.set(r.name, (byName.get(r.name) ?? 0) + r.amount);
+    }
+    for (const r of txRows) {
+      byName.set(r.name, (byName.get(r.name) ?? 0) + r.amount);
+    }
+    return Array.from(byName, ([name, amount]) => ({
+      key: name,
       code: openCode ?? 0,
-      name: r.name,
-      amount: r.amount,
-    })),
-  ];
+      name,
+      amount,
+    })).sort((a, b) => a.name.localeCompare(b.name, "nl"));
+  }, [openRows, txRows, openCode]);
 
   return (
     <div className="sheet-view">

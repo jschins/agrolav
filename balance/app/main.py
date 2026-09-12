@@ -196,10 +196,12 @@ def balance_subadministratie(
     }
 
 
-@app.get("/balance/{slug}/api/balance/transactions")
+@app.get("/balance/{slug}/api/balance/{year}/transactions")
 def balance_category_transactions(
     slug: str,
+    year: int,
     local_code: int,
+    date: str | None = None,
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
     from app.balance import list_category_transactions
@@ -207,8 +209,9 @@ def balance_category_transactions(
     country_id = resolve_country(slug)
     return {
         "country_id": country_id,
+        "year": year,
         "local_code": local_code,
-        "rows": list_category_transactions(country_id, local_code),
+        "rows": list_category_transactions(country_id, local_code, year, date),
     }
 
 

@@ -91,11 +91,13 @@ export function getSubadministratie(
 }
 
 export function getCategoryTransactions(
-  localCode: number
+  year: number,
+  localCode: number,
+  date?: string
 ): Promise<CategoryTransactionsResponse> {
-  return getJson(
-    `/api/balance/transactions?local_code=${encodeURIComponent(localCode)}`
-  );
+  const q = new URLSearchParams({ local_code: String(localCode) });
+  if (date) q.set("date", date);
+  return getJson(`/api/balance/${year}/transactions?${q.toString()}`);
 }
 
 export function getJournal(year: number): Promise<JournalResponse> {

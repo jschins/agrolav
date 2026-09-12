@@ -793,29 +793,43 @@ def _transaction_person_name(description: str) -> str:
     return text
 
 
-def list_category_transactions(country_id: int, local_code: int) -> list[dict[str, Any]]:
-    """All ``dbo.transaction_{country}`` rows for a local_code (oldest first)."""
+def list_category_transactions(
+    country_id: int,
+    local_code: int,
+    year: int,
+    as_of: str | None = None,
+) -> list[dict[str, Any]]:
+    """``dbo.transaction_{country}`` rows for a local_code/year on/before ``as_of`` (oldest first).
+
+    Mirrors the sheet's ``as_of`` semantics (via ``_asof_cutoff``): ``None`` is
+    the full year, ``"initial"`` is the starting sheet (before any transaction),
+    anything else is a YYYY-MM-DD cutoff.
+    """
     table = _transaction_table(country_id)
     if table is None:
         return []
+    cutoff = _asof_cutoff(country_id, year, as_of)
     rows: list[dict[str, Any]] = []
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute(
-            f"SELECT t.booked_on, t.description, t.counterparty_name, t.amount "
+        sql = (
+            f"SELECT t.description, t.counterparty_name, t.amount "
             f"FROM {table} t "
             f"JOIN dbo.dim_category c ON c.category_id = t.category_id "
-            f"WHERE c.country_id = ? AND c.local_code = ? "
-            f"ORDER BY t.booked_on",
-            country_id,
-            local_code,
+            f"WHERE c.country_id = ? AND c.local_code = ? AND t.year = ?"
         )
-        for booked_on, description, counterparty_name, amount in cur.fetchall():
-            desc = _transaction_person_name(
+        params: list[object] = [country_id, str(local_code), year]
+        if cutoff is not None:
+            sql += " AND t.booked_on <= ?"
+            params.append(cutoff.isoformat())
+        sql += " ORDER BY t.booked_on"
+        cur.execute(sql, *params)
+        for description, counterparty_name, amount in cur.fetchall():
+            name = _transaction_person_name(
                 description or str(counterparty_name or "")
             )
             rows.append({
-                "name": desc or "Onbekend",
+                "name": name or "Onbekend",
                 "amount": float(amount),
             })
     return rows
