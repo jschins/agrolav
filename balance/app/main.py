@@ -9,7 +9,9 @@ country automatically.
 """
 from __future__ import annotations
 
+import functools
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -158,7 +160,54 @@ def balance_assets(slug: str, asset_path: str) -> Any:
 # --- Per-country API ---------------------------------------------------------
 
 
+_MISSING_OBJECT_RE = re.compile(r"Invalid object name '([^']+)'", re.IGNORECASE)
+_MISSING_COLUMN_RE = re.compile(r"Invalid column name '([^']+)'", re.IGNORECASE)
+
+
+def _diagnose(slug: str, what: str, exc: Exception) -> str:
+    """Turn an unexpected sheet failure into a message naming the missing data."""
+    text = str(exc)
+    match = _MISSING_OBJECT_RE.search(text)
+    if match:
+        return (
+            f"{what} for '{slug}' failed: table/view {match.group(1)} is missing. "
+            "Create it (see hub/sql phase scripts) or fix the country mapping."
+        )
+    match = _MISSING_COLUMN_RE.search(text)
+    if match:
+        return (
+            f"{what} for '{slug}' failed: column {match.group(1)} does not exist "
+            "in the queried table (see the exception traceback)."
+        )
+    return f"{what} for '{slug}' failed: {text}"
+
+
+def _present_sheet_errors(what: str):
+    """Return the 500 response with a diagnostic detail for sheet endpoints."""
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return func(*args, **kwargs)
+            except (HTTPException, CatalogError):
+                raise
+            except Exception as exc:  # noqa: BLE001 - report missing data clearly
+                slug = kwargs.get("slug")
+                if not isinstance(slug, str):
+                    slug = "unknown"
+                raise HTTPException(
+                    status_code=500,
+                    detail=_diagnose(slug, what, exc),
+                ) from exc
+
+        return wrapper
+
+    return decorator
+
+
 @app.get("/balance/{slug}/api/balance/meta")
+@_present_sheet_errors("Balance meta")
 def balance_meta(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]:
     from app.balance import country_title
 
@@ -167,6 +216,7 @@ def balance_meta(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]:
 
 
 @app.get("/balance/{slug}/api/balance/years")
+@_present_sheet_errors("Balance years")
 def balance_years(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]:
     from app.balance import list_years
 
@@ -174,6 +224,7 @@ def balance_years(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]:
 
 
 @app.get("/balance/{slug}/api/balance/categories")
+@_present_sheet_errors("Balance categories")
 def balance_categories(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]:
     from app.balance import list_categories
 
@@ -181,6 +232,7 @@ def balance_categories(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]
 
 
 @app.get("/balance/{slug}/api/balance/subadministratie")
+@_present_sheet_errors("Subadministratie")
 def balance_subadministratie(
     slug: str,
     local_code: int | None = None,
@@ -197,6 +249,7 @@ def balance_subadministratie(
 
 
 @app.get("/balance/{slug}/api/balance/{year}/transactions")
+@_present_sheet_errors("Category transactions")
 def balance_category_transactions(
     slug: str,
     year: int,
@@ -216,6 +269,7 @@ def balance_category_transactions(
 
 
 @app.get("/balance/{slug}/api/balance/{year}")
+@_present_sheet_errors("Balance sheet")
 def balance_sheet(
     slug: str,
     year: int,
@@ -228,6 +282,7 @@ def balance_sheet(
 
 
 @app.get("/balance/{slug}/api/balance/{year}/result")
+@_present_sheet_errors("Result rows")
 def balance_result_rows(
     slug: str,
     year: int,
@@ -244,6 +299,7 @@ def balance_result_rows(
 
 
 @app.get("/balance/{slug}/api/balance/{year}/dates")
+@_present_sheet_errors("Balance dates")
 def balance_dates(
     slug: str,
     year: int,
@@ -303,6 +359,7 @@ class JournalPayload(BaseModel):
 
 
 @app.get("/balance/{slug}/api/balance/{year}/journal")
+@_present_sheet_errors("Journal")
 def balance_journal_get(
     slug: str,
     year: int,
