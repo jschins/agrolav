@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  getCategoryTransactions,
   getDates,
   getMeta,
+  getPostPopup,
   getSheet,
   getSubadministratie,
   getYears,
 } from "./api";
 import type {
+  AfschrijvingJournal,
   BalanceSheet,
-  CategoryTransactionRow,
   SubadministratieRow,
 } from "./types";
 
@@ -53,14 +53,14 @@ function SideTable({
   title,
   lines,
   total,
-  subadminCodes,
-  onOpenSubadmin,
+  clickableCodes,
+  onOpen,
 }: {
   title: string;
   lines: BalanceSheet["activa"];
   total: number;
-  subadminCodes: Set<number>;
-  onOpenSubadmin: (code: number, label: string) => void;
+  clickableCodes: Set<number>;
+  onOpen: (code: number, label: string) => void;
 }) {
   return (
     <section className="column">
@@ -74,16 +74,18 @@ function SideTable({
           </tr>
         </thead>
         <tbody>
-          {lines.map((line) => (
+          {lines.map((line) => {
+            const code = Number(line.code);
+            return (
             <tr key={line.category_id}>
               <td className="code">{line.code}</td>
               <td>{line.label}</td>
               <td className={amountClass(line)}>
-                {subadminCodes.has(line.code) ? (
+                {clickableCodes.has(code) ? (
                   <button
                     type="button"
                     className="subadmin-amount"
-                    onClick={() => onOpenSubadmin(line.code, line.label)}
+                    onClick={() => onOpen(code, line.label)}
                   >
                     {EUR.format(line.amount)}
                   </button>
@@ -92,7 +94,8 @@ function SideTable({
                 )}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
         <tfoot>
           <tr>
@@ -116,9 +119,10 @@ export default function App() {
   const [subadminRows, setSubadminRows] = useState<SubadministratieRow[]>([]);
   const [openCode, setOpenCode] = useState<number | null>(null);
   const [openLabel, setOpenLabel] = useState("");
-  const [txRows, setTxRows] = useState<CategoryTransactionRow[]>([]);
-  const [txError, setTxError] = useState<string | null>(null);
-  const [txLoading, setTxLoading] = useState(false);
+  const [popupPeople, setPopupPeople] = useState<SubadministratieRow[]>([]);
+  const [popupJournals, setPopupJournals] = useState<AfschrijvingJournal[]>([]);
+  const [popupError, setPopupError] = useState<string | null>(null);
+  const [popupLoading, setPopupLoading] = useState(false);
 
   const load = useCallback((y: number, date?: string | null) => {
     setError(null);
@@ -167,28 +171,56 @@ export default function App() {
     if (year != null) load(year, d);
   };
 
-  const subadminCodes = useMemo(
-    () => new Set(subadminRows.map((r) => r.local_code)),
-    [subadminRows]
-  );
+  const clickableCodes = useMemo(() => {
+    const codes = new Set(subadminRows.map((r) => Number(r.local_code)));
+    for (const code of sheet?.subadministratie?.local_codes ?? []) {
+      codes.add(Number(code));
+    }
+    for (const code of sheet?.afschrijvingen?.from_codes ?? []) {
+      codes.add(Number(code));
+    }
+    return codes;
+  }, [sheet, subadminRows]);
 
-  const openSubadmin = (code: number, label: string) => {
+  const closePopup = () => {
+    setOpenCode(null);
+    setPopupPeople([]);
+    setPopupJournals([]);
+    setPopupError(null);
+    setPopupLoading(false);
+  };
+
+  const openPopup = (code: number, label: string) => {
     setOpenCode(code);
     setOpenLabel(label);
-    setTxRows([]);
-    setTxError(null);
-    setTxLoading(true);
-    if (year == null) return;
-    getCategoryTransactions(year, code, asOf ?? undefined)
-      .then((r) => setTxRows(r.rows))
-      .catch((e) => setTxError(toMessage(e)))
-      .finally(() => setTxLoading(false));
+    setPopupError(null);
+    setPopupLoading(true);
+    const cachedPeople = [
+      ...subadminRows,
+      ...(sheet?.subadministratie?.rows ?? []),
+    ].filter((r) => Number(r.local_code) === code);
+    const cachedJournals = (sheet?.afschrijvingen?.journals ?? []).filter(
+      (r) => Number(r.category_from) === code
+    );
+    setPopupPeople(cachedPeople);
+    setPopupJournals(cachedJournals);
+    if (year == null) {
+      setPopupLoading(false);
+      return;
+    }
+    getPostPopup(year, code, asOf ?? undefined)
+      .then((r) => {
+        if (r.people.length) setPopupPeople(r.people);
+        if (r.journals.length) setPopupJournals(r.journals);
+      })
+      .catch((e) => setPopupError(toMessage(e)))
+      .finally(() => setPopupLoading(false));
   };
 
   useEffect(() => {
     if (openCode == null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpenCode(null);
+      if (e.key === "Escape") closePopup();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -230,27 +262,6 @@ export default function App() {
       window.removeEventListener("keydown", onKey);
     };
   }, [openCode]);
-
-  const openRows =
-    openCode != null
-      ? subadminRows.filter((r) => r.local_code === openCode)
-      : [];
-
-  const combinedRows = useMemo(() => {
-    const byName = new Map<string, number>();
-    for (const r of openRows) {
-      byName.set(r.name, (byName.get(r.name) ?? 0) + r.amount);
-    }
-    for (const r of txRows) {
-      byName.set(r.name, (byName.get(r.name) ?? 0) + r.amount);
-    }
-    return Array.from(byName, ([name, amount]) => ({
-      key: name,
-      code: openCode ?? 0,
-      name,
-      amount,
-    })).sort((a, b) => a.name.localeCompare(b.name, "nl"));
-  }, [openRows, txRows, openCode]);
 
   return (
     <div className="sheet-view">
@@ -323,15 +334,15 @@ export default function App() {
             title="Activa"
             lines={sheet.activa}
             total={sheet.total_activa}
-            subadminCodes={subadminCodes}
-            onOpenSubadmin={openSubadmin}
+            clickableCodes={clickableCodes}
+            onOpen={openPopup}
           />
           <SideTable
             title="Passiva"
             lines={sheet.passiva}
             total={sheet.total_passiva}
-            subadminCodes={subadminCodes}
-            onOpenSubadmin={openSubadmin}
+            clickableCodes={clickableCodes}
+            onOpen={openPopup}
           />
         </div>
       )}
@@ -341,26 +352,58 @@ export default function App() {
           className="subadmin-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="Subadministratie"
-          onClick={() => setOpenCode(null)}
+          aria-label={openLabel || "Post"}
+          onClick={closePopup}
         >
-          <div className="subadmin-dialog" onClick={(e) => e.stopPropagation()}>
+          <div
+            className={`subadmin-dialog${popupJournals.length ? " journal-dialog" : ""}`}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="subadmin-head">
               <h2>
-                Subadministratie {openCode}
+                {popupJournals.length ? "Journaal" : "Subadministratie"} {openCode}
                 {openLabel ? ` · ${openLabel}` : ""}
               </h2>
               <button
                 type="button"
                 className="subadmin-close"
                 aria-label="Sluiten"
-                onClick={() => setOpenCode(null)}
+                onClick={closePopup}
               >
                 ✕
               </button>
             </div>
             <div className="subadmin-body">
-              {combinedRows.length ? (
+              {popupJournals.length ? (
+                <table className="subadmin-table">
+                  <thead>
+                    <tr>
+                      <th>Datum</th>
+                      <th>Van</th>
+                      <th>Naar</th>
+                      <th className="num">Bedrag</th>
+                      <th>Omschrijving</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {popupJournals.map((r) => (
+                      <tr key={r.journal_id}>
+                        <td>{fmtDate(r.date.slice(0, 10))}</td>
+                        <td>
+                          {r.category_from}
+                          {r.from_label ? ` ${r.from_label}` : ""}
+                        </td>
+                        <td>
+                          {r.category_to}
+                          {r.to_label ? ` ${r.to_label}` : ""}
+                        </td>
+                        <td className="num">{EURC.format(r.amount)}</td>
+                        <td>{r.description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : popupPeople.length ? (
                 <table className="subadmin-table">
                   <thead>
                     <tr>
@@ -370,9 +413,9 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {combinedRows.map((r) => (
-                      <tr key={r.key}>
-                        <td className="code">{r.code}</td>
+                    {popupPeople.map((r) => (
+                      <tr key={r.name}>
+                        <td className="code">{r.local_code}</td>
                         <td>{r.name}</td>
                         <td className="num">{EURC.format(r.amount)}</td>
                       </tr>
@@ -383,26 +426,22 @@ export default function App() {
                       <td colSpan={2}>Totaal</td>
                       <td className="num">
                         {EURC.format(
-                          combinedRows.reduce((sum, r) => sum + r.amount, 0)
+                          popupPeople.reduce((sum, r) => sum + r.amount, 0)
                         )}
                       </td>
                     </tr>
                   </tfoot>
                 </table>
-              ) : txLoading ? (
+              ) : popupLoading ? (
                 <p className="subadmin-empty">Laden…</p>
-              ) : txError ? (
-                <p className="subadmin-empty">{txError}</p>
+              ) : popupError ? (
+                <p className="subadmin-empty">{popupError}</p>
               ) : (
                 <p className="subadmin-empty">Geen regels.</p>
               )}
             </div>
             <div className="subadmin-foot">
-              <button
-                type="button"
-                className="subadmin-ok"
-                onClick={() => setOpenCode(null)}
-              >
+              <button type="button" className="subadmin-ok" onClick={closePopup}>
                 Sluiten
               </button>
             </div>

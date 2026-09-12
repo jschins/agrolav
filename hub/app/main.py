@@ -125,6 +125,24 @@ def require_api_key(authorization: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def _refresh_afschrijvingen(user: dict[str, Any] | None) -> None:
+    """Rebuild depreciation journals for the logged-in user's country."""
+    country = str((user or {}).get("country") or "").strip()
+    if not country:
+        return
+    try:
+        from app import user_store
+        from shared.balance_values import apply_afschrijvingen
+
+        cursor = user_store._sql_connect().cursor()
+        country_id = user_store._sql_country_id(cursor, country)
+        if country_id is None:
+            return
+        apply_afschrijvingen(int(country_id), cursor)
+    except Exception as exc:  # noqa: BLE001
+        print(f"afschrijvingen: skipped: {exc}")
+
+
 class AuthLoginRequest(BaseModel):
     username: str
     password: str
@@ -159,6 +177,7 @@ def api_auth_login(
             except OtpError as exc:
                 raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     hub_ip.record_visit(body.client_ip, name)
+    _refresh_afschrijvingen(user)
     return {"user": user}
 
 
@@ -189,7 +208,9 @@ def api_auth_otp_verify(
             detail="This login is not allowed from your IP address",
         )
     hub_ip.record_visit(body.client_ip, username)
-    return {"user": user_store._public_user(raw)}
+    public = user_store._public_user(raw)
+    _refresh_afschrijvingen(public)
+    return {"user": public}
 
 
 @app.post("/api/auth/otp/resend")

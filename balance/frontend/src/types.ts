@@ -14,6 +14,27 @@ export interface PlugDebug {
   equal: boolean;
 }
 
+export interface AfschrijvingJournal {
+  journal_id: number;
+  date: string;
+  category_from: number;
+  category_to: number;
+  from_label: string;
+  to_label: string;
+  amount: number;
+  description: string;
+}
+
+export interface Afschrijvingen {
+  from_codes: number[];
+  journals: AfschrijvingJournal[];
+}
+
+export interface SubadministratieSheet {
+  local_codes: number[];
+  rows: SubadministratieRow[];
+}
+
 export interface BalanceSheet {
   year: number;
   as_of?: string | null;
@@ -22,6 +43,8 @@ export interface BalanceSheet {
   total_activa: number;
   total_passiva: number;
   balanced: boolean;
+  subadministratie?: SubadministratieSheet;
+  afschrijvingen?: Afschrijvingen;
   plug_debug?: PlugDebug;
 }
 
@@ -99,4 +122,10 @@ export interface CategoryTransactionsResponse {
   country_id: number;
   local_code: number;
   rows: CategoryTransactionRow[];
+}
+
+export interface PostPopupResponse {
+  local_code: number;
+  people: SubadministratieRow[];
+  journals: AfschrijvingJournal[];
 }

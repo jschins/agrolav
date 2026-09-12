@@ -21,6 +21,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 SPAAR_MARKER = "[spaar-mirror]"
+AFSCHRIJVING_MARKER = "[afschrijving]"
 
 _IDENT = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
@@ -884,6 +885,102 @@ def present_balance_cents(
             as_of=as_of,
         ).items()
     }
+
+
+def afschrijving_like_pattern() -> str:
+    """LIKE pattern for auto depreciation rows (``[`` is a LIKE character class)."""
+    return "![" + AFSCHRIJVING_MARKER[1:] + "%"
+
+
+def afschrijving_amount(fraction: object, present: Decimal) -> Decimal:
+    """``fraction * present``, two decimal places."""
+    return (Decimal(str(fraction)) * present).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+
+def apply_afschrijvingen(country_id: int, cursor: object) -> int:
+    """Replace ``[afschrijving]`` journal rows from ``dbo.afschrijvingen``.
+
+    Existing marker rows are deleted first so the bron amount is the live
+    sheet without last login's depreciation. Then one journal is written per
+    rule and year: FROM ``local_code_van`` TO ``local_code_naar`` of
+    ``fraction * present(local_code_bron)``. ``0`` when the table is missing
+    or this country has no rules. Does not commit.
+    """
+    cursor.execute("SELECT OBJECT_ID(N'dbo.afschrijvingen', N'U')")
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        return 0
+    if not _journal_table_exists(cursor):
+        return 0
+    cid = int(country_id)
+    cursor.execute(
+        "SELECT local_code_bron, fraction, local_code_van, local_code_naar "
+        "FROM dbo.afschrijvingen WHERE country_id = ? ORDER BY id",
+        (cid,),
+    )
+    rules = [r for r in cursor.fetchall() if r is not None]
+    if not rules:
+        return 0
+    years: set[int] = set()
+    cursor.execute(
+        "SELECT DISTINCT year FROM dbo.balance_opening WHERE country_id = ?",
+        (cid,),
+    )
+    years.update(int(r[0]) for r in cursor.fetchall() if r and r[0] is not None)
+    cursor.execute(
+        "SELECT DISTINCT year FROM dbo.journal WHERE country_id = ?",
+        (cid,),
+    )
+    years.update(int(r[0]) for r in cursor.fetchall() if r and r[0] is not None)
+    if not years:
+        return 0
+    codes = category_local_codes(cid, cursor)
+    local_to_id = {int(local): int(cat) for cat, local in codes.items()}
+    like = afschrijving_like_pattern()
+    written = 0
+    for year in sorted(years):
+        cursor.execute(
+            "DELETE FROM dbo.journal WHERE country_id = ? AND year = ? "
+            "AND description LIKE ? ESCAPE '!'",
+            (cid, int(year), like),
+        )
+        cents = present_balance_cents(cid, int(year), cursor)
+        for bron, fraction, van, naar in rules:
+            try:
+                bron_local = int(bron)
+                van_local = int(van)
+                naar_local = int(naar)
+            except (TypeError, ValueError):
+                continue
+            bron_id = local_to_id.get(bron_local)
+            van_id = local_to_id.get(van_local)
+            naar_id = local_to_id.get(naar_local)
+            if bron_id is None or van_id is None or naar_id is None:
+                continue
+            present = Decimal(cents.get(bron_id, 0)) / Decimal(100)
+            amount = afschrijving_amount(fraction, present)
+            if amount == 0:
+                continue
+            description = f"{AFSCHRIJVING_MARKER} {bron_local}×{fraction}"
+            cursor.execute(
+                "INSERT INTO dbo.journal "
+                "(year, country_id, date, category_from, category_to, "
+                "amount, description, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
+                (
+                    int(year),
+                    cid,
+                    f"{int(year)}-12-31",
+                    van_id,
+                    naar_id,
+                    amount,
+                    description[:512],
+                ),
+            )
+            written += 1
+    return written
 
 
 def result_overlay_cents(

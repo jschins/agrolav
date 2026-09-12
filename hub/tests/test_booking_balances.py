@@ -7,6 +7,7 @@ from decimal import Decimal
 from shared.balance_values import (
     _booking_balances,
     _journal_effect,
+    afschrijving_amount,
     booking_signed_amount,
     category_display_name,
     is_activa,
@@ -402,6 +403,16 @@ class CategoryRoleTests(unittest.TestCase):
         self.assertEqual(
             category_display_name("Verlies", 2100, "profit"),
             "2100 Verlies",
+        )
+
+    def test_afschrijving_amount(self):
+        self.assertEqual(
+            afschrijving_amount("-0.03", Decimal("100000")),
+            Decimal("-3000.00"),
+        )
+        self.assertEqual(
+            afschrijving_amount("-0.20", Decimal("50000")),
+            Decimal("-10000.00"),
         )
 
 

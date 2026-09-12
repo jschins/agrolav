@@ -35,6 +35,9 @@ from shared.balance_values import (
     ensure_category_role_booking_rules,
     is_balance_sheet_code,
     is_journal_forbidden_code,
+    apply_afschrijvingen,
+    afschrijving_like_pattern,
+    AFSCHRIJVING_MARKER,
     require_remainder_row,
     result_overlay_cents,
     spaar_mirror,
@@ -500,6 +503,10 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
     account balances, and the journal effects are computed up to that day; a
     date before the first transaction yields the starting balance sheet.
     """
+    with connect() as conn:
+        cur = conn.cursor()
+        apply_afschrijvingen(country_id, cur)
+        conn.commit()
     cutoff = _asof_cutoff(country_id, year, as_of)
     if cutoff is None:
         result_amount = _recorded_result(country_id, year)
@@ -605,6 +612,8 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
         "total_activa": float(total_activa),
         "total_passiva": float(total_passiva),
         "balanced": total_activa == total_passiva,
+        "subadministratie": list_subadministratie_sheet(country_id),
+        "afschrijvingen": list_afschrijvingen(country_id, year),
         "plug_debug": {
             "opening": str(start_plug),
             "calculated": str(balance_amount),
@@ -753,27 +762,38 @@ def generate_spaarmirror(country_id: int, year: int) -> dict[str, Any]:
     return {"ok": True, "year": year, "country_id": country_id, "generated": len(rows)}
 
 
+def list_subadministratie_sheet(country_id: int) -> dict[str, Any]:
+    """Clickable local_codes and rows from ``dbo.subadministratie`` (no hardcoded codes)."""
+    rows = list_subadministratie(country_id)
+    codes = sorted({int(r["local_code"]) for r in rows})
+    return {"local_codes": codes, "rows": rows}
+
+
 def list_subadministratie(country_id: int, local_code: int | None = None) -> list[dict[str, Any]]:
     """Rows of dbo.subadministratie for a country (by name), optionally for one local_code."""
     rows: list[dict[str, Any]] = []
     with connect() as conn:
         cur = conn.cursor()
-        if local_code is None:
+        try:
             cur.execute(
                 "SELECT local_code, name, amount FROM dbo.subadministratie "
                 "WHERE country_id = ? ORDER BY name",
-                country_id,
+                int(country_id),
             )
-        else:
-            cur.execute(
-                "SELECT local_code, name, amount FROM dbo.subadministratie "
-                "WHERE country_id = ? AND local_code = ? ORDER BY name",
-                country_id,
-                str(local_code),
-            )
-        for local_code, name, amount in cur.fetchall():
+        except Exception as exc:
+            if "42S02" in str(exc) or "Invalid object" in str(exc):
+                return []
+            raise
+        wanted = None if local_code is None else int(local_code)
+        for code, name, amount in cur.fetchall():
+            try:
+                found = int(code)
+            except (TypeError, ValueError):
+                continue
+            if wanted is not None and found != wanted:
+                continue
             rows.append({
-                "local_code": int(local_code),
+                "local_code": found,
                 "name": str(name),
                 "amount": float(amount),
             })
@@ -818,7 +838,7 @@ def list_category_transactions(
             f"JOIN dbo.dim_category c ON c.category_id = t.category_id "
             f"WHERE c.country_id = ? AND c.local_code = ? AND t.year = ?"
         )
-        params: list[object] = [country_id, str(local_code), year]
+        params: list[object] = [country_id, int(local_code), year]
         if cutoff is not None:
             sql += " AND t.booked_on <= ?"
             params.append(cutoff.isoformat())
@@ -835,6 +855,80 @@ def list_category_transactions(
     return rows
 
 
+def post_popup(
+    country_id: int,
+    year: int,
+    local_code: int,
+    as_of: str | None = None,
+) -> dict[str, Any]:
+    """Rows for one sheet amount: subadministratie names, else afschrijving journal."""
+    code = int(local_code)
+    names = list_subadministratie(country_id, code)
+    by_name: dict[str, float] = {}
+    for row in names:
+        key = str(row["name"])
+        by_name[key] = by_name.get(key, 0.0) + float(row["amount"])
+    for row in list_category_transactions(country_id, code, year, as_of):
+        key = str(row["name"])
+        by_name[key] = by_name.get(key, 0.0) + float(row["amount"])
+    people = [
+        {"local_code": code, "name": name, "amount": amount}
+        for name, amount in sorted(by_name.items(), key=lambda item: item[0])
+    ]
+    journals = [
+        row
+        for row in list_afschrijvingen(country_id, year)["journals"]
+        if int(row["category_from"]) == code
+    ]
+    return {
+        "local_code": code,
+        "people": people,
+        "journals": journals,
+    }
+
+
+def list_afschrijvingen(country_id: int, year: int) -> dict[str, Any]:
+    """FROM local_codes from ``dbo.afschrijvingen.local_code_van`` and those journals."""
+    from_codes: list[int] = []
+    journals: list[dict[str, Any]] = []
+    labels = _category_labels(country_id)
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT OBJECT_ID(N'dbo.afschrijvingen', N'U')")
+        row = cur.fetchone()
+        if row is None or row[0] is None:
+            return {"from_codes": [], "journals": []}
+        cur.execute(
+            "SELECT DISTINCT local_code_van FROM dbo.afschrijvingen "
+            "WHERE country_id = ? ORDER BY local_code_van",
+            country_id,
+        )
+        from_codes = [int(r[0]) for r in cur.fetchall() if r and r[0] is not None]
+        local_codes = shared_category_local_codes(country_id, cur)
+        cur.execute(
+            "SELECT journal_id, date, category_from, category_to, amount, description "
+            "FROM dbo.journal WHERE country_id = ? AND year = ? "
+            "AND description LIKE ? ESCAPE '!' "
+            "ORDER BY date, journal_id",
+            country_id,
+            year,
+            afschrijving_like_pattern(),
+        )
+        for journal_id, date, cat_from, cat_to, amount, desc in cur.fetchall():
+            src, dst = int(cat_from), int(cat_to)
+            journals.append({
+                "journal_id": int(journal_id),
+                "date": str(date),
+                "category_from": int(local_codes.get(src, src)),
+                "category_to": int(local_codes.get(dst, dst)),
+                "from_label": labels.get(src, f"cat_{src}"),
+                "to_label": labels.get(dst, f"cat_{dst}"),
+                "amount": float(amount),
+                "description": str(desc or ""),
+            })
+    return {"from_codes": from_codes, "journals": journals}
+
+
 def list_journal(country_id: int, year: int) -> list[dict[str, Any]]:
     """All hand-edited journal rows for a country/year (oldest first)."""
     labels = _category_labels(country_id)
@@ -849,6 +943,8 @@ def list_journal(country_id: int, year: int) -> list[dict[str, Any]]:
             year,
         )
         for journal_id, date, cat_from, cat_to, amount, desc in cur.fetchall():
+            if str(desc or "").startswith(AFSCHRIJVING_MARKER):
+                continue
             rows.append({
                 "journal_id": int(journal_id),
                 "year": year,
@@ -888,9 +984,11 @@ def save_journal(country_id: int, year: int, items: list[dict[str, Any]]) -> dic
             description = str(item.get("description") or "")[:512]
             parsed.append((date, cat_from, cat_to, amount, description))
         cur.execute(
-            "DELETE FROM dbo.journal WHERE country_id = ? AND year = ?",
+            "DELETE FROM dbo.journal WHERE country_id = ? AND year = ? "
+            "AND description NOT LIKE ? ESCAPE '!'",
             country_id,
             year,
+            afschrijving_like_pattern(),
         )
         for date, cat_from, cat_to, amount, description in parsed:
             cur.execute(
@@ -899,5 +997,6 @@ def save_journal(country_id: int, year: int, items: list[dict[str, Any]]) -> dic
                 "VALUES (?, ?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
                 year, country_id, date, cat_from, cat_to, amount, description,
             )
+        apply_afschrijvingen(country_id, cur)
         conn.commit()
     return {"ok": True, "year": year, "country_id": country_id, "saved": len(parsed)}

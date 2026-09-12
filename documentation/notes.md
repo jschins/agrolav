@@ -470,3 +470,27 @@ INSERT INTO dbo.subadministratie VALUES
   (4, 2500, 'Ten Hage', 9333.32),
   (4, 2500, 'De Haro', 7361.39),
   (4, 2500, 'Schonebaum', 42902.63)
+
+
+===============automatische afschrijvingen
+
+
+CREATE TABLE dbo.afschrijvingen (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    country_id INT NOT NULL,
+    local_code_bron INT NOT NULL,
+    fraction DECIMAL(18,2) NOT NULL,
+    local_code_van INT NOT NULL,
+    local_code_naar INT NOT NULL
+);
+
+INSERT INTO dbo.afschrijvingen VALUES
+  (4, 1005, -.03, 1005, 3100),
+  (4, 1010, -.2, 1010, 3101),
+  (4, 1015, -.25, 1015, 3102) 
+
+AGENDA
+
+1. instudo som-categorieen en namen rubrieken in email anton
+2. extra menu item "AUtomatic journal items" : edit table
+3. vertaling menu items naar NL

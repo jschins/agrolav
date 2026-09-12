@@ -8,6 +8,7 @@ import type {
   ResultResponse,
   SubadministratieResponse,
   CategoryTransactionsResponse,
+  PostPopupResponse,
 } from "./types";
 
 function apiBase(): string {
@@ -88,6 +89,16 @@ export function getSubadministratie(
 ): Promise<SubadministratieResponse> {
   const q = localCode != null ? `?local_code=${localCode}` : "";
   return getJson(`/api/balance/subadministratie${q}`);
+}
+
+export function getPostPopup(
+  year: number,
+  localCode: number,
+  date?: string
+): Promise<PostPopupResponse> {
+  const q = new URLSearchParams({ local_code: String(localCode) });
+  if (date) q.set("date", date);
+  return getJson(`/api/balance/${year}/popup?${q.toString()}`);
 }
 
 export function getCategoryTransactions(

@@ -248,6 +248,21 @@ def balance_subadministratie(
     }
 
 
+@app.get("/balance/{slug}/api/balance/{year}/popup")
+@_present_sheet_errors("Sheet popup")
+def balance_post_popup(
+    slug: str,
+    year: int,
+    local_code: int,
+    date: str | None = None,
+    _: None = Depends(_api_key),
+) -> dict[str, Any]:
+    from app.balance import post_popup
+
+    country_id = resolve_country(slug)
+    return post_popup(country_id, year, local_code, as_of=date)
+
+
 @app.get("/balance/{slug}/api/balance/{year}/transactions")
 @_present_sheet_errors("Category transactions")
 def balance_category_transactions(
