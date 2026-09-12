@@ -753,6 +753,33 @@ def generate_spaarmirror(country_id: int, year: int) -> dict[str, Any]:
     return {"ok": True, "year": year, "country_id": country_id, "generated": len(rows)}
 
 
+def list_subadministratie(country_id: int, local_code: int | None = None) -> list[dict[str, Any]]:
+    """Rows of dbo.subadministratie for a country (by name), optionally for one local_code."""
+    rows: list[dict[str, Any]] = []
+    with connect() as conn:
+        cur = conn.cursor()
+        if local_code is None:
+            cur.execute(
+                "SELECT local_code, name, amount FROM dbo.subadministratie "
+                "WHERE country_id = ? ORDER BY name",
+                country_id,
+            )
+        else:
+            cur.execute(
+                "SELECT local_code, name, amount FROM dbo.subadministratie "
+                "WHERE country_id = ? AND local_code = ? ORDER BY name",
+                country_id,
+                str(local_code),
+            )
+        for local_code, name, amount in cur.fetchall():
+            rows.append({
+                "local_code": int(local_code),
+                "name": str(name),
+                "amount": float(amount),
+            })
+    return rows
+
+
 def list_journal(country_id: int, year: int) -> list[dict[str, Any]]:
     """All hand-edited journal rows for a country/year (oldest first)."""
     labels = _category_labels(country_id)

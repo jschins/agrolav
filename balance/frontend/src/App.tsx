@@ -1,11 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
-import { getDates, getMeta, getSheet, getYears } from "./api";
-import type { BalanceSheet } from "./types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  getDates,
+  getMeta,
+  getSheet,
+  getSubadministratie,
+  getYears,
+} from "./api";
+import type { BalanceSheet, SubadministratieRow } from "./types";
 
 const EUR = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
   maximumFractionDigits: 0,
+});
+
+const EURC = new Intl.NumberFormat("nl-NL", {
+  style: "currency",
+  currency: "EUR",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 
 function toMessage(e: unknown): string {
@@ -35,10 +48,14 @@ function SideTable({
   title,
   lines,
   total,
+  subadminCodes,
+  onOpenSubadmin,
 }: {
   title: string;
   lines: BalanceSheet["activa"];
   total: number;
+  subadminCodes: Set<number>;
+  onOpenSubadmin: (code: number, label: string) => void;
 }) {
   return (
     <section className="column">
@@ -56,7 +73,19 @@ function SideTable({
             <tr key={line.category_id}>
               <td className="code">{line.code}</td>
               <td>{line.label}</td>
-              <td className={amountClass(line)}>{EUR.format(line.amount)}</td>
+              <td className={amountClass(line)}>
+                {subadminCodes.has(line.code) ? (
+                  <button
+                    type="button"
+                    className="subadmin-amount"
+                    onClick={() => onOpenSubadmin(line.code, line.label)}
+                  >
+                    {EUR.format(line.amount)}
+                  </button>
+                ) : (
+                  EUR.format(line.amount)
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -79,6 +108,9 @@ export default function App() {
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [subadminRows, setSubadminRows] = useState<SubadministratieRow[]>([]);
+  const [openCode, setOpenCode] = useState<number | null>(null);
+  const [openLabel, setOpenLabel] = useState("");
 
   const load = useCallback((y: number, date?: string | null) => {
     setError(null);
@@ -92,6 +124,9 @@ export default function App() {
     getMeta()
       .then((m) => setTitle(m.title || ""))
       .catch(() => setTitle(""));
+    getSubadministratie()
+      .then((r) => setSubadminRows(r.rows))
+      .catch(() => setSubadminRows([]));
     getYears()
       .then((r) => {
         const ys = r.years;
@@ -123,6 +158,30 @@ export default function App() {
     setAsOf(d);
     if (year != null) load(year, d);
   };
+
+  const subadminCodes = useMemo(
+    () => new Set(subadminRows.map((r) => r.local_code)),
+    [subadminRows]
+  );
+
+  const openSubadmin = (code: number, label: string) => {
+    setOpenCode(code);
+    setOpenLabel(label);
+  };
+
+  useEffect(() => {
+    if (openCode == null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpenCode(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openCode]);
+
+  const openRows =
+    openCode != null
+      ? subadminRows.filter((r) => r.local_code === openCode)
+      : [];
 
   return (
     <div className="sheet-view">
@@ -191,8 +250,90 @@ export default function App() {
 
       {sheet && (
         <div className="sheet">
-          <SideTable title="Activa" lines={sheet.activa} total={sheet.total_activa} />
-          <SideTable title="Passiva" lines={sheet.passiva} total={sheet.total_passiva} />
+          <SideTable
+            title="Activa"
+            lines={sheet.activa}
+            total={sheet.total_activa}
+            subadminCodes={subadminCodes}
+            onOpenSubadmin={openSubadmin}
+          />
+          <SideTable
+            title="Passiva"
+            lines={sheet.passiva}
+            total={sheet.total_passiva}
+            subadminCodes={subadminCodes}
+            onOpenSubadmin={openSubadmin}
+          />
+        </div>
+      )}
+
+      {openCode != null && (
+        <div
+          className="subadmin-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Subadministratie"
+          onClick={() => setOpenCode(null)}
+        >
+          <div className="subadmin-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="subadmin-head">
+              <h2>
+                Subadministratie {openCode}
+                {openLabel ? ` · ${openLabel}` : ""}
+              </h2>
+              <button
+                type="button"
+                className="subadmin-close"
+                aria-label="Sluiten"
+                onClick={() => setOpenCode(null)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="subadmin-table-wrap">
+              {openRows.length ? (
+                <table className="subadmin-table">
+                  <thead>
+                    <tr>
+                      <th className="code">Code</th>
+                      <th>Naam</th>
+                      <th className="num">Bedrag</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openRows.map((r) => (
+                      <tr key={r.name}>
+                        <td className="code">{r.local_code}</td>
+                        <td>{r.name}</td>
+                        <td className="num">{EURC.format(r.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={2}>Totaal</td>
+                      <td className="num">
+                        {EURC.format(
+                          openRows.reduce((sum, r) => sum + r.amount, 0)
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              ) : (
+                <p className="subadmin-empty">Geen regels.</p>
+              )}
+            </div>
+            <div className="subadmin-foot">
+              <button
+                type="button"
+                className="subadmin-ok"
+                onClick={() => setOpenCode(null)}
+              >
+                Sluiten
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

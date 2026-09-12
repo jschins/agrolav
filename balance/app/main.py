@@ -180,6 +180,22 @@ def balance_categories(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]
     return list_categories(resolve_country(slug))
 
 
+@app.get("/balance/{slug}/api/balance/subadministratie")
+def balance_subadministratie(
+    slug: str,
+    local_code: int | None = None,
+    _: None = Depends(_api_key),
+) -> dict[str, Any]:
+    from app.balance import list_subadministratie
+
+    country_id = resolve_country(slug)
+    return {
+        "country_id": country_id,
+        "local_code": local_code,
+        "rows": list_subadministratie(country_id, local_code=local_code),
+    }
+
+
 @app.get("/balance/{slug}/api/balance/{year}")
 def balance_sheet(
     slug: str,

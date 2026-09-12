@@ -77,3 +77,15 @@ export interface ResultResponse {
   rows: ResultRow[];
   total: number;
 }
+
+export interface SubadministratieRow {
+  local_code: number;
+  name: string;
+  amount: number;
+}
+
+export interface SubadministratieResponse {
+  country_id: number;
+  local_code: number | null;
+  rows: SubadministratieRow[];
+}

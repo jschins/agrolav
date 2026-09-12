@@ -6,6 +6,7 @@ import type {
   JournalRow,
   CategoriesResponse,
   ResultResponse,
+  SubadministratieResponse,
 } from "./types";
 
 function apiBase(): string {
@@ -79,6 +80,13 @@ export function rebuildSpaarMirror(year: number): Promise<{ ok: boolean; generat
 
 export function getCategories(): Promise<CategoriesResponse> {
   return getJson("/api/balance/categories");
+}
+
+export function getSubadministratie(
+  localCode?: number
+): Promise<SubadministratieResponse> {
+  const q = localCode != null ? `?local_code=${localCode}` : "";
+  return getJson(`/api/balance/subadministratie${q}`);
 }
 
 export function getJournal(year: number): Promise<JournalResponse> {
