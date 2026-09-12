@@ -194,6 +194,43 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openCode]);
 
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "agrolav-close") {
+        if (e.source === window.opener) window.close();
+      }
+      if (e.data?.type === "agrolav-probe") {
+        try {
+          if (window.opener) {
+            window.opener.postMessage({ type: "agrolav-pong" }, "*");
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || openCode != null) return;
+      try {
+        window.opener?.postMessage({ type: "agrolav-focus-front" }, "*");
+      } catch {
+        // ignore
+      }
+      try {
+        window.opener?.focus();
+      } catch {
+        // ignore
+      }
+      window.close();
+    };
+    window.addEventListener("message", onMessage);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [openCode]);
+
   const openRows =
     openCode != null
       ? subadminRows.filter((r) => r.local_code === openCode)

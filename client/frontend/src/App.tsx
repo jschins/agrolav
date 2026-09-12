@@ -67,28 +67,99 @@ const CHANNEL = "boekhouding";
 const REFRESH_STATUS_KEY = "boekhouding-refresh-status";
 const BALANCE_WINDOW_NAME = "agrolavBalance";
 let balanceSheetWindow: Window | null = null;
+let lastBalanceUrl: string | null = null;
+let probeWindow: Window | null = null;
+let probeTimer: number | null = null;
+let probeTries = 0;
+
+function clearProbe(): void {
+  if (probeTimer !== null) {
+    window.clearTimeout(probeTimer);
+    probeTimer = null;
+  }
+  probeWindow = null;
+  probeTries = 0;
+}
+
+function handleBalancePong(source: Window): void {
+  if (source !== probeWindow) return;
+  clearProbe();
+}
+
+function probeBalanceOwnership(win: Window): void {
+  clearProbe();
+  probeWindow = win;
+  probeTries = 0;
+  const scheduleNextProbe = () => {
+    probeTries += 1;
+    if (probeTries > 8) {
+      // Window does not cooperate (e.g. left over from a previous deploy
+      // without an opener): replace it so focus/close can reach it.
+      const w = probeWindow;
+      probeWindow = null;
+      probeTimer = null;
+      if (w && w === balanceSheetWindow) {
+        try {
+          w.close();
+        } catch {
+          // ignore
+        }
+        if (balanceSheetWindow === w) balanceSheetWindow = null;
+      }
+      return;
+    }
+    try {
+      win.postMessage({ type: "agrolav-probe" }, "*");
+    } catch {
+      probeTimer = null;
+      probeWindow = null;
+      return;
+    }
+    probeTimer = window.setTimeout(scheduleNextProbe, 500);
+  };
+  scheduleNextProbe();
+}
 
 function openBalanceSheetWindow(url: string): void {
-  const win = window.open(url, BALANCE_WINDOW_NAME);
-  if (!win) return;
+  let win = balanceSheetWindow && !balanceSheetWindow.closed ? balanceSheetWindow : null;
+  const reused = Boolean(win);
+  if (win) {
+    try {
+      if (url !== lastBalanceUrl) win.location.href = url;
+    } catch {
+      win = null;
+    }
+  }
+  if (!win) {
+    win = window.open(url, BALANCE_WINDOW_NAME);
+  }
   balanceSheetWindow = win;
-  try {
-    win.focus();
-  } catch {
-    // window may be gone; ignore
+  lastBalanceUrl = url;
+  if (win) {
+    try {
+      win.focus();
+    } catch {
+      // window may be gone; ignore
+    }
+    if (reused) probeBalanceOwnership(win);
   }
 }
 
 function closeBalanceSheetWindow(): void {
-  try {
-    if (balanceSheetWindow && !balanceSheetWindow.closed) {
-      balanceSheetWindow.close();
+  const win = balanceSheetWindow;
+  if (win && !win.closed) {
+    try {
+      win.postMessage({ type: "agrolav-close" }, "*");
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
-  } finally {
-    balanceSheetWindow = null;
+    try {
+      win.close();
+    } catch {
+      // ignore
+    }
   }
+  balanceSheetWindow = null;
 }
 
 function matrixFooterNames(matrix: MatrixResponse): { balance: string; last_booked: string } {
@@ -1356,6 +1427,23 @@ export default function App() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.data?.type === "agrolav-focus-front") {
+        try {
+          window.focus();
+        } catch {
+          // ignore
+        }
+      }
+      if (e.data?.type === "agrolav-pong" && e.source instanceof Window) {
+        handleBalancePong(e.source);
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
   }, []);
 
   if (!authChecked) {
