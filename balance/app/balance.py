@@ -780,6 +780,19 @@ def list_subadministratie(country_id: int, local_code: int | None = None) -> lis
     return rows
 
 
+def _transaction_person_name(description: str) -> str:
+    """Extract the person name from a "Naam: X Omschrijving: ..." description."""
+    text = (description or "").strip()
+    if not text:
+        return ""
+    _, _, rest = text.partition("Naam:")
+    if rest:
+        name = rest.split("Omschrijving:", 1)[0].strip()
+        if name:
+            return name
+    return text
+
+
 def list_category_transactions(country_id: int, local_code: int) -> list[dict[str, Any]]:
     """All ``dbo.transaction_{country}`` rows for a local_code (oldest first)."""
     table = _transaction_table(country_id)
@@ -798,10 +811,11 @@ def list_category_transactions(country_id: int, local_code: int) -> list[dict[st
             local_code,
         )
         for booked_on, description, counterparty_name, amount in cur.fetchall():
-            desc = (description or "").strip()
+            desc = _transaction_person_name(
+                description or str(counterparty_name or "")
+            )
             rows.append({
-                "date": str(booked_on),
-                "description": desc or str(counterparty_name or ""),
+                "name": desc or "Onbekend",
                 "amount": float(amount),
             })
     return rows

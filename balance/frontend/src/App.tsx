@@ -198,6 +198,21 @@ export default function App() {
       ? subadminRows.filter((r) => r.local_code === openCode)
       : [];
 
+  const combinedRows = [
+    ...openRows.map((r) => ({
+      key: r.name,
+      code: r.local_code,
+      name: r.name,
+      amount: r.amount,
+    })),
+    ...txRows.map((r, i) => ({
+      key: `tx-${i}`,
+      code: openCode ?? 0,
+      name: r.name,
+      amount: r.amount,
+    })),
+  ];
+
   return (
     <div className="sheet-view">
       <header>
@@ -306,7 +321,7 @@ export default function App() {
               </button>
             </div>
             <div className="subadmin-body">
-              {openRows.length ? (
+              {combinedRows.length ? (
                 <table className="subadmin-table">
                   <thead>
                     <tr>
@@ -316,9 +331,9 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {openRows.map((r) => (
-                      <tr key={r.name}>
-                        <td className="code">{r.local_code}</td>
+                    {combinedRows.map((r) => (
+                      <tr key={r.key}>
+                        <td className="code">{r.code}</td>
                         <td>{r.name}</td>
                         <td className="num">{EURC.format(r.amount)}</td>
                       </tr>
@@ -329,55 +344,19 @@ export default function App() {
                       <td colSpan={2}>Totaal</td>
                       <td className="num">
                         {EURC.format(
-                          openRows.reduce((sum, r) => sum + r.amount, 0)
+                          combinedRows.reduce((sum, r) => sum + r.amount, 0)
                         )}
                       </td>
                     </tr>
                   </tfoot>
                 </table>
+              ) : txLoading ? (
+                <p className="subadmin-empty">Laden…</p>
+              ) : txError ? (
+                <p className="subadmin-empty">{txError}</p>
               ) : (
                 <p className="subadmin-empty">Geen regels.</p>
               )}
-
-              <div className="subadmin-trans">
-                <h3>Transacties</h3>
-                {txLoading ? (
-                  <p className="subadmin-empty">Laden…</p>
-                ) : txError ? (
-                  <p className="subadmin-empty">{txError}</p>
-                ) : txRows.length ? (
-                  <table className="subadmin-table">
-                    <thead>
-                      <tr>
-                        <th className="date">Datum</th>
-                        <th>Omschrijving</th>
-                        <th className="num">Bedrag</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {txRows.map((r, i) => (
-                        <tr key={`${r.date}-${i}`}>
-                          <td className="date">{fmtDate(r.date)}</td>
-                          <td>{r.description}</td>
-                          <td className="num">{EURC.format(r.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td colSpan={2}>Totaal</td>
-                        <td className="num">
-                          {EURC.format(
-                            txRows.reduce((sum, r) => sum + r.amount, 0)
-                          )}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                ) : (
-                  <p className="subadmin-empty">Geen transacties.</p>
-                )}
-              </div>
             </div>
             <div className="subadmin-foot">
               <button

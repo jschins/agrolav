@@ -91,8 +91,7 @@ export interface SubadministratieResponse {
 }
 
 export interface CategoryTransactionRow {
-  date: string;
-  description: string;
+  name: string;
   amount: number;
 }
 
