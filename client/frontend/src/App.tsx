@@ -65,6 +65,31 @@ import JournalEditor from "./JournalEditor";
 
 const CHANNEL = "boekhouding";
 const REFRESH_STATUS_KEY = "boekhouding-refresh-status";
+const BALANCE_WINDOW_NAME = "agrolavBalance";
+let balanceSheetWindow: Window | null = null;
+
+function openBalanceSheetWindow(url: string): void {
+  const win = window.open(url, BALANCE_WINDOW_NAME);
+  if (!win) return;
+  balanceSheetWindow = win;
+  try {
+    win.focus();
+  } catch {
+    // window may be gone; ignore
+  }
+}
+
+function closeBalanceSheetWindow(): void {
+  try {
+    if (balanceSheetWindow && !balanceSheetWindow.closed) {
+      balanceSheetWindow.close();
+    }
+  } catch {
+    // ignore
+  } finally {
+    balanceSheetWindow = null;
+  }
+}
 
 function matrixFooterNames(matrix: MatrixResponse): { balance: string; last_booked: string } {
   return {
@@ -1032,8 +1057,7 @@ function SyncNotifyShell({
       items.push({
         id: "balance-sheet",
         label: "Balance sheet",
-        onClick: () =>
-          window.open(status.balance_url!, "_blank", "noopener,noreferrer"),
+        onClick: () => openBalanceSheetWindow(status.balance_url!),
       });
       items.push({
         id: "journal",
@@ -1367,6 +1391,7 @@ export default function App() {
       onLogout={
         authRequired
           ? () => {
+              closeBalanceSheetWindow();
               logout()
                 .then(() => {
                   clearStoredRefreshStatus();
