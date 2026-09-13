@@ -8,7 +8,7 @@
 --   category_total, uploaded_files
 --
 -- JSON / files these tables replace:
---   categories.json table_header_terms  -> dbo.table_header_term
+--   categories.json table_header_terms  -> dbo.translation
 --   categories.json typerules           -> dbo.type_rule
 --   upload_acl.json bank modalities     -> dbo.bank_modality
 --   upload_acl.json hub_ips             -> (removed; country/center.egress_ip + dbo.visitor_ip)
@@ -20,8 +20,8 @@
 USE agrolav
 GO
 
-IF OBJECT_ID(N'dbo.table_header_term', N'U') IS NULL
-CREATE TABLE dbo.table_header_term (
+IF OBJECT_ID(N'dbo.translation', N'U') IS NULL
+CREATE TABLE dbo.translation (
     country_id INT NOT NULL,
     term_key NVARCHAR(64) NOT NULL,
     label NVARCHAR(128) NOT NULL,

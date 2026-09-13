@@ -46,7 +46,7 @@ IGNORE_DIRS = frozenset(
 )
 _LOCAL_CODE = re.compile(r"^(\d{2})\b")
 TABLES = (
-    "table_header_term",
+    "translation",
     "type_rule",
     "bank_modality",
     "hub_ip",
@@ -167,7 +167,7 @@ def _insert_many(cursor, sql: str, rows: list[tuple[Any, ...]]) -> int:
 
 
 def load_table_header_terms(cursor) -> int:
-    cursor.execute("DELETE FROM dbo.table_header_term")
+    cursor.execute("DELETE FROM dbo.translation")
     rows: list[tuple[int, str, str]] = []
     for country_id, _name, country_dir in _countries(cursor):
         payload = _read_json_object(country_dir / "categories.json")
@@ -183,7 +183,7 @@ def load_table_header_terms(cursor) -> int:
     return _insert_many(
         cursor,
         """
-        INSERT INTO dbo.table_header_term (country_id, term_key, label)
+        INSERT INTO dbo.translation (country_id, term_key, label)
         VALUES (?, ?, ?)
         """,
         rows,
@@ -448,7 +448,7 @@ def main() -> None:
     except Exception:
         conn.rollback()
         raise
-    print(f"table_header_term: {header_n}")
+    print(f"translation: {header_n}")
     print(f"type_rule: {type_n}")
     print(f"bank_modality: {modality_n}")
     print(f"hub_ip: {ip_n}")

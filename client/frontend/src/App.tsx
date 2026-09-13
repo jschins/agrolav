@@ -861,6 +861,19 @@ function SyncNotifyShell({
   const [wipeError, setWipeError] = useState<string | null>(null);
   const [dataRev, setDataRev] = useState(0);
   const dataEpochRef = useRef<number | null>(null);
+  const [menuTerms, setMenuTerms] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    getSettings()
+      .then((res) => {
+        if (!cancelled) setMenuTerms(res.table_header_terms || {});
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [banksState, setBanksState] = useState<{
     person?: string;
@@ -1118,41 +1131,43 @@ function SyncNotifyShell({
     const items = [...headerActions];
     items.push({
       id: "terms",
-      label: "⚙ Edit Terms (Alt+T)",
+      label: `⚙ ${tableHeaderTerm(menuTerms, "Edit Terms", "Edit Terms")} (Alt+T)`,
       onClick: () => openView("terms"),
     });
     items.push({
       id: "recalculate-categories",
-      label: scratchBusy ? "Recalculating…" : "Recalculate",
+      label: scratchBusy
+        ? "Recalculating…"
+        : tableHeaderTerm(menuTerms, "Recalculate", "Recalculate"),
       disabled: scratchBusy || wipeBusy,
       onClick: doRecalculateFromScratch,
     });
     if (status?.balance_url) {
       items.push({
         id: "balance-sheet",
-        label: "Balance sheet",
+        label: tableHeaderTerm(menuTerms, "Balance sheet", "Balance sheet"),
         onClick: () => openBalanceSheetWindow(status.balance_url!),
       });
       items.push({
         id: "journal",
-        label: "Manual journal posts",
+        label: tableHeaderTerm(menuTerms, "Manual journal posts", "Manual journal posts"),
         onClick: () => openView("journal"),
       });
       items.push({
         id: "afschrijvingen",
-        label: "Automatic journal posts",
+        label: tableHeaderTerm(menuTerms, "Automatic journal posts", "Automatic journal posts"),
         onClick: () => openView("afschrijvingen"),
       });
     }
     if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
       items.push({
         id: "export-excel",
-        label: "Export naar excel",
+        label: tableHeaderTerm(menuTerms, "Export to excel", "Export naar excel"),
         onClick: exportExcel,
       });
       items.push({
         id: "back-to-matrix",
-        label: "Terug",
+        label: tableHeaderTerm(menuTerms, "Back to summary", "Terug"),
         onClick: () => openView("main"),
       });
     }
@@ -1179,7 +1194,7 @@ function SyncNotifyShell({
     if (access === "personal") {
       items.push({
         id: "set-password",
-        label: "Set password",
+        label: tableHeaderTerm(menuTerms, "Set password", "Set password"),
         onClick: () => openView("password"),
       });
     }
@@ -1193,12 +1208,12 @@ function SyncNotifyShell({
     if (onLogout) {
       items.push({
         id: "logout",
-        label: "Logout",
+        label: tableHeaderTerm(menuTerms, "Log out", "Logout"),
         onClick: onLogout,
       });
     }
     return items;
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, menuTerms]);
 
   return (
     <HeaderActionsContext.Provider value={setHeaderActions}>
@@ -2217,7 +2232,13 @@ function MainApp({
     } else if (hasSecrets && !awaitingPostConsentFetch) {
       items.push({
         id: "refresh",
-        label: refreshing ? "Downloading…" : "Download transactions",
+        label: refreshing
+          ? "Downloading…"
+          : tableHeaderTerm(
+              matrix?.table_header_terms,
+              "Download transactions",
+              "Download transactions"
+            ),
         disabled: refreshing,
         onClick: doRefresh,
       });
@@ -2240,6 +2261,7 @@ function MainApp({
     bankAuthRequired,
     bankAuthUrl,
     setHeaderActions,
+    matrix,
   ]);
 
   const inPView = selection !== null;

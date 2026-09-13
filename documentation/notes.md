@@ -489,8 +489,6 @@ INSERT INTO dbo.afschrijvingen VALUES
   (4, 1010, -.2, 1010, 3101),
   (4, 1015, -.25, 1015, 3102) 
 
-AGENDA
 
-1. instudo som-categorieen en namen rubrieken in email anton
-2. extra menu item "AUtomatic journal items" : edit table
-3. vertaling menu items naar NL
+AGENDA
+1. vertaling menu items naar NL

@@ -702,7 +702,7 @@ def categories_payload(country: str) -> dict[str, Any]:
 
         cursor.execute(
             """
-            SELECT term_key, label FROM dbo.table_header_term
+            SELECT term_key, label FROM dbo.translation
             WHERE country_id = ?
             """,
             (country_id,),
