@@ -12,6 +12,44 @@ from app.yearpath import is_year_name
 
 _CAT_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _CAT_TTL_SEC = 3.0
+_TERM_LANG_COL = re.compile(r"^term_lang([1-9]\d*)$")
+
+
+def _language_header_terms(cursor: Any, language_id: object) -> dict[str, str]:
+    """English ``term_lang1`` → label for ``dbo.country.language_id``.
+
+    Only fallback: a ``language_id`` with no ``term_lang{id}`` column uses
+    ``term_lang1``. Does not read ``table_header_term`` or JSON.
+    """
+    try:
+        lid = int(language_id)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        lid = 1
+    if lid < 1:
+        lid = 1
+    cursor.execute(
+        """
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'language'
+        """
+    )
+    by_id: dict[int, str] = {}
+    for (name,) in cursor.fetchall():
+        match = _TERM_LANG_COL.match(str(name or ""))
+        if match:
+            by_id[int(match.group(1))] = match.group(0)
+    if 1 not in by_id:
+        raise RuntimeError("dbo.language.term_lang1 is required")
+    target = by_id.get(lid, by_id[1])
+    cursor.execute(f"SELECT term_lang1, {target} FROM dbo.language")
+    headers: dict[str, str] = {}
+    for key, label in cursor.fetchall():
+        k = str(key or "").strip()
+        v = str(label or "").strip()
+        if k and v:
+            headers[k] = v
+    return headers
 
 
 def _sql_ready() -> bool:
@@ -645,7 +683,7 @@ def categories_payload(country: str) -> dict[str, Any]:
         cursor = _cursor()
         cursor.execute(
             """
-            SELECT country_id FROM dbo.country
+            SELECT country_id, language_id FROM dbo.country
             WHERE username = ? COLLATE Latin1_General_CI_AI
             """,
             (name,),
@@ -654,6 +692,7 @@ def categories_payload(country: str) -> dict[str, Any]:
         if row is None:
             return empty
         country_id = int(row[0])
+        language_id = row[1]
 
         categories: dict[str, list[str]] = {}
         category_roles: dict[str, str] = {}
@@ -700,19 +739,7 @@ def categories_payload(country: str) -> dict[str, Any]:
             if text:
                 categories[label].append(text)
 
-        cursor.execute(
-            """
-            SELECT term_key, label FROM dbo.translation
-            WHERE country_id = ?
-            """,
-            (country_id,),
-        )
-        headers: dict[str, str] = {}
-        for key, label in cursor.fetchall():
-            k = str(key or "").strip()
-            v = str(label or "").strip()
-            if k and v:
-                headers[k] = v
+        headers = _language_header_terms(cursor, language_id)
 
         cursor.execute(
             """
@@ -738,12 +765,9 @@ def categories_payload(country: str) -> dict[str, Any]:
             "category_roles": category_roles,
         }
 
-    try:
-        payload = _sql_retry(_run)
-        _CAT_CACHE[name] = (time.monotonic(), payload)
-        return payload
-    except Exception:  # noqa: BLE001
-        return empty
+    payload = _sql_retry(_run)
+    _CAT_CACHE[name] = (time.monotonic(), payload)
+    return payload
 
 
 def personal_categories_payload(username: str) -> dict[str, list[str]]:

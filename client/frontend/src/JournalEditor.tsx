@@ -62,11 +62,18 @@ function sideShort(side: string): string {
   }
 }
 
+function term(terms: Record<string, string> | undefined, key: string): string {
+  const label = terms?.[key]?.trim();
+  return label || key;
+}
+
 export default function JournalEditor({
   year,
+  terms,
   onBack,
 }: {
   year: number;
+  terms: Record<string, string>;
   onBack: () => void;
 }) {
   const [cats, setCats] = useState<{ category_id: number; code: number; label: string; side: string }[]>([]);
@@ -204,37 +211,37 @@ export default function JournalEditor({
     <div className="journal">
       <div className="journal-bar">
         <button type="button" onClick={onBack}>
-          Terug naar matrix
+          {term(terms, "Back to summary")}
         </button>
       </div>
       <div className="journal-main">
         <aside className="journal-panel">
-          <h2>Manual journal posts</h2>
+          <h2>{term(terms, "Manual journal posts")}</h2>
           <div className="journal-filters">
             <label>
-              Datum
+              {term(terms, "Date")}
               <input type="date" value={filters.date} onChange={(e) => setFilter("date", e.target.value)} />
             </label>
             <label>
-              Van (C)
+              Van ({term(terms, "C")})
               <select value={filters.from} onChange={(e) => setFilter("from", e.target.value)}>
                 <option value="">alle</option>
                 {codeOptions}
               </select>
             </label>
             <label>
-              Naar (C)
+              Naar ({term(terms, "C")})
               <select value={filters.to} onChange={(e) => setFilter("to", e.target.value)}>
                 <option value="">alle</option>
                 {codeOptions}
               </select>
             </label>
             <label>
-              Bedrag
+              {term(terms, "Amount")}
               <input type="text" value={filters.amount} onChange={(e) => setFilter("amount", e.target.value)} />
             </label>
             <label>
-              Omschrijving
+              {term(terms, "Description")}
               <input type="text" value={filters.desc} onChange={(e) => setFilter("desc", e.target.value)} />
             </label>
           </div>
@@ -254,12 +261,12 @@ export default function JournalEditor({
               </colgroup>
               <thead>
                 <tr>
-                  <th>Datum</th>
-                  <th>Van (C)</th>
-                  <th>Naar (C)</th>
-                  <th>Bedrag (€)</th>
+                  <th>{term(terms, "Date")}</th>
+                  <th>Van ({term(terms, "C")})</th>
+                  <th>Naar ({term(terms, "C")})</th>
+                  <th>{term(terms, "Amount")} (€)</th>
                   <th colSpan={2}>Actie</th>
-                  <th>Omschrijving</th>
+                  <th>{term(terms, "Description")}</th>
                 </tr>
               </thead>
               <tbody>

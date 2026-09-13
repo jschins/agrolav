@@ -161,7 +161,6 @@ def transactions(
             rows = load_transactions(category_name)
             cat_data = _categories_file()
             description_modified_ids, category_modified_ids = modification_style_ids()
-            header_terms = cat_data.get("table_header_terms") if isinstance(cat_data, dict) else {}
             return {
                 "center": ws,
                 "person": pack.person_name,
@@ -171,10 +170,8 @@ def transactions(
                 "keywords": terms_for_category(category_name),
                 "description_modified_ids": description_modified_ids,
                 "category_modified_ids": category_modified_ids,
-                "abbreviations": cat_data.get("abbreviations", {})
-                if isinstance(cat_data, dict)
-                else {},
-                "table_header_terms": header_terms if isinstance(header_terms, dict) else {},
+                "abbreviations": cat_data.get("abbreviations") or {},
+                "table_header_terms": cat_data["table_header_terms"],
                 "valid_category_codes": sorted(category_code_set()),
                 "remainder_category": remainder_category_name(),
             }

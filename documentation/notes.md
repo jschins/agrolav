@@ -490,5 +490,57 @@ INSERT INTO dbo.afschrijvingen VALUES
   (4, 1015, -.25, 1015, 3102) 
 
 
-AGENDA
-1. vertaling menu items naar NL
+===============vertaling menu items naar NL
+
+
+ALTER TABLE dbo.country
+ADD language_id INT NULL;
+
+write 2,1,1,2,2
+
+ALTER TABLE dbo.country
+ALTER COLUMN language_id INT NOT NULL;
+
+CREATE TABLE dbo.language (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    term_lang1 VARCHAR(32) NOT NULL,
+    term_lang2 VARCHAR(32) NOT NULL,
+
+    CONSTRAINT uq_language_term_lang1 UNIQUE (term_lang1),
+    CONSTRAINT uq_language_term_lang2 UNIQUE (term_lang2)
+);
+
+
+INSERT INTO dbo.language VALUES
+('Add person','Voeg persoon toe'),
+('Amount','Bedrag'),
+('Automatic journal posts','Automatisch journaal'),
+('Back to summary','Terug naar overzicht'),
+('Balance sheet','Balans'),
+('C','C'),
+('Category','Categorie'),
+('Consolidated','Consolidatie'),
+('Date','Datum'),
+('Description','Omschrijving'),
+('Download transactions','Uitlezen bankafschriften'),
+('Edit categories','Bewerk categorieën'),
+('Edit Terms','Bewerk termen'),
+('Export to excel','Export naar excel'),
+('G','G'),
+('General','Gemeenschappelijk'),
+('IBAN','IBAN'),
+('Log out','Uitloggen'),
+('Manual journal posts','Handmatig journaal'),
+('Name','Naam'),
+('P','P'),
+('Personal','Persoonlijk'),
+('Recalculate','Herbereken categorieën'),
+('Restrict IP access','Beperk IP toegang'),
+('Set password','Verander paswoord'),
+('Total','Totaal'),
+('Type','Type'),
+('Wipe Year','Schoon jaar');
+
+DROP TABLE dbo.translation;
+
+====================================

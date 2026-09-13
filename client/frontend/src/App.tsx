@@ -629,15 +629,18 @@ function BankSwitcher({
   view,
   accounts,
   onSelect,
+  terms,
 }: {
   view: string;
   accounts: BankAccount[];
   onSelect: (v: string) => void;
+  terms?: Record<string, string>;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const triggerLabel = view === "consolidated" ? "Consolidated" : view;
+  const consolidatedLabel = tableHeaderTerm(terms, "Consolidated");
+  const triggerLabel = view === "consolidated" ? consolidatedLabel : view;
 
   useEffect(() => {
     if (!open) return;
@@ -675,7 +678,7 @@ function BankSwitcher({
                 if (view !== "consolidated") onSelect("consolidated");
               }}
             >
-              Consolidated
+{consolidatedLabel}
             </button>
           </li>
           {accounts.map((acc) => (
@@ -831,7 +834,8 @@ function SyncNotifyShell({
     bankView: string,
     dataRev: number,
     banks: { person?: string; first_download: boolean; needs_initial_authorization: boolean },
-    bankOptions: BankAccount[]
+    bankOptions: BankAccount[],
+    menuTerms: Record<string, string>
   ) => ReactNode;
   onCenterChanged?: () => void;
   termsView?: boolean;
@@ -867,13 +871,15 @@ function SyncNotifyShell({
     let cancelled = false;
     getSettings()
       .then((res) => {
-        if (!cancelled) setMenuTerms(res.table_header_terms || {});
+        if (!cancelled) setMenuTerms(res.table_header_terms);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setMenuTerms({});
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [status?.center, dataRev]);
 
   const [banksState, setBanksState] = useState<{
     person?: string;
@@ -1131,50 +1137,50 @@ function SyncNotifyShell({
     const items = [...headerActions];
     items.push({
       id: "terms",
-      label: `⚙ ${tableHeaderTerm(menuTerms, "Edit Terms", "Edit Terms")} (Alt+T)`,
+      label: `⚙ ${tableHeaderTerm(menuTerms, "Edit Terms")} (Alt+T)`,
       onClick: () => openView("terms"),
     });
     items.push({
       id: "recalculate-categories",
       label: scratchBusy
         ? "Recalculating…"
-        : tableHeaderTerm(menuTerms, "Recalculate", "Recalculate"),
+        : tableHeaderTerm(menuTerms, "Recalculate"),
       disabled: scratchBusy || wipeBusy,
       onClick: doRecalculateFromScratch,
     });
     if (status?.balance_url) {
       items.push({
         id: "balance-sheet",
-        label: tableHeaderTerm(menuTerms, "Balance sheet", "Balance sheet"),
+        label: tableHeaderTerm(menuTerms, "Balance sheet"),
         onClick: () => openBalanceSheetWindow(status.balance_url!),
       });
       items.push({
         id: "journal",
-        label: tableHeaderTerm(menuTerms, "Manual journal posts", "Manual journal posts"),
+        label: tableHeaderTerm(menuTerms, "Manual journal posts"),
         onClick: () => openView("journal"),
       });
       items.push({
         id: "afschrijvingen",
-        label: tableHeaderTerm(menuTerms, "Automatic journal posts", "Automatic journal posts"),
+        label: tableHeaderTerm(menuTerms, "Automatic journal posts"),
         onClick: () => openView("afschrijvingen"),
       });
     }
     if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
       items.push({
         id: "export-excel",
-        label: tableHeaderTerm(menuTerms, "Export to excel", "Export naar excel"),
+        label: tableHeaderTerm(menuTerms, "Export to excel"),
         onClick: exportExcel,
       });
       items.push({
         id: "back-to-matrix",
-        label: tableHeaderTerm(menuTerms, "Back to summary", "Terug"),
+        label: tableHeaderTerm(menuTerms, "Back to summary"),
         onClick: () => openView("main"),
       });
     }
     if (access === "country") {
       items.push({
         id: "wipe-year",
-        label: wipeBusy ? "Wiping…" : "Wipe year",
+        label: wipeBusy ? "Wiping…" : tableHeaderTerm(menuTerms, "Wipe Year"),
         disabled: scratchBusy || wipeBusy,
         onClick: doWipeYear,
       });
@@ -1182,19 +1188,19 @@ function SyncNotifyShell({
     if (access === "country" || access === "local") {
       items.push({
         id: "categories",
-        label: "Edit categories",
+        label: tableHeaderTerm(menuTerms, "Edit categories"),
         onClick: () => openView("categories"),
       });
       items.push({
         id: "ip-access",
-        label: "Restrict IP access",
+        label: tableHeaderTerm(menuTerms, "Restrict IP access"),
         onClick: () => openView("ip"),
       });
     }
     if (access === "personal") {
       items.push({
         id: "set-password",
-        label: tableHeaderTerm(menuTerms, "Set password", "Set password"),
+        label: tableHeaderTerm(menuTerms, "Set password"),
         onClick: () => openView("password"),
       });
     }
@@ -1208,7 +1214,7 @@ function SyncNotifyShell({
     if (onLogout) {
       items.push({
         id: "logout",
-        label: tableHeaderTerm(menuTerms, "Log out", "Logout"),
+        label: tableHeaderTerm(menuTerms, "Log out"),
         onClick: onLogout,
       });
     }
@@ -1242,6 +1248,7 @@ function SyncNotifyShell({
               <BankSwitcher
                 view={bankView}
                 accounts={bankOptions}
+                terms={menuTerms}
                 onSelect={(v) => {
                   setBankView(v);
                   onCenterChanged?.();
@@ -1274,7 +1281,7 @@ function SyncNotifyShell({
           </div>
         </div>
       )}
-      {children(brandName, activeYear, bankView, dataRev, banksState, bankOptions)}
+      {children(brandName, activeYear, bankView, dataRev, banksState, bankOptions, menuTerms)}
     </div>
     </HeaderActionsContext.Provider>
   );
@@ -1305,12 +1312,10 @@ function formatTermMatchHint(typerules: { type: string; category: string }[]): s
 
 function tableHeaderTerm(
   terms: Record<string, string> | undefined,
-  key: string,
-  fallback?: string
+  key: string
 ): string {
   const label = terms?.[key]?.trim();
-  if (label) return label;
-  return fallback ?? key;
+  return label || key;
 }
 
 const COLUMN_HEADER_KEYS: Record<string, string> = {
@@ -1521,7 +1526,7 @@ export default function App() {
       }
       onCenterChanged={bumpCenterEpoch}
     >
-      {(brandName, year, bankView, dataRev, banks, bankOptions) =>
+      {(brandName, year, bankView, dataRev, banks, bankOptions, menuTerms) =>
         isTerms ? (
           <TermsApp key={wsEpoch} />
         ) : isCategories ? (
@@ -1533,9 +1538,18 @@ export default function App() {
         ) : isSplit ? (
           <SplitApp key={wsEpoch} />
         ) : isJournal ? (
-          <JournalEditor key={wsEpoch} year={Number(year)} onBack={() => openView("main")} />
+          <JournalEditor
+            key={wsEpoch}
+            year={Number(year)}
+            terms={menuTerms}
+            onBack={() => openView("main")}
+          />
         ) : isAfschrijvingen ? (
-          <AfschrijvingenEditor key={wsEpoch} onBack={() => openView("main")} />
+          <AfschrijvingenEditor
+            key={wsEpoch}
+            terms={menuTerms}
+            onBack={() => openView("main")}
+          />
         ) : (
           <MainApp
             key={wsEpoch}
@@ -2234,11 +2248,7 @@ function MainApp({
         id: "refresh",
         label: refreshing
           ? "Downloading…"
-          : tableHeaderTerm(
-              matrix?.table_header_terms,
-              "Download transactions",
-              "Download transactions"
-            ),
+          : tableHeaderTerm(matrix?.table_header_terms, "Download transactions"),
         disabled: refreshing,
         onClick: doRefresh,
       });
@@ -2246,7 +2256,7 @@ function MainApp({
     if (canAddPerson && addPersonUrl) {
       items.push({
         id: "add-person",
-        label: "Add person",
+        label: tableHeaderTerm(matrix?.table_header_terms, "Add person"),
         onClick: () => window.location.assign(addPersonUrl),
       });
     }
@@ -2278,7 +2288,11 @@ function MainApp({
   const sidebarTitle = (() => {
     if (bankView === "consolidated") {
       const personName = banks?.person || "";
-      return `Consolidatie ${personName}`.trim();
+      const consolidatedLabel = tableHeaderTerm(
+        matrix?.table_header_terms,
+        "Consolidated"
+      );
+      return `${consolidatedLabel} ${personName}`.trim();
     }
     const selectedAccount = (bankOptions || []).find((a) => a.iban === bankView);
     return selectedAccount?.account_name || brandName;

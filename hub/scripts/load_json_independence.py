@@ -46,7 +46,6 @@ IGNORE_DIRS = frozenset(
 )
 _LOCAL_CODE = re.compile(r"^(\d{2})\b")
 TABLES = (
-    "translation",
     "type_rule",
     "bank_modality",
     "hub_ip",
@@ -164,30 +163,6 @@ def _insert_many(cursor, sql: str, rows: list[tuple[Any, ...]]) -> int:
     cursor.executemany(sql, rows)
     cursor.fast_executemany = False
     return len(rows)
-
-
-def load_table_header_terms(cursor) -> int:
-    cursor.execute("DELETE FROM dbo.translation")
-    rows: list[tuple[int, str, str]] = []
-    for country_id, _name, country_dir in _countries(cursor):
-        payload = _read_json_object(country_dir / "categories.json")
-        terms = payload.get("table_header_terms")
-        if not isinstance(terms, dict):
-            continue
-        for key, label in terms.items():
-            term_key = str(key).strip()
-            text = str(label).strip()
-            if not term_key or not text:
-                continue
-            rows.append((country_id, term_key[:64], text[:128]))
-    return _insert_many(
-        cursor,
-        """
-        INSERT INTO dbo.translation (country_id, term_key, label)
-        VALUES (?, ?, ?)
-        """,
-        rows,
-    )
 
 
 def load_type_rules(cursor) -> int:
@@ -439,7 +414,6 @@ def main() -> None:
     cursor = conn.cursor()
     try:
         _require_tables(cursor)
-        header_n = load_table_header_terms(cursor)
         type_n = load_type_rules(cursor)
         modality_n = load_bank_modalities(cursor)
         ip_n = load_hub_ips(cursor)
@@ -448,7 +422,6 @@ def main() -> None:
     except Exception:
         conn.rollback()
         raise
-    print(f"translation: {header_n}")
     print(f"type_rule: {type_n}")
     print(f"bank_modality: {modality_n}")
     print(f"hub_ip: {ip_n}")

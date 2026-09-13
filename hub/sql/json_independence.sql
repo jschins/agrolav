@@ -8,7 +8,8 @@
 --   category_total, uploaded_files
 --
 -- JSON / files these tables replace:
---   categories.json table_header_terms  -> dbo.translation
+--   categories.json table_header_terms  -> dbo.country.language_id
+--                                         dbo.language (term_lang1, term_lang2, …)
 --   categories.json typerules           -> dbo.type_rule
 --   upload_acl.json bank modalities     -> dbo.bank_modality
 --   upload_acl.json hub_ips             -> (removed; country/center.egress_ip + dbo.visitor_ip)
@@ -20,14 +21,18 @@
 USE agrolav
 GO
 
-IF OBJECT_ID(N'dbo.translation', N'U') IS NULL
-CREATE TABLE dbo.translation (
-    country_id INT NOT NULL,
-    term_key NVARCHAR(64) NOT NULL,
-    label NVARCHAR(128) NOT NULL,
-    CONSTRAINT pk_table_header_term PRIMARY KEY (country_id, term_key),
-    CONSTRAINT fk_table_header_term_country FOREIGN KEY (country_id)
-        REFERENCES dbo.country (country_id)
+IF COL_LENGTH(N'dbo.country', N'language_id') IS NULL
+ALTER TABLE dbo.country ADD language_id INT NOT NULL
+    CONSTRAINT df_country_language_id DEFAULT (1)
+GO
+
+IF OBJECT_ID(N'dbo.language', N'U') IS NULL
+CREATE TABLE dbo.language (
+    id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    term_lang1 VARCHAR(32) NOT NULL,
+    term_lang2 VARCHAR(32) NOT NULL,
+    CONSTRAINT uq_language_term_lang1 UNIQUE (term_lang1),
+    CONSTRAINT uq_language_term_lang2 UNIQUE (term_lang2)
 )
 GO
 

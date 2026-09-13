@@ -6,7 +6,7 @@ categories, bank connections, and IP allowlists all live here.
 Schema sources in the repo:
 
 - `hub/sql/phase_c.sql` — base schema (do not run against a live database; it drops tables)
-- `hub/sql/json_independence.sql` — `table_header_term`, `type_rule`, `bank_modality`, `enable_connection`, `enable_redirect`, `visitor_ip`
+- `hub/sql/json_independence.sql` — `language`, `country.language_id`, `type_rule`, `bank_modality`, `enable_connection`, `enable_redirect`, `visitor_ip`
 - `hub/sql/visitor_ip.sql` — `egress_ip` columns and `dbo.visitor_ip` (idempotent)
 - `hub/sql/administrator.sql` — `dbo.administrator` (idempotent)
 - Hub startup creates `dbo.consent_pending` if it is missing
@@ -164,6 +164,7 @@ A user override overwrites that same `category_id` and sets `modification` to
 | `currency_default` | `CHAR(3)` | `EUR` / `GBP` (accounts may still differ) |
 | `egress_ip` | `VARCHAR(256)` NULL | comma-separated allowlist; empty or NULL admits nobody |
 | `digits` | `INT` | category-code width in the UI (default 2; 4 on some countries) |
+| `language_id` | `INT` NOT NULL | `1` = `dbo.language.term_lang1` (English); `2` = `term_lang2` (Dutch); unknown id → English |
 
 ### `dim_category`
 
@@ -236,9 +237,11 @@ Bank-type abbreviations (Betaalautomaat → BA). Per country.
 
 Bank `bank_type` → `category_id`. Typerules beat all keywords.
 
-### `table_header_term`
+### `language`
 
-Matrix / list column headers per country (`term_key` → `label`).
+Shared UI terms. One row per English key (`term_lang1`). `term_lang2` is Dutch.
+Further languages are extra `term_lang{N}` columns. Country picks a column via
+`country.language_id`. A `language_id` with no matching column uses `term_lang1`.
 
 ### `center`
 
@@ -487,16 +490,6 @@ WHERE country_id = @country_id AND category_role IN ('balance', 'last_booked');
 ## Occasional DDL (run in SSMS; keep local and remote identical)
 
 ```sql
-INSERT INTO dbo.table_header_term (country_id, term_key, label)
-SELECT 3, term_key, label
-FROM dbo.table_header_term
-WHERE country_id = 1;
-
-INSERT INTO dbo.table_header_term (country_id, term_key, label)
-SELECT 4, term_key, label
-FROM dbo.table_header_term
-WHERE country_id = 1;
-
 ALTER TABLE dbo.transaction_beheer
 DROP CONSTRAINT ck_txn_beheer_cat;
 

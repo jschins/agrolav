@@ -53,9 +53,16 @@ function padCode(code: number): string {
   return String(code).padStart(4, "0");
 }
 
+function term(terms: Record<string, string> | undefined, key: string): string {
+  const label = terms?.[key]?.trim();
+  return label || key;
+}
+
 export default function AfschrijvingenEditor({
+  terms,
   onBack,
 }: {
+  terms: Record<string, string>;
   onBack: () => void;
 }) {
   const [cats, setCats] = useState<AfschrijvingCategory[]>([]);
@@ -189,12 +196,12 @@ export default function AfschrijvingenEditor({
     <div className="journal">
       <div className="journal-bar">
         <button type="button" onClick={onBack}>
-          Terug naar matrix
+          {term(terms, "Back to summary")}
         </button>
       </div>
       <div className="journal-main">
         <aside className="journal-panel">
-          <h2>Automatic journal posts</h2>
+          <h2>{term(terms, "Automatic journal posts")}</h2>
           <div className="journal-filters">
             <label>
               Bron

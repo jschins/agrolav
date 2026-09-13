@@ -51,10 +51,8 @@ def category_names(people: list[PersonScope] | None = None) -> list[str]:
 
 
 def table_header_terms(people: list[PersonScope] | None = None) -> dict[str, str]:
-    """English key → display label from ``categories.json`` ``table_header_terms``."""
-    raw = load_general_file(people).get("table_header_terms")
-    if not isinstance(raw, dict):
-        return {}
+    """English ``term_lang1`` → label from ``dbo.language`` for this country."""
+    raw = load_general_file(people)["table_header_terms"]
     out: dict[str, str] = {}
     for key, value in raw.items():
         name = str(key).strip()
