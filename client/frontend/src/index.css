@@ -645,35 +645,14 @@ th {
   min-width: 100%;
 }
 
-/* Main-panel column widths: [min, viewport %] — edit here */
-.p-table col.col-amount {
-  min-width: 50px;
-  width: 5vw;
-}
-
-.p-table col.col-type {
-  min-width: 50px;
-  width: 5vw;
-}
-
-.p-table col.col-name {
-  min-width: 100px;
-  width: 10vw;
-}
-
-.p-table col.col-iban {
-  min-width: 100px;
-  width: 10vw;
-}
-
-.p-table col.col-date {
-  min-width: 50px;
-  width: 5vw;
-}
-
+.p-table col.col-amount,
+.p-table col.col-type,
+.p-table col.col-name,
+.p-table col.col-iban,
+.p-table col.col-date,
 .p-table col.col-category {
-  min-width: 20px;
-  width: 2vw;
+  min-width: 0;
+  width: auto;
 }
 
 .p-table th,
@@ -688,8 +667,7 @@ th {
 }
 
 .p-table td:not(.desc) {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
 }
 
 .p-consolidated {
