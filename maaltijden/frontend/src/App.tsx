@@ -8,13 +8,15 @@ import {
   saveExtra,
   saveMark,
   type ExtraDay,
+  type MonthSpan,
   type PersonRow,
   type Session,
   type WeekData,
+  type WeekDay,
   type WeekOption,
 } from "./api";
 
-type View = "matrix" | "person";
+type View = "day" | "week" | "person";
 
 const EMPTY_EXTRA: ExtraDay = { O: 0, M: 0, A: 0, L: 0, P: 0 };
 
@@ -71,6 +73,36 @@ function parseCount(raw: string): number {
 function extraValueFrom(extra: ExtraDay, meal: string): string {
   const key = extraKey(meal);
   return String(key ? extra[key] : 0);
+}
+
+function monthSpans(days: WeekDay[]): MonthSpan[] {
+  const spans: MonthSpan[] = [];
+  for (const day of days) {
+    if (spans.length && spans[spans.length - 1].month === day.month) {
+      spans[spans.length - 1].span += 1;
+    } else {
+      spans.push({ month: day.month, name: day.month_name, span: 1 });
+    }
+  }
+  return spans;
+}
+
+function todayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function daysForView(data: WeekData, view: View): WeekDay[] {
+  if (view !== "day") return data.days;
+  const today = todayIso();
+  const exact = data.days.filter((d) => d.date === today);
+  if (exact.length) return exact;
+  const weekday = new Date().getDay();
+  const same = data.days.filter((d) => d.weekday === weekday);
+  return same.length ? same : data.days.slice(0, 1);
 }
 
 function ExtraInputs({
@@ -246,34 +278,37 @@ function MarkCell({
 
 function MatrixView({
   data,
+  days,
   onCycle,
   onExtra,
 }: {
   data: WeekData;
+  days: WeekDay[];
   onCycle: (person: PersonRow, weekday: number, meal: string) => void;
   onExtra: (weekday: number, patch: Partial<ExtraDay>) => void;
 }) {
+  const months = monthSpans(days);
   return (
     <div className="sheet-wrap">
       <table className="meal-table">
         <thead>
           <tr>
             <th className="name-col" rowSpan={3} />
-            {data.months.map((m) => (
+            {months.map((m) => (
               <th key={`${m.month}-${m.name}`} className="month" colSpan={m.span * data.meals.length}>
                 {m.name}
               </th>
             ))}
           </tr>
           <tr>
-            {data.days.map((d) => (
+            {days.map((d) => (
               <th key={d.date} className="dom" colSpan={data.meals.length}>
                 {d.day}
               </th>
             ))}
           </tr>
           <tr>
-            {data.days.map((d) =>
+            {days.map((d) =>
               data.meals.map((meal) => (
                 <th key={`${d.date}-${meal}`} className="meal">
                   {meal}
@@ -286,7 +321,7 @@ function MatrixView({
           {data.people.map((p) => (
             <tr key={p.person_id}>
               <th className="name-col">{p.title}</th>
-              {data.days.map((d) =>
+              {days.map((d) =>
                 data.meals.map((meal) => (
                   <td key={`${p.person_id}-${d.weekday}-${meal}`}>
                     <MatrixMarkCell
@@ -301,7 +336,7 @@ function MatrixView({
           ))}
           <tr className="totals extra">
             <th className="name-col">ex</th>
-            {data.days.map((d) =>
+            {days.map((d) =>
               data.meals.map((meal) => (
                 <td key={`extra-${d.weekday}-${meal}`}>
                   <ExtraInputs
@@ -316,7 +351,7 @@ function MatrixView({
           </tr>
           <tr className="totals">
             <th className="name-col">tot</th>
-            {data.days.map((d) =>
+            {days.map((d) =>
               data.meals.map((meal) => (
                 <td key={`total-${d.weekday}-${meal}`}>
                   {columnTotal(data, d.weekday, meal)}
@@ -439,7 +474,7 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [data, setData] = useState<WeekData | null>(null);
   const [sunday, setSunday] = useState<string>("");
-  const [view, setView] = useState<View>("matrix");
+  const [view, setView] = useState<View>("day");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -505,7 +540,17 @@ export default function App() {
   }
 
   if (!authChecked) return <p className="hint">Laden…</p>;
-  if (!session) return <LoginScreen onSuccess={setSession} />;
+  if (!session) {
+    return (
+      <LoginScreen
+        onSuccess={(s) => {
+          setView("day");
+          setSunday("");
+          setSession(s);
+        }}
+      />
+    );
+  }
 
   const weekLabel =
     data?.weeks.find((w) => w.sunday === (sunday || data.sunday))?.label || "Week";
@@ -540,13 +585,26 @@ export default function App() {
               <li>
                 <button
                   type="button"
-                  className={view === "matrix" ? "is-selected" : undefined}
+                  className={view === "day" ? "is-selected" : undefined}
                   onClick={() => {
                     close();
-                    setView("matrix");
+                    setSunday("");
+                    setView("day");
                   }}
                 >
-                  Matrix
+                  Dag
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  className={view === "week" ? "is-selected" : undefined}
+                  onClick={() => {
+                    close();
+                    setView("week");
+                  }}
+                >
+                  Week
                 </button>
               </li>
               <li>
@@ -571,6 +629,8 @@ export default function App() {
             logout().finally(() => {
               setSession(null);
               setData(null);
+              setView("day");
+              setSunday("");
             });
           }}
         >
@@ -579,8 +639,13 @@ export default function App() {
       </div>
       <hr className="rule" />
       {error ? <p className="login-error">{error}</p> : null}
-      {data && view === "matrix" ? (
-        <MatrixView data={data} onCycle={cycle} onExtra={changeExtra} />
+      {data && (view === "day" || view === "week") ? (
+        <MatrixView
+          data={data}
+          days={daysForView(data, view)}
+          onCycle={cycle}
+          onExtra={changeExtra}
+        />
       ) : null}
       {data && view === "person" ? (
         <PersonView data={data} onCycle={cycle} onExtra={changeExtra} />

@@ -32,10 +32,14 @@ After login, a bar sits above a horizontal rule:
 - **Week** — Sunday through Saturday. The menu starts at this week's
   Sunday and lists later Sundays of this year only (`13 september`,
   `20 september`, …). No year, and no past weeks.
-- **Weergave** — **Matrix** or **Persoon**.
+- **Weergave** — **Dag** (default: only today), **Week**, or **Persoon**.
 - **Uitloggen**
 
-### Matrix
+### Dag
+
+Same people and meals as **Week**, but only the present calendar day.
+
+### Week
 
 Rows are the people in `dbo.maaltijden_users` except login **`admin`**,
 in remaining `id` order (display name from `dbo.person.title` when that
