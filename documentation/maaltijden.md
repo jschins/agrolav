@@ -16,7 +16,8 @@ Login is **not** the hub / 8300 account. The username is
 empty) password is accepted. If it is set, the submitted password must equal
 that value as stored — not hashed. There is no SMS step and no IP gate.
 
-Each login may edit only its own row.
+Each login may edit only its own row. Login **`admin`** is not a matrix
+row: it can only change the **extra** counts for the current week.
 
 The UI language is Dutch. Table columns are in [`DATABASE.md`](DATABASE.md).
 First-start commands are below; [`deployment.md`](deployment.md) §12a is
@@ -36,8 +37,9 @@ After login, a bar sits above a horizontal rule:
 
 ### Matrix
 
-Rows are the people in `dbo.maaltijden_users`, in `id` order (display name
-from `dbo.person.title` when that login exists).
+Rows are the people in `dbo.maaltijden_users` except login **`admin`**,
+in remaining `id` order (display name from `dbo.person.title` when that
+login exists). **`admin` is never a matrix row.**
 
 Columns are seven days × four meals. Meals are the hardcoded letters
 **O**, **L**, **A**, **P**. Above the meal letters: the day of the month;
@@ -49,14 +51,17 @@ visible but not editable. The **extra** row is `dbo.maaltijden_extra` (seven
 rows, zondag first: ochtend=O, middag=L, avond=`v` on A, laat=`L` on A,
 pakket=P). Those numbers are added into **totalen** (`v` count, A as
 `{v}/{L}`). Extra is for the current week only; at the first request after
-a new Sunday the extra rows are set back to zero.
+a new Sunday the extra rows are set back to zero. Only **`admin`** can
+edit extra, and only while viewing this week. Other logins see the numbers
+but cannot change them.
 
 ### Persoon
 
 Only the logged-in person’s marks. Five columns: **Dag**, **O**, **L**,
 **A**, **P**. Seven rows: **Zondag** through **Zaterdag**. Larger tap
 targets. If the login is not a row in `dbo.maaltijden_users`, this view
-says the sheet is only available with a personal login.
+says the sheet is only available with a personal login. For **`admin`**
+this view is the extra editor (seven days), not a personal mark row.
 
 ---
 
@@ -70,8 +75,8 @@ Each cell is a letter, not a native checkbox. Missing data displays as
 | O, L, P | `x` ↔ `v` |
 | A | `x` → `v` → `L` → `x` |
 
-**L** exists only on meal **A**. A login may change only the row whose
-`user_login` matches.
+**L** exists only on meal **A**. A person login may change only the row
+whose `user_login` matches. **`admin` cannot change marks.**
 
 ---
 
@@ -83,19 +88,23 @@ SSMS, then insert the people.
 
 ### `dbo.maaltijden_users`
 
-Who appears, and in which bit slots.
+Who may log in. Matrix people occupy bit slots; login **`admin`** does
+not.
 
 | column | |
 |--------|--|
-| `id` | `INT` PK. Must be the dense list `1, 2, …, N`. No gaps. |
-| `user_login` | `VARCHAR(32)`. Login name. |
+| `id` | `INT` PK. Dense `1, 2, …` is convenient; gaps are allowed. |
+| `user_login` | `VARCHAR(32)`. Login name. **`admin`** is not a matrix row. |
 | `passphrase` | `VARCHAR(64)` NULL. Plain-text password; `NULL` means none. |
 
-`N` must be ≤ **12**: each person uses five bits, and `code` is a signed
-`BIGINT` (at most 60 bits used).
+Matrix `N` must be ≤ **12** (`admin` does not count): each person uses
+five bits, and `code` is a signed `BIGINT` (at most 60 bits used). Bit
+groups follow the remaining list order after skipping `admin`, not the
+raw `id`.
 
-Adding or removing a person, or changing order, moves bit slots. Do that
-only together with rewriting every `code` in `maaltijden_data`.
+Adding or removing a matrix person, or changing that order, moves bit
+slots. Do that only together with rewriting every `code` in
+`maaltijden_data`. Changing only the `admin` row does not.
 
 ### `dbo.maaltijden_data`
 
@@ -116,9 +125,9 @@ The week menu never lists a Sunday before this week.
 
 ## Bit layout of `code`
 
-For user `id` *k*, the five bits start at bit `5 × (k − 1)` (user 1 =
-lowest bits 0–4, user 2 = bits 5–9, …). Width of the used field is always
-`5 × N`.
+For matrix row *slot* 0, 1, 2, … (people after skipping **`admin`**), the
+five bits start at bit `5 × slot`. Width of the used field is always
+`5 × N` with `N` the matrix people, not the raw user-table count.
 
 | bit in the group | meal | 0 | 1 |
 |----------------:|:-----|---|---|
@@ -142,12 +151,13 @@ writes the bigint back.
 browser  →  Caddy  →  :8400  /maaltijden
                          │
                          ├─ login            →  SQL  dbo.maaltijden_users
-                         └─ week / mark      →  SQL  dbo.maaltijden_*
+                         └─ week / mark / extra →  SQL  dbo.maaltijden_*
 ```
 
 - `maaltijden/app/auth.py` — `maaltijden_users` login, signed cookie.
 - `maaltijden/app/meals.py` — Sunday weeks, day-id mapping, pack/unpack.
-- `maaltijden/app/main.py` — `/maaltijden/api/login`, `/week`, `/mark`, SPA.
+- `maaltijden/app/main.py` — `/maaltijden/api/login`, `/week`, `/mark`,
+  `/extra`, SPA.
 - `maaltijden/frontend` — login, week/weergave menus, matrix and person
   views. `base` is `/maaltijden/`.
 
@@ -217,8 +227,8 @@ that does not prove Caddy is routing. The `https://` headers should be a
 
 Create `dbo.maaltijden_users` and `dbo.maaltijden_data` in SSMS
 (`maaltijden/sql/maaltijden.sql`), including column `passphrase`, then
-insert the `1..N` people, before anyone uses the sheet. If the users table
-already exists without that column:
+insert the `1..N` people (and optional **`admin`** login), before anyone
+uses the sheet. If the users table already exists without that column:
 
 ```sql
 ALTER TABLE dbo.maaltijden_users ADD passphrase VARCHAR(64) NULL;

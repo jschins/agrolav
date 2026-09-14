@@ -245,6 +245,33 @@ body,
   background: #edfcff;
 }
 
+.extra-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 7px;
+  line-height: 13px;
+  text-align: center;
+  color: inherit;
+  font-weight: 700;
+}
+
+.extra-a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.extra-a .extra-input {
+  width: 45%;
+}
+
 .meal-table tbody .totals .total-a {
   letter-spacing: -0.04em;
   font-size: 7px;
@@ -347,4 +374,20 @@ body,
   font-weight: 400;
   color: #64748b;
   font-size: 10px;
+}
+
+.person-table .extra-input {
+  height: 2rem;
+  font-size: 1rem;
+  line-height: 2rem;
+  background: #fff;
+  border: 1px solid #c5c5c8;
+}
+
+.person-table .extra-a {
+  gap: 0.15rem;
+}
+
+.person-table .extra-a .extra-input {
+  width: 2.1rem;
 }

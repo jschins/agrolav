@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from app.auth import is_admin_name
 from app.db import connect
 
 MEALS = ("O", "L", "A", "P")
@@ -259,6 +260,8 @@ def _load_users(cursor: Any) -> list[dict[str, Any]]:
     people: list[dict[str, Any]] = []
     for uid, login, title in cursor.fetchall():
         username = str(login or "").strip()
+        if is_admin_name(username):
+            continue
         name = str(title or "").strip() or username
         people.append(
             {
@@ -267,10 +270,8 @@ def _load_users(cursor: Any) -> list[dict[str, Any]]:
                 "title": name,
             }
         )
-    if not people:
-        raise RuntimeError("dbo.maaltijden_users is empty")
     if len(people) > MAX_USERS:
-        raise RuntimeError(f"dbo.maaltijden_users has more than {MAX_USERS} rows")
+        raise RuntimeError(f"dbo.maaltijden_users has more than {MAX_USERS} matrix rows")
     return people
 
 
@@ -345,7 +346,7 @@ def week_payload(sunday: date, *, me_username: str, access: str) -> dict[str, An
         (p for p in people if p["username"].lower() == me_username.strip().lower()),
         None,
     )
-    can_edit_all = False
+    admin = is_admin_name(me_username)
     weeks = [
         {
             "sunday": start.isoformat(),
@@ -368,8 +369,10 @@ def week_payload(sunday: date, *, me_username: str, access: str) -> dict[str, An
         "me": {
             "person_id": None if me is None else me["person_id"],
             "username": me_username,
-            "access": access,
-            "can_edit_all": can_edit_all,
+            "access": "admin" if admin else access,
+            "can_edit_all": False,
+            "is_admin": admin,
+            "can_edit_extra": admin and sunday == present,
         },
         "weeks": weeks,
     }
@@ -384,6 +387,8 @@ def set_mark(
     person_id: int,
     editor: dict[str, Any],
 ) -> dict[str, Any]:
+    if is_admin_name(str(editor.get("person") or editor.get("username") or "")):
+        raise PermissionError("admin wijzigt extra")
     sunday = sunday_of(sunday)
     if sunday < sunday_of(date.today()):
         raise ValueError("verleden")
@@ -438,3 +443,65 @@ def set_mark(
         "day_id": slot,
         "code": updated,
     }
+
+
+def _clamp_count(value: Any) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        n = 0
+    return max(0, min(n, 999))
+
+
+def set_extra(
+    *,
+    sunday: date,
+    weekday: int,
+    ochtend: int,
+    middag: int,
+    avond: int,
+    laat: int,
+    pakket: int,
+    editor: dict[str, Any],
+) -> dict[str, Any]:
+    if not is_admin_name(str(editor.get("person") or editor.get("username") or "")):
+        raise PermissionError("alleen admin")
+    present = sunday_of(date.today())
+    sunday = sunday_of(sunday)
+    if sunday != present:
+        raise ValueError("extra alleen deze week")
+    if weekday < 0 or weekday > 6:
+        raise ValueError("weekday")
+    fields = {
+        "O": _clamp_count(ochtend),
+        "L": _clamp_count(middag),
+        "A_v": _clamp_count(avond),
+        "A_L": _clamp_count(laat),
+        "P": _clamp_count(pakket),
+    }
+    with connect() as conn:
+        cur = conn.cursor()
+        _ensure_extra(cur, conn, present)
+        cur.execute(
+            "SELECT TOP (7) id FROM dbo.maaltijden_extra ORDER BY id"
+        )
+        ids = [int(row[0]) for row in cur.fetchall()]
+        if weekday >= len(ids):
+            raise ValueError("extra")
+        cur.execute(
+            """
+            UPDATE dbo.maaltijden_extra
+            SET ochtend = ?, middag = ?, avond = ?, laat = ?, pakket = ?
+            WHERE id = ?
+            """,
+            (
+                fields["O"],
+                fields["L"],
+                fields["A_v"],
+                fields["A_L"],
+                fields["P"],
+                ids[weekday],
+            ),
+        )
+        conn.commit()
+    return {"ok": True, "weekday": int(weekday), **fields}

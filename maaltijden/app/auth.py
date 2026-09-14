@@ -14,6 +14,11 @@ from app.db import connect
 COOKIE_NAME = "maaltijden_session"
 SESSION_TTL_SEC = 12 * 3600
 _DEFAULT_SESSION_SECRET = "dev-insecure-maaltijden-session-secret"
+ADMIN_LOGIN = "admin"
+
+
+def is_admin_name(username: str) -> bool:
+    return str(username or "").strip().lower() == ADMIN_LOGIN
 
 
 def session_secret() -> str:
@@ -62,10 +67,11 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
             return None
     name = str(stored_login or "").strip()
     display = str(title or "").strip() or name
+    admin = is_admin_name(name)
     return {
         "username": name,
         "title": display,
-        "access": "personal",
+        "access": "admin" if admin else "personal",
         "person": name,
         "person_id": int(uid),
         "center": "",

@@ -80,12 +80,23 @@ def _set_session(response: Response, profile: dict[str, Any]) -> dict[str, Any]:
         "person": profile.get("person") or "",
         "center": profile.get("center") or "",
         "country": profile.get("country") or "",
+        "is_admin": str(profile.get("access") or "") == "admin",
     }
 
 
 class LoginRequest(BaseModel):
     username: str
     password: str = ""
+
+
+class ExtraPayload(BaseModel):
+    sunday: str
+    weekday: int
+    ochtend: int = 0
+    middag: int = 0
+    avond: int = 0
+    laat: int = 0
+    pakket: int = 0
 
 
 class MarkPayload(BaseModel):
@@ -141,6 +152,7 @@ def api_me(request: Request) -> dict[str, Any]:
         "person": session.get("person") or "",
         "center": session.get("center") or "",
         "country": session.get("country") or "",
+        "is_admin": str(session.get("access") or "") == "admin",
     }
 
 
@@ -176,6 +188,28 @@ def api_mark(body: MarkPayload, request: Request) -> dict[str, Any]:
             meal=body.meal,
             mark=body.mark,
             person_id=int(body.person_id),
+            editor=session,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put(f"{_PREFIX}/api/extra")
+def api_extra(body: ExtraPayload, request: Request) -> dict[str, Any]:
+    from app.meals import set_extra, sunday_of
+
+    session = _session_user(request)
+    try:
+        return set_extra(
+            sunday=sunday_of(_parse_sunday(body.sunday)),
+            weekday=int(body.weekday),
+            ochtend=int(body.ochtend),
+            middag=int(body.middag),
+            avond=int(body.avond),
+            laat=int(body.laat),
+            pakket=int(body.pakket),
             editor=session,
         )
     except PermissionError as exc:

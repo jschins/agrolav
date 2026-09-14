@@ -32,6 +32,7 @@ export interface Session {
   person: string;
   center: string;
   country: string;
+  is_admin?: boolean;
 }
 
 export function login(username: string, password: string): Promise<Session> {
@@ -97,6 +98,8 @@ export interface WeekData {
     username: string;
     access: string;
     can_edit_all: boolean;
+    is_admin: boolean;
+    can_edit_extra: boolean;
   };
   weeks: WeekOption[];
 }
@@ -114,6 +117,18 @@ export function saveMark(body: {
   person_id: number;
 }): Promise<{ ok: boolean; mark: string }> {
   return sendJson(`${API}/mark`, "PUT", body);
+}
+
+export function saveExtra(body: {
+  sunday: string;
+  weekday: number;
+  ochtend: number;
+  middag: number;
+  avond: number;
+  laat: number;
+  pakket: number;
+}): Promise<{ ok: boolean; weekday: number }> {
+  return sendJson(`${API}/extra`, "PUT", body);
 }
 
 export function markKey(personId: number, weekday: number, meal: string): string {

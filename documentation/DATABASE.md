@@ -425,15 +425,17 @@ at all.
 
 ### `maaltijden_users`
 
-Ordered list of people in the meal matrix (`/maaltijden`, port 8400). `id`
-must be the dense sequence `1..N` (no gaps). Each id occupies five bits in
-`dbo.maaltijden_data.code` (user 1 = bits 0–4, user 2 = bits 5–9, …). `N`
-must be ≤ 12 so `5N` fits in `BIGINT`. See `maaltijden/sql/maaltijden.sql`.
+Ordered list of meal logins (`/maaltijden`, port 8400). Login **`admin`**
+is not a matrix row and occupies no bits in `code`; its only purpose is to
+edit `dbo.maaltijden_extra` for the current week. Remaining people occupy
+five bits each in `dbo.maaltijden_data.code` in list order after that skip
+(first remaining person = bits 0–4). Matrix `N` must be ≤ 12 so `5N` fits
+in `BIGINT`. See `maaltijden/sql/maaltijden.sql`.
 
 | column | type | notes |
 |:-------|:-----|:------|
-| `id` | `INT` PK | 1, 2, …, N |
-| `user_login` | `VARCHAR(32)` | login name; display title comes from `dbo.person` when it matches |
+| `id` | `INT` PK | convenient as 1, 2, …; gaps allowed |
+| `user_login` | `VARCHAR(32)` | login name; **`admin`** is excluded from the matrix. Display title comes from `dbo.person` when it matches |
 | `passphrase` | `VARCHAR(64)` NULL | login password, **plain text**. `NULL` = no password required |
 
 ### `maaltijden_data`
@@ -457,13 +459,15 @@ Default `code` is 0 (every mark `x`).
 | column | type | notes |
 |:-------|:-----|:------|
 | `id` | `INT` PK | day of year, 1–365 |
-| `code` | `BIGINT` | `5 × N` bits, `N` = row count of `maaltijden_users` |
+| `code` | `BIGINT` | `5 × N` bits, `N` = matrix people (not `admin`) |
 
 ### `maaltijden_extra`
 
 Seven rows, `id` 1 = zondag … 7 = zaterdag. Guest/extra counts for the
 **current** week only. Zeroed when a new Sunday week begins
-(`dbo.maaltijden_extra_week.week_start`). See `maaltijden/sql/maaltijden.sql`.
+(`dbo.maaltijden_extra_week.week_start`). Only login **`admin`** may
+change these numbers; other users see them in the extra row. See
+`maaltijden/sql/maaltijden.sql`.
 
 | column | type | notes |
 |:-------|:-----|:------|

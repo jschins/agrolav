@@ -4,10 +4,11 @@ Meal matrix for center `nl_dkg` (country `nederland`). Listens on
 `127.0.0.1:8400`. Public URL: `https://expenses.apsurt.nl/maaltijden`.
 
 Login uses `dbo.maaltijden_users`: `user_login` plus `passphrase` (plain
-text; `NULL` means no password). The matrix rows are that same list (ids
-`1..N`). Marks live in `dbo.maaltijden_data.code` (five bits per user per
-day). Meal **A** cycles `x` → `v` → `L` → `x`; **O**, **L**, and **P**
-cycle `x` ↔ `v`. Default is `x`. A login can edit only its own row.
+text; `NULL` means no password). Matrix rows are that list except login
+**`admin`**, which only edits the extra counts. Marks live in
+`dbo.maaltijden_data.code` (five bits per matrix person per day). Meal
+**A** cycles `x` → `v` → `L` → `x`; **O**, **L**, and **P** cycle
+`x` ↔ `v`. Default is `x`. A person login can edit only its own row.
 
 Weeks run Sunday–Saturday. Terms in the UI are Dutch.
 

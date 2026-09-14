@@ -1,7 +1,7 @@
 -- Packed meal marks. You create and fill these; the app does not CREATE them.
 -- maaltijden_data.id is the day of a 365-day year (1 = 1 januari, 365 = 31 december).
--- maaltijden_users.id is 1..N with no gaps. Each user occupies 5 bits in code
--- (user 1 = bits 0–4, user 2 = bits 5–9, …). N must be ≤ 12 so 5N fits in BIGINT.
+-- Login admin is not a matrix row (no bits in code); it only edits maaltijden_extra.
+-- Remaining users occupy 5 bits each in list order. Matrix N must be ≤ 12.
 -- passphrase NULL = no password; otherwise the login password is this value (plain text).
 USE agrolav
 GO

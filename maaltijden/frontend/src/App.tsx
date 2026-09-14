@@ -5,7 +5,9 @@ import {
   login,
   logout,
   markKey,
+  saveExtra,
   saveMark,
+  type ExtraDay,
   type PersonRow,
   type Session,
   type WeekData,
@@ -25,15 +27,6 @@ function nextMark(current: string, meal: string): string {
 
 function cellMark(data: WeekData, personId: number, weekday: number, meal: string): string {
   return data.marks[markKey(personId, weekday, meal)] || "x";
-}
-
-function extraValue(data: WeekData, weekday: number, meal: string): string {
-  const extra = data.extra?.[weekday];
-  if (!extra) return meal === "A" ? "0/0" : "0";
-  if (meal === "A") return `${extra.A_v}/${extra.A_L}`;
-  if (meal === "O") return String(extra.O);
-  if (meal === "L") return String(extra.L);
-  return String(extra.P);
 }
 
 function columnTotal(data: WeekData, weekday: number, meal: string): string {
@@ -58,8 +51,77 @@ function columnTotal(data: WeekData, weekday: number, meal: string): string {
 }
 
 function canEdit(data: WeekData, person: PersonRow): boolean {
+  if (data.me.is_admin) return false;
   if (data.me.can_edit_all) return true;
   return data.me.person_id != null && data.me.person_id === person.person_id;
+}
+
+function extraDay(data: WeekData, weekday: number): ExtraDay {
+  return data.extra?.[weekday] || { O: 0, L: 0, A_v: 0, A_L: 0, P: 0 };
+}
+
+function parseCount(raw: string): number {
+  const n = parseInt(raw.replace(/\D/g, ""), 10);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, 999);
+}
+
+function extraValueFrom(extra: ExtraDay, meal: string): string {
+  if (meal === "A") return `${extra.A_v}/${extra.A_L}`;
+  if (meal === "O") return String(extra.O);
+  if (meal === "L") return String(extra.L);
+  return String(extra.P);
+}
+
+function ExtraInputs({
+  extra,
+  meal,
+  disabled,
+  onChange,
+}: {
+  extra: ExtraDay;
+  meal: string;
+  disabled: boolean;
+  onChange: (patch: Partial<ExtraDay>) => void;
+}) {
+  if (disabled) {
+    return <>{extraValueFrom(extra, meal)}</>;
+  }
+  if (meal === "A") {
+    return (
+      <span className="extra-a">
+        <input
+          className="extra-input"
+          type="text"
+          inputMode="numeric"
+          aria-label="Avond aanwezig"
+          value={extra.A_v}
+          onChange={(e) => onChange({ A_v: parseCount(e.target.value) })}
+        />
+        <span>/</span>
+        <input
+          className="extra-input"
+          type="text"
+          inputMode="numeric"
+          aria-label="Avond laat"
+          value={extra.A_L}
+          onChange={(e) => onChange({ A_L: parseCount(e.target.value) })}
+        />
+      </span>
+    );
+  }
+  const field = meal === "O" ? "O" : meal === "L" ? "L" : "P";
+  const labels: Record<string, string> = { O: "Ochtend extra", L: "Middag extra", P: "Pakket extra" };
+  return (
+    <input
+      className="extra-input"
+      type="text"
+      inputMode="numeric"
+      aria-label={labels[field]}
+      value={extra[field]}
+      onChange={(e) => onChange({ [field]: parseCount(e.target.value) })}
+    />
+  );
 }
 
 function DropMenu({
@@ -188,9 +250,11 @@ function MarkCell({
 function MatrixView({
   data,
   onCycle,
+  onExtra,
 }: {
   data: WeekData;
   onCycle: (person: PersonRow, weekday: number, meal: string) => void;
+  onExtra: (weekday: number, patch: Partial<ExtraDay>) => void;
 }) {
   return (
     <div className="sheet-wrap">
@@ -243,7 +307,12 @@ function MatrixView({
             {data.days.map((d) =>
               data.meals.map((meal) => (
                 <td key={`extra-${d.weekday}-${meal}`} className={meal === "A" ? "total-a" : undefined}>
-                  {extraValue(data, d.weekday, meal)}
+                  <ExtraInputs
+                    extra={extraDay(data, d.weekday)}
+                    meal={meal}
+                    disabled={!data.me.can_edit_extra}
+                    onChange={(patch) => onExtra(d.weekday, patch)}
+                  />
                 </td>
               ))
             )}
@@ -264,13 +333,67 @@ function MatrixView({
   );
 }
 
+function ExtraPersonView({
+  data,
+  onExtra,
+}: {
+  data: WeekData;
+  onExtra: (weekday: number, patch: Partial<ExtraDay>) => void;
+}) {
+  const locked = !data.me.can_edit_extra;
+  return (
+    <div className="sheet-wrap person-wrap">
+      {locked ? <p className="hint">Extra alleen deze week.</p> : null}
+      <table className="meal-table person-table">
+        <thead>
+          <tr>
+            <th className="name-col">Dag</th>
+            {data.meals.map((meal) => (
+              <th key={meal} className="meal">
+                {meal}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.days.map((d) => (
+            <tr key={d.date}>
+              <th className="name-col">
+                <span className="dag">{d.dag}</span>
+                <span className="dom-inline">
+                  {d.day} {d.month_name}
+                </span>
+              </th>
+              {data.meals.map((meal) => (
+                <td key={meal} className={meal === "A" ? "total-a" : undefined}>
+                  <ExtraInputs
+                    extra={extraDay(data, d.weekday)}
+                    meal={meal}
+                    disabled={locked}
+                    onChange={(patch) => onExtra(d.weekday, patch)}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PersonView({
   data,
   onCycle,
+  onExtra,
 }: {
   data: WeekData;
   onCycle: (person: PersonRow, weekday: number, meal: string) => void;
+  onExtra: (weekday: number, patch: Partial<ExtraDay>) => void;
 }) {
+  if (data.me.is_admin) {
+    return <ExtraPersonView data={data} onExtra={onExtra} />;
+  }
   const me = data.people.find((p) => p.person_id === data.me.person_id);
   if (!me) {
     return <p className="hint">Alleen beschikbaar bij persoonlijke aanmelding.</p>;
@@ -365,6 +488,29 @@ export default function App() {
     });
   }
 
+  function changeExtra(weekday: number, patch: Partial<ExtraDay>) {
+    if (!data || !data.me.can_edit_extra) return;
+    const previous = extraDay(data, weekday);
+    const next: ExtraDay = { ...previous, ...patch };
+    const extra = Array.from({ length: 7 }, (_, i) => (i === weekday ? next : extraDay(data, i)));
+    setData({ ...data, extra });
+    saveExtra({
+      sunday: data.sunday,
+      weekday,
+      ochtend: next.O,
+      middag: next.L,
+      avond: next.A_v,
+      laat: next.A_L,
+      pakket: next.P,
+    }).catch((e: Error) => {
+      setError(e.message);
+      setData({
+        ...data,
+        extra: Array.from({ length: 7 }, (_, i) => (i === weekday ? previous : extraDay(data, i))),
+      });
+    });
+  }
+
   if (!authChecked) return <p className="hint">Laden…</p>;
   if (!session) return <LoginScreen onSuccess={setSession} />;
 
@@ -440,8 +586,12 @@ export default function App() {
       </div>
       <hr className="rule" />
       {error ? <p className="login-error">{error}</p> : null}
-      {data && view === "matrix" ? <MatrixView data={data} onCycle={cycle} /> : null}
-      {data && view === "person" ? <PersonView data={data} onCycle={cycle} /> : null}
+      {data && view === "matrix" ? (
+        <MatrixView data={data} onCycle={cycle} onExtra={changeExtra} />
+      ) : null}
+      {data && view === "person" ? (
+        <PersonView data={data} onCycle={cycle} onExtra={changeExtra} />
+      ) : null}
     </div>
   );
 }
