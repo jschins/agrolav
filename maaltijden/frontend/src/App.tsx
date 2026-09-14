@@ -95,6 +95,12 @@ function todayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
+function futureWeekChoices(data: WeekData): number[] {
+  const i = data.weeks.findIndex((w) => w.sunday === data.sunday);
+  const after = i < 0 ? 0 : Math.max(0, data.weeks.length - 1 - i);
+  return Array.from({ length: after + 1 }, (_, n) => n);
+}
+
 function daysForView(data: WeekData, view: View): WeekDay[] {
   if (view !== "day") return data.days;
   const today = todayIso();
@@ -454,6 +460,7 @@ export default function App() {
   const [data, setData] = useState<WeekData | null>(null);
   const [sunday, setSunday] = useState<string>("");
   const [view, setView] = useState<View>("day");
+  const [repeatWeeks, setRepeatWeeks] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -481,18 +488,21 @@ export default function App() {
     };
   }, [session, sunday]);
 
-  function cycle(person: PersonRow, weekday: number, meal: string) {
+  function cycle(person: PersonRow, weekday: number, meal: string, weeks = 0) {
     if (!data || !canEdit(data, person)) return;
     const current = cellMark(data, person.person_id, weekday, meal);
     const mark = nextMark(current);
     const key = markKey(person.person_id, weekday, meal);
     setData({ ...data, marks: { ...data.marks, [key]: mark } });
+    const choices = futureWeekChoices(data);
+    const extra = Math.min(weeks, choices[choices.length - 1] ?? 0);
     saveMark({
       sunday: data.sunday,
       weekday,
       meal,
       mark,
       person_id: person.person_id,
+      weeks: extra,
     }).catch((e: Error) => {
       setError(e.message);
       setData({ ...data, marks: { ...data.marks, [key]: current } });
@@ -525,6 +535,7 @@ export default function App() {
         onSuccess={(s) => {
           setView("day");
           setSunday("");
+          setRepeatWeeks(0);
           setSession(s);
         }}
       />
@@ -601,6 +612,28 @@ export default function App() {
             </>
           )}
         </DropMenu>
+        {data && view === "person" && !data.me.is_admin ? (
+          <DropMenu label="aantal weken">
+            {(close) => {
+              const choices = futureWeekChoices(data);
+              const weeks = Math.min(repeatWeeks, choices[choices.length - 1] ?? 0);
+              return choices.map((n) => (
+                <li key={n}>
+                  <button
+                    type="button"
+                    className={n === weeks ? "is-selected" : undefined}
+                    onClick={() => {
+                      close();
+                      setRepeatWeeks(n);
+                    }}
+                  >
+                    {n}
+                  </button>
+                </li>
+              ));
+            }}
+          </DropMenu>
+        ) : null}
         <button
           type="button"
           className="center-switcher-trigger logout"
@@ -610,6 +643,7 @@ export default function App() {
               setData(null);
               setView("day");
               setSunday("");
+              setRepeatWeeks(0);
             });
           }}
         >
@@ -627,7 +661,11 @@ export default function App() {
         />
       ) : null}
       {data && view === "person" ? (
-        <PersonView data={data} onCycle={cycle} onExtra={changeExtra} />
+        <PersonView
+          data={data}
+          onCycle={(person, weekday, meal) => cycle(person, weekday, meal, repeatWeeks)}
+          onExtra={changeExtra}
+        />
       ) : null}
     </div>
   );

@@ -105,6 +105,7 @@ class MarkPayload(BaseModel):
     meal: str
     mark: str
     person_id: int
+    weeks: int = 0
 
 
 def _parse_sunday(raw: str | None) -> date:
@@ -188,6 +189,7 @@ def api_mark(body: MarkPayload, request: Request) -> dict[str, Any]:
             meal=body.meal,
             mark=body.mark,
             person_id=int(body.person_id),
+            weeks=int(body.weeks),
             editor=session,
         )
     except PermissionError as exc:

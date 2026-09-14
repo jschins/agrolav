@@ -115,6 +115,7 @@ export function saveMark(body: {
   meal: string;
   mark: string;
   person_id: number;
+  weeks?: number;
 }): Promise<{ ok: boolean; mark: string }> {
   return sendJson(`${API}/mark`, "PUT", body);
 }

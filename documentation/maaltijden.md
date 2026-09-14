@@ -62,10 +62,12 @@ week. Other logins see the numbers but cannot change them.
 
 Only the logged-in person’s marks. Six columns: **Dag**, **O**, **M**,
 **A**, **L**, **P**. Seven compact rows: **zo 13**, **ma 14**, … Circles
-match **Week**. If the login is not a row in `dbo.maaltijden_users`, this
-view says the sheet is only available with a personal login. For
-**`admin`** this view is the extra editor (seven days), not a personal
-mark row.
+match **Week**. The **aantal weken** menu (default **0**) is how many later weeks
+receive the same click: **0** is this week only; **2** also writes the
+next two Sundays, up to the last Sunday of this year. If the login is not
+a row in `dbo.maaltijden_users`, this view says the sheet is only
+available with a personal login. For **`admin`** this view is the extra
+editor (seven days), not a personal mark row.
 
 ---
 

@@ -385,11 +385,13 @@ def set_mark(
     mark: str,
     person_id: int,
     editor: dict[str, Any],
+    weeks: int = 0,
 ) -> dict[str, Any]:
     if is_admin_name(str(editor.get("person") or editor.get("username") or "")):
         raise PermissionError("admin wijzigt extra")
     sunday = sunday_of(sunday)
-    if sunday < sunday_of(date.today()):
+    present = sunday_of(date.today())
+    if sunday < present:
         raise ValueError("verleden")
     meal = str(meal or "").strip().upper()[:1]
     mark = str(mark or "x").strip()[:1]
@@ -399,8 +401,16 @@ def set_mark(
         raise ValueError("meal")
     if mark not in MARKS:
         raise ValueError("mark")
-    day = sunday + timedelta(days=int(weekday))
-    slot = day_id(day)
+    try:
+        extra = int(weeks)
+    except (TypeError, ValueError):
+        extra = 0
+    extra = max(0, min(extra, 60))
+    available = sundays_from_present()
+    if sunday not in available:
+        raise ValueError("verleden")
+    idx = available.index(sunday)
+    targets = available[idx : idx + 1 + extra]
     with connect() as conn:
         cur = conn.cursor()
         people = _load_users(cur)
@@ -414,20 +424,27 @@ def set_mark(
         if target["username"].lower() != me_name:
             raise PermissionError("niet jouw rij")
         _ensure_data(cur, conn)
-        cur.execute("SELECT code FROM dbo.maaltijden_data WHERE id = ?", (slot,))
-        row = cur.fetchone()
-        current = _as_uint(row[0]) if row is not None else 0
-        updated = patch_code(current, bit_slot, meal, mark)
-        if row is None:
-            cur.execute(
-                "INSERT INTO dbo.maaltijden_data (id, code) VALUES (?, ?)",
-                (slot, updated),
-            )
-        else:
-            cur.execute(
-                "UPDATE dbo.maaltijden_data SET code = ? WHERE id = ?",
-                (updated, slot),
-            )
+        last_slot = 0
+        last_code = 0
+        for start in targets:
+            day = start + timedelta(days=int(weekday))
+            slot = day_id(day)
+            cur.execute("SELECT code FROM dbo.maaltijden_data WHERE id = ?", (slot,))
+            row = cur.fetchone()
+            current = _as_uint(row[0]) if row is not None else 0
+            updated = patch_code(current, bit_slot, meal, mark)
+            if row is None:
+                cur.execute(
+                    "INSERT INTO dbo.maaltijden_data (id, code) VALUES (?, ?)",
+                    (slot, updated),
+                )
+            else:
+                cur.execute(
+                    "UPDATE dbo.maaltijden_data SET code = ? WHERE id = ?",
+                    (updated, slot),
+                )
+            last_slot = slot
+            last_code = updated
         conn.commit()
     return {
         "ok": True,
@@ -436,8 +453,9 @@ def set_mark(
         "weekday": int(weekday),
         "meal": meal,
         "mark": mark,
-        "day_id": slot,
-        "code": updated,
+        "weeks": extra,
+        "day_id": last_slot,
+        "code": last_code,
     }
 
 
