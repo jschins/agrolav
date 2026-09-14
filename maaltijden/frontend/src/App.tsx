@@ -146,9 +146,11 @@ function ExtraInputs({
 }
 
 function DropMenu({
+  caption,
   label,
   children,
 }: {
+  caption?: string;
   label: string;
   children: (close: () => void) => ReactNode;
 }) {
@@ -166,11 +168,13 @@ function DropMenu({
 
   return (
     <div className="center-switcher" ref={rootRef}>
+      {caption ? <span className="center-switcher-caption">{caption}</span> : null}
       <button
         type="button"
         className="center-switcher-trigger"
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-label={caption ? `${caption}: ${label}` : label}
         onClick={() => setOpen((v) => !v)}
       >
         <span className="center-switcher-chevron" aria-hidden>
@@ -544,12 +548,14 @@ export default function App() {
 
   const weekLabel =
     data?.weeks.find((w) => w.sunday === (sunday || data.sunday))?.label || "Week";
-  const viewLabel = "Weergave";
+  const viewChoice = view === "day" ? "Dag" : view === "week" ? "Week" : "Reserveren";
+  const weekChoices = data ? futureWeekChoices(data) : [0];
+  const weeksChoice = Math.min(repeatWeeks, weekChoices[weekChoices.length - 1] ?? 0);
 
   return (
     <div className="shell">
       <div className="bar">
-        <DropMenu label={weekLabel}>
+        <DropMenu caption="week" label={weekLabel}>
           {(close) =>
             (data?.weeks || []).map((w: WeekOption) => (
               <li key={w.sunday}>
@@ -569,7 +575,7 @@ export default function App() {
             ))
           }
         </DropMenu>
-        <DropMenu label={viewLabel}>
+        <DropMenu caption="weergave" label={viewChoice}>
           {(close) => (
             <>
               <li>
@@ -613,15 +619,13 @@ export default function App() {
           )}
         </DropMenu>
         {data && view === "person" && !data.me.is_admin ? (
-          <DropMenu label="aantal weken">
-            {(close) => {
-              const choices = futureWeekChoices(data);
-              const weeks = Math.min(repeatWeeks, choices[choices.length - 1] ?? 0);
-              return choices.map((n) => (
+          <DropMenu caption="aantal weken" label={String(weeksChoice)}>
+            {(close) =>
+              weekChoices.map((n) => (
                 <li key={n}>
                   <button
                     type="button"
-                    className={n === weeks ? "is-selected" : undefined}
+                    className={n === weeksChoice ? "is-selected" : undefined}
                     onClick={() => {
                       close();
                       setRepeatWeeks(n);
@@ -630,8 +634,8 @@ export default function App() {
                     {n}
                   </button>
                 </li>
-              ));
-            }}
+              ))
+            }
           </DropMenu>
         ) : null}
         <button

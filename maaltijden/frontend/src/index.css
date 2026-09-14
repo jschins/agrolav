@@ -25,7 +25,7 @@ body,
 .bar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   gap: 0.35rem;
   padding: 0.3rem 0.4rem;
   background: rgba(255, 255, 255, 0.65);
@@ -45,7 +45,17 @@ body,
 
 .center-switcher {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.center-switcher-caption {
+  display: block;
+  font-size: 0.65rem;
+  line-height: 1;
+  color: #64748b;
+  padding: 0 0.15rem 0.15rem;
 }
 
 .center-switcher-trigger {
