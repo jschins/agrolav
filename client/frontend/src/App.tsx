@@ -1325,7 +1325,7 @@ const COLUMN_HEADER_KEYS: Record<string, string> = {
   iban: "IBAN",
   description: "Description",
   date: "Date",
-  category: "C",
+  category: "Category",
 };
 
 function columnHeaderLabel(
@@ -1725,9 +1725,15 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
 }
 
 function FitSidebarTitle({ text }: { text: string }) {
+  const lines = text.split("\n");
   return (
     <h1 className="app-heading">
-      {text}
+      {lines.map((line, i) => (
+        <span key={i} className={i > 0 ? "app-heading-sub" : undefined}>
+          {i > 0 ? <br /> : null}
+          {line}
+        </span>
+      ))}
     </h1>
   );
 }
@@ -2286,16 +2292,15 @@ function MainApp({
   }, [bankAuthUrl]);
 
   const sidebarTitle = (() => {
-    if (bankView === "consolidated") {
-      const personName = banks?.person || "";
-      const consolidatedLabel = tableHeaderTerm(
-        matrix?.table_header_terms,
-        "Consolidated"
-      );
-      return `${consolidatedLabel} ${personName}`.trim();
-    }
-    const selectedAccount = (bankOptions || []).find((a) => a.iban === bankView);
-    return selectedAccount?.account_name || brandName;
+    const title = brandName;
+    const accountCount = bankOptions?.length ?? 0;
+    if (accountCount <= 1) return title;
+    const subtitle =
+      bankView === "consolidated"
+        ? tableHeaderTerm(matrix?.table_header_terms, "Consolidated")
+        : bankOptions?.find((a) => a.iban === bankView)?.account_name?.trim() || "";
+    if (!subtitle) return title;
+    return `${title}\n${subtitle}`;
   })();
 
   return (
@@ -3590,8 +3595,10 @@ function PTable({
               <table className="p-table">
                 <thead>
                   <tr>
-                    <th className="num">Bedrag</th>
-                    <th>Naam</th>
+                    <th className="num">
+                      {columnHeaderLabel("amount", detail.table_header_terms)}
+                    </th>
+                    <th>{columnHeaderLabel("name", detail.table_header_terms)}</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -223,14 +223,14 @@ export default function JournalEditor({
               <input type="date" value={filters.date} onChange={(e) => setFilter("date", e.target.value)} />
             </label>
             <label>
-              Van ({term(terms, "C")})
+Van ({term(terms, "Category")})
               <select value={filters.from} onChange={(e) => setFilter("from", e.target.value)}>
                 <option value="">alle</option>
                 {codeOptions}
               </select>
             </label>
             <label>
-              Naar ({term(terms, "C")})
+Naar ({term(terms, "Category")})
               <select value={filters.to} onChange={(e) => setFilter("to", e.target.value)}>
                 <option value="">alle</option>
                 {codeOptions}
@@ -262,8 +262,8 @@ export default function JournalEditor({
               <thead>
                 <tr>
                   <th>{term(terms, "Date")}</th>
-                  <th>Van ({term(terms, "C")})</th>
-                  <th>Naar ({term(terms, "C")})</th>
+                  <th>Van ({term(terms, "Category")})</th>
+                  <th>Naar ({term(terms, "Category")})</th>
                   <th>{term(terms, "Amount")} (€)</th>
                   <th colSpan={2}>Actie</th>
                   <th>{term(terms, "Description")}</th>

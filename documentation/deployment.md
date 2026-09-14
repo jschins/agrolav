@@ -157,7 +157,7 @@ SSMS at `209.38.39.105,1433` (`sa`). Logical names:
 ```sql
 USE MASTER
 RESTORE FILELISTONLY
-FROM DISK = '/var/opt/mssql/backup/agrolav.bak';
+FROM DISK = '/var/opt/mssql/backup/remote_backups/agrolav.bak';
 ```
 
 Then:
@@ -170,7 +170,7 @@ SET SINGLE_USER
 WITH ROLLBACK IMMEDIATE;
 
 RESTORE DATABASE [agrolav]
-FROM DISK = '/var/opt/mssql/backup/agrolav.bak'
+FROM DISK = '/var/opt/mssql/backup/remote_backups/agrolav.bak'
 WITH
     REPLACE,
     RECOVERY;

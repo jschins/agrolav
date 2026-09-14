@@ -593,6 +593,11 @@ th {
   overflow-wrap: break-word;
 }
 
+.app-heading .app-heading-sub {
+  display: block;
+  font-size: calc(1em - 2pt);
+}
+
 .totals-table {
   width: 100%;
 }
