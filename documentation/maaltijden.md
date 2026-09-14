@@ -45,8 +45,11 @@ above those days: the month name (one span when the week stays in one
 month, two when it crosses).
 
 The grid is packed so it can sit on a phone; cells that are not yours are
-visible but not editable. The last row is **totalen**: count of `v` per
-column, except **A** which is `{v}/{L}`.
+visible but not editable. The **extra** row is `dbo.maaltijden_extra` (seven
+rows, zondag first: ochtend=O, middag=L, avond=`v` on A, laat=`L` on A,
+pakket=P). Those numbers are added into **totalen** (`v` count, A as
+`{v}/{L}`). Extra is for the current week only; at the first request after
+a new Sunday the extra rows are set back to zero.
 
 ### Persoon
 

@@ -36,3 +36,35 @@ GO
 IF COL_LENGTH(N'dbo.maaltijden_users', N'passphrase') IS NULL
     ALTER TABLE dbo.maaltijden_users ADD passphrase VARCHAR(64) NULL
 GO
+
+-- One row per weekday (id 1 = zondag … 7 = zaterdag).
+-- ochtend=O, middag=L, avond=A(v), laat=A(L), pakket=P.
+-- Zeroed when a new Sunday week begins (see dbo.maaltijden_extra_week).
+IF OBJECT_ID(N'dbo.maaltijden_extra', N'U') IS NULL
+CREATE TABLE dbo.maaltijden_extra (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    ochtend INT NOT NULL,
+    middag INT NOT NULL,
+    avond INT NOT NULL,
+    laat INT NOT NULL,
+    pakket INT NOT NULL
+)
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.maaltijden_extra)
+INSERT INTO dbo.maaltijden_extra (ochtend, middag, avond, laat, pakket)
+VALUES
+(0,0,0,0,0),
+(0,0,0,0,0),
+(0,0,0,0,0),
+(0,0,0,0,0),
+(0,0,0,0,0),
+(0,0,0,0,0),
+(0,0,0,0,0)
+GO
+
+IF OBJECT_ID(N'dbo.maaltijden_extra_week', N'U') IS NULL
+CREATE TABLE dbo.maaltijden_extra_week (
+    week_start DATE NOT NULL
+)
+GO

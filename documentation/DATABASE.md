@@ -459,6 +459,30 @@ Default `code` is 0 (every mark `x`).
 | `id` | `INT` PK | day of year, 1–365 |
 | `code` | `BIGINT` | `5 × N` bits, `N` = row count of `maaltijden_users` |
 
+### `maaltijden_extra`
+
+Seven rows, `id` 1 = zondag … 7 = zaterdag. Guest/extra counts for the
+**current** week only. Zeroed when a new Sunday week begins
+(`dbo.maaltijden_extra_week.week_start`). See `maaltijden/sql/maaltijden.sql`.
+
+| column | type | notes |
+|:-------|:-----|:------|
+| `id` | `INT` IDENTITY PK | weekday order |
+| `ochtend` | `INT` | added to meal O (`v` count) |
+| `middag` | `INT` | added to meal L (`v` count) |
+| `avond` | `INT` | added to meal A `v` |
+| `laat` | `INT` | added to meal A `L` |
+| `pakket` | `INT` | added to meal P (`v` count) |
+
+### `maaltijden_extra_week`
+
+One row. `week_start` is the Sunday the extra numbers belong to. When today
+is in a later week, extras are reset to 0.
+
+| column | type | notes |
+|:-------|:-----|:------|
+| `week_start` | `DATE` | Sunday of the extra week |
+
 ---
 
 ## Logins

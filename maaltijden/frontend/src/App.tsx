@@ -27,6 +27,15 @@ function cellMark(data: WeekData, personId: number, weekday: number, meal: strin
   return data.marks[markKey(personId, weekday, meal)] || "x";
 }
 
+function extraValue(data: WeekData, weekday: number, meal: string): string {
+  const extra = data.extra?.[weekday];
+  if (!extra) return meal === "A" ? "0/0" : "0";
+  if (meal === "A") return `${extra.A_v}/${extra.A_L}`;
+  if (meal === "O") return String(extra.O);
+  if (meal === "L") return String(extra.L);
+  return String(extra.P);
+}
+
 function columnTotal(data: WeekData, weekday: number, meal: string): string {
   let v = 0;
   let later = 0;
@@ -34,6 +43,15 @@ function columnTotal(data: WeekData, weekday: number, meal: string): string {
     const mark = cellMark(data, person.person_id, weekday, meal);
     if (mark === "v") v += 1;
     else if (mark === "L") later += 1;
+  }
+  const extra = data.extra?.[weekday];
+  if (extra) {
+    if (meal === "A") {
+      v += extra.A_v;
+      later += extra.A_L;
+    } else if (meal === "O") v += extra.O;
+    else if (meal === "L") v += extra.L;
+    else v += extra.P;
   }
   if (meal === "A") return `${v}/${later}`;
   return String(v);
@@ -220,6 +238,16 @@ function MatrixView({
               )}
             </tr>
           ))}
+          <tr className="totals extra">
+            <th className="name-col">extra</th>
+            {data.days.map((d) =>
+              data.meals.map((meal) => (
+                <td key={`extra-${d.weekday}-${meal}`} className={meal === "A" ? "total-a" : undefined}>
+                  {extraValue(data, d.weekday, meal)}
+                </td>
+              ))
+            )}
+          </tr>
           <tr className="totals">
             <th className="name-col">totalen</th>
             {data.days.map((d) =>

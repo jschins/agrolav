@@ -168,6 +168,83 @@ def _ensure_data(cursor: Any, conn: Any) -> None:
     conn.commit()
 
 
+def _empty_extra() -> list[dict[str, int]]:
+    return [{"O": 0, "L": 0, "A_v": 0, "A_L": 0, "P": 0} for _ in range(7)]
+
+
+def _ensure_extra(cursor: Any, conn: Any, present: date) -> None:
+    cursor.execute("SELECT OBJECT_ID(N'dbo.maaltijden_extra', N'U')")
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        cursor.execute(
+            """
+            CREATE TABLE dbo.maaltijden_extra (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                ochtend INT NOT NULL,
+                middag INT NOT NULL,
+                avond INT NOT NULL,
+                laat INT NOT NULL,
+                pakket INT NOT NULL
+            )
+            """
+        )
+    cursor.execute("SELECT COUNT(*) FROM dbo.maaltijden_extra")
+    n = int(cursor.fetchone()[0] or 0)
+    if n < 7:
+        for _ in range(7 - n):
+            cursor.execute(
+                """
+                INSERT INTO dbo.maaltijden_extra
+                    (ochtend, middag, avond, laat, pakket)
+                VALUES (0, 0, 0, 0, 0)
+                """
+            )
+    cursor.execute("SELECT OBJECT_ID(N'dbo.maaltijden_extra_week', N'U')")
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        cursor.execute(
+            "CREATE TABLE dbo.maaltijden_extra_week (week_start DATE NOT NULL)"
+        )
+    cursor.execute("SELECT TOP (1) week_start FROM dbo.maaltijden_extra_week")
+    stored = cursor.fetchone()
+    week_start = None if stored is None else stored[0]
+    if hasattr(week_start, "date"):
+        week_start = week_start.date()
+    if week_start is None or week_start < present:
+        cursor.execute(
+            """
+            UPDATE dbo.maaltijden_extra
+            SET ochtend = 0, middag = 0, avond = 0, laat = 0, pakket = 0
+            """
+        )
+        cursor.execute("DELETE FROM dbo.maaltijden_extra_week")
+        cursor.execute(
+            "INSERT INTO dbo.maaltijden_extra_week (week_start) VALUES (?)",
+            (present.isoformat(),),
+        )
+    conn.commit()
+
+
+def _load_extra(cursor: Any) -> list[dict[str, int]]:
+    extra = _empty_extra()
+    cursor.execute(
+        """
+        SELECT TOP (7) ochtend, middag, avond, laat, pakket
+        FROM dbo.maaltijden_extra
+        ORDER BY id
+        """
+    )
+    for i, (ochtend, middag, avond, laat, pakket) in enumerate(cursor.fetchall()):
+        extra[i] = {
+            "O": int(ochtend or 0),
+            "L": int(middag or 0),
+            "A_v": int(avond or 0),
+            "A_L": int(laat or 0),
+            "P": int(pakket or 0),
+        }
+    return extra
+
+
 def _load_users(cursor: Any) -> list[dict[str, Any]]:
     cursor.execute(
         """
@@ -244,6 +321,8 @@ def week_payload(sunday: date, *, me_username: str, access: str) -> dict[str, An
         with connect() as conn:
             cur = conn.cursor()
             _ensure_data(cur, conn)
+            _ensure_extra(cur, conn, present)
+            extra = _load_extra(cur)
             people = _load_users(cur)
             placeholders = ",".join("?" for _ in day_ids)
             cur.execute(
@@ -253,6 +332,8 @@ def week_payload(sunday: date, *, me_username: str, access: str) -> dict[str, An
             codes = {int(row[0]): _as_uint(row[1]) for row in cur.fetchall()}
     except Exception as exc:
         raise RuntimeError(str(exc)) from exc
+    if sunday != present:
+        extra = _empty_extra()
     marks: dict[str, str] = {}
     for d in days:
         packed = unpack_users(codes.get(int(d["day_id"]), 0), people)
@@ -283,6 +364,7 @@ def week_payload(sunday: date, *, me_username: str, access: str) -> dict[str, An
         "dagen": list(DAGEN),
         "people": people,
         "marks": marks,
+        "extra": extra,
         "me": {
             "person_id": None if me is None else me["person_id"],
             "username": me_username,

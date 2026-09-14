@@ -73,6 +73,14 @@ export interface WeekOption {
   label: string;
 }
 
+export interface ExtraDay {
+  O: number;
+  L: number;
+  A_v: number;
+  A_L: number;
+  P: number;
+}
+
 export interface WeekData {
   sunday: string;
   week: number;
@@ -83,6 +91,7 @@ export interface WeekData {
   dagen: string[];
   people: PersonRow[];
   marks: Record<string, string>;
+  extra: ExtraDay[];
   me: {
     person_id: number | null;
     username: string;

@@ -240,6 +240,11 @@ body,
   max-width: 14px;
 }
 
+.meal-table tbody .totals.extra .name-col,
+.meal-table tbody .totals.extra td {
+  background: #edfcff;
+}
+
 .meal-table tbody .totals .total-a {
   letter-spacing: -0.04em;
   font-size: 7px;
