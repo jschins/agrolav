@@ -204,6 +204,52 @@ body,
   flex: 1;
 }
 
+.sheet-wrap.roomy,
+.person-wrap {
+  padding: 0.5rem 0 0 0.5rem;
+}
+
+.roomy .meal-table {
+  font-size: 11px;
+}
+
+.roomy .meal-table .name-col {
+  font-size: 9px;
+  width: 20px;
+  max-width: 20px;
+}
+
+.roomy .meal-table tbody .totals .name-col,
+.roomy .meal-table tbody .totals td {
+  font-size: 9px;
+  height: 15px;
+}
+
+.roomy .extra-input {
+  font-size: 9px;
+  line-height: 15px;
+}
+
+.roomy .meal-table .month {
+  font-size: 11px;
+}
+
+.roomy .meal-table .dom {
+  font-size: 10px;
+}
+
+.roomy .meal-table .meal {
+  font-size: 10px;
+  width: 11px;
+  min-width: 11px;
+  max-width: 11px;
+}
+
+.roomy .mark-dot {
+  width: 11px;
+  height: 14px;
+}
+
 .meal-table {
   border-collapse: collapse;
   width: max-content;
@@ -357,7 +403,6 @@ body,
   flex-direction: column;
   justify-content: flex-start;
   align-items: flex-start;
-  padding: 0;
   flex: 0 0 auto;
 }
 
@@ -365,7 +410,7 @@ body,
   width: max-content;
   max-width: none;
   table-layout: auto;
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1;
 }
 
@@ -374,37 +419,37 @@ body,
   width: auto;
   padding: 0 2px;
   white-space: nowrap;
-  font-size: 8px;
+  font-size: 10px;
   letter-spacing: normal;
 }
 
 .person-table .meal {
-  width: 12px;
-  min-width: 12px;
-  max-width: 12px;
-  height: 12px;
-  font-size: 8px;
+  width: 14px;
+  min-width: 14px;
+  max-width: 14px;
+  height: 14px;
+  font-size: 10px;
 }
 
 .person-table td {
-  height: 12px;
+  height: 14px;
 }
 
 .person-table .mark-dot {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 .person-table .mark-dot::after {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   margin-top: 3px;
 }
 
 .person-table .extra-input {
-  height: 12px;
-  font-size: 8px;
-  line-height: 12px;
+  height: 14px;
+  font-size: 10px;
+  line-height: 14px;
   background: #fff;
   border: 0;
 }

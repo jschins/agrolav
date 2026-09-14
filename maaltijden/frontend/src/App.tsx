@@ -274,17 +274,19 @@ function MatrixMarkCell({
 function MatrixView({
   data,
   days,
+  roomy,
   onCycle,
   onExtra,
 }: {
   data: WeekData;
   days: WeekDay[];
+  roomy?: boolean;
   onCycle: (person: PersonRow, weekday: number, meal: string) => void;
   onExtra: (weekday: number, patch: Partial<ExtraDay>) => void;
 }) {
   const months = monthSpans(days);
   return (
-    <div className="sheet-wrap">
+    <div className={roomy ? "sheet-wrap roomy" : "sheet-wrap"}>
       <table className="meal-table">
         <thead>
           <tr>
@@ -660,6 +662,7 @@ export default function App() {
         <MatrixView
           data={data}
           days={daysForView(data, view)}
+          roomy={view === "day"}
           onCycle={cycle}
           onExtra={changeExtra}
         />
