@@ -27,6 +27,18 @@ function cellMark(data: WeekData, personId: number, weekday: number, meal: strin
   return data.marks[markKey(personId, weekday, meal)] || "x";
 }
 
+function columnTotal(data: WeekData, weekday: number, meal: string): string {
+  let v = 0;
+  let later = 0;
+  for (const person of data.people) {
+    const mark = cellMark(data, person.person_id, weekday, meal);
+    if (mark === "v") v += 1;
+    else if (mark === "L") later += 1;
+  }
+  if (meal === "A") return `${v}/${later}`;
+  return String(v);
+}
+
 function canEdit(data: WeekData, person: PersonRow): boolean {
   if (data.me.can_edit_all) return true;
   return data.me.person_id != null && data.me.person_id === person.person_id;
@@ -184,7 +196,7 @@ function MatrixView({
           <tr>
             {data.days.map((d) =>
               data.meals.map((meal) => (
-                <th key={`${d.date}-${meal}`} className="meal">
+                <th key={`${d.date}-${meal}`} className={meal === "A" ? "meal meal-a" : "meal"}>
                   {meal}
                 </th>
               ))
@@ -197,7 +209,7 @@ function MatrixView({
               <th className="name-col">{p.title}</th>
               {data.days.map((d) =>
                 data.meals.map((meal) => (
-                  <td key={`${p.person_id}-${d.weekday}-${meal}`}>
+                  <td key={`${p.person_id}-${d.weekday}-${meal}`} className={meal === "A" ? "meal-a" : undefined}>
                     <MarkCell
                       value={cellMark(data, p.person_id, d.weekday, meal)}
                       disabled={!canEdit(data, p)}
@@ -208,6 +220,16 @@ function MatrixView({
               )}
             </tr>
           ))}
+          <tr className="totals">
+            <th className="name-col">totalen</th>
+            {data.days.map((d) =>
+              data.meals.map((meal) => (
+                <td key={`total-${d.weekday}-${meal}`} className={meal === "A" ? "total-a" : undefined}>
+                  {columnTotal(data, d.weekday, meal)}
+                </td>
+              ))
+            )}
+          </tr>
         </tbody>
       </table>
     </div>

@@ -225,9 +225,24 @@ body,
   font-size: 8px;
 }
 
-.meal-table thead .name-col {
-  z-index: 3;
+.meal-table tbody .totals .name-col,
+.meal-table tbody .totals td {
   background: #dff6fb;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  height: 13px;
+}
+
+.meal-table .meal-a {
+  width: 14px;
+  min-width: 14px;
+  max-width: 14px;
+}
+
+.meal-table tbody .totals .total-a {
+  letter-spacing: -0.04em;
+  font-size: 7px;
 }
 
 .meal-table .month {

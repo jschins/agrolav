@@ -45,7 +45,8 @@ above those days: the month name (one span when the week stays in one
 month, two when it crosses).
 
 The grid is packed so it can sit on a phone; cells that are not yours are
-visible but not editable.
+visible but not editable. The last row is **totalen**: count of `v` per
+column, except **A** which is `{v}/{L}`.
 
 ### Persoon
 
