@@ -203,6 +203,26 @@ function LoginScreen({ onSuccess }: { onSuccess: (s: Session) => void }) {
   );
 }
 
+function MatrixMarkCell({
+  value,
+  disabled,
+  onCycle,
+}: {
+  value: string;
+  disabled: boolean;
+  onCycle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`mark-dot mark-${value} ${disabled ? "is-locked" : ""}`}
+      disabled={disabled}
+      aria-label={value}
+      onClick={onCycle}
+    />
+  );
+}
+
 function MarkCell({
   value,
   disabled,
@@ -269,7 +289,7 @@ function MatrixView({
               {data.days.map((d) =>
                 data.meals.map((meal) => (
                   <td key={`${p.person_id}-${d.weekday}-${meal}`}>
-                    <MarkCell
+                    <MatrixMarkCell
                       value={cellMark(data, p.person_id, d.weekday, meal)}
                       disabled={!canEdit(data, p)}
                       onCycle={() => onCycle(p, d.weekday, meal)}
@@ -280,7 +300,7 @@ function MatrixView({
             </tr>
           ))}
           <tr className="totals extra">
-            <th className="name-col">extra</th>
+            <th className="name-col">ex</th>
             {data.days.map((d) =>
               data.meals.map((meal) => (
                 <td key={`extra-${d.weekday}-${meal}`}>
@@ -295,7 +315,7 @@ function MatrixView({
             )}
           </tr>
           <tr className="totals">
-            <th className="name-col">totalen</th>
+            <th className="name-col">tot</th>
             {data.days.map((d) =>
               data.meals.map((meal) => (
                 <td key={`total-${d.weekday}-${meal}`}>
