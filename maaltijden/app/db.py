@@ -1,0 +1,45 @@
+"""Thin pyodbc wrapper for the maaltijden app."""
+from __future__ import annotations
+
+import os
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Generator
+
+import pyodbc
+from dotenv import load_dotenv
+
+_URL: str | None = None
+
+
+def _ensure_dotenv() -> None:
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parents[1] / ".env",
+        here.parents[2] / ".env" if len(here.parents) > 2 else None,
+    ]
+    for env_path in candidates:
+        if env_path is not None and env_path.is_file():
+            load_dotenv(env_path, interpolate=False)
+
+
+def _load_url() -> str:
+    global _URL
+    if _URL:
+        return _URL
+    _ensure_dotenv()
+    url = os.environ.get("HUB_DATABASE_URL", "").strip()
+    if not url:
+        raise RuntimeError("HUB_DATABASE_URL is not set")
+    _URL = url
+    return _URL
+
+
+@contextmanager
+def connect() -> Generator[pyodbc.Connection, None, None]:
+    url = _load_url()
+    conn = pyodbc.connect(url)
+    try:
+        yield conn
+    finally:
+        conn.close()

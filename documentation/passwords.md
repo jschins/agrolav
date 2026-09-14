@@ -61,7 +61,7 @@ Change it:
 1. Connect with SSMS (see below) and run `ALTER LOGIN [sa] WITH PASSWORD = 'YourNewPassword';`
 2. Edit the single root `.env`: set `MSSQL_SA_PASSWORD=` **and** the `PWD=`
    inside `HUB_DATABASE_URL=` to the same new password.
-3. Restart the services that open DB connections: `sudo systemctl restart agrolav-hub agrolav-balance` (and re-run any SQL bootstrap/import script).
+3. Restart the services that open DB connections: `sudo systemctl restart agrolav-hub agrolav-balance agrolav-maaltijden` (and re-run any SQL bootstrap/import script).
 
 Already-open connections keep working until their service restarts, so edit
 the file first, then restart.
@@ -81,7 +81,7 @@ Change it:
 1. Generate a long random value, e.g. `python -c "import secrets; print(secrets.token_hex(32))"`.
 2. Replace the `CENTRALE_API_KEY=` line in the root `.env` (local) or
    `/opt/agrolav/.env` (server).
-3. Restart the readers: `sudo systemctl restart agrolav-hub agrolav-client agrolav-balance`
+3. Restart the readers: `sudo systemctl restart agrolav-hub agrolav-client agrolav-balance agrolav-maaltijden`
    and `sudo systemctl restart caddy` (reload is not enough).
 
 If it is left empty, `require_api_key` is a no-op and the hub accepts
@@ -89,12 +89,12 @@ unkeyed calls.
 
 ### 3. `CLIENT_SESSION_SECRET`
 
-Signs the browser session cookie of the BFF. Single place: the root `.env`.
+Signs the browser session cookie of the client BFF and of maaltijden.
 
 Change it:
 
 1. Replace the `CLIENT_SESSION_SECRET=` line in the root `.env`.
-2. `sudo systemctl restart agrolav-client`.
+2. `sudo systemctl restart agrolav-client agrolav-maaltijden`.
 
 Existing browser sessions are invalidated; everyone logs in again.
 

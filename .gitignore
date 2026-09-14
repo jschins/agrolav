@@ -39,3 +39,10 @@ balance/frontend/node_modules/
 balance/frontend/**/*.tsbuildinfo
 balance/frontend/vite.config.js
 balance/frontend/vite.config.d.ts
+
+maaltijden/.env
+maaltijden/frontend/dist/
+maaltijden/frontend/node_modules/
+maaltijden/frontend/**/*.tsbuildinfo
+maaltijden/frontend/vite.config.js
+maaltijden/frontend/vite.config.d.ts

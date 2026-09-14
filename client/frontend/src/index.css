@@ -678,8 +678,8 @@ th {
   min-width: 0;
 }
 
-.p-consolidated strong,
-.p-details strong {
+.p-consolidated > strong,
+.p-details > strong {
   display: block;
   margin-bottom: 0.35rem;
   color: #334155;

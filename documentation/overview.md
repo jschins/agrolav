@@ -4,8 +4,10 @@
 |-----------|------|------|
 | Hub | :8200 | FastAPI data API |
 | Client | :8300 | BFF + React UI |
+| Balance | :8100 | Balance sheets under `/balance/{slug}` |
+| Maaltijden | :8400 | Meal matrix for `nl_dkg` at `/maaltijden` |
 | SQL Server | :1433 | Authoritative store |
-| Caddy | 80/443 | Public HTTPS; hub and client stay on loopback |
+| Caddy | 80/443 | Public HTTPS; hub and apps stay on loopback |
 | 3 roles | — | Country / center / person |
 
 Agrolav is a multi-household expense system. People in several countries
@@ -61,4 +63,4 @@ categorizes rows (remainder until keywords match), records the filename on
 | Admin on :8200 | Add person, create country/center |
 
 The frontend user guide is the root `README.md`. Operator setup is
-`deployment.md`.
+`deployment.md`. The meal sheet is `maaltijden.md`.

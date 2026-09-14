@@ -132,7 +132,7 @@ the old container (its writable layer is expendable now — the Phase 0 `.bak`
 exists), and start a fresh container on the new volume.
 
 ```bash
-sudo systemctl stop agrolav-hub agrolav-balance agrolav-client
+sudo systemctl stop agrolav-hub agrolav-balance agrolav-maaltijden agrolav-client
 ```
 
 ```bash
@@ -223,8 +223,8 @@ into `dbo.administrator` before country/center logins work (`deployment.md`
 Bring the apps back:
 
 ```bash
-sudo systemctl start agrolav-hub agrolav-balance agrolav-client
-sudo systemctl status agrolav-hub agrolav-balance agrolav-client
+sudo systemctl start agrolav-hub agrolav-balance agrolav-maaltijden agrolav-client
+sudo systemctl status agrolav-hub agrolav-balance agrolav-maaltijden agrolav-client
 ```
 
 Smoke-test the client at `https://expenses.apsurt.nl` (hub 8200, client 8300,

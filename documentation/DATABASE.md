@@ -10,6 +10,7 @@ Schema sources in the repo:
 - `hub/sql/visitor_ip.sql` — `egress_ip` columns and `dbo.visitor_ip` (idempotent)
 - `hub/sql/administrator.sql` — `dbo.administrator` (idempotent)
 - Hub startup creates `dbo.consent_pending` if it is missing
+- `maaltijden/sql/maaltijden.sql` — `dbo.maaltijden_users` and `dbo.maaltijden_data` (run in SSMS; the app does not create them)
 
 ---
 
@@ -421,6 +422,42 @@ Login attempts, so you can see who is knocking. See `hub/sql/visitor_ip.sql`.
 Not recorded: loopback and LAN addresses, anything listed in
 `dbo.administrator`, and — on a development hub (`HUB_DEV_LOGIN`) — nothing
 at all.
+
+### `maaltijden_users`
+
+Ordered list of people in the meal matrix (`/maaltijden`, port 8400). `id`
+must be the dense sequence `1..N` (no gaps). Each id occupies five bits in
+`dbo.maaltijden_data.code` (user 1 = bits 0–4, user 2 = bits 5–9, …). `N`
+must be ≤ 12 so `5N` fits in `BIGINT`. See `maaltijden/sql/maaltijden.sql`.
+
+| column | type | notes |
+|:-------|:-----|:------|
+| `id` | `INT` PK | 1, 2, …, N |
+| `user_login` | `VARCHAR(32)` | login name; display title comes from `dbo.person` when it matches |
+| `passphrase` | `VARCHAR(64)` NULL | login password, **plain text**. `NULL` = no password required |
+
+### `maaltijden_data`
+
+One row per day of a 365-day year (`id` 1 = 1 januari, 365 = 31 december).
+There is no year column: week 12 of any year reads the same row. Leap-year
+29 februari shares id 59 with 28 februari.
+
+`code` packs every user’s marks for that day. Per user, five bits:
+
+| bit | meaning |
+|:----|:--------|
+| 0 | meal O: 0 = `x`, 1 = `v` |
+| 1 | meal L: 0 = `x`, 1 = `v` |
+| 2 | meal A: 0 = `x`, 1 = `v` (ignored when bit 4 is set) |
+| 3 | meal P: 0 = `x`, 1 = `v` |
+| 4 | meal A is `L` when 1 |
+
+Default `code` is 0 (every mark `x`).
+
+| column | type | notes |
+|:-------|:-----|:------|
+| `id` | `INT` PK | day of year, 1–365 |
+| `code` | `BIGINT` | `5 × N` bits, `N` = row count of `maaltijden_users` |
 
 ---
 

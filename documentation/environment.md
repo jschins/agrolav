@@ -1,7 +1,7 @@
 # Environment variables and config files
 
 Authoritative inventory of every **non-secret** environment variable the
-three services read and the files they live in (local and on the server
+services read and the files they live in (local and on the server
 `expenses.apsurt.nl`), plus how the configuration can silently disappear.
 
 Passwords and secret variables are **not** documented here — they live only
@@ -17,13 +17,14 @@ in the single secret file and are covered by
 | hub | Yes | `hub/.env`, then repo-root `/.env` (import-time `user_store._load_dotenv`, fills only **unset** vars) | 1. process env (systemd `EnvironmentFile`) · 2. `hub/.env` · 3. root `/.env` · 4. built-in defaults |
 | client | Yes | `client/.env`, then repo-root `/.env` (import-time `app/__init__._load_dotenv`, fills only **unset** vars) | same |
 | balance | Yes | `balance/.env`, then repo-root `/.env` (import-time `db._ensure_dotenv`, `load_dotenv` fills unset only) | same |
+| maaltijden | Yes | `maaltijden/.env`, then repo-root `/.env` (import-time `db._ensure_dotenv`, `load_dotenv` fills unset only) | same |
 
 Rules shared by all apps:
 
 - Already-set values (systemd `EnvironmentFile` on the server, an exported
   variable, a local override) are **never overridden** by a `.env` file.
 - The repo-root `/.env` is the single source for every **secret** variable,
-  read by all three apps automatically — the loaders already walk up to it.
+  read by all apps automatically — the loaders already walk up to it.
 - Per-service `.env` files hold only non-secret, machine-local settings
   (`HOST`, `PORT`, `HUB_DEV_LOGIN`, …). They are optional; the app runs on
   built-in defaults without them.
@@ -77,7 +78,17 @@ Read in: `balance/app/db.py`, `balance/app/main.py`, `balance/app/balance.py`.
 | `BALANCE_COUNTRY_ID` | empty | pin the active country when the request has no country subpath (`balance.py`) |
 | `BALANCE_DIST` | built-in path | override for the static `dist` directory (`main.py`) |
 
-### 2.4 Caddy
+### 2.4 Maaltijden (`maaltijden/app`) — meal matrix, port 8400
+
+Read in: `maaltijden/app/db.py`, `maaltijden/app/main.py`, `maaltijden/app/auth.py`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HOST` | `127.0.0.1` | bind host (`main.py`) |
+| `PORT` | `8400` | bind port (`main.py`) |
+| `MAALTIJDEN_DIST` | built-in path | override for the static `dist` directory (`main.py`) |
+
+### 2.5 Caddy
 
 The server Caddy unit loads the repo-root `/opt/agrolav/.env` via
 `EnvironmentFile`; the repo `client/Caddyfile` injects the hub key with the
@@ -94,7 +105,7 @@ placeholder `header_up Authorization "Bearer {$CENTRALE_API_KEY}"` on
 |---|---|---|
 | `/.env` | no (gitignored by `/.env`) | **every password** — the single secret file |
 | `hub/.env.example` | yes | non-secret example template |
-| `hub/.env`, `client/.env`, `balance/.env` | no | non-secret machine-local settings |
+| `hub/.env`, `client/.env`, `balance/.env`, `maaltijden/.env` | no | non-secret machine-local settings |
 | `documentation/passwords.md` | yes | where secrets live + how to change them |
 
 ### 3.2 Server `agrolav@209.38.39.105` (ssh port 4523)
@@ -104,20 +115,22 @@ Everything under `/etc/agrolav` and `/opt/agrolav/.env` is root-only and
 
 | File | Read by | Contains |
 |---|---|---|
-| `/opt/agrolav/.env` | hub, client, balance (dotenv loaders) + Caddy (`EnvironmentFile`) | **every password** — the single secret file |
+| `/opt/agrolav/.env` | hub, client, balance, maaltijden (dotenv loaders) + Caddy (`EnvironmentFile`) | **every password** — the single secret file |
 | `/etc/agrolav/hub.env` | systemd `EnvironmentFile` → agrolav-hub | non-secret settings only |
 | `/etc/agrolav/client.env` | systemd `EnvironmentFile` → agrolav-client | non-secret settings only |
 | `/etc/agrolav/balance.env` | systemd `EnvironmentFile` → agrolav-balance | non-secret settings only |
+| `/etc/agrolav/maaltijden.env` | systemd `EnvironmentFile` → agrolav-maaltijden | non-secret settings only |
 | `/opt/agrolav/*/.env` | the apps’ import-time dotenv | non-secret machine-local settings |
 | `/etc/caddy/Caddyfile` | caddy `run --environ --config` | routing + `Authorization: Bearer {$CENTRALE_API_KEY}` placeholder |
 
 Systemd units (what pins the non-secret config source):
 
 ```
-agrolav-hub     EnvironmentFile=/etc/agrolav/hub.env      ExecStart=/home/agrolav/.local/bin/uv run hub
-agrolav-client  EnvironmentFile=/etc/agrolav/client.env   ExecStart=/home/agrolav/.local/bin/uv run client
-agrolav-balance EnvironmentFile=/etc/agrolav/balance.env  ExecStart=/opt/agrolav/balance/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100
-caddy           EnvironmentFile=/opt/agrolav/.env         ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile
+agrolav-hub        EnvironmentFile=/etc/agrolav/hub.env         ExecStart=/home/agrolav/.local/bin/uv run hub
+agrolav-client     EnvironmentFile=/etc/agrolav/client.env      ExecStart=/home/agrolav/.local/bin/uv run client
+agrolav-balance    EnvironmentFile=/etc/agrolav/balance.env     ExecStart=/opt/agrolav/balance/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100
+agrolav-maaltijden EnvironmentFile=/etc/agrolav/maaltijden.env  ExecStart=/opt/agrolav/maaltijden/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8400
+caddy              EnvironmentFile=/opt/agrolav/.env            ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile
 ```
 
 ---

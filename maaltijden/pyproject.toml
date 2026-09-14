@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maaltijden"
+version = "0.1"
+description = "Meal matrix for center nl_dkg"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+
+dependencies = [
+  "banking-app-shared",
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.6.0",
+  "pyodbc>=5.3.0",
+  "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+maaltijden = "app.main:run"
+
+[tool.uv.sources]
+banking-app-shared = { path = "../shared", editable = true }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

@@ -13,8 +13,9 @@ Caddy.
 | hub | systemd `agrolav-hub` | `127.0.0.1:8200` | FastAPI: login, sync, calculation, SQL Server |
 | client BFF | systemd `agrolav-client` | `127.0.0.1:8300` | Serves the frontend, proxies hub APIs, browser login |
 | balance hub | systemd `agrolav-balance` | `127.0.0.1:8100` | Balance sheets — one SPA per balance country, served under `/balance/{slug}` (slugs = `dbo.country.username` with `has_balance = 1`, e.g. `beheer`, `beheer_instudo`), API at `/balance/{slug}/api/...` |
+| maaltijden | systemd `agrolav-maaltijden` | `127.0.0.1:8400` | Meal matrix for center `nl_dkg` — login + SPA at `/maaltijden`, API at `/maaltijden/api/...` |
 | SQL Server | Docker `MSSQL2022` | `0.0.0.0:1433` | the only data store |
-| Caddy | systemd `caddy` | `80/443` | public site → client BFF; selected hub paths → hub; `/balance/*` → balance hub |
+| Caddy | systemd `caddy` | `80/443` | public site → client BFF; selected hub paths → hub; `/balance/*` → balance hub; `/maaltijden*` → maaltijden |
 
 There is no SQLite fallback. If `HUB_DATABASE_URL` is unset the hub refuses
 to start. Configuration lives in `/etc/agrolav/hub.env` and
@@ -274,8 +275,8 @@ repository root). Create it as a copy of the local single-secret file and fill
 in the real values (see [`passwords.md`](passwords.md) for what goes in it and
 how to change each value). It holds every secret variable
 (`HUB_DATABASE_URL`, `MSSQL_SA_PASSWORD`, `CENTRALE_API_KEY`,
-`CLIENT_SESSION_SECRET`, `HUB_OTP_SECRET`, Twilio). Hub, client, balance, and
-Caddy read the same file.
+`CLIENT_SESSION_SECRET`, `HUB_OTP_SECRET`, Twilio). Hub, client, balance,
+maaltijden, and Caddy read the same file.
 
 ```bash
 sudo touch /opt/agrolav/.env
@@ -379,6 +380,51 @@ sudo systemctl restart agrolav-client
 sudo systemctl status agrolav-client --no-pager
 ```
 
+## 12a. Maaltijden service
+
+The unit is not in git. Full copy-paste (Python, frontend, env, systemd,
+Caddy, health check, SQL) is in [`maaltijden.md`](maaltijden.md) — First
+start on the server. Short form:
+
+```bash
+cd /opt/agrolav/maaltijden && uv sync
+cd /opt/agrolav/maaltijden/frontend && npm ci && npm run build
+
+sudo tee /etc/agrolav/maaltijden.env >/dev/null <<'EOF'
+HOST=127.0.0.1
+PORT=8400
+SERVER_URL=http://127.0.0.1:8200
+EOF
+sudo chmod 600 /etc/agrolav/maaltijden.env
+
+sudo tee /etc/systemd/system/agrolav-maaltijden.service >/dev/null <<'EOF'
+[Unit]
+Description=Agrolav maaltijden
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/agrolav/maaltijden
+EnvironmentFile=/etc/agrolav/maaltijden.env
+ExecStart=/opt/agrolav/maaltijden/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8400
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now agrolav-maaltijden
+sudo systemctl status agrolav-maaltijden --no-pager
+sudo cp /opt/agrolav/client/Caddyfile /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
+curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8400/maaltijden/api/health
+curl -sSI https://expenses.apsurt.nl/maaltijden
+```
+
+Secrets stay in `/opt/agrolav/.env`. Public URL:
+`https://expenses.apsurt.nl/maaltijden`. Caddy must send `/maaltijden*` to
+`:8400` **before** the catch-all to `:8300`.
+
 ---
 
 # Public URLs / reverse proxy
@@ -453,6 +499,12 @@ boekhouding.agrolav.nl, expenses.apsurt.nl {
     }
     handle /api/local/* {
         reverse_proxy 127.0.0.1:8200 {
+            header_up X-Forwarded-For {http.request.remote.host}
+            header_up X-Real-IP {http.request.remote.host}
+        }
+    }
+    handle /maaltijden* {
+        reverse_proxy 127.0.0.1:8400 {
             header_up X-Forwarded-For {http.request.remote.host}
             header_up X-Real-IP {http.request.remote.host}
         }
@@ -536,6 +588,11 @@ cd /opt/agrolav/client/frontend
 npm ci
 npm run build
 sudo systemctl restart agrolav-client
+
+cd /opt/agrolav/maaltijden/frontend
+npm ci
+npm run build
+sudo systemctl restart agrolav-maaltijden
 ```
 
 ---
