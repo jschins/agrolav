@@ -444,15 +444,16 @@ One row per day of a 365-day year (`id` 1 = 1 januari, 365 = 31 december).
 There is no year column: week 12 of any year reads the same row. Leap-year
 29 februari shares id 59 with 28 februari.
 
-`code` packs every user’s marks for that day. Per user, five bits:
+`code` packs every user’s marks for that day. Per user, five bits
+(display order **O M A L P**; bit 4 is meal **L**):
 
 | bit | meaning |
 |:----|:--------|
 | 0 | meal O: 0 = `x`, 1 = `v` |
-| 1 | meal L: 0 = `x`, 1 = `v` |
-| 2 | meal A: 0 = `x`, 1 = `v` (ignored when bit 4 is set) |
+| 1 | meal M: 0 = `x`, 1 = `v` (was lunch L) |
+| 2 | meal A: 0 = `x`, 1 = `v` |
 | 3 | meal P: 0 = `x`, 1 = `v` |
-| 4 | meal A is `L` when 1 |
+| 4 | meal L: 0 = `x`, 1 = `v` (was the A=`L` flag) |
 
 Default `code` is 0 (every mark `x`).
 
@@ -472,11 +473,11 @@ change these numbers; other users see them in the extra row. See
 | column | type | notes |
 |:-------|:-----|:------|
 | `id` | `INT` IDENTITY PK | weekday order |
-| `ochtend` | `INT` | added to meal O (`v` count) |
-| `middag` | `INT` | added to meal L (`v` count) |
-| `avond` | `INT` | added to meal A `v` |
-| `laat` | `INT` | added to meal A `L` |
-| `pakket` | `INT` | added to meal P (`v` count) |
+| `ochtend` | `INT` | extra count for meal O |
+| `middag` | `INT` | extra count for meal M |
+| `avond` | `INT` | extra count for meal A |
+| `laat` | `INT` | extra count for meal L |
+| `pakket` | `INT` | extra count for meal P |
 
 ### `maaltijden_extra_week`
 

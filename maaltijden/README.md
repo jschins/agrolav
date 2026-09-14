@@ -6,9 +6,9 @@ Meal matrix for center `nl_dkg` (country `nederland`). Listens on
 Login uses `dbo.maaltijden_users`: `user_login` plus `passphrase` (plain
 text; `NULL` means no password). Matrix rows are that list except login
 **`admin`**, which only edits the extra counts. Marks live in
-`dbo.maaltijden_data.code` (five bits per matrix person per day). Meal
-**A** cycles `x` → `v` → `L` → `x`; **O**, **L**, and **P** cycle
-`x` ↔ `v`. Default is `x`. A person login can edit only its own row.
+`dbo.maaltijden_data.code` (five bits per matrix person per day). All five
+meals **O M A L P** cycle `x` ↔ `v`. Default is `x`. A person login can
+edit only its own row.
 
 Weeks run Sunday–Saturday. Terms in the UI are Dutch.
 

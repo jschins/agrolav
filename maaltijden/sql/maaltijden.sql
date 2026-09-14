@@ -1,7 +1,8 @@
 -- Packed meal marks. You create and fill these; the app does not CREATE them.
 -- maaltijden_data.id is the day of a 365-day year (1 = 1 januari, 365 = 31 december).
 -- Login admin is not a matrix row (no bits in code); it only edits maaltijden_extra.
--- Remaining users occupy 5 bits each in list order. Matrix N must be ≤ 12.
+-- Remaining users occupy 5 bits each in list order. Display O M A L P;
+-- bits 0..4 are O, M, A, P, L. Matrix N must be ≤ 12.
 -- passphrase NULL = no password; otherwise the login password is this value (plain text).
 USE agrolav
 GO
@@ -38,7 +39,7 @@ IF COL_LENGTH(N'dbo.maaltijden_users', N'passphrase') IS NULL
 GO
 
 -- One row per weekday (id 1 = zondag … 7 = zaterdag).
--- ochtend=O, middag=L, avond=A(v), laat=A(L), pakket=P.
+-- ochtend=O, middag=M, avond=A, laat=L, pakket=P.
 -- Zeroed when a new Sunday week begins (see dbo.maaltijden_extra_week).
 IF OBJECT_ID(N'dbo.maaltijden_extra', N'U') IS NULL
 CREATE TABLE dbo.maaltijden_extra (

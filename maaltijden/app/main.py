@@ -92,11 +92,11 @@ class LoginRequest(BaseModel):
 class ExtraPayload(BaseModel):
     sunday: str
     weekday: int
-    ochtend: int = 0
-    middag: int = 0
-    avond: int = 0
-    laat: int = 0
-    pakket: int = 0
+    O: int = 0
+    M: int = 0
+    A: int = 0
+    L: int = 0
+    P: int = 0
 
 
 class MarkPayload(BaseModel):
@@ -205,11 +205,11 @@ def api_extra(body: ExtraPayload, request: Request) -> dict[str, Any]:
         return set_extra(
             sunday=sunday_of(_parse_sunday(body.sunday)),
             weekday=int(body.weekday),
-            ochtend=int(body.ochtend),
-            middag=int(body.middag),
-            avond=int(body.avond),
-            laat=int(body.laat),
-            pakket=int(body.pakket),
+            O=int(body.O),
+            M=int(body.M),
+            A=int(body.A),
+            L=int(body.L),
+            P=int(body.P),
             editor=session,
         )
     except PermissionError as exc:

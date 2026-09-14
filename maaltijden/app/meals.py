@@ -7,8 +7,8 @@ from typing import Any
 from app.auth import is_admin_name
 from app.db import connect
 
-MEALS = ("O", "L", "A", "P")
-MARKS = ("x", "v", "L")
+MEALS = ("O", "M", "A", "L", "P")
+MARKS = ("x", "v")
 BITS_PER_USER = 5
 USER_MASK = 0b11111
 MAX_USERS = 12  # 5 × 12 = 60 bits, inside signed BIGINT
@@ -87,29 +87,28 @@ def _as_uint(code: Any) -> int:
 
 
 def marks_from_bits(bits: int) -> dict[str, str]:
-    o = "v" if bits & 1 else "x"
-    lunch = "v" if bits & 2 else "x"
-    p = "v" if bits & 8 else "x"
-    if bits & 16:
-        a = "L"
-    else:
-        a = "v" if bits & 4 else "x"
-    return {"O": o, "L": lunch, "A": a, "P": p}
+    # Same five bits as before: old L → M, old A-is-L flag → L.
+    return {
+        "O": "v" if bits & 1 else "x",
+        "M": "v" if bits & 2 else "x",
+        "A": "v" if bits & 4 else "x",
+        "P": "v" if bits & 8 else "x",
+        "L": "v" if bits & 16 else "x",
+    }
 
 
 def bits_from_marks(marks: dict[str, str]) -> int:
     bits = 0
     if marks.get("O") == "v":
         bits |= 1
-    if marks.get("L") == "v":
+    if marks.get("M") == "v":
         bits |= 2
-    a = marks.get("A") or "x"
-    if a == "v":
+    if marks.get("A") == "v":
         bits |= 4
-    elif a == "L":
-        bits |= 16
     if marks.get("P") == "v":
         bits |= 8
+    if marks.get("L") == "v":
+        bits |= 16
     return bits
 
 
@@ -170,7 +169,7 @@ def _ensure_data(cursor: Any, conn: Any) -> None:
 
 
 def _empty_extra() -> list[dict[str, int]]:
-    return [{"O": 0, "L": 0, "A_v": 0, "A_L": 0, "P": 0} for _ in range(7)]
+    return [{"O": 0, "M": 0, "A": 0, "L": 0, "P": 0} for _ in range(7)]
 
 
 def _ensure_extra(cursor: Any, conn: Any, present: date) -> None:
@@ -238,9 +237,9 @@ def _load_extra(cursor: Any) -> list[dict[str, int]]:
     for i, (ochtend, middag, avond, laat, pakket) in enumerate(cursor.fetchall()):
         extra[i] = {
             "O": int(ochtend or 0),
-            "L": int(middag or 0),
-            "A_v": int(avond or 0),
-            "A_L": int(laat or 0),
+            "M": int(middag or 0),
+            "A": int(avond or 0),
+            "L": int(laat or 0),
             "P": int(pakket or 0),
         }
     return extra
@@ -398,10 +397,7 @@ def set_mark(
         raise ValueError("weekday")
     if meal not in MEALS:
         raise ValueError("meal")
-    if mark == "L":
-        if meal != "A":
-            raise ValueError("mark")
-    elif mark not in ("x", "v"):
+    if mark not in MARKS:
         raise ValueError("mark")
     day = sunday + timedelta(days=int(weekday))
     slot = day_id(day)
@@ -457,11 +453,11 @@ def set_extra(
     *,
     sunday: date,
     weekday: int,
-    ochtend: int,
-    middag: int,
-    avond: int,
-    laat: int,
-    pakket: int,
+    O: int,
+    M: int,
+    A: int,
+    L: int,
+    P: int,
     editor: dict[str, Any],
 ) -> dict[str, Any]:
     if not is_admin_name(str(editor.get("person") or editor.get("username") or "")):
@@ -473,11 +469,11 @@ def set_extra(
     if weekday < 0 or weekday > 6:
         raise ValueError("weekday")
     fields = {
-        "O": _clamp_count(ochtend),
-        "L": _clamp_count(middag),
-        "A_v": _clamp_count(avond),
-        "A_L": _clamp_count(laat),
-        "P": _clamp_count(pakket),
+        "O": _clamp_count(O),
+        "M": _clamp_count(M),
+        "A": _clamp_count(A),
+        "L": _clamp_count(L),
+        "P": _clamp_count(P),
     }
     with connect() as conn:
         cur = conn.cursor()
@@ -496,9 +492,9 @@ def set_extra(
             """,
             (
                 fields["O"],
+                fields["M"],
+                fields["A"],
                 fields["L"],
-                fields["A_v"],
-                fields["A_L"],
                 fields["P"],
                 ids[weekday],
             ),

@@ -41,24 +41,23 @@ Rows are the people in `dbo.maaltijden_users` except login **`admin`**,
 in remaining `id` order (display name from `dbo.person.title` when that
 login exists). **`admin` is never a matrix row.**
 
-Columns are seven days × four meals. Meals are the hardcoded letters
-**O**, **L**, **A**, **P**. Above the meal letters: the day of the month;
+Columns are seven days × five meals. Meals are the hardcoded letters
+**O**, **M**, **A**, **L**, **P**. Above the meal letters: the day of the month;
 above those days: the month name (one span when the week stays in one
 month, two when it crosses).
 
 The grid is packed so it can sit on a phone; cells that are not yours are
 visible but not editable. The **extra** row is `dbo.maaltijden_extra` (seven
-rows, zondag first: ochtend=O, middag=L, avond=`v` on A, laat=`L` on A,
-pakket=P). Those numbers are added into **totalen** (`v` count, A as
-`{v}/{L}`). Extra is for the current week only; at the first request after
-a new Sunday the extra rows are set back to zero. Only **`admin`** can
-edit extra, and only while viewing this week. Other logins see the numbers
-but cannot change them.
+rows, zondag first: ochtend=O, middag=M, avond=A, laat=L, pakket=P). Those
+numbers are added into **totalen** (`v` count). Extra is for the current
+week only; at the first request after a new Sunday the extra rows are set
+back to zero. Only **`admin`** can edit extra, and only while viewing this
+week. Other logins see the numbers but cannot change them.
 
 ### Persoon
 
-Only the logged-in person’s marks. Five columns: **Dag**, **O**, **L**,
-**A**, **P**. Seven rows: **Zondag** through **Zaterdag**. Larger tap
+Only the logged-in person’s marks. Six columns: **Dag**, **O**, **M**,
+**A**, **L**, **P**. Seven rows: **Zondag** through **Zaterdag**. Larger tap
 targets. If the login is not a row in `dbo.maaltijden_users`, this view
 says the sheet is only available with a personal login. For **`admin`**
 this view is the extra editor (seven days), not a personal mark row.
@@ -72,11 +71,10 @@ Each cell is a letter, not a native checkbox. Missing data displays as
 
 | Meal | Click cycle |
 |------|-------------|
-| O, L, P | `x` ↔ `v` |
-| A | `x` → `v` → `L` → `x` |
+| O, M, A, L, P | `x` ↔ `v` |
 
-**L** exists only on meal **A**. A person login may change only the row
-whose `user_login` matches. **`admin` cannot change marks.**
+A person login may change only the row whose `user_login` matches.
+**`admin` cannot change marks.**
 
 ---
 
@@ -132,12 +130,16 @@ five bits start at bit `5 × slot`. Width of the used field is always
 | bit in the group | meal | 0 | 1 |
 |----------------:|:-----|---|---|
 | 0 | O | `x` | `v` |
-| 1 | L | `x` | `v` |
-| 2 | A | `x` | `v` (ignored when bit 4 is 1) |
+| 1 | M | `x` | `v` (was lunch **L**) |
+| 2 | A | `x` | `v` |
 | 3 | P | `x` | `v` |
-| 4 | A is `L` | A is `x` or `v` | A is **`L`** |
+| 4 | L | `x` | `v` (was the old A=`L` flag) |
 
-Example: user 1 has O=`v`, A=`L`, everything else `x` → `code = 1 + 16 = 17`.
+Existing `code` values keep their bits. Old lunch **L** is read as **M**.
+Old A=`x` or A=`v` leaves new **L** as `x`; old A=`L` becomes new **L**=`v`
+(and A follows bit 2, which was 0 when A was `L`).
+
+Example: user 1 has O=`v`, L=`v`, everything else `x` → `code = 1 + 16 = 17`.
 User 2 with only P=`v` adds `8 << 5` → `code = 17 + 256 = 273`.
 
 A click reads that day’s `code`, replaces the five bits for one user, and

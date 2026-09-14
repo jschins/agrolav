@@ -76,9 +76,9 @@ export interface WeekOption {
 
 export interface ExtraDay {
   O: number;
+  M: number;
+  A: number;
   L: number;
-  A_v: number;
-  A_L: number;
   P: number;
 }
 
@@ -122,12 +122,7 @@ export function saveMark(body: {
 export function saveExtra(body: {
   sunday: string;
   weekday: number;
-  ochtend: number;
-  middag: number;
-  avond: number;
-  laat: number;
-  pakket: number;
-}): Promise<{ ok: boolean; weekday: number }> {
+} & ExtraDay): Promise<{ ok: boolean; weekday: number }> {
   return sendJson(`${API}/extra`, "PUT", body);
 }
 

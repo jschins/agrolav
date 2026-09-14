@@ -234,12 +234,6 @@ body,
   height: 13px;
 }
 
-.meal-table .meal-a {
-  width: 14px;
-  min-width: 14px;
-  max-width: 14px;
-}
-
 .meal-table tbody .totals.extra .name-col,
 .meal-table tbody .totals.extra td {
   background: #edfcff;
@@ -261,22 +255,6 @@ body,
   font-weight: 700;
 }
 
-.extra-a {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-}
-
-.extra-a .extra-input {
-  width: 45%;
-}
-
-.meal-table tbody .totals .total-a {
-  letter-spacing: -0.04em;
-  font-size: 7px;
-}
-
 .meal-table .month {
   background: #dff6fb;
   font-size: 9px;
@@ -288,7 +266,7 @@ body,
 .meal-table .dom {
   background: #edfcff;
   font-size: 8px;
-  width: 36px;
+  width: 45px;
 }
 
 .meal-table .meal {
@@ -322,10 +300,6 @@ body,
   color: #15803d;
 }
 
-.mark-L {
-  color: #1d4ed8;
-}
-
 .mark.is-locked {
   cursor: default;
   opacity: 0.85;
@@ -339,7 +313,7 @@ body,
 
 .person-table {
   width: 100%;
-  max-width: 22rem;
+  max-width: 26rem;
   table-layout: auto;
   font-size: 13px;
 }
@@ -352,7 +326,7 @@ body,
 }
 
 .person-table .meal {
-  width: 22%;
+  width: 16%;
   min-width: 2.2rem;
   max-width: none;
   font-size: 13px;
@@ -382,12 +356,4 @@ body,
   line-height: 2rem;
   background: #fff;
   border: 1px solid #c5c5c8;
-}
-
-.person-table .extra-a {
-  gap: 0.15rem;
-}
-
-.person-table .extra-a .extra-input {
-  width: 2.1rem;
 }

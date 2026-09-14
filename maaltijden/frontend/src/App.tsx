@@ -16,12 +16,24 @@ import {
 
 type View = "matrix" | "person";
 
-function nextMark(current: string, meal: string): string {
-  if (meal === "A") {
-    const order = ["x", "v", "L"] as const;
-    const i = order.indexOf(current as (typeof order)[number]);
-    return order[(i < 0 ? 0 : i + 1) % order.length];
+const EMPTY_EXTRA: ExtraDay = { O: 0, M: 0, A: 0, L: 0, P: 0 };
+
+const EXTRA_LABELS: Record<keyof ExtraDay, string> = {
+  O: "Ochtend extra",
+  M: "Middag extra",
+  A: "Avond extra",
+  L: "Laat extra",
+  P: "Pakket extra",
+};
+
+function extraKey(meal: string): keyof ExtraDay | null {
+  if (meal === "O" || meal === "M" || meal === "A" || meal === "L" || meal === "P") {
+    return meal;
   }
+  return null;
+}
+
+function nextMark(current: string): string {
   return current === "v" ? "x" : "v";
 }
 
@@ -30,23 +42,13 @@ function cellMark(data: WeekData, personId: number, weekday: number, meal: strin
 }
 
 function columnTotal(data: WeekData, weekday: number, meal: string): string {
+  const key = extraKey(meal);
   let v = 0;
-  let later = 0;
   for (const person of data.people) {
-    const mark = cellMark(data, person.person_id, weekday, meal);
-    if (mark === "v") v += 1;
-    else if (mark === "L") later += 1;
+    if (cellMark(data, person.person_id, weekday, meal) === "v") v += 1;
   }
-  const extra = data.extra?.[weekday];
-  if (extra) {
-    if (meal === "A") {
-      v += extra.A_v;
-      later += extra.A_L;
-    } else if (meal === "O") v += extra.O;
-    else if (meal === "L") v += extra.L;
-    else v += extra.P;
-  }
-  if (meal === "A") return `${v}/${later}`;
+  const extra = extraDay(data, weekday);
+  if (key) v += extra[key];
   return String(v);
 }
 
@@ -57,7 +59,7 @@ function canEdit(data: WeekData, person: PersonRow): boolean {
 }
 
 function extraDay(data: WeekData, weekday: number): ExtraDay {
-  return data.extra?.[weekday] || { O: 0, L: 0, A_v: 0, A_L: 0, P: 0 };
+  return data.extra?.[weekday] || { ...EMPTY_EXTRA };
 }
 
 function parseCount(raw: string): number {
@@ -67,10 +69,8 @@ function parseCount(raw: string): number {
 }
 
 function extraValueFrom(extra: ExtraDay, meal: string): string {
-  if (meal === "A") return `${extra.A_v}/${extra.A_L}`;
-  if (meal === "O") return String(extra.O);
-  if (meal === "L") return String(extra.L);
-  return String(extra.P);
+  const key = extraKey(meal);
+  return String(key ? extra[key] : 0);
 }
 
 function ExtraInputs({
@@ -84,42 +84,19 @@ function ExtraInputs({
   disabled: boolean;
   onChange: (patch: Partial<ExtraDay>) => void;
 }) {
+  const key = extraKey(meal);
+  if (!key) return null;
   if (disabled) {
     return <>{extraValueFrom(extra, meal)}</>;
   }
-  if (meal === "A") {
-    return (
-      <span className="extra-a">
-        <input
-          className="extra-input"
-          type="text"
-          inputMode="numeric"
-          aria-label="Avond aanwezig"
-          value={extra.A_v}
-          onChange={(e) => onChange({ A_v: parseCount(e.target.value) })}
-        />
-        <span>/</span>
-        <input
-          className="extra-input"
-          type="text"
-          inputMode="numeric"
-          aria-label="Avond laat"
-          value={extra.A_L}
-          onChange={(e) => onChange({ A_L: parseCount(e.target.value) })}
-        />
-      </span>
-    );
-  }
-  const field = meal === "O" ? "O" : meal === "L" ? "L" : "P";
-  const labels: Record<string, string> = { O: "Ochtend extra", L: "Middag extra", P: "Pakket extra" };
   return (
     <input
       className="extra-input"
       type="text"
       inputMode="numeric"
-      aria-label={labels[field]}
-      value={extra[field]}
-      onChange={(e) => onChange({ [field]: parseCount(e.target.value) })}
+      aria-label={EXTRA_LABELS[key]}
+      value={extra[key]}
+      onChange={(e) => onChange({ [key]: parseCount(e.target.value) })}
     />
   );
 }
@@ -278,7 +255,7 @@ function MatrixView({
           <tr>
             {data.days.map((d) =>
               data.meals.map((meal) => (
-                <th key={`${d.date}-${meal}`} className={meal === "A" ? "meal meal-a" : "meal"}>
+                <th key={`${d.date}-${meal}`} className="meal">
                   {meal}
                 </th>
               ))
@@ -291,7 +268,7 @@ function MatrixView({
               <th className="name-col">{p.title}</th>
               {data.days.map((d) =>
                 data.meals.map((meal) => (
-                  <td key={`${p.person_id}-${d.weekday}-${meal}`} className={meal === "A" ? "meal-a" : undefined}>
+                  <td key={`${p.person_id}-${d.weekday}-${meal}`}>
                     <MarkCell
                       value={cellMark(data, p.person_id, d.weekday, meal)}
                       disabled={!canEdit(data, p)}
@@ -306,7 +283,7 @@ function MatrixView({
             <th className="name-col">extra</th>
             {data.days.map((d) =>
               data.meals.map((meal) => (
-                <td key={`extra-${d.weekday}-${meal}`} className={meal === "A" ? "total-a" : undefined}>
+                <td key={`extra-${d.weekday}-${meal}`}>
                   <ExtraInputs
                     extra={extraDay(data, d.weekday)}
                     meal={meal}
@@ -321,7 +298,7 @@ function MatrixView({
             <th className="name-col">totalen</th>
             {data.days.map((d) =>
               data.meals.map((meal) => (
-                <td key={`total-${d.weekday}-${meal}`} className={meal === "A" ? "total-a" : undefined}>
+                <td key={`total-${d.weekday}-${meal}`}>
                   {columnTotal(data, d.weekday, meal)}
                 </td>
               ))
@@ -365,7 +342,7 @@ function ExtraPersonView({
                 </span>
               </th>
               {data.meals.map((meal) => (
-                <td key={meal} className={meal === "A" ? "total-a" : undefined}>
+                <td key={meal}>
                   <ExtraInputs
                     extra={extraDay(data, d.weekday)}
                     meal={meal}
@@ -473,7 +450,7 @@ export default function App() {
   function cycle(person: PersonRow, weekday: number, meal: string) {
     if (!data || !canEdit(data, person)) return;
     const current = cellMark(data, person.person_id, weekday, meal);
-    const mark = nextMark(current, meal);
+    const mark = nextMark(current);
     const key = markKey(person.person_id, weekday, meal);
     setData({ ...data, marks: { ...data.marks, [key]: mark } });
     saveMark({
@@ -497,11 +474,7 @@ export default function App() {
     saveExtra({
       sunday: data.sunday,
       weekday,
-      ochtend: next.O,
-      middag: next.L,
-      avond: next.A_v,
-      laat: next.A_L,
-      pakket: next.P,
+      ...next,
     }).catch((e: Error) => {
       setError(e.message);
       setData({
