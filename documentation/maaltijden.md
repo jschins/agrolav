@@ -32,7 +32,7 @@ After login, a bar sits above a horizontal rule:
 - **Week** — Sunday through Saturday. The menu starts at this week's
   Sunday and lists later Sundays of this year only (`13 september`,
   `20 september`, …). No year, and no past weeks.
-- **Weergave** — **Dag** (default: only today), **Week**, or **Persoon**.
+- **Weergave** — **Dag** (default: only today), **Week**, or **Reserveren**.
 - **Uitloggen**
 
 ### Dag
@@ -58,13 +58,14 @@ week only; at the first request after a new Sunday the extra rows are set
 back to zero. Only **`admin`** can edit extra, and only while viewing this
 week. Other logins see the numbers but cannot change them.
 
-### Persoon
+### Reserveren
 
 Only the logged-in person’s marks. Six columns: **Dag**, **O**, **M**,
-**A**, **L**, **P**. Seven rows: **Zondag** through **Zaterdag**. Larger tap
-targets. If the login is not a row in `dbo.maaltijden_users`, this view
-says the sheet is only available with a personal login. For **`admin`**
-this view is the extra editor (seven days), not a personal mark row.
+**A**, **L**, **P**. Seven compact rows: **zo 13**, **ma 14**, … Circles
+match **Week**. If the login is not a row in `dbo.maaltijden_users`, this
+view says the sheet is only available with a personal login. For
+**`admin`** this view is the extra editor (seven days), not a personal
+mark row.
 
 ---
 

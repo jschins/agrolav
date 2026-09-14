@@ -344,55 +344,56 @@ body,
 
 .person-wrap {
   display: flex;
-  justify-content: center;
-  padding: 0.4rem;
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: 0;
+  flex: 0 0 auto;
 }
 
 .person-table {
-  width: 100%;
-  max-width: 26rem;
+  width: max-content;
+  max-width: none;
   table-layout: auto;
-  font-size: 13px;
+  font-size: 8px;
+  line-height: 1;
 }
 
 .person-table .name-col {
   max-width: none;
   width: auto;
-  padding: 0 0.35rem;
-  white-space: normal;
-  font-size: 12px;
+  padding: 0 2px;
+  white-space: nowrap;
+  font-size: 8px;
   letter-spacing: normal;
 }
 
 .person-table .meal {
-  width: 16%;
-  min-width: 2.2rem;
-  max-width: none;
-  font-size: 13px;
+  width: 12px;
+  min-width: 12px;
+  max-width: 12px;
+  height: 12px;
+  font-size: 8px;
 }
 
-.person-table .mark {
-  width: 100%;
-  height: 2rem;
-  font-size: 1.1rem;
-  line-height: 2rem;
+.person-table td {
+  height: 12px;
 }
 
-.person-table .dag {
-  display: block;
+.person-table .mark-dot {
+  width: 12px;
+  height: 12px;
 }
 
-.person-table .dom-inline {
-  display: block;
-  font-weight: 400;
-  color: #64748b;
-  font-size: 10px;
+.person-table .mark-dot::after {
+  width: 6px;
+  height: 6px;
+  margin-top: 3px;
 }
 
 .person-table .extra-input {
-  height: 2rem;
-  font-size: 1rem;
-  line-height: 2rem;
+  height: 12px;
+  font-size: 8px;
+  line-height: 12px;
   background: #fff;
-  border: 1px solid #c5c5c8;
+  border: 0;
 }

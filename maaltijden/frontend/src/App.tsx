@@ -105,6 +105,12 @@ function daysForView(data: WeekData, view: View): WeekDay[] {
   return same.length ? same : data.days.slice(0, 1);
 }
 
+const DAG_KORT = ["zo", "ma", "di", "wo", "do", "vr", "za"] as const;
+
+function dayShort(d: WeekDay): string {
+  return `${DAG_KORT[d.weekday] ?? ""} ${d.day}`;
+}
+
 function ExtraInputs({
   extra,
   meal,
@@ -255,27 +261,6 @@ function MatrixMarkCell({
   );
 }
 
-function MarkCell({
-  value,
-  disabled,
-  onCycle,
-}: {
-  value: string;
-  disabled: boolean;
-  onCycle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`mark mark-${value} ${disabled ? "is-locked" : ""}`}
-      disabled={disabled}
-      onClick={onCycle}
-    >
-      {value}
-    </button>
-  );
-}
-
 function MatrixView({
   data,
   days,
@@ -391,10 +376,7 @@ function ExtraPersonView({
           {data.days.map((d) => (
             <tr key={d.date}>
               <th className="name-col">
-                <span className="dag">{d.dag}</span>
-                <span className="dom-inline">
-                  {d.day} {d.month_name}
-                </span>
+                {dayShort(d)}
               </th>
               {data.meals.map((meal) => (
                 <td key={meal}>
@@ -447,14 +429,11 @@ function PersonView({
           {data.days.map((d) => (
             <tr key={d.date}>
               <th className="name-col">
-                <span className="dag">{d.dag}</span>
-                <span className="dom-inline">
-                  {d.day} {d.month_name}
-                </span>
+                {dayShort(d)}
               </th>
               {data.meals.map((meal) => (
                 <td key={meal}>
-                  <MarkCell
+                  <MatrixMarkCell
                     value={cellMark(data, me.person_id, d.weekday, meal)}
                     disabled={!canEdit(data, me)}
                     onCycle={() => onCycle(me, d.weekday, meal)}
@@ -616,7 +595,7 @@ export default function App() {
                     setView("person");
                   }}
                 >
-                  Persoon
+                  Reserveren
                 </button>
               </li>
             </>
