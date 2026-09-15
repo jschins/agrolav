@@ -286,7 +286,7 @@ function MatrixView({
 }) {
   const months = monthSpans(days);
   return (
-    <div className={roomy ? "sheet-wrap roomy" : "sheet-wrap"}>
+    <div className={roomy ? "sheet-wrap roomy" : "sheet-wrap week-sheet"}>
       <table className="meal-table">
         <thead>
           <tr>

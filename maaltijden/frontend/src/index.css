@@ -225,31 +225,22 @@ body {
 }
 
 .roomy .meal-table {
-  font-size: clamp(10px, 2.6vw, 14px);
+  font-size: clamp(12px, 3.4vw, 18px);
+}
+
+.roomy .meal-table .name-col,
+.roomy .meal-table tbody .totals .name-col,
+.roomy .meal-table tbody .totals td,
+.roomy .meal-table .month,
+.roomy .meal-table .dom,
+.roomy .meal-table .meal,
+.roomy .extra-input {
+  font-size: inherit;
+  letter-spacing: normal;
 }
 
 .roomy .meal-table .name-col {
-  font-size: clamp(9px, 2.3vw, 13px);
   width: 22%;
-}
-
-.roomy .meal-table tbody .totals .name-col,
-.roomy .meal-table tbody .totals td {
-  font-size: clamp(9px, 2.3vw, 13px);
-}
-
-.roomy .extra-input {
-  font-size: inherit;
-  line-height: 1;
-}
-
-.roomy .meal-table .month {
-  font-size: clamp(10px, 2.6vw, 14px);
-}
-
-.roomy .meal-table .dom,
-.roomy .meal-table .meal {
-  font-size: clamp(10px, 2.4vw, 13px);
 }
 
 .meal-table {
