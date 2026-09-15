@@ -1,7 +1,8 @@
 # Database
 
 SQL Server database **agrolav** is the source of truth. Logins, bookings,
-categories, bank connections, and IP allowlists all live here.
+categories, bank connections, and IP allowlists all live here. Backup and
+restore for both instances are in this file, not in `deployment.md`.
 
 Schema sources in the repo:
 
@@ -12,49 +13,68 @@ Schema sources in the repo:
 - Hub startup creates `dbo.consent_pending` if it is missing
 - `maaltijden/sql/maaltijden.sql` — `dbo.maaltijden_users` and `dbo.maaltijden_data` (run in SSMS; the app does not create them)
 
+The folder names `local_backups` and `remote_backups` mean **where the file
+was written**, and they are the same on both machines. Each SQL container
+bind-mounts its host backup root at `/var/opt/mssql/backup`, so SSMS always
+uses the container path (a Windows path such as `C:\SQLBackups\…` fails with
+MSG 3201). Working copy is `agrolav.bak` (`INIT` overwrites it). Dated names
+(`agrolav20260915_1039.bak`) stay in the same folder as archive.
+
+| | Local PC | Remote droplet |
+|:--|:---------|:---------------|
+| Host root | `C:\SQLBackups` | `/opt/sql_backups` |
+| Container | `agrolav-sql` | `MSSQL2022` |
+| Mount | `C:/SQLBackups` → `/var/opt/mssql/backup` | `/opt/sql_backups` → `/var/opt/mssql/backup` |
+| SSMS | `127.0.0.1,1433` | `209.38.39.105,1433` |
+| Written here | `…/local_backups/` | `…/remote_backups/` |
+| Copy of the other side | `…/remote_backups/` | `…/local_backups/` |
+
+SSH / `scp` always use port **4523**. SQL Server in the container runs as uid
+**10001**. `BACKUP DATABASE` rewrites the file as `10001`, so `scp` as
+`agrolav` needs `chown agrolav` first. `scp` onto the server creates the file
+as `agrolav`, so a restore needs `chown 10001` first.
+
 ---
 
-## Write a backup
+## 1. The remote database
 
-Two folders on the Windows host, one bind-mount on each SQL container:
+Container `MSSQL2022`, host mount `/opt/sql_backups` →
+`/var/opt/mssql/backup`. Confirm it is up (`sudo docker ps`:
+`0.0.0.0:1433->1433/tcp`).
 
-| host path | what it holds |
-|:----------|:--------------|
-| `C:\SQLBackups\local_backups` | `.bak` written from the **local** database |
-| `C:\SQLBackups\remote_backups` | `.bak` **pulled from the server** |
-
-Local container (`agrolav-sql` in `docker-compose.sqlserver.yml`):
+The host root is owned by `agrolav` (`drwxr-xr-x`). It has only the two
+mirrored folders — no `.bak` files at the root:
 
 ```text
-volumes:
-  - "C:/SQLBackups:/var/opt/mssql/backup"
+/opt/sql_backups/                  host, bind-mounted
+├── local_backups/                 copies written on the PC (§1.3 / §2.1)
+└── remote_backups/                written here by MSSQL2022 (§1.1)
+    ├── agrolav.bak                working copy (`INIT` overwrites)
+    ├── agrolav20260915_1039.bak   dated archives
+    └── …
 ```
 
-so `/var/opt/mssql/backup/local_backups` = `C:\SQLBackups\local_backups`.
+Inside the container that is the same disk:
 
-Remote container (`MSSQL2022`): `/opt/sql_backups` → `/var/opt/mssql/backup`.
-SQL Server runs as uid `10001`. Each `BACKUP DATABASE` **rewrites** the `.bak`
-as `10001`, so `scp` as `agrolav` cannot read it until you `chown` — every
-time, not once. Each `scp` **onto** the server creates the file as `agrolav`,
-so restore cannot read it until you `chown` it back to `10001` — again every
-time.
-
-SSH / `scp` always use port **4523**:
-
-```bash
-ssh agrolav@209.38.39.105 -p 4523
+```text
+/var/opt/mssql/backup/local_backups/
+/var/opt/mssql/backup/remote_backups/
 ```
 
-Restoring a `.bak` over the live remote database is in `deployment.md`.
+Do not `docker cp` through `/tmp`. The bind mount is the same directory.
 
-### Remote → local
+SQL Server (uid **10001**) must be able to write `remote_backups/` for
+§1.1 and read `local_backups/` for §1.3. Before `BACKUP`,
+`chown 10001:10001` the target file or folder; before `scp` as `agrolav`,
+`chown agrolav:agrolav` that `.bak` again.
 
-On the **remote** instance (SSMS at `209.38.39.105,1433`), write the backup
-inside the container:
+### 1.1 SQL to write the database to disk
+
+SSMS at `209.38.39.105,1433` (`sa`):
 
 ```sql
 BACKUP DATABASE [agrolav]
-TO DISK = N'/var/opt/mssql/backup/agrolav.bak'
+TO DISK = N'/var/opt/mssql/backup/remote_backups/agrolav.bak'
 WITH
     INIT,
     COMPRESSION,
@@ -62,23 +82,111 @@ WITH
     STATS = 10;
 ```
 
-That file is `/opt/sql_backups/agrolav.bak` on the host. Claim it so `scp`
-as `agrolav` can read it (needed after every backup):
+Host file: `/opt/sql_backups/remote_backups/agrolav.bak`. Claim it for `scp`
+(every backup, not once):
 
 ```bash
-sudo ls -lh /opt/sql_backups/agrolav.bak
-sudo chown agrolav:agrolav /opt/sql_backups/agrolav.bak
+sudo chown agrolav:agrolav /opt/sql_backups/remote_backups/agrolav.bak
+sudo ls -lh /opt/sql_backups/remote_backups/agrolav.bak
 ```
 
-From Windows, copy into `remote_backups`:
+### 1.2 scp from the remote system to the local disk
+
+From Windows into the folder that holds **copies of the remote** database:
 
 ```powershell
-scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolav.bak
+scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolav.bak
 ```
 
-### Local → remote
+That is `C:\SQLBackups\remote_backups\agrolav.bak` on the PC =
+`/var/opt/mssql/backup/remote_backups/agrolav.bak` inside `agrolav-sql`.
 
-On the **local** instance, write into `local_backups`:
+To pull every dated archive: `/opt/sql_backups/remote_backups/*.bak` →
+`C:\SQLBackups\remote_backups\`.
+
+### 1.3 SQL for restoring a local backup
+
+Put a backup written on the PC onto the remote instance. First write it
+locally (§2.1), then copy into the remote **local_backups** folder (same
+name as on Windows):
+
+```powershell
+scp -P 4523 C:/SQLBackups/local_backups/agrolav.bak agrolav@209.38.39.105:/opt/sql_backups/local_backups/agrolav.bak
+```
+
+SQL Server must own the file:
+
+```bash
+sudo chown 10001:10001 /opt/sql_backups/local_backups/agrolav.bak
+sudo ls -lh /opt/sql_backups/local_backups/agrolav.bak
+```
+
+SSMS at `209.38.39.105,1433`:
+
+```sql
+USE master;
+RESTORE FILELISTONLY
+FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav.bak';
+```
+
+Then, with those logical names:
+
+```sql
+USE master;
+
+ALTER DATABASE [agrolav]
+SET SINGLE_USER
+WITH ROLLBACK IMMEDIATE;
+
+RESTORE DATABASE [agrolav]
+FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav.bak'
+WITH
+    REPLACE,
+    RECOVERY;
+
+ALTER DATABASE [agrolav]
+SET MULTI_USER;
+```
+
+The hub auto-creates **only** `dbo.consent_pending`. After a restore:
+
+```sql
+USE agrolav;
+SELECT name FROM sys.tables
+WHERE name IN (
+  'account','administrator','bank','bank_modality','category_term',
+  'category_total','center','consent_pending','country','dim_category',
+  'enable_connection','enable_redirect','person','table_header_term',
+  'type_abbreviation','type_rule','transaction_nederland','transaction_uk',
+  'uploaded_files','visitor_ip'
+)
+ORDER BY name;
+```
+
+Run the idempotent scripts so local and remote stay identical:
+
+- `hub/sql/visitor_ip.sql`
+- `hub/sql/administrator.sql`
+
+Insert the production router WAN addresses into `dbo.administrator`
+**before** country/center logins can succeed (empty `egress_ip` admits
+nobody). See [Logins](#logins).
+
+---
+
+## 2. The local database
+
+Container `agrolav-sql` (`docker-compose.sqlserver.yml`). Host mount
+`C:\SQLBackups` → `/var/opt/mssql/backup`.
+
+```text
+C:\SQLBackups\local_backups\    =  /var/opt/mssql/backup/local_backups/
+C:\SQLBackups\remote_backups\   =  /var/opt/mssql/backup/remote_backups/
+```
+
+### 2.1 SQL to write the database to disk
+
+SSMS at `127.0.0.1,1433` (`sa`):
 
 ```sql
 BACKUP DATABASE [agrolav]
@@ -90,21 +198,59 @@ WITH
     STATS = 10;
 ```
 
-From Windows, copy onto the server mount:
+Host file: `C:\SQLBackups\local_backups\agrolav.bak`. That is the file §1.3
+copies to `/opt/sql_backups/local_backups/`.
+
+### 2.2 scp from the remote system to the local disk
+
+Same copy as §1.2: take the file the remote instance just wrote, store it
+under `remote_backups` on the PC.
 
 ```powershell
-scp -P 4523 C:/SQLBackups/local_backups/agrolav.bak agrolav@209.38.39.105:/opt/sql_backups/agrolav.bak
+scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolav.bak
 ```
 
-On the server, give the file back to SQL Server after every copy (otherwise
-restore fails with *Operating system error 5*):
+### 2.3 SQL for restoring a local backup
 
-```bash
-sudo chown 10001:10001 /opt/sql_backups/agrolav.bak
-sudo ls -lh /opt/sql_backups/agrolav.bak
+On this PC, “local backup” in the restore sense is the file now sitting under
+`C:\SQLBackups` — either the remote copy you just pulled (`remote_backups`)
+or a previous write of this machine (`local_backups`). SSMS at
+`127.0.0.1,1433` must use the **container** path.
+
+Restore the pulled remote database:
+
+```sql
+USE master;
+RESTORE FILELISTONLY
+FROM DISK = N'/var/opt/mssql/backup/remote_backups/agrolav.bak';
 ```
+
+```sql
+USE master;
+
+ALTER DATABASE [agrolav]
+SET SINGLE_USER
+WITH ROLLBACK IMMEDIATE;
+
+RESTORE DATABASE [agrolav]
+FROM DISK = N'/var/opt/mssql/backup/remote_backups/agrolav.bak'
+WITH
+    REPLACE,
+    RECOVERY;
+
+ALTER DATABASE [agrolav]
+SET MULTI_USER;
+```
+
+To roll this PC back to its own last write, use
+`N'/var/opt/mssql/backup/local_backups/agrolav.bak'` instead.
+
+Then the same table check and `visitor_ip.sql` / `administrator.sql` as
+§1.3. A local restore does not need production WAN rows in
+`dbo.administrator` if you sign in with `HUB_DEV_LOGIN=1` on loopback.
 
 ---
+
 
 ## Category IDs
 
@@ -263,12 +409,10 @@ Further languages are extra `term_lang{N}` columns. Country picks a column via
 | `title` | `NVARCHAR(256)` | display name |
 | `country_id` | `INT` FK | |
 | `center_id` | `INT` FK | |
-| `number_of_accounts` | `INT` NOT NULL | count of rows in `account` for this person |
 | `password_hash` | `NVARCHAR(256)` NULL | scrypt; see `double_login.md` |
 | `mobile_phone` | `NVARCHAR(32)` NULL | E.164; SMS second step when set |
 
-Country is `person → center → country`. Check:
-`person.number_of_accounts = COUNT(*) FROM account WHERE account.person_id = person.id`.
+Country is `person → center → country`. Account count is `COUNT(*) FROM dbo.account WHERE person_id = person.id`.
 
 ### `account`
 

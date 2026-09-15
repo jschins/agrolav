@@ -549,7 +549,6 @@ def _insert_person(
     username: str,
     country_id: int,
     center_id: int,
-    number_of_accounts: int,
     title: str | None = None,
 ) -> int:
     from app.user_store import default_password_hash, display_title
@@ -558,16 +557,15 @@ def _insert_person(
     cursor.execute(
         """
         INSERT INTO dbo.person
-            (username, title, country_id, center_id, number_of_accounts,
+            (username, title, country_id, center_id,
              created_at, password_hash)
         OUTPUT INSERTED.id
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         username,
         (title or display_title(username) or username).strip(),
         country_id,
         center_id,
-        number_of_accounts,
         today,
         default_password_hash(username),
     )
@@ -680,7 +678,6 @@ def load_tree(
                     username=person_dir.name,
                     country_id=country_id,
                     center_id=center_id,
-                    number_of_accounts=len(accounts),
                 )
                 for acc in accounts:
                     acc["account_id"] = _insert_account(
@@ -810,16 +807,6 @@ def load_tree(
                                 key = (account_id, name)
                                 if key not in file_rows or (file_rows[key] is None and fmt is not None):
                                     file_rows[key] = fmt
-
-                cursor.execute(
-                    """
-                    UPDATE dbo.person
-                    SET number_of_accounts = (SELECT COUNT(*) FROM dbo.account WHERE person_id = ?)
-                    WHERE id = ?
-                    """,
-                    person_id,
-                    person_id,
-                )
 
     if personal_terms:
         cursor.executemany(
@@ -970,20 +957,6 @@ def verify(cursor) -> None:
     if int(cursor.fetchone()[0]):
         raise LoadError("transaction_uk contains a row whose person is not uk")
     print("check each booking table is country-scoped")
-
-    cursor.execute(
-        """
-        SELECT u.username, u.number_of_accounts, COUNT(a.account_id)
-        FROM dbo.person u
-        JOIN dbo.account a ON a.person_id = u.id
-        GROUP BY u.id, u.username, u.number_of_accounts
-        HAVING u.number_of_accounts <> COUNT(a.account_id)
-        """
-    )
-    mismatches = cursor.fetchall()
-    if mismatches:
-        raise LoadError(f"number_of_accounts mismatch: {mismatches}")
-    print("check number_of_accounts = COUNT(account)")
 
     cursor.execute(
         """

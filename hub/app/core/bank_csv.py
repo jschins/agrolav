@@ -384,16 +384,9 @@ def person_uses_bank_subfolders(person: str, center: str) -> bool:
     try:
         from app import user_store
 
-        user = user_store.find_user(person)
-        if user is not None:
-            n = user.get("number_of_accounts")
-            if n is not None:
-                return int(n) > 1
-            fmt = str(user.get("format") or "").strip().lower()
-            if fmt == user_store.FORMAT_MULTIPLE:
-                return True
-            if fmt == user_store.FORMAT_SECRET or user_store.is_single_bank_format(fmt):
-                return False
+        accounts = user_store.list_accounts_for_username(person)
+        if accounts:
+            return len(accounts) > 1
     except Exception:  # noqa: BLE001
         pass
     return len(person_csv_banks(person, center)) > 1

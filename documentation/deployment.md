@@ -1,8 +1,8 @@
 # Deployment Guide — Agrolav Production
 
 How to deploy Agrolav to `expenses.apsurt.nl`: Git updates, Python/Node
-dependencies, frontend builds, SQL Server, database restore, systemd, and
-Caddy.
+dependencies, frontend builds, systemd, and Caddy. SQL backup and restore
+are in [`DATABASE.md`](DATABASE.md).
 
 ---
 
@@ -108,6 +108,10 @@ npm run build
 
 ## 5. Check the SQL Server container
 
+Backup, `scp`, and restore (both directions) live in
+[`DATABASE.md`](DATABASE.md). The bind mount is `/opt/sql_backups` →
+`/var/opt/mssql/backup`; do not `docker cp` through `/tmp`.
+
 Every `docker` command on the server needs `sudo` — the `agrolav` user is not
 in the `docker` group:
 
@@ -115,156 +119,8 @@ in the `docker` group:
 sudo docker ps
 ```
 
-Expected: `MSSQL2022`, `0.0.0.0:1433->1433/tcp`.
-
----
-
-## 6. Copy a `.bak` to the server
-
-Local backups live in `C:\SQLBackups\local_backups\`; from Windows:
-
-```powershell
-scp -P 4523 C:/SQLBackups/local_backups/agrolav.bak agrolav@209.38.39.105:/tmp/
-```
-
-On the server:
-
-```bash
-ls -lh /tmp/agrolav.bak
-```
-
-
-Claim ownership:
-```bash
-sudo chown agrolav:agrolav /opt/sql_backups/agrolav20260909_1039.bak
-```
-
----
-
-## 7. Copy the backup into the container
-
-```bash
-sudo docker exec MSSQL2022 mkdir -p /var/opt/mssql/backup
-sudo docker cp /tmp/agrolav.bak MSSQL2022:/var/opt/mssql/backup/agrolav.bak
-sudo docker exec MSSQL2022 ls -lh /var/opt/mssql/backup/agrolav.bak
-```
-
----
-
-## 8. Restore
-
-SSMS at `209.38.39.105,1433` (`sa`). Logical names:
-
-```sql
-USE MASTER
-RESTORE FILELISTONLY
-FROM DISK = '/var/opt/mssql/backup/remote_backups/agrolav.bak';
-```
-
-Then:
-
-```sql
-USE master;
-
-ALTER DATABASE [agrolav]
-SET SINGLE_USER
-WITH ROLLBACK IMMEDIATE;
-
-RESTORE DATABASE [agrolav]
-FROM DISK = '/var/opt/mssql/backup/remote_backups/agrolav.bak'
-WITH
-    REPLACE,
-    RECOVERY;
-
-ALTER DATABASE [agrolav]
-SET MULTI_USER;
-```
-
----
-
-### 8a. Verify tables the app needs
-
-The hub auto-creates **only** `dbo.consent_pending`. Everything else must
-exist already. After restore:
-
-```sql
-USE agrolav;
-SELECT name FROM sys.tables
-WHERE name IN (
-  'account','administrator','bank','bank_modality','category_term',
-  'category_total','center','consent_pending','country','dim_category',
-  'enable_connection','enable_redirect','person','table_header_term',
-  'type_abbreviation','type_rule','transaction_nederland','transaction_uk',
-  'uploaded_files','visitor_ip'
-)
-ORDER BY name;
-```
-
-Then run the idempotent scripts so local and remote stay identical:
-
-- `hub/sql/visitor_ip.sql`
-- `hub/sql/administrator.sql`
-
-and insert the production router WAN addresses into `dbo.administrator`
-**before** country/center logins can succeed (empty `egress_ip` now admits
-nobody). See `DATABASE.md`.
-
----
-
-### 8b. Reverse direction: pull a backup from the server
-
-Only the endpoints swap; the middle mirrors §7/§6. On the server, create the
-`.bak` inside the container (SSMS at `209.38.39.105,1433` → *Back Up…* to
-`/var/opt/mssql/backup/`, or via `BACKUP DATABASE [agrolav] TO DISK =
-'/var/opt/mssql/backup/agrolav.bak'`), then copy it out the same path:
-
-```bash
-sudo docker cp MSSQL2022:/var/opt/mssql/backup/agrolav.bak /tmp/
-sudo chown agrolav:agrolav /tmp/agrolav.bak
-```
-
-`docker cp` creates a root-owned file that the later `scp` (running as
-`agrolav`) cannot read, hence the `chown`.
-
-On Windows, reverse the §6 `scp` into `C:\SQLBackups\remote_backups\`:
-
-```powershell
-scp -P 4523 agrolav@209.38.39.105:/tmp/agrolav.bak C:/SQLBackups/remote_backups/agrolav.bak
-```
-
-Restore on your local container. This is the complete command — the path
-differs from §8 because the pulled file lives under `remote_backups/`:
-
-```sql
-USE MASTER
-RESTORE FILELISTONLY
-FROM DISK = '/var/opt/mssql/backup/remote_backups/agrolav.bak';
-```
-
-Then, with the logical names from the output:
-
-```sql
-USE master;
-
-ALTER DATABASE [agrolav]
-SET SINGLE_USER
-WITH ROLLBACK IMMEDIATE;
-
-RESTORE DATABASE [agrolav]
-FROM DISK = '/var/opt/mssql/backup/remote_backups/agrolav.bak'
-WITH
-    REPLACE,
-    RECOVERY;
-
-ALTER DATABASE [agrolav]
-SET MULTI_USER;
-```
-
-Use the **container** path in SSMS: the local container only sees
-`C:\SQLBackups` via the bind mount as `/var/opt/mssql/backup`, so a Windows
-path like `C:/SQLBackups/…` fails with MSG 3201. The only differences from
-§6–§8 are the direction of `docker cp` / `scp` and that the `.bak` now
-originates from the server DB.
+Expected: `MSSQL2022`, `0.0.0.0:1433->1433/tcp`. The local container is
+`agrolav-sql` (`docker-compose.sqlserver.yml`).
 
 ---
 
@@ -616,7 +472,8 @@ sudo journalctl -u agrolav-hub -n 50 --no-pager
 
 - `HUB_DATABASE_URL is not set` → env not reaching the process (§11).
 - `dbo.person missing` → restore a database that contains the schema
-  (`hub/sql/phase_c.sql` is wipe-and-recreate; do not run it live).
+  ([`DATABASE.md`](DATABASE.md) §1.3; `hub/sql/phase_c.sql` is
+  wipe-and-recreate; do not run it live).
 - `ImportError: libodbc.so.2` → §10.
 
 ## 19. Old user/country data still showing
@@ -707,16 +564,3 @@ cd shared && uv sync && cd ../hub && uv sync && cd ../client && uv sync
 cd /opt/agrolav/client/frontend && npm ci && npm run build
 sudo systemctl restart agrolav-hub agrolav-client
 ```
-
-## Copy-paste: local `.bak` onto the remote database
-
-1. SSMS: right-click agrolav → Tasks → Backup (Docker mapping `C:/SQLBackups`; save as `C:\SQLBackups\local_backups\agrolav.bak`).
-2. PowerShell: `scp -P 4523 C:/SQLBackups/local_backups/agrolav.bak agrolav@209.38.39.105:/tmp/`
-3. SSH: `ls -lh /tmp/agrolav.bak`
-4. `sudo docker cp /tmp/agrolav.bak MSSQL2022:/var/opt/mssql/backup/agrolav.bak`
-5. Restore with the SQL in §8.
-6. Run `hub/sql/visitor_ip.sql` and `hub/sql/administrator.sql` if those
-   objects are missing after the restore.
-
-That's the server-side name; the local container is named `agrolav-sql` (see
-`docker-compose.sqlserver.yml`).

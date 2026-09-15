@@ -1042,26 +1042,12 @@ def _remainder_id(cursor, person_id: int) -> int | None:
     return _category_lookup(cursor, person_id)[1]
 
 
-def _refresh_account_count(cursor, person_id: int) -> int:
-    cursor.execute(
-        "SELECT COUNT(*) FROM dbo.account WHERE person_id = ?",
-        person_id,
-    )
-    count = int(cursor.fetchone()[0])
-    cursor.execute(
-        "UPDATE dbo.person SET number_of_accounts = ? WHERE id = ?",
-        count,
-        person_id,
-    )
-    return count
-
-
 def ensure_bound_accounts(
     accounts: list[dict[str, Any]],
     *,
     default_format: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Insert missing ``dbo.account`` rows for the bound person; set ``number_of_accounts``."""
+    """Insert missing ``dbo.account`` rows for the bound person."""
     from app import user_store
 
     if not user_store.database_url() or not accounts:
@@ -1134,7 +1120,6 @@ def ensure_bound_accounts(
                     account_id,
                 )
             out.append({"account_id": account_id, "iban": iban, "account_name": name or iban})
-        _refresh_account_count(bound.cursor, bound.person_id)
         bound.conn.commit()
         return out
     except Exception as exc:  # noqa: BLE001

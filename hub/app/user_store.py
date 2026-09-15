@@ -32,7 +32,6 @@ SELECT
     p.id,
     p.username COLLATE Latin1_General_CI_AI AS username,
     p.title AS title,
-    p.number_of_accounts,
     c.username COLLATE Latin1_General_CI_AI AS country,
     n.username COLLATE Latin1_General_CI_AI AS center,
     p.username COLLATE Latin1_General_CI_AI AS person
@@ -46,7 +45,6 @@ SELECT
     n.center_id AS id,
     n.username COLLATE Latin1_General_CI_AI AS username,
     n.title AS title,
-    CAST(NULL AS INT) AS number_of_accounts,
     c.username COLLATE Latin1_General_CI_AI AS country,
     n.username COLLATE Latin1_General_CI_AI AS center,
     CAST(N'' AS NVARCHAR(128)) COLLATE Latin1_General_CI_AI AS person
@@ -59,7 +57,6 @@ SELECT
     c.country_id AS id,
     c.username COLLATE Latin1_General_CI_AI AS username,
     c.title AS title,
-    CAST(NULL AS INT) AS number_of_accounts,
     c.username COLLATE Latin1_General_CI_AI AS country,
     CAST(NULL AS NVARCHAR(64)) COLLATE Latin1_General_CI_AI AS center,
     CAST(N'' AS NVARCHAR(128)) COLLATE Latin1_General_CI_AI AS person
@@ -292,11 +289,8 @@ def _row_to_user(row: Any) -> dict[str, Any]:
     ident = _cell(row, "id")
     username = str(_cell(row, "username") or "")
     person_raw = _cell(row, "person")
-    accounts_raw = _cell(row, "number_of_accounts")
     if person_raw is not None and str(person_raw).strip():
         person = str(person_raw).strip()
-    elif accounts_raw is not None:
-        person = username
     else:
         person = ""
     return {
@@ -307,9 +301,6 @@ def _row_to_user(row: Any) -> dict[str, Any]:
         "center": str(center_raw or ""),
         "person": person,
         "format": str(format_raw or "").strip(),
-        "number_of_accounts": (
-            int(accounts_raw) if accounts_raw is not None else None
-        ),
     }
 
 
@@ -690,9 +681,9 @@ def upsert_user(
             cursor.execute(
                 """
                 INSERT INTO dbo.person
-                    (username, title, country_id, center_id, number_of_accounts,
+                    (username, title, country_id, center_id,
                      created_at, password_hash, mobile_phone)
-                VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -785,10 +776,10 @@ def create_manual_person(
         cursor.execute(
             """
             INSERT INTO dbo.person
-                (username, title, country_id, center_id, number_of_accounts,
+                (username, title, country_id, center_id,
                  created_at, password_hash, mobile_phone)
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,

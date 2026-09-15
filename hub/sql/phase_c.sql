@@ -86,13 +86,11 @@ CREATE TABLE dbo.person (
     title NVARCHAR(256) NOT NULL,
     country_id INT NOT NULL,
     center_id INT NOT NULL,
-    number_of_accounts INT NOT NULL CONSTRAINT df_person_accounts DEFAULT (0),
     created_at DATE NOT NULL,
     password_hash NVARCHAR(256) NULL,
     mobile_phone NVARCHAR(32) NULL,
     CONSTRAINT fk_person_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
-    CONSTRAINT fk_person_center FOREIGN KEY (center_id) REFERENCES dbo.center (center_id),
-    CONSTRAINT ck_person_accounts CHECK (number_of_accounts >= 0)
+    CONSTRAINT fk_person_center FOREIGN KEY (center_id) REFERENCES dbo.center (center_id)
 );
 CREATE UNIQUE INDEX ux_person_username ON dbo.person (username);
 

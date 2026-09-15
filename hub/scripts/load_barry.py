@@ -281,7 +281,7 @@ def _wipe_person(cursor, person_id: int, table: str) -> None:
     print(f"wiped existing person_id={person_id}")
 
 
-def _insert_person(cursor, *, country_id: int, center_id: int, n_accounts: int) -> int:
+def _insert_person(cursor, *, country_id: int, center_id: int) -> int:
     from app import user_store
 
     if user_store._sql_username_taken(cursor, PERSON_USERNAME):
@@ -290,17 +290,16 @@ def _insert_person(cursor, *, country_id: int, center_id: int, n_accounts: int) 
     cursor.execute(
         """
         INSERT INTO dbo.person
-            (username, title, country_id, center_id, number_of_accounts,
+            (username, title, country_id, center_id,
              created_at, password_hash)
         OUTPUT INSERTED.id
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
             PERSON_USERNAME,
             PERSON_TITLE,
             country_id,
             center_id,
-            n_accounts,
             today,
             user_store.default_password_hash(PERSON_USERNAME),
         ),
@@ -579,7 +578,6 @@ def load(cursor) -> None:
         cursor,
         country_id=country_id,
         center_id=center_id,
-        n_accounts=len(raw_accounts),
     )
     account_ids = _insert_accounts(cursor, person_id, raw_accounts)
     n_tx = _load_transactions(
@@ -608,14 +606,6 @@ def load(cursor) -> None:
         app_id=app_id,
     )
     _set_last_booked(cursor, table, person_id)
-    cursor.execute(
-        """
-        UPDATE dbo.person
-        SET number_of_accounts = (SELECT COUNT(*) FROM dbo.account WHERE person_id = ?)
-        WHERE id = ?
-        """,
-        (person_id, person_id),
-    )
     print(f"person {PERSON_USERNAME} id={person_id} title={PERSON_TITLE!r}")
     print(f"accounts: {len(account_ids)}")
     print(f"bookings: {n_tx} -> {table}")

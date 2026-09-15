@@ -72,17 +72,34 @@ Encryption *Mandatory* + *Trust server certificate*.
 
 ### 2. `CENTRALE_API_KEY`
 
-The Bearer token the client BFF, balance, and Caddy send when calling hub
-`/api/*` paths. Single place: the root `.env` file. All consumers read the
-same file, so there is no cross-file "must match" dance anymore.
+The Bearer token for the **hub** (`:8200`). Caddy stamps it onto
+`/upload*`, `/add-person*`, `/api/status`, and `/api/local/*`. The client
+BFF sends it when it calls the hub. Single place: the root `.env` file.
+
+This is **not** a password for the balance sheet in the browser. The
+balance SPA (`/balance/{slug}`) calls its own JSON API with no
+`Authorization` header and cannot hold this secret. If the balance
+process treats `CENTRALE_API_KEY` as required, every sheet fetch returns
+**401 Unauthorized**. Keep the key in the root `.env`; do **not** put it
+in `/etc/agrolav/balance.env`. Balance ignores it for API checks. An
+optional later lock would be a separate `BALANCE_API_KEY`, unset today.
+
+| Who | Uses `CENTRALE_API_KEY`? |
+|---|---|
+| Hub `/api/*` | Yes |
+| Caddy → hub | Yes |
+| Client → hub | Yes |
+| Client → balance (journal, etc.) | May still *send* it; balance does not *require* it |
+| Balance sheet in the browser | No |
 
 Change it:
 
 1. Generate a long random value, e.g. `python -c "import secrets; print(secrets.token_hex(32))"`.
 2. Replace the `CENTRALE_API_KEY=` line in the root `.env` (local) or
    `/opt/agrolav/.env` (server).
-3. Restart the readers: `sudo systemctl restart agrolav-hub agrolav-client agrolav-balance agrolav-maaltijden`
-   and `sudo systemctl restart caddy` (reload is not enough).
+3. Restart the readers: `sudo systemctl restart agrolav-hub agrolav-client`
+   and `sudo systemctl restart caddy` (reload is not enough). Balance
+   does not need a restart for this key.
 
 If it is left empty, `require_api_key` is a no-op and the hub accepts
 unkeyed calls.

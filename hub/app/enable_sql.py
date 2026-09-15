@@ -512,10 +512,6 @@ def upsert_person_accounts(username: str, accounts: list[dict[str, Any]]) -> lis
             "UPDATE dbo.person SET title = ? WHERE id = ?",
             (title, person_id),
         )
-    cursor.execute(
-        "UPDATE dbo.person SET number_of_accounts = (SELECT COUNT(*) FROM dbo.account WHERE person_id = ?) WHERE id = ?",
-        (person_id, person_id),
-    )
     from app import user_store
 
     user_store._sql_connect().commit()

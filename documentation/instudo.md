@@ -81,8 +81,7 @@ them, then run Enable Banking consent again:
   personal `category_term`, `enable_redirect`, and anything else keyed by
   person 24. Matrix and refresh filter by `person_id`; moving only the
   account row leaves a personal login looking at an empty book.
-- `number_of_accounts` = 1 on each new person; 0 or delete the old combined
-  person.
+- `number_of_accounts` is not stored on `person`; count `dbo.account` rows.
 - Passwords / phones / titles for the new logins.
 - A new `enable_connection` row per person; **new consent**, not a copied
   `session_id`.

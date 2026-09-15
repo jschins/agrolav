@@ -11,8 +11,8 @@ The backup mount (`/opt/sql_backups:/var/opt/mssql/backup`) only persists
 
 This document migrates the live data onto a **named volume** so the database
 survives future container recreations. The migration is done with the
-established backup + restore workflow ([`deployment.md`](deployment.md)
-§8b/§8), nothing is copied as raw `.mdf`/`.ldf` files.
+established backup + restore workflow ([`DATABASE.md`](DATABASE.md)),
+nothing is copied as raw `.mdf`/`.ldf` files.
 
 ---
 
@@ -201,7 +201,7 @@ Default restore paths land in `/var/opt/mssql/data`, which sits on the
 `mssql-data` volume. If `FILELISTONLY` shows different logical names, restore
 only the data/log rows with `MOVE` to `/var/opt/mssql/data/...`.
 
-Verify the app's tables exist ([`deployment.md`](deployment.md) §8a):
+Verify the app's tables exist ([`DATABASE.md`](DATABASE.md) §1.3):
 
 ```sql
 USE agrolav;
@@ -217,8 +217,8 @@ ORDER BY name;
 ```
 
 Then run the idempotent scripts and re-add the production router WAN addresses
-into `dbo.administrator` before country/center logins work (`deployment.md`
-§8a, `DATABASE.md`).
+into `dbo.administrator` before country/center logins work
+([`DATABASE.md`](DATABASE.md) §1.3).
 
 Bring the apps back:
 
@@ -313,5 +313,5 @@ You lose nothing: the `.bak` is the source of truth in both directions.
 | data volume | `sqlserver_mssql-data` (named volume) → `/var/opt/mssql` |
 | backup mount | `/opt/sql_backups` → `/var/opt/mssql/backup` |
 | SSMS endpoint | `209.38.39.105,1433`, login `sa`, DB `agrolav` |
-| restore sources | [`deployment.md`](deployment.md) §8 / §8a / §8b |
+| restore sources | [`DATABASE.md`](DATABASE.md) |
 | password policies | [`passwords.md`](passwords.md) |

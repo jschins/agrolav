@@ -56,7 +56,7 @@ From the PC, **SCP/SFTP over SSH only**. No email, no browser upload, no
 public object URL, no git of secrets.
 
 ```powershell
-scp -P 4523 C:\SQLBackups\local_backups\agrolav.bak agrolav@<DROPLET_IP>:/tmp/
+scp -P 4523 C:\SQLBackups\local_backups\agrolav.bak agrolav@<DROPLET_IP>:/opt/sql_backups/local_backups/agrolav.bak
 ```
 
 Use a key. Do not write the SSH password here — it belongs in a password
