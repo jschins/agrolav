@@ -63,12 +63,19 @@ Inside the container that is the same disk:
 
 Do not `docker cp` through `/tmp`. The bind mount is the same directory.
 
-SQL Server (uid **10001**) must be able to write `remote_backups/` for
-§1.1 and read `local_backups/` for §1.3. Before `BACKUP`,
-`chown 10001:10001` the target file or folder; before `scp` as `agrolav`,
-`chown agrolav:agrolav` that `.bak` again.
+SQL Server (uid **10001**) must **own the folder** to create a new dated
+`.bak` (error 5 if the directory is `agrolav`). Keep `remote_backups/` as
+`10001`; only `chown` the **file** to `agrolav` when you `scp` it.
+
+```bash
+sudo chown 10001:10001 /opt/sql_backups/remote_backups
+sudo chmod 775 /opt/sql_backups/remote_backups
+```
 
 ### 1.1 SQL to write the database to disk
+
+The folder must already be `10001` (above). A new filename is a create, not
+an overwrite of an existing file.
 
 SSMS at `209.38.39.105,1433` (`sa`):
 

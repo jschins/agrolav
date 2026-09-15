@@ -1559,6 +1559,7 @@ export default function App() {
             dataRev={dataRev}
             banks={banks}
             bankOptions={bankOptions}
+            menuTerms={menuTerms}
           />
         )
       }
@@ -1745,6 +1746,7 @@ function MainApp({
   dataRev,
   banks,
   bankOptions,
+  menuTerms,
 }: {
   brandName: string;
   year: string;
@@ -1752,6 +1754,7 @@ function MainApp({
   dataRev: number;
   banks?: { person?: string; first_download: boolean; needs_initial_authorization: boolean };
   bankOptions?: BankAccount[];
+  menuTerms?: Record<string, string>;
 }) {
   const [matrix, setMatrix] = useState<MatrixResponse | null>(null);
   const [selection, setSelection] = useState<CellSelection | null>(null);
@@ -2297,7 +2300,7 @@ function MainApp({
     if (accountCount <= 1) return title;
     const subtitle =
       bankView === "consolidated"
-        ? tableHeaderTerm(matrix?.table_header_terms, "Consolidated")
+        ? tableHeaderTerm(matrix?.table_header_terms ?? menuTerms, "Consolidated")
         : bankOptions?.find((a) => a.iban === bankView)?.account_name?.trim() || "";
     if (!subtitle) return title;
     return `${title}\n${subtitle}`;
