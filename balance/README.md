@@ -471,21 +471,15 @@ HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DA
 
 ### Optional API key (future)
 
-The hub supports an optional `CENTRALE_API_KEY` in `balance.env`; when set, every
-`/api/...` endpoint (except `/api/health`) requires an
-`Authorization: Bearer <key>` header. **This is currently disabled by default**
-because the balance SPA calls the API without an `Authorization` header — the
-sheet is served as a public read-only view, and a shared secret cannot be safely
-embedded in a browser app.
+Do **not** put `CENTRALE_API_KEY` in `balance.env` or rely on the shared
+root `.env` for this. The sheet SPA calls `/balance/{slug}/api/...` with
+no `Authorization` header. If `CENTRALE_API_KEY` is in the balance
+process environment, every sheet fetch returns 401.
 
-To enable it later (once the frontend gets a real login that can attach the
-header), add:
-
-```text
-CENTRALE_API_KEY=your-secret-token
-```
-
-Keeping it empty (or the line absent) leaves the balance sheet public.
+An optional `BALANCE_API_KEY` (not the hub key) can lock the JSON API
+later, once the frontend has a login that can send `Authorization:
+Bearer …`. Leave it unset. Port 8100 is localhost-only; Caddy is the
+public door.
 
 The hub serves the frontend's `dist/` under `/balance/{slug}/` and its API at
 `/balance/{slug}/api/balance/...`, all on `127.0.0.1:8100` — one SPA and one

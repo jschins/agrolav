@@ -51,7 +51,14 @@ def resolve_country(slug: str) -> int:
 
 
 def _api_key(authorization: str | None = Header(default=None)) -> None:
-    key = os.environ.get("CENTRALE_API_KEY", "").strip()
+    """Optional extra lock for :8100. Do not use ``CENTRALE_API_KEY``.
+
+    That value lives in the shared root ``.env`` so the hub and Caddy can
+    call each other. Loading it here 401s the browser sheet, which has no
+    ``Authorization`` header. Set ``BALANCE_API_KEY`` only if you later add
+    a login that can send it.
+    """
+    key = os.environ.get("BALANCE_API_KEY", "").strip()
     if not key:
         return
     if authorization != f"Bearer {key}":
