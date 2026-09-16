@@ -155,6 +155,12 @@ export function getExportExcel(year?: string): Promise<ExportExcelData> {
   return getJson(`/api/export-excel${q}`);
 }
 
+export interface ExportResultaatMaaltijden {
+  ontbijten: number[];
+  koude: number[];
+  warme: number[];
+}
+
 export interface ExportResultaatData {
   year: number;
   country?: string | null;
@@ -164,6 +170,7 @@ export interface ExportResultaatData {
   resultaat: ExportExcelLine[];
   total_months?: number[];
   total_resultaat: number;
+  maaltijden?: ExportResultaatMaaltijden | null;
 }
 
 export function getExportResultaat(year?: string): Promise<ExportResultaatData> {

@@ -413,11 +413,49 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     ...monthTotals.map((n) => euro2(n)),
     euro2(data.total_resultaat),
   ]);
+  if (data.maaltijden) {
+    const ont = padMonths(data.maaltijden.ontbijten);
+    const koude = padMonths(data.maaltijden.koude);
+    const warme = padMonths(data.maaltijden.warme);
+    const foodLine = data.resultaat.find((line) => line.code === 3035);
+    const food = padMonths(foodLine?.months);
+    const foodCumul = food.some((n) => n !== 0)
+      ? food.reduce((sum, n) => sum + n, 0)
+      : (foodLine?.amount ?? 0);
+    const ontCumul = ont.reduce((sum, n) => sum + n, 0);
+    const koudeCumul = koude.reduce((sum, n) => sum + n, 0);
+    const warmeCumul = warme.reduce((sum, n) => sum + n, 0);
+    const equivalent = (o: number, k: number, w: number): number =>
+      w + (2 / 3) * k + (1 / 3) * o;
+    const costCell = (foodAmt: number, eq: number): number | "" =>
+      eq === 0 ? "" : euro2(foodAmt / eq);
+    const countRow = (label: string, parts: number[], cumul: number) => {
+      rows.push(["", label, ...parts.map((n) => euro2(n)), euro2(cumul)]);
+    };
+    rows.push([]);
+    countRow("Aantal ontbijten", ont, ontCumul);
+    countRow("Aantal koude maaltijden", koude, koudeCumul);
+    countRow("Aantal warme maaltijden", warme, warmeCumul);
+    const equivMonths = ont.map((_, i) => equivalent(ont[i], koude[i], warme[i]));
+    const equivCumul = equivalent(ontCumul, koudeCumul, warmeCumul);
+    rows.push([
+      "",
+      "Equivalent aantal warme maaltijden",
+      ...equivMonths.map((n) => euro2(n)),
+      euro2(equivCumul),
+    ]);
+    rows.push([
+      "",
+      "Voedselkosten per warme maaltijd",
+      ...equivMonths.map((eq, i) => costCell(food[i], eq)),
+      costCell(foodCumul, equivCumul),
+    ]);
+  }
   return [
     {
       name: "Resultaat",
       rows,
-      widths: [10, 36, ...Array.from({ length: monthCount }, () => 12), 14],
+      widths: [10, 40, ...Array.from({ length: monthCount }, () => 12), 14],
     },
   ];
 }

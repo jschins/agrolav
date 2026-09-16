@@ -1108,9 +1108,12 @@ def export_resultaat_excel_data(
 
     ``category_role`` can hold a login username. If that username appears on
     any P&L row, only those tagged rows are listed; otherwise every P&L
-    category is listed. Month columns run from January through the current
-    month of this year (all twelve when the export year is already over).
-    Cumulatief is their sum. Saldo is the sum of the displayed rows.
+    category is listed. That same case also sends monthly meal counts from
+    ``dbo.maaltijden_aantallen`` (ontbijt / koud / warm) for the Excel
+    footer; equivalent meals and food cost per meal are calculated in the
+    client. Month columns run from January through the current month of this
+    year (all twelve when the export year is already over). Cumulatief is
+    their sum. Saldo is the sum of the displayed P&L rows.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()
@@ -1316,6 +1319,35 @@ def export_resultaat_excel_data(
                     "amount": float(amount),
                 }
             )
+        maaltijden: dict[str, list[float]] | None = None
+        if role_listed and login:
+            cursor.execute("SELECT OBJECT_ID(N'dbo.maaltijden_aantallen', N'U')")
+            if cursor.fetchone()[0] is not None:
+                ont = [0.0] * month_count
+                koud = [0.0] * month_count
+                warm = [0.0] * month_count
+                if month_count > 0:
+                    cursor.execute(
+                        """
+                        SELECT maand, ontbijt, koud, warm
+                        FROM dbo.maaltijden_aantallen
+                        WHERE username = ? COLLATE Latin1_General_CI_AI
+                          AND jaar = ?
+                          AND maand BETWEEN 1 AND ?
+                        """,
+                        (login, int(year), month_count),
+                    )
+                    for month, o, k, w in cursor.fetchall():
+                        m = int(month)
+                        if 1 <= m <= month_count:
+                            ont[m - 1] = float(o or 0)
+                            koud[m - 1] = float(k or 0)
+                            warm[m - 1] = float(w or 0)
+                maaltijden = {
+                    "ontbijten": ont,
+                    "koude": koud,
+                    "warme": warm,
+                }
         return {
             "year": int(year),
             "country": name,
@@ -1325,6 +1357,7 @@ def export_resultaat_excel_data(
             "resultaat": rows,
             "total_months": [float(part) for part in total_months[:month_count]],
             "total_resultaat": float(total),
+            "maaltijden": maaltijden,
         }
 
     try:
