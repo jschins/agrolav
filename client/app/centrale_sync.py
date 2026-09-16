@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import threading
 import time
@@ -465,8 +466,25 @@ def scope_people(people: list[Any] | None) -> list[Any]:
     ]
 
 
+_MATRIX_CATEGORY_CODE = re.compile(r"^(\d{2,4})(?=\D|$)")
+
+
+def _person_matrix_keep_row(name: str) -> bool:
+    """Person login shows P&L (and footers), not activa/passiva 1000–2999."""
+    from shared.balance_values import is_balance_sheet_code
+
+    match = _MATRIX_CATEGORY_CODE.match(str(name or "").strip())
+    if not match:
+        return True
+    return not is_balance_sheet_code(int(match.group(1)))
+
+
 def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
-    """Keep matrix categories but only the configured person column when scoped."""
+    """Keep matrix categories but only the configured person column when scoped.
+
+    Person login also drops activa/passiva rows (local_code 1000–2999) so both
+    matrix views show profit-and-loss categories plus the saldo/datum footers.
+    """
     scope = configured_person()
     if not scope:
         return payload
@@ -474,16 +492,30 @@ def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
     people = scope_people(out.get("people") if isinstance(out.get("people"), list) else [])
     out["people"] = people
     person_names = {str(p.get("person_name") or "") for p in people if isinstance(p, dict)}
+    cats = out.get("categories")
+    keep: set[str] | None = None
+    if isinstance(cats, list):
+        kept = [str(c) for c in cats if _person_matrix_keep_row(str(c))]
+        out["categories"] = kept
+        keep = set(kept)
     cells = out.get("cells")
     if isinstance(cells, dict):
         trimmed: dict[str, Any] = {}
         for cat, row in cells.items():
+            if keep is not None and str(cat) not in keep:
+                continue
             if not isinstance(row, dict):
                 continue
             trimmed[cat] = {
                 k: v for k, v in row.items() if str(k) in person_names or str(k).lower() == scope.lower()
             }
         out["cells"] = trimmed
+    used = out.get("used")
+    if isinstance(used, dict) and keep is not None:
+        out["used"] = {k: v for k, v in used.items() if str(k) in keep}
+    entries = out.get("entries")
+    if isinstance(entries, list) and keep is not None:
+        out["entries"] = [e for e in entries if str(e) in keep]
     return out
 
 
