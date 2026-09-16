@@ -1101,14 +1101,16 @@ def export_resultaat_excel_data(
 ) -> dict[str, Any]:
     """P&L (3000–4999) plus Saldo, scoped to the login.
 
-    Person: that person's consolidated ``category_total`` (``bank_id IS NULL``).
-    Center: every person in that center, consolidated.
+    Person: that person's bookings, same set as ``dbo.category_total``.
+    Center: every person in that center.
     Country (neither person nor center): the whole country, plus journal/mirror
     overlay so Saldo matches the balance-sheet Resultaat sheet.
 
     ``category_role`` can hold a login username. If that username appears on
     any P&L row, only those tagged rows are listed; otherwise every P&L
-    category is listed. Saldo is the sum of the displayed rows.
+    category is listed. Month columns run from January through the current
+    month of this year (all twelve when the export year is already over).
+    Cumulatief is their sum. Saldo is the sum of the displayed rows.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()
@@ -1117,17 +1119,31 @@ def export_resultaat_excel_data(
         raise ValueError("country is required")
 
     def _run() -> dict[str, Any]:
+        import datetime
         from decimal import Decimal
 
         from shared.balance_values import (
+            category_local_codes,
             is_hit_forbidden_role,
-            result_overlay_cents,
+            is_resultaat,
+            journal_deltas,
+            spaar_source_exclude_clause,
+            transaction_table,
         )
 
         cursor = _cursor()
         country_id = _country_id_for(cursor, name)
         if country_id is None:
             raise ValueError(f"unknown country: {name}")
+        today = datetime.date.today()
+        y = int(year)
+        if y < today.year:
+            month_count = 12
+        elif y > today.year:
+            month_count = 0
+        else:
+            month_count = int(today.month)
+        person_id: int | None = None
         if person_name:
             cursor.execute(
                 """
@@ -1139,8 +1155,10 @@ def export_resultaat_excel_data(
                 """,
                 (int(country_id), person_name),
             )
-            if cursor.fetchone() is None:
+            prow = cursor.fetchone()
+            if prow is None:
                 raise ValueError(f"unknown person: {person_name}")
+            person_id = int(prow[0])
         elif center_name:
             cursor.execute(
                 """
@@ -1154,34 +1172,107 @@ def export_resultaat_excel_data(
             if cursor.fetchone() is None:
                 raise ValueError(f"unknown center: {center_name}")
 
-        sql = """
-            SELECT ct.category_id, SUM(CAST(ct.amount AS decimal(19, 2)))
-            FROM dbo.category_total ct
-            JOIN dbo.person p ON p.id = ct.person_id
-            JOIN dbo.center n ON n.center_id = p.center_id
-            JOIN dbo.dim_category d ON d.category_id = ct.category_id
-            WHERE n.country_id = ?
-              AND ct.year = ?
-              AND ct.bank_id IS NULL
-              AND d.local_code BETWEEN 3000 AND 4999
-        """
-        params: list[Any] = [int(country_id), int(year)]
-        if person_name:
-            sql += " AND p.username = ? COLLATE Latin1_General_CI_AI"
-            params.append(person_name)
-        elif center_name:
-            sql += " AND n.username = ? COLLATE Latin1_General_CI_AI"
-            params.append(center_name)
-        sql += " GROUP BY ct.category_id"
-        cursor.execute(sql, tuple(params))
-        recorded = {int(r[0]): Decimal(str(r[1] or 0)) for r in cursor.fetchall()}
+        monthly: dict[int, list[Decimal]] = {}
 
-        amounts = dict(recorded)
-        if not person_name and not center_name:
-            for code, cents in result_overlay_cents(country_id, int(year), cursor).items():
-                amounts[int(code)] = amounts.get(int(code), Decimal("0")) + (
-                    Decimal(cents) / Decimal(100)
+        def _add_month(cid: int, month: int, value: Decimal) -> None:
+            m = int(month)
+            if m < 1 or m > month_count:
+                return
+            row = monthly.setdefault(int(cid), [Decimal("0")] * 12)
+            row[m - 1] += value
+
+        table = transaction_table(int(country_id), cursor)
+        if table and month_count > 0:
+            cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+            if cursor.fetchone()[0] is not None:
+                exclude_sql, exclude_params = spaar_source_exclude_clause(
+                    int(country_id), cursor=cursor
                 )
+                # Same bookings as dbo.category_total (all bank_id copies, spaar
+                # source rows excluded), split by MONTH(booked_on).
+                sql = f"""
+                    SELECT t.category_id, MONTH(t.booked_on),
+                           SUM(CAST(t.amount AS decimal(19, 2)))
+                    FROM {table} t
+                    JOIN dbo.person p ON p.id = t.person_id
+                    JOIN dbo.center n ON n.center_id = p.center_id
+                    JOIN dbo.dim_category d
+                      ON d.category_id = t.category_id
+                     AND d.country_id = n.country_id
+                    WHERE n.country_id = ?
+                      AND t.year = ?
+                      AND d.local_code BETWEEN 3000 AND 4999
+                      AND t.booked_on IS NOT NULL
+                      AND MONTH(t.booked_on) BETWEEN 1 AND ?
+                      {exclude_sql}
+                """
+                params: list[Any] = [
+                    int(country_id),
+                    int(year),
+                    month_count,
+                    *exclude_params,
+                ]
+                if person_id is not None:
+                    sql += " AND t.person_id = ?"
+                    params.append(person_id)
+                elif center_name:
+                    sql += " AND n.username = ? COLLATE Latin1_General_CI_AI"
+                    params.append(center_name)
+                sql += " GROUP BY t.category_id, MONTH(t.booked_on)"
+                cursor.execute(sql, tuple(params))
+                for category_id, month, amount in cursor.fetchall():
+                    _add_month(
+                        int(category_id),
+                        int(month),
+                        Decimal(str(amount or 0)),
+                    )
+
+        if not person_name and not center_name:
+            codes = category_local_codes(country_id, cursor)
+            cursor.execute("SELECT OBJECT_ID(N'dbo.journal', N'U')")
+            if cursor.fetchone()[0] is not None:
+                cursor.execute(
+                    """
+                    SELECT category_from, category_to, amount, MONTH(date)
+                    FROM dbo.journal
+                    WHERE country_id = ? AND year = ?
+                      AND MONTH(date) BETWEEN 1 AND ?
+                    """,
+                    (int(country_id), int(year), month_count),
+                )
+                for cat_from, cat_to, amount, month in cursor.fetchall():
+                    try:
+                        src, dst, m = int(cat_from), int(cat_to), int(month)
+                    except (TypeError, ValueError):
+                        continue
+                    src_delta, dst_delta = journal_deltas(
+                        codes.get(src, src),
+                        codes.get(dst, dst),
+                        Decimal(str(amount or 0)),
+                    )
+                    if is_resultaat(codes.get(src, src)):
+                        _add_month(src, m, src_delta)
+                    if is_resultaat(codes.get(dst, dst)):
+                        _add_month(dst, m, dst_delta)
+            cursor.execute("SELECT OBJECT_ID(N'dbo.transaction_mirror', N'U')")
+            if cursor.fetchone()[0] is not None:
+                cursor.execute(
+                    """
+                    SELECT category_id, amount, MONTH(date)
+                    FROM dbo.transaction_mirror
+                    WHERE country_id = ? AND year = ?
+                      AND MONTH(date) BETWEEN 1 AND ?
+                    """,
+                    (int(country_id), int(year), month_count),
+                )
+                for category_id, amount, month in cursor.fetchall():
+                    try:
+                        cid, m = int(category_id), int(month)
+                    except (TypeError, ValueError):
+                        continue
+                    if not is_resultaat(codes.get(cid, cid)):
+                        continue
+                    _add_month(cid, m, Decimal(str(amount or 0)))
 
         cursor.execute(
             """
@@ -1203,6 +1294,7 @@ def export_resultaat_excel_data(
                     role_listed = True
                     break
         rows: list[dict[str, Any]] = []
+        total_months = [Decimal("0")] * 12
         total = Decimal("0")
         for category_id, local_code, label, role in dim_rows:
             if is_hit_forbidden_role(role):
@@ -1211,12 +1303,16 @@ def export_resultaat_excel_data(
             if role_listed and role_text.lower() != login_l:
                 continue
             cid = int(category_id)
-            amount = amounts.get(cid, Decimal("0"))
+            months = list(monthly.get(cid, [Decimal("0")] * 12))[:month_count]
+            amount = sum(months, Decimal("0"))
             total += amount
+            for i, part in enumerate(months):
+                total_months[i] += part
             rows.append(
                 {
                     "code": int(local_code),
                     "label": str(label or "").strip() or f"cat_{local_code}",
+                    "months": [float(part) for part in months],
                     "amount": float(amount),
                 }
             )
@@ -1225,7 +1321,9 @@ def export_resultaat_excel_data(
             "country": name,
             "person": person_name or None,
             "center": center_name or None,
+            "month_count": month_count,
             "resultaat": rows,
+            "total_months": [float(part) for part in total_months[:month_count]],
             "total_resultaat": float(total),
         }
 

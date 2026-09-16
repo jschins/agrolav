@@ -357,16 +357,69 @@ function exportScopeSlug(data: {
   return slug || "export";
 }
 
+const RESULTAAT_MONTHS = [
+  "Januari",
+  "Februari",
+  "Maart",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Augustus",
+  "September",
+  "Oktober",
+  "November",
+  "December",
+];
+
+function resultaatVisibleMonthCount(year: number, reported?: number): number {
+  const now = new Date();
+  let cap = 12;
+  if (year > now.getFullYear()) cap = 0;
+  else if (year === now.getFullYear()) cap = now.getMonth() + 1;
+  if (typeof reported === "number" && reported >= 0 && reported <= 12) {
+    return Math.min(reported, cap);
+  }
+  return cap;
+}
+
 function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
+  const monthCount = resultaatVisibleMonthCount(data.year, data.month_count);
+  const monthNames = RESULTAAT_MONTHS.slice(0, monthCount);
   const rows: (string | number)[][] = [];
   const scope = (data.person || data.center || data.country || "").trim();
   rows.push([scope ? `Resultaat ${scope} ${data.year}` : `Resultaat ${data.year}`]);
-  rows.push(["Code", "Post", "Bedrag"]);
+  rows.push(["Code", "Post", ...monthNames, "Cumulatief"]);
+  const padMonths = (raw: number[] | undefined): number[] => {
+    const next = [...(raw ?? [])];
+    while (next.length < monthCount) next.push(0);
+    return next.slice(0, monthCount);
+  };
+  const monthTotals = padMonths(data.total_months);
   for (const line of data.resultaat) {
-    rows.push([String(line.code), line.label, euro2(line.amount)]);
+    const parts = padMonths(line.months);
+    const monthSum = parts.reduce((sum, n) => sum + n, 0);
+    const cumul = parts.some((n) => n !== 0) ? monthSum : line.amount;
+    rows.push([
+      String(line.code),
+      line.label,
+      ...parts.map((n) => euro2(n)),
+      euro2(cumul),
+    ]);
   }
-  rows.push(["", "Saldo", euro2(data.total_resultaat)]);
-  return [{ name: "Resultaat", rows, widths: [10, 60, 14] }];
+  rows.push([
+    "",
+    "Saldo",
+    ...monthTotals.map((n) => euro2(n)),
+    euro2(data.total_resultaat),
+  ]);
+  return [
+    {
+      name: "Resultaat",
+      rows,
+      widths: [10, 36, ...Array.from({ length: monthCount }, () => 12), 14],
+    },
+  ];
 }
 
 function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {

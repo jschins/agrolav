@@ -87,6 +87,7 @@ export interface ExportExcelLine {
   code: number;
   label: string;
   amount: number;
+  months?: number[];
   source?: string;
 }
 
@@ -159,7 +160,9 @@ export interface ExportResultaatData {
   country?: string | null;
   person?: string | null;
   center?: string | null;
+  month_count?: number;
   resultaat: ExportExcelLine[];
+  total_months?: number[];
   total_resultaat: number;
 }
 
