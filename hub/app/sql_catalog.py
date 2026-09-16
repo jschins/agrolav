@@ -1110,10 +1110,11 @@ def export_resultaat_excel_data(
     any P&L row, only those tagged rows are listed; otherwise every P&L
     category is listed. That same case also sends monthly meal counts from
     ``dbo.maaltijden_aantallen`` (ontbijt / koud / warm) for the Excel
-    footer; equivalent meals and food cost per meal are calculated in the
-    client. Month columns run from January through the current month of this
-    year (all twelve when the export year is already over). Cumulatief is
-    their sum. Saldo is the sum of the displayed P&L rows.
+    footer; equivalent tafelgenoten and food cost per tafelgenoot are
+    calculated in the client. Month columns run from January through the
+    current month of this year (all twelve when the export year is already
+    over). Cumulatief is their sum. Saldo is the sum of the displayed P&L
+    rows.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()

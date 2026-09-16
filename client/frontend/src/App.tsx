@@ -426,7 +426,7 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     const koudeCumul = koude.reduce((sum, n) => sum + n, 0);
     const warmeCumul = warme.reduce((sum, n) => sum + n, 0);
     const equivalent = (o: number, k: number, w: number): number =>
-      w + (2 / 3) * k + (1 / 3) * o;
+      (o + 2 * k + 3 * w) / 6;
     const costCell = (foodAmt: number, eq: number): number | "" =>
       eq === 0 ? "" : euro2(-(foodAmt / eq));
     const countRow = (label: string, parts: number[], cumul: number) => {
@@ -440,13 +440,13 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     const equivCumul = equivalent(ontCumul, koudeCumul, warmeCumul);
     rows.push([
       "",
-      "Equivalent aantal warme maaltijden",
+      "Equivalent aantal tafelgenoten",
       ...equivMonths.map((n) => euro2(n)),
       euro2(equivCumul),
     ]);
     rows.push([
       "",
-      "Voedselkosten per warme maaltijd",
+      "Voedselkosten per tafelgenoot",
       ...equivMonths.map((eq, i) => costCell(food[i], eq)),
       costCell(foodCumul, equivCumul),
     ]);
