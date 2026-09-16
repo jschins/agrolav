@@ -1105,6 +1105,10 @@ def export_resultaat_excel_data(
     Center: every person in that center, consolidated.
     Country (neither person nor center): the whole country, plus journal/mirror
     overlay so Saldo matches the balance-sheet Resultaat sheet.
+
+    ``category_role`` can hold a login username. If that username appears on
+    any P&L row, only those tagged rows are listed; otherwise every P&L
+    category is listed. Saldo is the sum of the displayed rows.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()
@@ -1189,10 +1193,22 @@ def export_resultaat_excel_data(
             """,
             (int(country_id),),
         )
+        dim_rows = cursor.fetchall()
+        login = (person_name or center_name or name).strip()
+        login_l = login.lower()
+        role_listed = False
+        if login_l:
+            for _cid, _code, _label, role in dim_rows:
+                if str(role or "").strip().lower() == login_l:
+                    role_listed = True
+                    break
         rows: list[dict[str, Any]] = []
         total = Decimal("0")
-        for category_id, local_code, label, role in cursor.fetchall():
+        for category_id, local_code, label, role in dim_rows:
             if is_hit_forbidden_role(role):
+                continue
+            role_text = str(role or "").strip()
+            if role_listed and role_text.lower() != login_l:
                 continue
             cid = int(category_id)
             amount = amounts.get(cid, Decimal("0"))
