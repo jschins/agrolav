@@ -1616,35 +1616,47 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
             )
             existing: dict[int, dict[str, Any]] = {}
             protected_ids: set[int] = set()
+            protected_codes: set[int] = set()
             from shared.balance_values import is_hit_forbidden_role, is_remainder_role
 
             for category_id, local_code, label, role in cursor.fetchall():
                 cid = int(category_id)
                 if is_hit_forbidden_role(role):
                     protected_ids.add(cid)
+                    protected_codes.add(int(local_code))
                     continue
                 existing[cid] = {
                     "local_code": int(local_code),
                     "label": str(label or "").strip(),
                     "is_remainder": is_remainder_role(role),
                 }
+            cursor.execute("SELECT category_id FROM dbo.dim_category")
+            taken_ids = {int(row[0]) for row in cursor.fetchall()}
             used_ids = set(existing) | protected_ids
             lo, hi = _alloc_category_id_bounds(cursor, table, country_id, used_ids)
             allocated: list[dict[str, Any]] = []
             for item in parsed:
                 cid = item["category_id"]
                 if cid is None:
-                    cid = _new_booking_category_id(
-                        used_ids, int(item["local_code"]), lo, hi
+                    raise ValueError("Each category needs a numeric id")
+                code = int(item["local_code"])
+                if cid in protected_ids or (
+                    cid not in existing and cid in taken_ids
+                ):
+                    raise ValueError(f"Category id {cid} is already in use")
+                if code in protected_codes:
+                    raise ValueError(
+                        f"Category code {code:04d} is already in use"
                     )
-                    used_ids.add(cid)
-                    item = {**item, "category_id": cid, "is_new": True}
-                else:
-                    if cid in protected_ids:
-                        raise ValueError(f"Cannot edit protected category_id {cid}")
-                    if cid not in existing:
-                        raise ValueError(f"Unknown category_id {cid}")
+                if cid in existing:
                     item = {**item, "is_new": False}
+                else:
+                    if cid < lo or cid > hi:
+                        raise ValueError(
+                            f"Category id {cid} is outside the allowed range {lo}–{hi}"
+                        )
+                    taken_ids.add(cid)
+                    item = {**item, "is_new": True}
                 allocated.append(item)
             keep_ids = {int(item["category_id"]) for item in allocated}
             deleted_ids = sorted(existing.keys() - keep_ids)
@@ -1676,16 +1688,29 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
                 if item["is_new"]:
                     continue
                 cid = int(item["category_id"])
-                cursor.execute(
-                    """
-                    UPDATE dbo.dim_category
-                    SET local_code = ?, label = ?
-                    WHERE category_id = ?
-                    """,
-                    -cid,
-                    f"__tmp__{cid}",
-                    cid,
-                )
+                old_code = int(existing[cid]["local_code"])
+                new_code = int(item["local_code"])
+                if old_code != new_code:
+                    cursor.execute(
+                        """
+                        UPDATE dbo.dim_category
+                        SET local_code = ?, label = ?
+                        WHERE category_id = ?
+                        """,
+                        -cid,
+                        f"__tmp__{cid}",
+                        cid,
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE dbo.dim_category
+                        SET label = ?
+                        WHERE category_id = ?
+                        """,
+                        f"__tmp__{cid}",
+                        cid,
+                    )
             remainder_new_id = (
                 int(remainder_item["category_id"]) if remainder_item["is_new"] else None
             )
@@ -1744,13 +1769,18 @@ def _parse_catalog_items(
     max_code = 10**width - 1
     parsed: list[dict[str, Any]] = []
     codes: set[int] = set()
-    labels: set[str] = set()
+    ids: set[int] = set()
     remainders = 0
     for raw in items:
         if not isinstance(raw, dict):
             raise ValueError("Each category must be an object")
         cid_raw = raw.get("category_id")
-        cid = None if cid_raw in (None, "", 0) else int(cid_raw)
+        try:
+            cid = int(cid_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Each category needs a numeric id") from exc
+        if cid_raw in (None, "", 0) or cid < 1:
+            raise ValueError("Each category needs a numeric id")
         try:
             code = int(raw.get("local_code"))
         except (TypeError, ValueError) as exc:
@@ -1760,13 +1790,12 @@ def _parse_catalog_items(
         label = str(raw.get("label") or "").strip()
         if not label:
             raise ValueError("Each category needs a label")
+        if cid in ids:
+            raise ValueError(f"Category id {cid} is already in use")
         if code in codes:
-            raise ValueError(f"Duplicate category code {code:0{width}d}")
-        key = label.casefold()
-        if key in labels:
-            raise ValueError(f"Duplicate category label {label!r}")
+            raise ValueError(f"Category code {code:0{width}d} is already in use")
         codes.add(code)
-        labels.add(key)
+        ids.add(cid)
         remainder = bool(raw.get("is_remainder"))
         if remainder:
             remainders += 1

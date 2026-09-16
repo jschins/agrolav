@@ -823,8 +823,9 @@ textarea.cell-edit {
   vertical-align: middle;
 }
 
-.catalog-code {
-  width: 3.2rem;
+.catalog-code,
+.catalog-id {
+  width: 4.2rem;
 }
 
 .catalog-label {
@@ -832,6 +833,7 @@ textarea.cell-edit {
 }
 
 .catalog-code,
+.catalog-id,
 .catalog-label {
   box-sizing: border-box;
   font: inherit;

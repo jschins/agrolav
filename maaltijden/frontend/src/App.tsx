@@ -28,6 +28,31 @@ const EXTRA_LABELS: Record<keyof ExtraDay, string> = {
   P: "Pakket extra",
 };
 
+function useViewOrientationLock(mode: "portrait" | "landscape" | null) {
+  useEffect(() => {
+    if (!mode) return;
+    const phone = window.matchMedia("(hover: none) and (pointer: coarse)");
+    const orientation = screen.orientation;
+    function lockNative() {
+      if (!phone.matches) return;
+      const lock = orientation?.lock?.(mode);
+      if (lock && typeof lock.catch === "function") lock.catch(() => {});
+    }
+    lockNative();
+    phone.addEventListener("change", lockNative);
+    return () => {
+      phone.removeEventListener("change", lockNative);
+      if (typeof orientation?.unlock === "function") {
+        try {
+          orientation.unlock();
+        } catch {
+          /* Safari throws if lock never succeeded */
+        }
+      }
+    };
+  }, [mode]);
+}
+
 function extraKey(meal: string): keyof ExtraDay | null {
   if (meal === "O" || meal === "M" || meal === "A" || meal === "L" || meal === "P") {
     return meal;
@@ -468,6 +493,9 @@ export default function App() {
   const [view, setView] = useState<View>("day");
   const [repeatWeeks, setRepeatWeeks] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  useViewOrientationLock(
+    session ? (view === "week" ? "landscape" : "portrait") : null
+  );
 
   useEffect(() => {
     getMe()
@@ -555,7 +583,7 @@ export default function App() {
   const weeksChoice = Math.min(repeatWeeks, weekChoices[weekChoices.length - 1] ?? 0);
 
   return (
-    <div className="shell">
+    <div className={`shell lock-${view === "week" ? "landscape" : "portrait"}`}>
       <div className="bar">
         <DropMenu caption="week" label={weekLabel}>
           {(close) =>

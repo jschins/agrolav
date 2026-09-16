@@ -27,6 +27,7 @@ body {
   flex-direction: column;
   background: #edfcff;
   overflow: hidden;
+  container-type: size;
 }
 
 .bar {
@@ -213,7 +214,8 @@ body {
 }
 
 .sheet-wrap {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
@@ -224,8 +226,10 @@ body {
   padding-right: env(safe-area-inset-right);
 }
 
-.roomy .meal-table {
+.roomy .meal-table,
+.week-sheet .meal-table {
   font-size: clamp(12px, 3.4vw, 18px);
+  font-size: clamp(12px, 3.4cqw, 18px);
 }
 
 .roomy .meal-table .name-col,
@@ -234,13 +238,31 @@ body {
 .roomy .meal-table .month,
 .roomy .meal-table .dom,
 .roomy .meal-table .meal,
-.roomy .extra-input {
+.roomy .extra-input,
+.week-sheet .meal-table .name-col,
+.week-sheet .meal-table tbody .totals .name-col,
+.week-sheet .meal-table tbody .totals td,
+.week-sheet .meal-table .month,
+.week-sheet .meal-table .dom,
+.week-sheet .meal-table .meal,
+.week-sheet .extra-input {
   font-size: inherit;
   letter-spacing: normal;
 }
 
 .roomy .meal-table .name-col {
   width: 22%;
+}
+
+.week-sheet .meal-table .name-col {
+  width: 12%;
+}
+
+.roomy .meal-table .month,
+.roomy .meal-table .dom,
+.week-sheet .meal-table .month,
+.week-sheet .meal-table .dom {
+  height: auto;
 }
 
 .meal-table {
@@ -261,6 +283,7 @@ body {
   text-align: center;
   font-weight: 600;
   height: auto;
+  overflow: hidden;
 }
 
 .meal-table .name-col {
@@ -419,6 +442,7 @@ body {
   flex: 1 1 auto;
   table-layout: fixed;
   font-size: clamp(12px, 3.4vw, 18px);
+  font-size: clamp(12px, 3.4cqw, 18px);
   line-height: 1;
 }
 
@@ -462,4 +486,28 @@ body {
   line-height: 1;
   background: #fff;
   border: 0;
+}
+
+@media (hover: none) and (pointer: coarse) and (orientation: portrait) {
+  .shell.lock-landscape {
+    position: fixed;
+    top: 0;
+    left: 100%;
+    width: 100dvh;
+    height: 100dvw;
+    transform: rotate(90deg);
+    transform-origin: top left;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+  .shell.lock-portrait {
+    position: fixed;
+    top: 100%;
+    left: 0;
+    width: 100dvh;
+    height: 100dvw;
+    transform: rotate(-90deg);
+    transform-origin: top left;
+  }
 }

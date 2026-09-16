@@ -66,6 +66,7 @@ import JournalEditor from "./JournalEditor";
 
 const CHANNEL = "boekhouding";
 const REFRESH_STATUS_KEY = "boekhouding-refresh-status";
+const BALANCE_CHANNEL = "agrolav-balance";
 const BALANCE_WINDOW_NAME = "agrolavBalance";
 let balanceSheetWindow: Window | null = null;
 let lastBalanceUrl: string | null = null;
@@ -147,8 +148,16 @@ function openBalanceSheetWindow(url: string): void {
 }
 
 function closeBalanceSheetWindow(): void {
-  const win = balanceSheetWindow;
-  if (win && !win.closed) {
+  clearProbe();
+  let win = balanceSheetWindow && !balanceSheetWindow.closed ? balanceSheetWindow : null;
+  if (!win) {
+    try {
+      win = window.open("", BALANCE_WINDOW_NAME);
+    } catch {
+      win = null;
+    }
+  }
+  if (win) {
     try {
       win.postMessage({ type: "agrolav-close" }, "*");
     } catch {
@@ -161,6 +170,14 @@ function closeBalanceSheetWindow(): void {
     }
   }
   balanceSheetWindow = null;
+  lastBalanceUrl = null;
+  try {
+    const channel = new BroadcastChannel(BALANCE_CHANNEL);
+    channel.postMessage({ type: "agrolav-close" });
+    channel.close();
+  } catch {
+    // ignore
+  }
 }
 
 function matrixFooterNames(matrix: MatrixResponse): { balance: string; last_booked: string } {
@@ -2495,11 +2512,35 @@ function TermsApp() {
 
 type CatalogDraft = {
   key: string;
-  category_id: number | null;
+  category_id: string;
   local_code: string;
   label: string;
   is_remainder: boolean;
 };
+
+function catalogDraftConflict(rows: CatalogDraft[]): string | null {
+  const ids = new Set<number>();
+  const codes = new Set<number>();
+  for (const row of rows) {
+    const id = Number.parseInt(row.category_id, 10);
+    const code = Number.parseInt(row.local_code, 10);
+    if (!Number.isFinite(id) || id < 1) {
+      return "Each category needs a numeric id";
+    }
+    if (!Number.isFinite(code) || code < 1) {
+      return "Each category needs a numeric code";
+    }
+    if (ids.has(id)) {
+      return `Category id ${id} is already in use`;
+    }
+    if (codes.has(code)) {
+      return `Category code ${code} is already in use`;
+    }
+    ids.add(id);
+    codes.add(code);
+  }
+  return null;
+}
 
 function reviewSubmissionMessage(raw: string): string {
   let text = String(raw || "").trim();
@@ -2530,7 +2571,7 @@ function reviewSubmissionMessage(raw: string): string {
 function catalogToDraft(rows: CatalogCategory[]): CatalogDraft[] {
   return rows.map((row, index) => ({
     key: row.category_id != null ? `id-${row.category_id}` : `new-${index}`,
-    category_id: row.category_id ?? null,
+    category_id: row.category_id != null ? String(row.category_id) : "",
     local_code: String(row.local_code).padStart(4, "0"),
     label: String(row.label ?? "").trim(),
     is_remainder: Boolean(row.is_remainder),
@@ -2619,7 +2660,7 @@ function CategoriesApp() {
         ...rows,
         {
           key,
-          category_id: null,
+          category_id: "",
           local_code: String(code).padStart(4, "0"),
           label: "",
           is_remainder: rows.length === 0,
@@ -2641,10 +2682,15 @@ function CategoriesApp() {
 
   function save() {
     setError(null);
-    setBusy(true);
     setSaved(false);
+    const conflict = catalogDraftConflict(draft);
+    if (conflict) {
+      setError(`Please review your submission: ${conflict}`);
+      return;
+    }
+    setBusy(true);
     const payload: CatalogCategory[] = draft.map((row) => ({
-      category_id: row.category_id,
+      category_id: Number.parseInt(row.category_id, 10),
       local_code: Number.parseInt(row.local_code, 10),
       label: row.label.trim(),
       is_remainder: row.is_remainder,
@@ -2674,8 +2720,9 @@ function CategoriesApp() {
           </div>
         </div>
         <p className="win-hint">
-          Category window for {country || "this country"}. Changing a name keeps
-          existing bookings on that category. Deleting a category moves leftover
+          Category window for {country || "this country"}. Code and id must
+          both be unused when you add a category. Changing a label keeps
+          bookings on that category. Deleting a category moves leftover
           bookings to unclassified.
         </p>
         <div className="sidebar-field">
@@ -2709,6 +2756,7 @@ function CategoriesApp() {
               <thead>
                 <tr>
                   <th>Code</th>
+                  <th>Id</th>
                   <th>Label</th>
                   <th>Unclassified</th>
                   <th />
@@ -2724,6 +2772,14 @@ function CategoriesApp() {
                         maxLength={4}
                         value={row.local_code}
                         onChange={(e) => patchRow(row.key, { local_code: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="catalog-id"
+                        inputMode="numeric"
+                        value={row.category_id}
+                        onChange={(e) => patchRow(row.key, { category_id: e.target.value })}
                       />
                     </td>
                     <td>

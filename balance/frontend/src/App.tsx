@@ -255,11 +255,21 @@ export default function App() {
       }
       window.close();
     };
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("agrolav-balance");
+      channel.onmessage = (e: MessageEvent) => {
+        if (e.data?.type === "agrolav-close") window.close();
+      };
+    } catch {
+      // ignore
+    }
     window.addEventListener("message", onMessage);
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("keydown", onKey);
+      channel?.close();
     };
   }, [openCode]);
 
