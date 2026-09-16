@@ -1093,7 +1093,7 @@ def country_has_balance(country: str) -> bool:
 
 
 def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
-    """One JSON payload for the client's "Export naar excel" workbook.
+    """One JSON payload for the client's "Export balance sheet" workbook.
 
     Balance countries (``dbo.country.has_balance``) get three sheets:
     ``activa``/``passiva`` exactly like the balance app's sheet (including the

@@ -333,13 +333,13 @@ Country-specific catalog. One row per (country, local code).
 | `is_remainder` | `BIT` | unused; remainder is `category_role = remainder` |
 | `category_role` | `NVARCHAR(32)` NULL | `NULL` ordinary booking; `remainder` unclassified; `balance` / `last_booked` footers; `equity` Eigen vermogen (no HIT no journal); `profit` Verlies (no HIT no journal); `bank` / `source` / `mirror` (no HIT, journals allowed). `source` and `mirror` identify the spaar pair. |
 
-Unique: `(country_id, local_code)`. Unique: `(country_id, label)`.
+Unique: `(country_id, local_code)` (`UQ_category_country_code`). Label is not unique.
 Footer rows have empty `category_term` lists and must not be assigned to
 transactions.
 
 ### `condensed_balance`
 
-Drives the "Export naar excel" sheets after the computed Balans (sheet 1) and
+Drives the "Export balans" sheets after the computed Balans (sheet 1) and
 Resultaat (sheet 2) for balance countries. Rows render in `id` order;
 `excel_page` buckets rows into one output sheet per page (NULL → page 3,
 rendered as "Gecondenseerde balans"; page 4 as "Gecondenseerd resultaat").
@@ -370,7 +370,7 @@ the font size of a heading/post row; `background_color` (6-hex RGB, optional
 | `bold` | `BIT` NULL | renders the row in bold when true |
 
 Seed lives in `balance/sql/condensed_balance.sql`. The hub also creates
-and seeds this table on first "Export naar excel" if it is missing.
+and seeds this table on first "Export balans" if it is missing.
 
 ### `category_term`
 

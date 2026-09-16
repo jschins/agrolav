@@ -1182,12 +1182,14 @@ function SyncNotifyShell({
         onClick: () => openView("afschrijvingen"),
       });
     }
-    if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
+    if (access === "country" && activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
       items.push({
         id: "export-excel",
-        label: tableHeaderTerm(menuTerms, "Export to excel"),
+        label: tableHeaderTerm(menuTerms, "Export balance sheet"),
         onClick: exportExcel,
       });
+    }
+    if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
       items.push({
         id: "back-to-matrix",
         label: tableHeaderTerm(menuTerms, "Back to summary"),

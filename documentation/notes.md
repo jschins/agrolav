@@ -525,7 +525,7 @@ INSERT INTO dbo.language VALUES
 ('Download transactions','Uitlezen bankafschriften'),
 ('Edit categories','Bewerk categorieën'),
 ('Edit Terms','Bewerk termen'),
-('Export to excel','Export naar excel'),
+('Export balance sheet','Export balans'),
 ('G','G'),
 ('General','Gemeenschappelijk'),
 ('IBAN','IBAN'),
