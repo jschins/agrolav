@@ -428,7 +428,7 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     const equivalent = (o: number, k: number, w: number): number =>
       w + (2 / 3) * k + (1 / 3) * o;
     const costCell = (foodAmt: number, eq: number): number | "" =>
-      eq === 0 ? "" : euro2(foodAmt / eq);
+      eq === 0 ? "" : euro2(-(foodAmt / eq));
     const countRow = (label: string, parts: number[], cumul: number) => {
       rows.push(["", label, ...parts.map((n) => euro2(n)), euro2(cumul)]);
     };
