@@ -159,6 +159,7 @@ export interface ExportResultaatMaaltijden {
   ontbijten: number[];
   koude: number[];
   warme: number[];
+  warm_hd?: number[];
 }
 
 export interface ExportResultaatData {

@@ -417,6 +417,7 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     const ont = padMonths(data.maaltijden.ontbijten);
     const koude = padMonths(data.maaltijden.koude);
     const warme = padMonths(data.maaltijden.warme);
+    const warmHd = padMonths(data.maaltijden.warm_hd);
     const foodLine = data.resultaat.find((line) => line.code === 3035);
     const food = padMonths(foodLine?.months);
     const foodCumul = food.some((n) => n !== 0)
@@ -425,8 +426,9 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     const ontCumul = ont.reduce((sum, n) => sum + n, 0);
     const koudeCumul = koude.reduce((sum, n) => sum + n, 0);
     const warmeCumul = warme.reduce((sum, n) => sum + n, 0);
-    const equivalent = (o: number, k: number, w: number): number =>
-      (o + 2 * k + 3 * w) / 6;
+    const warmHdCumul = warmHd.reduce((sum, n) => sum + n, 0);
+    const equivalent = (o: number, k: number, w: number, wh: number): number =>
+      (o + 2 * k + 3 * w + 3 * wh) / 6;
     const costCell = (foodAmt: number, eq: number): number | "" =>
       eq === 0 ? "" : euro2(-(foodAmt / eq));
     const countRow = (label: string, parts: number[], cumul: number) => {
@@ -436,8 +438,10 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     countRow("Aantal ontbijten", ont, ontCumul);
     countRow("Aantal koude maaltijden", koude, koudeCumul);
     countRow("Aantal warme maaltijden", warme, warmeCumul);
-    const equivMonths = ont.map((_, i) => equivalent(ont[i], koude[i], warme[i]));
-    const equivCumul = equivalent(ontCumul, koudeCumul, warmeCumul);
+    const equivMonths = ont.map((_, i) =>
+      equivalent(ont[i], koude[i], warme[i], warmHd[i])
+    );
+    const equivCumul = equivalent(ontCumul, koudeCumul, warmeCumul, warmHdCumul);
     rows.push([
       "",
       "Equivalent aantal tafelgenoten",

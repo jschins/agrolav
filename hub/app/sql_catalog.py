@@ -1109,7 +1109,7 @@ def export_resultaat_excel_data(
     ``category_role`` can hold a login username. If that username appears on
     any P&L row, only those tagged rows are listed; otherwise every P&L
     category is listed. That same case also sends monthly meal counts from
-    ``dbo.maaltijden_aantallen`` (ontbijt / koud / warm) for the Excel
+    ``dbo.maaltijden_aantallen`` (ontbijt / koud / warm / warm_hd) for the Excel
     footer; equivalent tafelgenoten and food cost per tafelgenoot are
     calculated in the client. Month columns run from January through the
     current month of this year (all twelve when the export year is already
@@ -1327,10 +1327,11 @@ def export_resultaat_excel_data(
                 ont = [0.0] * month_count
                 koud = [0.0] * month_count
                 warm = [0.0] * month_count
+                warm_hd = [0.0] * month_count
                 if month_count > 0:
                     cursor.execute(
                         """
-                        SELECT maand, ontbijt, koud, warm
+                        SELECT maand, ontbijt, koud, warm, warm_hd
                         FROM dbo.maaltijden_aantallen
                         WHERE username = ? COLLATE Latin1_General_CI_AI
                           AND jaar = ?
@@ -1338,16 +1339,18 @@ def export_resultaat_excel_data(
                         """,
                         (login, int(year), month_count),
                     )
-                    for month, o, k, w in cursor.fetchall():
+                    for month, o, k, w, wh in cursor.fetchall():
                         m = int(month)
                         if 1 <= m <= month_count:
                             ont[m - 1] = float(o or 0)
                             koud[m - 1] = float(k or 0)
                             warm[m - 1] = float(w or 0)
+                            warm_hd[m - 1] = float(wh or 0)
                 maaltijden = {
                     "ontbijten": ont,
                     "koude": koud,
                     "warme": warm,
+                    "warm_hd": warm_hd,
                 }
         return {
             "year": int(year),

@@ -2,7 +2,6 @@
 -- Hub reads this; it does not CREATE the table.
 --
 -- SSMS: connect to database agrolav, then execute this file.
--- If an earlier version of this table exists, drop it first.
 
 USE agrolav;
 GO
@@ -15,6 +14,12 @@ CREATE TABLE dbo.maaltijden_aantallen (
     maand INT NOT NULL,
     ontbijt INT NOT NULL,
     koud INT NOT NULL,
-    warm INT NOT NULL
+    warm INT NOT NULL,
+    warm_hd INT NOT NULL
 );
+GO
+
+IF COL_LENGTH(N'dbo.maaltijden_aantallen', N'warm_hd') IS NULL
+    ALTER TABLE dbo.maaltijden_aantallen ADD warm_hd INT NOT NULL
+        CONSTRAINT df_maaltijden_aantallen_warm_hd DEFAULT (0);
 GO
