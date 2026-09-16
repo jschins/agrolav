@@ -543,6 +543,37 @@ def api_export_data(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/local/{center}/export-resultaat")
+def api_export_resultaat(
+    center: str,
+    year: int | None = Query(default=None),
+    country: str | None = Query(default=None),
+    person: str | None = Query(default=None),
+    center_name: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    import datetime
+
+    from app.runtime import request_country
+    from app.sql_catalog import export_resultaat_excel_data
+
+    key = (country or "").strip() or str(request_country() or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="country is required")
+    person_key = (person or "").strip()
+    # Path ``center`` is the BFF's selected center; country export must ignore it.
+    scope_center = "" if person_key else (center_name or "").strip()
+    try:
+        return export_resultaat_excel_data(
+            key,
+            int(year) if year else int(datetime.date.today().year),
+            person=person_key or None,
+            center=scope_center or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/events")
 def api_events(
     since_id: int = Query(default=0),

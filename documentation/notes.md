@@ -526,6 +526,7 @@ INSERT INTO dbo.language VALUES
 ('Edit categories','Bewerk categorieën'),
 ('Edit Terms','Bewerk termen'),
 ('Export balance sheet','Export balans'),
+('Export profit-loss','Export resultaat'),
 ('G','G'),
 ('General','Gemeenschappelijk'),
 ('IBAN','IBAN'),

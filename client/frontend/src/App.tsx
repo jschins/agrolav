@@ -10,8 +10,10 @@ import {
   getBanks,
   getCatalog,
   getExportExcel,
+  getExportResultaat,
   type ExportExcelData,
   type ExportExcelLine,
+  type ExportResultaatData,
   getIpAccess,
   addIpAccess,
   deleteIpAccess,
@@ -343,6 +345,28 @@ function excelSheets(data: ExportExcelData): XlsxSheet[] {
     }
   }
   return sheets;
+}
+
+function exportScopeSlug(data: {
+  person?: string | null;
+  center?: string | null;
+  country?: string | null;
+}): string {
+  const raw = (data.person || data.center || data.country || "export").trim();
+  const slug = raw.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug || "export";
+}
+
+function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
+  const rows: (string | number)[][] = [];
+  const scope = (data.person || data.center || data.country || "").trim();
+  rows.push([scope ? `Resultaat ${scope} ${data.year}` : `Resultaat ${data.year}`]);
+  rows.push(["Code", "Post", "Bedrag"]);
+  for (const line of data.resultaat) {
+    rows.push([String(line.code), line.label, euro2(line.amount)]);
+  }
+  rows.push(["", "Saldo", euro2(data.total_resultaat)]);
+  return [{ name: "Resultaat", rows, widths: [10, 60, 14] }];
 }
 
 function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
@@ -1111,6 +1135,19 @@ function SyncNotifyShell({
       .catch((e: Error) => setScratchError(e.message));
   }
 
+  function exportResultaat() {
+    if (!activeYear) return;
+    setScratchError(null);
+    getExportResultaat(activeYear)
+      .then((data) => {
+        downloadBlob(
+          `resultaat-${exportScopeSlug(data)}-${data.year}.xlsx`,
+          buildXlsx(resultaatExcelSheets(data))
+        );
+      })
+      .catch((e: Error) => setScratchError(e.message));
+  }
+
   function doWipeYear() {
     if (scratchBusy || wipeBusy) return;
     const suggested = activeYear || String(new Date().getFullYear());
@@ -1190,6 +1227,11 @@ function SyncNotifyShell({
       });
     }
     if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
+      items.push({
+        id: "export-resultaat",
+        label: tableHeaderTerm(menuTerms, "Export profit-loss"),
+        onClick: exportResultaat,
+      });
       items.push({
         id: "back-to-matrix",
         label: tableHeaderTerm(menuTerms, "Back to summary"),

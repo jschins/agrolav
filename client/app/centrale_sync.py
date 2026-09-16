@@ -615,6 +615,17 @@ def export_excel_data(year: int) -> dict[str, Any]:
     return hub_get(f"/export-data?year={int(year)}", timeout=90.0)
 
 
+def export_resultaat_excel_data(year: int) -> dict[str, Any]:
+    """P&L workbook for the current login scope (person / center / country)."""
+    cfg = load_config()
+    qs = [f"year={int(year)}"]
+    if cfg.access == ACCESS_PERSON and cfg.person:
+        qs.append(f"person={urllib.parse.quote(cfg.person)}")
+    elif cfg.access == ACCESS_CENTER and cfg.center:
+        qs.append(f"center_name={urllib.parse.quote(cfg.center)}")
+    return hub_get(f"/export-resultaat?{'&'.join(qs)}", timeout=90.0)
+
+
 def _balance_api(
     path: str,
     *,

@@ -1092,6 +1092,135 @@ def country_has_balance(country: str) -> bool:
         return False
 
 
+def export_resultaat_excel_data(
+    country: str,
+    year: int,
+    *,
+    person: str | None = None,
+    center: str | None = None,
+) -> dict[str, Any]:
+    """P&L (3000–4999) plus Saldo, scoped to the login.
+
+    Person: that person's consolidated ``category_total`` (``bank_id IS NULL``).
+    Center: every person in that center, consolidated.
+    Country (neither person nor center): the whole country, plus journal/mirror
+    overlay so Saldo matches the balance-sheet Resultaat sheet.
+    """
+    name = (country or "").strip()
+    person_name = (person or "").strip()
+    center_name = "" if person_name else (center or "").strip()
+    if not name or not _sql_ready():
+        raise ValueError("country is required")
+
+    def _run() -> dict[str, Any]:
+        from decimal import Decimal
+
+        from shared.balance_values import (
+            is_hit_forbidden_role,
+            result_overlay_cents,
+        )
+
+        cursor = _cursor()
+        country_id = _country_id_for(cursor, name)
+        if country_id is None:
+            raise ValueError(f"unknown country: {name}")
+        if person_name:
+            cursor.execute(
+                """
+                SELECT p.id
+                FROM dbo.person p
+                JOIN dbo.center n ON n.center_id = p.center_id
+                WHERE n.country_id = ?
+                  AND p.username = ? COLLATE Latin1_General_CI_AI
+                """,
+                (int(country_id), person_name),
+            )
+            if cursor.fetchone() is None:
+                raise ValueError(f"unknown person: {person_name}")
+        elif center_name:
+            cursor.execute(
+                """
+                SELECT center_id
+                FROM dbo.center
+                WHERE country_id = ?
+                  AND username = ? COLLATE Latin1_General_CI_AI
+                """,
+                (int(country_id), center_name),
+            )
+            if cursor.fetchone() is None:
+                raise ValueError(f"unknown center: {center_name}")
+
+        sql = """
+            SELECT ct.category_id, SUM(CAST(ct.amount AS decimal(19, 2)))
+            FROM dbo.category_total ct
+            JOIN dbo.person p ON p.id = ct.person_id
+            JOIN dbo.center n ON n.center_id = p.center_id
+            JOIN dbo.dim_category d ON d.category_id = ct.category_id
+            WHERE n.country_id = ?
+              AND ct.year = ?
+              AND ct.bank_id IS NULL
+              AND d.local_code BETWEEN 3000 AND 4999
+        """
+        params: list[Any] = [int(country_id), int(year)]
+        if person_name:
+            sql += " AND p.username = ? COLLATE Latin1_General_CI_AI"
+            params.append(person_name)
+        elif center_name:
+            sql += " AND n.username = ? COLLATE Latin1_General_CI_AI"
+            params.append(center_name)
+        sql += " GROUP BY ct.category_id"
+        cursor.execute(sql, tuple(params))
+        recorded = {int(r[0]): Decimal(str(r[1] or 0)) for r in cursor.fetchall()}
+
+        amounts = dict(recorded)
+        if not person_name and not center_name:
+            for code, cents in result_overlay_cents(country_id, int(year), cursor).items():
+                amounts[int(code)] = amounts.get(int(code), Decimal("0")) + (
+                    Decimal(cents) / Decimal(100)
+                )
+
+        cursor.execute(
+            """
+            SELECT category_id, local_code, label, category_role
+            FROM dbo.dim_category
+            WHERE country_id = ?
+              AND local_code BETWEEN 3000 AND 4999
+            ORDER BY local_code, label
+            """,
+            (int(country_id),),
+        )
+        rows: list[dict[str, Any]] = []
+        total = Decimal("0")
+        for category_id, local_code, label, role in cursor.fetchall():
+            if is_hit_forbidden_role(role):
+                continue
+            cid = int(category_id)
+            amount = amounts.get(cid, Decimal("0"))
+            total += amount
+            rows.append(
+                {
+                    "code": int(local_code),
+                    "label": str(label or "").strip() or f"cat_{local_code}",
+                    "amount": float(amount),
+                }
+            )
+        return {
+            "year": int(year),
+            "country": name,
+            "person": person_name or None,
+            "center": center_name or None,
+            "resultaat": rows,
+            "total_resultaat": float(total),
+        }
+
+    try:
+        return _sql_retry(_run)
+    except ValueError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(str(exc)) from exc
+
+
 def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     """One JSON payload for the client's "Export balance sheet" workbook.
 

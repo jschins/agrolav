@@ -154,6 +154,20 @@ export function getExportExcel(year?: string): Promise<ExportExcelData> {
   return getJson(`/api/export-excel${q}`);
 }
 
+export interface ExportResultaatData {
+  year: number;
+  country?: string | null;
+  person?: string | null;
+  center?: string | null;
+  resultaat: ExportExcelLine[];
+  total_resultaat: number;
+}
+
+export function getExportResultaat(year?: string): Promise<ExportResultaatData> {
+  const q = year ? `?year=${encodeURIComponent(year)}` : "";
+  return getJson(`/api/export-resultaat${q}`);
+}
+
 export function recalculate(): Promise<MatrixResponse> {
   return sendJson("/api/recalculate", "POST", {});
 }

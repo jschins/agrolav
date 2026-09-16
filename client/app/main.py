@@ -629,6 +629,20 @@ def api_export_excel(year: int | None = Query(default=None)) -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+@app.get("/api/export-resultaat")
+def api_export_resultaat(year: int | None = Query(default=None)) -> dict[str, Any]:
+    import datetime
+
+    from app.centrale_sync import export_resultaat_excel_data
+
+    try:
+        return export_resultaat_excel_data(
+            int(year) if year else int(datetime.date.today().year)
+        )
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 class JournalItem(BaseModel):
     date: str
     category_from: int
