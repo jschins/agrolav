@@ -10,7 +10,7 @@ Schema sources in the repo:
 - `hub/sql/json_independence.sql` — `language`, `country.language_id`, `type_rule`, `bank_modality`, `enable_connection`, `enable_redirect`, `visitor_ip`
 - `hub/sql/visitor_ip.sql` — `egress_ip` columns and `dbo.visitor_ip` (idempotent)
 - `hub/sql/administrator.sql` — `dbo.administrator` (idempotent)
-- Hub startup creates `dbo.consent_pending` if it is missing
+- Hub startup requires `dbo.consent_pending` (create it in SSMS if missing)
 - `maaltijden/sql/maaltijden.sql` — `dbo.maaltijden_users` and `dbo.maaltijden_data` (run in SSMS; the app does not create them)
 
 The folder names `local_backups` and `remote_backups` mean **where the file
@@ -155,7 +155,7 @@ ALTER DATABASE [agrolav]
 SET MULTI_USER;
 ```
 
-The hub auto-creates **only** `dbo.consent_pending`. After a restore:
+The hub does not auto-create tables. After a restore:
 
 ```sql
 USE agrolav;
@@ -476,8 +476,8 @@ Last Enable Banking redirect payload per person.
 
 ### `consent_pending`
 
-Short-lived callback tokens while a bank consent is in flight. The hub
-creates this table at startup if it is missing.
+Short-lived callback tokens while a bank consent is in flight. Create this
+table in SSMS if it is missing; the hub does not create it.
 
 ### `transaction_nederland` / `transaction_uk` / …
 

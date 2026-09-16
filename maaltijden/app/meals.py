@@ -139,18 +139,17 @@ def patch_code(code: int, slot: int, meal: str, mark: str) -> int:
     return n
 
 
-def _ensure_data(cursor: Any, conn: Any) -> None:
-    cursor.execute("SELECT OBJECT_ID(N'dbo.maaltijden_data', N'U')")
+def _require_maaltijden_table(cursor: Any, name: str) -> None:
+    cursor.execute(f"SELECT OBJECT_ID(N'dbo.{name}', N'U')")
     row = cursor.fetchone()
     if row is None or row[0] is None:
-        cursor.execute(
-            """
-            CREATE TABLE dbo.maaltijden_data (
-                id INT PRIMARY KEY,
-                code BIGINT NOT NULL
-            )
-            """
+        raise RuntimeError(
+            f"dbo.{name} is missing. Run maaltijden/sql/maaltijden.sql in SSMS."
         )
+
+
+def _ensure_data(cursor: Any, conn: Any) -> None:
+    _require_maaltijden_table(cursor, "maaltijden_data")
     cursor.execute(
         """
         INSERT INTO dbo.maaltijden_data (id, code)
@@ -173,21 +172,8 @@ def _empty_extra() -> list[dict[str, int]]:
 
 
 def _ensure_extra(cursor: Any, conn: Any, present: date) -> None:
-    cursor.execute("SELECT OBJECT_ID(N'dbo.maaltijden_extra', N'U')")
-    row = cursor.fetchone()
-    if row is None or row[0] is None:
-        cursor.execute(
-            """
-            CREATE TABLE dbo.maaltijden_extra (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                ochtend INT NOT NULL,
-                middag INT NOT NULL,
-                avond INT NOT NULL,
-                laat INT NOT NULL,
-                pakket INT NOT NULL
-            )
-            """
-        )
+    _require_maaltijden_table(cursor, "maaltijden_extra")
+    _require_maaltijden_table(cursor, "maaltijden_extra_week")
     cursor.execute("SELECT COUNT(*) FROM dbo.maaltijden_extra")
     n = int(cursor.fetchone()[0] or 0)
     if n < 7:
@@ -199,12 +185,6 @@ def _ensure_extra(cursor: Any, conn: Any, present: date) -> None:
                 VALUES (0, 0, 0, 0, 0)
                 """
             )
-    cursor.execute("SELECT OBJECT_ID(N'dbo.maaltijden_extra_week', N'U')")
-    row = cursor.fetchone()
-    if row is None or row[0] is None:
-        cursor.execute(
-            "CREATE TABLE dbo.maaltijden_extra_week (week_start DATE NOT NULL)"
-        )
     cursor.execute("SELECT TOP (1) week_start FROM dbo.maaltijden_extra_week")
     stored = cursor.fetchone()
     week_start = None if stored is None else stored[0]

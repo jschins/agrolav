@@ -61,12 +61,7 @@ CREATE TABLE dbo.dim_category (
     is_remainder BIT NOT NULL CONSTRAINT df_dim_category_remainder DEFAULT (0),
     category_role NVARCHAR(32) NULL,
     CONSTRAINT fk_dim_category_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
-    CONSTRAINT UQ_category_country_code UNIQUE (country_id, local_code),
-    CONSTRAINT ck_dim_category_role CHECK (
-        category_role IS NULL OR category_role IN (
-            N'balance', N'last_booked', N'equity', N'never', N'profit', N'bank', N'no_hit', N'source', N'mirror', N'remainder'
-        )
-    )
+    CONSTRAINT UQ_category_country_code UNIQUE (country_id, local_code)
 );
 
 CREATE TABLE dbo.center (

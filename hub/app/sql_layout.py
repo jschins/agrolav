@@ -100,109 +100,20 @@ def _seed_bank_formats(cursor) -> None:
     )
 
 
-def _txn_constraint_tag(table: str) -> str:
-    name = table.split(".")[-1]
-    prefix = "transaction_"
-    if name.lower().startswith(prefix):
-        tag = _sql_ident(name[len(prefix) :])
-        if tag:
-            return tag
-    ident = _sql_ident(name)
-    if ident is None:
-        raise ValueError(f"Cannot derive constraint names for {table!r}")
-    return ident
-
-
-def _expected_transaction_tables(cursor) -> set[str]:
-    cursor.execute("SELECT username FROM dbo.country")
-    tables: set[str] = set()
-    for (username,) in cursor.fetchall():
-        table = _transaction_table(str(username or ""))
-        if table:
-            tables.add(table.lower())
-    return tables
-
-
-def _drop_orphan_transaction_tables(cursor) -> None:
-    """Drop leftover ``transaction_*`` tables that have no matching country."""
-    expected = _expected_transaction_tables(cursor)
-    cursor.execute(
-        """
-        SELECT name FROM sys.tables
-        WHERE schema_id = SCHEMA_ID(N'dbo')
-          AND name LIKE N'transaction[_]%'
-        """
-    )
-    for (name,) in list(cursor.fetchall()):
-        ident = _sql_ident(str(name or ""))
-        if ident is None:
-            continue
-        table = f"dbo.{ident}"
-        if table.lower() in expected:
-            continue
-        cursor.execute(f"DROP TABLE {table}")
-
-
-def _create_transaction_table(cursor, *, country: str, country_id: int) -> str:
-    """Create empty ``dbo.transaction_{country}`` with the standard booking columns."""
-    from app.sql_catalog import category_id_bounds
-
+def _require_transaction_table(cursor, *, country: str, country_id: int | None = None) -> str:
+    """Return ``dbo.transaction_{country}``; it must already exist (SSMS)."""
+    del country_id
     table = _transaction_table(country)
     if table is None:
         raise ValueError(f"Cannot derive transaction table for {country!r}")
-    lo, hi = category_id_bounds(country_id)
-    tag = _txn_constraint_tag(table)
     cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
-    if cursor.fetchone()[0] is not None:
-        return table
-    cursor.execute(
-        f"""
-        CREATE TABLE {table} (
-            transaction_id BIGINT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
-            person_id INT NOT NULL,
-            account_id INT NOT NULL,
-            year SMALLINT NOT NULL,
-            bank_id INT NULL,
-            source_id NVARCHAR(128) NOT NULL,
-            parent_source_id NVARCHAR(128) NULL,
-            amount DECIMAL(18, 2) NOT NULL,
-            bank_type NVARCHAR(64) NULL,
-            counterparty_name NVARCHAR(512) NULL,
-            counterparty_iban NVARCHAR(64) NULL,
-            description NVARCHAR(MAX) NULL,
-            booked_on DATE NOT NULL,
-            category_id INT NOT NULL,
-            modification SMALLINT NOT NULL CONSTRAINT df_txn_{tag}_mod DEFAULT (-1),
-            hit NVARCHAR(64) NULL,
-            CONSTRAINT fk_txn_{tag}_person FOREIGN KEY (person_id) REFERENCES dbo.person (id),
-            CONSTRAINT fk_txn_{tag}_account FOREIGN KEY (account_id) REFERENCES dbo.account (account_id),
-            CONSTRAINT fk_txn_{tag}_bank FOREIGN KEY (bank_id) REFERENCES dbo.bank (bank_id),
-            CONSTRAINT fk_txn_{tag}_category FOREIGN KEY (category_id) REFERENCES dbo.dim_category (category_id),
-            CONSTRAINT ck_txn_{tag}_year CHECK (year >= 1990 AND year <= 2100),
-            CONSTRAINT ck_txn_{tag}_mod CHECK (modification IN (-1, 0, 1, 2, 3)),
-            CONSTRAINT ck_txn_{tag}_cat CHECK (category_id BETWEEN {lo} AND {hi})
-        )
-        """
-    )
-    cursor.execute(
-        f"""
-        CREATE UNIQUE INDEX ux_txn_{tag}_consolidated
-            ON {table} (person_id, year, source_id)
-            WHERE bank_id IS NULL
-        """
-    )
-    cursor.execute(
-        f"""
-        CREATE UNIQUE INDEX ux_txn_{tag}_bank
-            ON {table} (person_id, year, bank_id, source_id)
-            WHERE bank_id IS NOT NULL
-        """
-    )
+    if cursor.fetchone()[0] is None:
+        raise ValueError(f"{table} is missing. Create it in SSMS.")
     return table
 
 
 def ensure_transaction_table(*, country: str) -> str:
-    """Idempotently create ``dbo.transaction_{country}`` when missing; return table name or "". """
+    """Return ``dbo.transaction_{country}`` if it exists, else ``""``."""
     from app import user_store
 
     username = _valid_name(country)
@@ -212,29 +123,14 @@ def ensure_transaction_table(*, country: str) -> str:
     if table is None:
         return ""
     user_store.init_user_store()
-    conn = user_store._sql_connect()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
-        if cursor.fetchone()[0] is not None:
-            return table
-        cursor.execute(
-            f"SELECT country_id FROM dbo.country WHERE username = ? COLLATE Latin1_General_CI_AI",
-            username,
-        )
-        row = cursor.fetchone()
-        if row is None:
-            return ""
-        _seed_bank_formats(cursor)
-        _create_transaction_table(cursor, country=username, country_id=int(row[0]))
-        conn.commit()
-        return table
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
+    cursor = user_store._sql_connect().cursor()
+    cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+    if cursor.fetchone()[0] is None:
+        return ""
+    return table
+
+
+def _next_center_id(cursor) -> int:
     cursor.execute("SELECT center_id FROM dbo.center")
     used = {int(row[0]) for row in cursor.fetchall()}
     candidate = 1
@@ -291,7 +187,7 @@ def _insert_center_row(
 
 
 def create_country(*, name: str, currency: str, title: str = "") -> dict[str, Any]:
-    """Insert ``dbo.country`` and empty ``dbo.transaction_{country}``."""
+    """Insert ``dbo.country``. ``dbo.transaction_{country}`` must already exist."""
     from app import user_store
 
     username = _valid_name(name)
@@ -304,7 +200,6 @@ def create_country(*, name: str, currency: str, title: str = "") -> dict[str, An
     cursor = conn.cursor()
     try:
         _seed_bank_formats(cursor)
-        _drop_orphan_transaction_tables(cursor)
         cursor.execute(
             """
             SELECT country_id, title, currency_default FROM dbo.country
@@ -314,32 +209,10 @@ def create_country(*, name: str, currency: str, title: str = "") -> dict[str, An
         )
         existing = cursor.fetchone()
         if existing:
-            country_id = int(existing[0])
-            wanted = _transaction_table(username)
-            if wanted is None:
-                raise ValueError(f"Cannot derive transaction table for {username!r}")
-            cursor.execute(f"SELECT OBJECT_ID(N'{wanted}', N'U')")
-            had_table = cursor.fetchone()[0] is not None
-            table = _create_transaction_table(
-                cursor, country=username, country_id=country_id
-            )
-            if had_table:
-                raise ValueError(f"Country already exists: {username}")
-            conn.commit()
-            return {
-                "ok": True,
-                "country_id": country_id,
-                "name": username,
-                "currency": str(existing[2] or currency_s),
-                "transaction_table": table,
-                "title": str(existing[1] or username),
-                "login": {
-                    "username": username,
-                    "password": user_store.password_for_username(username),
-                },
-            }
+            raise ValueError(f"Country already exists: {username}")
         if user_store._sql_username_taken(cursor, username):
             raise ValueError(f"Username already used: {username}")
+        table = _require_transaction_table(cursor, country=username)
         cursor.execute("SELECT ISNULL(MAX(country_id), 0) + 1 FROM dbo.country")
         country_id = int(cursor.fetchone()[0])
         cursor.execute(
@@ -353,7 +226,6 @@ def create_country(*, name: str, currency: str, title: str = "") -> dict[str, An
             currency_s,
         )
         _seed_system_categories(cursor, country_id)
-        table = _create_transaction_table(cursor, country=username, country_id=country_id)
         conn.commit()
     except Exception:
         try:

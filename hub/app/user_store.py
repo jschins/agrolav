@@ -523,21 +523,11 @@ def _ensure_login_titles(cursor) -> None:
             )
 
 
-def _ensure_consent_pending(cursor) -> None:
-    """Create ``dbo.consent_pending`` (state -> person_name) if missing."""
+def _require_consent_pending(cursor) -> None:
+    """``dbo.consent_pending`` must already exist (SSMS)."""
     cursor.execute("SELECT OBJECT_ID(N'dbo.consent_pending', N'U')")
-    if cursor.fetchone()[0] is not None:
-        return
-    cursor.execute(
-        """
-        CREATE TABLE dbo.consent_pending (
-            state NVARCHAR(128) NOT NULL PRIMARY KEY,
-            center NVARCHAR(256) NOT NULL,
-            person_name NVARCHAR(256) NOT NULL,
-            created_at DATETIME2 NOT NULL
-        )
-        """
-    )
+    if cursor.fetchone()[0] is None:
+        raise RuntimeError("dbo.consent_pending is missing. Create it in SSMS.")
 
 
 def init_user_store() -> str:
@@ -562,7 +552,7 @@ def init_user_store() -> str:
                 "already has this table (fresh empty DB: load_phase_c.py)."
             )
         _ensure_login_titles(cursor)
-        _ensure_consent_pending(cursor)
+        _require_consent_pending(cursor)
         conn.commit()
         _STORE_READY = True
         return store_label()

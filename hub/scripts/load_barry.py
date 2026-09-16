@@ -27,7 +27,8 @@ sys.path.insert(0, str(HUB_ROOT.parent / "shared"))
 
 from app.core.categorize import DEFAULT_CATEGORY  # noqa: E402
 from app.core.single_client import _consent_subset, _migrate_profile  # noqa: E402
-from app.sql_layout import _create_transaction_table, _local_code  # noqa: E402
+from app.sql_layout import _require_transaction_table  # noqa: E402
+from app.sql_replica import _local_code  # noqa: E402
 
 SOURCE = Path(r"C:\Coding\bankingApp\single-docker\people\dist_bog")
 DATA = SOURCE / "data"
@@ -549,7 +550,7 @@ def load(cursor) -> None:
         raise LoadError(f"Source pack not found: {SOURCE}")
     country_id = _ensure_country(cursor)
     center_id = _ensure_center(cursor, country_id)
-    table = _create_transaction_table(
+    table = _require_transaction_table(
         cursor, country=COUNTRY_USERNAME, country_id=country_id
     )
     by_code = _ensure_categories(cursor, country_id)

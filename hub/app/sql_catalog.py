@@ -1431,26 +1431,10 @@ _BEHEER_CONDENSED_SEED: tuple[tuple[str, str, str, int, int, str | None, None], 
 
 
 def _ensure_condensed_balance(cursor) -> None:
-    """Create ``dbo.condensed_balance`` and seed Beheer posts if empty."""
+    """Seed Beheer posts when ``dbo.condensed_balance`` exists and is empty for beheer."""
     cursor.execute("SELECT OBJECT_ID(N'dbo.condensed_balance', N'U')")
     if cursor.fetchone()[0] is None:
-        cursor.execute(
-            """
-            CREATE TABLE dbo.condensed_balance (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                country_id INT NOT NULL,
-                post_name VARCHAR(64) NOT NULL,
-                sum_local_code VARCHAR(256) NULL,
-                section_name VARCHAR(64) NOT NULL,
-                font_size INT NULL,
-                excel_page INT NULL,
-                background_color VARCHAR(16) NULL,
-                bold BIT NULL,
-                CONSTRAINT fk_map_condensed_country
-                    FOREIGN KEY (country_id) REFERENCES dbo.country (country_id)
-            )
-            """
-        )
+        return
     cursor.execute(
         """
         SELECT country_id FROM dbo.country

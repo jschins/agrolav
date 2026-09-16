@@ -79,11 +79,6 @@ CATEGORY_HIT_FORBIDDEN_ROLES = frozenset(
         *CATEGORY_FOOTER_ROLES,
     }
 )
-# CHECK keeps the old stamps so the column can be renamed in place.
-CATEGORY_ROLE_CHECK_VALUES = (
-    "N'balance', N'last_booked', N'equity', N'never', N'profit', N'bank', "
-    "N'no_hit', N'source', N'mirror', N'remainder'"
-)
 _ROLE_ALIASES = {
     CATEGORY_ROLE_EQUITY: (CATEGORY_ROLE_EQUITY, "never"),
     "never": (CATEGORY_ROLE_EQUITY, "never"),
@@ -161,40 +156,18 @@ def category_display_name(
 
 
 def ensure_category_role_booking_rules(cursor: object) -> None:
-    """Widen ``ck_dim_category_role`` and stamp equity / profit / bank / source / mirror / remainder."""
+    """Leave ``ck_dim_category_role`` alone (no add, no drop).
+
+    ``category_role`` holds system stamps *or* a login username. Schema changes
+    to that column are SSMS-only. This only copies leftover ``is_remainder``
+    onto ``category_role = remainder`` when that old column still exists.
+    """
     cursor.execute(
         "SELECT OBJECT_ID(N'dbo.dim_category', N'U')"
     )
     row = cursor.fetchone()
     if row is None or row[0] is None:
         return
-    cursor.execute(
-        "SELECT definition FROM sys.check_constraints "
-        "WHERE name = N'ck_dim_category_role' "
-        "AND parent_object_id = OBJECT_ID(N'dbo.dim_category')"
-    )
-    existing = cursor.fetchone()
-    definition = str(existing[0] or "") if existing else ""
-    low = definition.lower()
-    tokens = (
-        "equity",
-        "profit",
-        "bank",
-        "source",
-        "mirror",
-        "remainder",
-        "category_role",
-    )
-    if any(token not in low for token in tokens):
-        if existing is not None:
-            cursor.execute(
-                "ALTER TABLE dbo.dim_category DROP CONSTRAINT ck_dim_category_role"
-            )
-        cursor.execute(
-            "ALTER TABLE dbo.dim_category ADD CONSTRAINT ck_dim_category_role "
-            "CHECK (category_role IS NULL OR category_role IN "
-            f"({CATEGORY_ROLE_CHECK_VALUES}))"
-        )
     cursor.execute("SELECT COL_LENGTH(N'dbo.dim_category', N'is_remainder')")
     remainder_col = cursor.fetchone()
     if remainder_col is not None and remainder_col[0] is not None:
