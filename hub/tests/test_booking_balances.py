@@ -27,7 +27,7 @@ class _FakeBookingCursor:
     def __init__(
         self,
         *,
-        username: str | None = "beheer",
+        username: str | None = "beheer_sdog",
         table_exists: bool = True,
         rows: list | None = None,
     ) -> None:

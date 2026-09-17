@@ -35,7 +35,7 @@ CROSS APPLY (VALUES
     (N'Totaal eigen vermogen en voorzieningen', N'2000,2050,2055,2100',         N'Passiva, Eigen vermogen en voorzieningen'),
     (N'Totaal schulden',      N'2500',                                          N'Passiva, Schulden')
 ) v (post_name, sum_local_code, section_name)
-WHERE c.username = N'beheer' COLLATE Latin1_General_CI_AI
+WHERE c.username = N'beheer_sdog' COLLATE Latin1_General_CI_AI
   AND NOT EXISTS (
       SELECT 1 FROM dbo.condensed_balance m WHERE m.country_id = c.country_id
   );

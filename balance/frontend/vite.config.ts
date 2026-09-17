@@ -11,14 +11,14 @@ export default defineConfig({
         target: "http://127.0.0.1:8100",
         changeOrigin: true,
       },
-      "/balance/beheer/api": {
+      "/balance/beheer_sdog/api": {
         target: "http://127.0.0.1:8100",
         changeOrigin: true,
       },
       "/api": {
         target: "http://127.0.0.1:8100",
         changeOrigin: true,
-        rewrite: (path) => "/balance/beheer" + path,
+        rewrite: (path) => "/balance/beheer_sdog" + path,
       },
     },
   },

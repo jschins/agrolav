@@ -1,5 +1,5 @@
 """Read-only diagnostic: balance sheet as of a given booking date (or after the
-first N rows of dbo.transaction_beheer).
+first N rows of dbo.transaction_beheer_sdog).
 
 The sheet's transaction-driven Verlies (2100) is R, the sum of amounts in
 categories 3000-4999 plus the journal overlay. Eigen vermogen (2000) is the
@@ -164,7 +164,7 @@ def main() -> None:
     country_id, year = args.country, args.year
     rows = _rows(country_id, year)
     overlay = Decimal("0") if args.no_overlay else balance._result_overlay(country_id, year)
-    print(f"transaction_beheer: {len(rows)} rows (year {year}, country {country_id}); "
+    print(f"transaction_beheer_sdog: {len(rows)} rows (year {year}, country {country_id}); "
           f"journal overlay {_fmt(overlay)}")
 
     full_n = len(rows)

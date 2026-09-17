@@ -18,7 +18,7 @@ class DbCountryIsoTests(unittest.TestCase):
             "uk": "GB",
             "gb": "GB",
             "ireland": "IE",
-            "beheer": "NL",
+            "beheer_sdog": "NL",
         }
         for raw, expected in cases.items():
             with mock.patch.object(single_client.paths, "BOUND_COUNTRY", raw):

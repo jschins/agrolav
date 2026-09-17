@@ -1566,7 +1566,7 @@ _BEHEER_CONDENSED_SEED: tuple[tuple[str, str, str, int, int, str | None, None], 
 
 
 def _ensure_condensed_balance(cursor) -> None:
-    """Seed Beheer posts when ``dbo.condensed_balance`` exists and is empty for beheer."""
+    """Seed condensed posts when ``dbo.condensed_balance`` is empty for beheer_sdog."""
     cursor.execute("SELECT OBJECT_ID(N'dbo.condensed_balance', N'U')")
     if cursor.fetchone()[0] is None:
         return
@@ -1575,7 +1575,7 @@ def _ensure_condensed_balance(cursor) -> None:
         SELECT country_id FROM dbo.country
         WHERE username = ? COLLATE Latin1_General_CI_AI
         """,
-        ("beheer",),
+        ("beheer_sdog",),
     )
     row = cursor.fetchone()
     if row is None:
@@ -1781,7 +1781,7 @@ def _export_condensed_balance(
 def display_digits(rows: list[dict[str, Any]]) -> int:
     """Frontend code-padding width for a country's local codes.
 
-    Uniform backend storage is four digits; only ``beheer`` actually uses
+    Uniform backend storage is four digits; only ``beheer_sdog`` actually uses
     codes >= 100. This lets the frontend pad to 2 for everyone else.
     """
     codes = [int(row.get("local_code") or 0) for row in rows]

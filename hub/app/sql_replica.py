@@ -657,7 +657,7 @@ def load_bound_category_totals(general_names: list[str]) -> dict[str, str] | Non
             except (TypeError, ValueError):
                 cents = 0
             by_code[code] = cents
-        if bound.table == "dbo.transaction_beheer" and bound.account_id is None:
+        if bound.table == "dbo.transaction_beheer_sdog" and bound.account_id is None:
             from shared.balance_values import category_local_codes as _local_codes
 
             overlay_country = int(country_id or 4)
@@ -841,7 +841,7 @@ def load_center_year_matrix(
             if not person or account_id is None:
                 continue
             account_persons.setdefault(int(account_id), set()).add(person)
-        if table == "dbo.transaction_beheer":
+        if table == "dbo.transaction_beheer_sdog":
             country_id = _country_id_for_username(cursor, country) or 4
             from shared.balance_values import category_local_codes as _local_codes
 

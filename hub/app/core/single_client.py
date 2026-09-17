@@ -46,7 +46,7 @@ def _db_configured() -> bool:
 
 
 _DB_ISO_KEYS: dict[tuple[str, ...], str] = {
-    ("nederland", "netherlands", "the_netherlands", "nl", "beheer"): "NL",
+    ("nederland", "netherlands", "the_netherlands", "nl", "beheer_sdog"): "NL",
     ("united_kingdom", "uk", "great_britain", "gb"): "GB",
     ("ireland", "ie"): "IE",
 }

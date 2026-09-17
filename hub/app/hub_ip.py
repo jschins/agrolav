@@ -27,7 +27,6 @@ from typing import Any
 from shared.net import canonical_ip, is_public_egress_ip
 from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON
 
-BEHEER_USERNAME = "beheer"
 _TARGET_RE = re.compile(r"^(C_[1-9]\d*|L_[1-9]\d*)$")
 
 
@@ -83,10 +82,6 @@ def ip_in_allowlist(client_ip: str | None, allow: list[str]) -> bool:
     """Membership test. An empty allowlist admits nothing."""
     ip = normalize_ip(client_ip)
     return bool(ip) and ip in allow
-
-
-def is_beheer(username: str | None) -> bool:
-    return str(username or "").strip().casefold() == BEHEER_USERNAME
 
 
 def development_hub() -> bool:
@@ -348,15 +343,6 @@ def editable_targets(username: str) -> list[dict[str, str]]:
     ident = int(user.get("id") or 0)
     access = str(rec.get("access") or "").strip().lower()
     out: list[dict[str, str]] = []
-
-    if is_beheer(username):
-        cursor.execute("SELECT country_id FROM dbo.country ORDER BY username")
-        for (cid,) in cursor.fetchall():
-            out.append(_label_for_target(cursor, f"C_{int(cid)}"))
-        cursor.execute("SELECT center_id FROM dbo.center ORDER BY username")
-        for (cid,) in cursor.fetchall():
-            out.append(_label_for_target(cursor, f"L_{int(cid)}"))
-        return out
 
     if access == ACCESS_CENTER and ident:
         return [_label_for_target(cursor, f"L_{ident}")]
