@@ -488,7 +488,6 @@ function categoryHasAmounts(matrix: MatrixResponse, category: string, person?: s
 }
 
 function personHasTransactions(matrix: MatrixResponse, category: string, person: string): boolean {
-  if ((matrix.entries ?? []).includes(category)) return true;
   if (matrix.used !== undefined) return (matrix.used[category] ?? []).includes(person);
   return amountHasValue(matrix.cells[category]?.[person] ?? "");
 }
@@ -3310,7 +3309,7 @@ function MatrixTable({
         {categories.map((cat) => (
           <tr
             key={cat}
-            className={`${selection?.category === cat ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${categoryRowGreyed(matrix, cat) ? " empty-category-row" : ""}`}
+            className={`${selection?.category === cat ? "active" : ""}${isMatrixFooter(matrix, cat) ? " banksaldo-row" : ""}${categoryRowGreyed(matrix, cat, people.length === 1 ? people[0].person_name : undefined) ? " empty-category-row" : ""}`}
           >
             <td className="cat">{displayCategoryName(cat)}</td>
             {people.map((p) => {

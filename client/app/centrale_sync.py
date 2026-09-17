@@ -511,11 +511,35 @@ def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
             }
         out["cells"] = trimmed
     used = out.get("used")
-    if isinstance(used, dict) and keep is not None:
-        out["used"] = {k: v for k, v in used.items() if str(k) in keep}
+    if isinstance(used, dict):
+        filtered_used: dict[str, Any] = {}
+        for cat, persons in used.items():
+            if keep is not None and str(cat) not in keep:
+                continue
+            if isinstance(persons, list):
+                persons = [
+                    p
+                    for p in persons
+                    if str(p) in person_names or str(p).lower() == scope.lower()
+                ]
+            filtered_used[str(cat)] = persons
+        out["used"] = filtered_used
+        used = filtered_used
     entries = out.get("entries")
-    if isinstance(entries, list) and keep is not None:
-        out["entries"] = [e for e in entries if str(e) in keep]
+    if isinstance(entries, list):
+        person_used = {
+            str(cat)
+            for cat, persons in (used if isinstance(used, dict) else {}).items()
+            if isinstance(persons, list)
+            and any(
+                str(p) in person_names or str(p).lower() == scope.lower()
+                for p in persons
+            )
+        }
+        kept_entries = [e for e in entries if str(e) in person_used]
+        if keep is not None:
+            kept_entries = [e for e in kept_entries if str(e) in keep]
+        out["entries"] = kept_entries
     return out
 
 
