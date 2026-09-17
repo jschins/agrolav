@@ -106,7 +106,7 @@ function Copy-RemoteBak {
 
 if ($CopyOnly) {
     Write-Host "Copying existing ${RemoteHost}:$RemoteWorking (no BACKUP) ..."
-    Write-Host "Enter the SSH password."
+    Write-Host "Enter the password twice"
     Copy-RemoteBak
     return
 }
@@ -117,7 +117,7 @@ $staleMux = Join-Path $env:TEMP "agrlv-ssh"
 if (Test-Path $staleMux) { Remove-Item -Force $staleMux }
 
 Write-Host "Backing up on ${RemoteHost} as agrolav.bak ..."
-Write-Host "Enter the SSH password, then the sudo password if asked."
+Write-Host "Enter the password three times"
 $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($remoteBash))
 # -tt gives sudo a TTY. Do not pipe the script on stdin (sudo would steal it).
 & ssh -tt -p $SshPort $Target -- "echo $b64 | base64 -d > /tmp/pull-remote-backup.sh && bash /tmp/pull-remote-backup.sh; status=`$?; rm -f /tmp/pull-remote-backup.sh; exit `$status"

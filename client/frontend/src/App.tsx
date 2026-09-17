@@ -2483,6 +2483,7 @@ function MainApp({
               person_name={selection.person_name}
               selectedCategory={selection.category}
               onPick={(category) => selectCell(selection.person_name, category)}
+              onPersonChange={(person_name) => selectCell(person_name, selection.category)}
             />
           </>
         )}
@@ -3340,20 +3341,46 @@ function PersonColumnTable({
   person_name,
   selectedCategory,
   onPick,
+  onPersonChange,
 }: {
   matrix: MatrixResponse;
   person_name: string;
   selectedCategory: string | null;
   onPick: (category: string) => void;
+  onPersonChange?: (person_name: string) => void;
 }) {
-  const { categories, cells } = matrix;
+  const { categories, people, cells } = matrix;
   const terms = matrix.table_header_terms;
+  const scopedPeople = people.some((p) => p.person_name === person_name)
+    ? people
+    : [{ person_name }, ...people];
+  const showPersonMenu = scopedPeople.length > 1 && Boolean(onPersonChange);
   return (
     <table className="totals-table">
       <thead>
         <tr>
           <th className="cat">{tableHeaderTerm(terms, "Category")}</th>
-          <th className="num">{person_name}</th>
+          <th className="num person-column-head">
+            {showPersonMenu ? (
+              <select
+                className="person-column-select"
+                value={person_name}
+                aria-label={tableHeaderTerm(terms, "Person")}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (next !== person_name) onPersonChange?.(next);
+                }}
+              >
+                {scopedPeople.map((p) => (
+                  <option key={p.person_name} value={p.person_name}>
+                    {p.person_name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              person_name
+            )}
+          </th>
         </tr>
       </thead>
       <tbody>

@@ -612,6 +612,27 @@ th {
   white-space: nowrap;
 }
 
+.totals-table th.person-column-head {
+  padding: 0.15rem 0.25rem;
+  min-width: 5.5rem;
+}
+
+.person-column-select {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.1rem 0.2rem;
+  border: 1px solid #c5c5c8;
+  border-radius: 4px;
+  background: #edfcff;
+  color: #1a1a1a;
+  font: inherit;
+  font-weight: 600;
+  text-align: right;
+  cursor: pointer;
+}
+
 .totals-table .cat {
   white-space: normal;
   overflow-wrap: anywhere;
