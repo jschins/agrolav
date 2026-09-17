@@ -318,26 +318,6 @@ export default function App() {
 
       {!sheet && !error && <div className="loading">Laden…</div>}
 
-      {sheet?.plug_debug && (
-        <aside className="plug-debug" aria-label="2000 debug">
-          <h2>2000 debug</h2>
-          <dl>
-            <div>
-              <dt>balance_opening</dt>
-              <dd>{sheet.plug_debug.opening}</dd>
-            </div>
-            <div>
-              <dt>calculated</dt>
-              <dd>{sheet.plug_debug.calculated}</dd>
-            </div>
-            <div>
-              <dt>equal</dt>
-              <dd>{sheet.plug_debug.equal ? "yes" : "no"}</dd>
-            </div>
-          </dl>
-        </aside>
-      )}
-
       {sheet && (
         <div className="sheet">
           <SideTable

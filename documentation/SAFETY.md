@@ -11,7 +11,8 @@ The hub refuses to start without `HUB_DATABASE_URL`.
 
 A database backup contains Enable Banking private keys. Encrypt backups
 before they leave the box (`restic`, `borg`, or a tarball with `age`/`gpg`)
-and send them only to a **private** bucket.
+and send them only to a **private** bucket. `scripts/pull-remote-backup.ps1`
+deletes the droplet `.bak` after a successful copy to this PC.
 
 Do not put SSH passwords, API keys, or session secrets in git or in
 markdown.

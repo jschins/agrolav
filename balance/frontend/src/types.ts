@@ -8,12 +8,6 @@ export interface BalanceLine {
   role?: string;
 }
 
-export interface PlugDebug {
-  opening: string;
-  calculated: string;
-  equal: boolean;
-}
-
 export interface AfschrijvingJournal {
   journal_id: number;
   date: string;
@@ -45,7 +39,6 @@ export interface BalanceSheet {
   balanced: boolean;
   subadministratie?: SubadministratieSheet;
   afschrijvingen?: Afschrijvingen;
-  plug_debug?: PlugDebug;
 }
 
 export interface CategoryInfo {

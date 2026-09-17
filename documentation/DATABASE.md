@@ -17,9 +17,9 @@ The folder names `local_backups` and `remote_backups` mean **where the file
 was written**, and they are the same on both machines. Each SQL container
 bind-mounts its host backup root at `/var/opt/mssql/backup`, so SSMS always
 uses the container path (a Windows path such as `C:\SQLBackups\…` fails with
-MSG 3201). On the droplet the working copy is `agrolav.bak` (`INIT`
-overwrites it). Dated names (`agrolav20260917_1150.bak`) are local archive
-only, written when you pull.
+MSG 3201). The pull script writes `agrolav.bak` on the droplet, copies it
+here, then **deletes** it (backups hold Enable Banking keys). Dated names
+(`agrolav20260917_1150.bak`) are local archive only.
 
 | | Local PC | Remote droplet |
 |:--|:---------|:---------------|
@@ -49,8 +49,7 @@ mirrored folders — no `.bak` files at the root:
 ```text
 /opt/sql_backups/                  host, bind-mounted
 ├── local_backups/                 copies written on the PC (§1.3 / §2.1)
-└── remote_backups/                written here by MSSQL2022 (§1.1)
-    └── agrolav.bak                last backup (`INIT` overwrites)
+└── remote_backups/                written here by MSSQL2022 (§1.1), then deleted after pull
 ```
 
 Inside the container that is the same disk:
@@ -73,9 +72,9 @@ sudo chmod 775 /opt/sql_backups/remote_backups
 
 ### 1.1–1.2 Remote backup and copy to this PC
 
-From Windows, one script overwrites `agrolav.bak` on the droplet, then
-`scp`s it to `C:\SQLBackups\remote_backups\agrolav{YYYYMMDD_HHMM}.bak`
-(stamp from the PC clock, no seconds):
+From Windows, one script writes `agrolav.bak` on the droplet, `scp`s it to
+`C:\SQLBackups\remote_backups\agrolav{YYYYMMDD_HHMM}.bak`, then deletes the
+droplet file (stamp from the backup time, no seconds):
 
 ```powershell
 powershell -File scripts/pull-remote-backup.ps1
@@ -122,7 +121,11 @@ scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/agrolav.bak C:
 
 That is `C:\SQLBackups\remote_backups\agrolavYYYYMMDD_HHMM.bak` on the PC,
 copied from `/var/opt/mssql/backup/remote_backups/agrolav.bak` inside
-`MSSQL2022`. The droplet keeps only `agrolav.bak`.
+`MSSQL2022`. Then delete the droplet file so the keys do not stay there:
+
+```bash
+sudo rm -f /opt/sql_backups/remote_backups/agrolav.bak
+```
 
 ### 1.3 SQL for restoring a local backup
 

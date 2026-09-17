@@ -614,11 +614,6 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
         "balanced": total_activa == total_passiva,
         "subadministratie": list_subadministratie_sheet(country_id),
         "afschrijvingen": list_afschrijvingen(country_id, year),
-        "plug_debug": {
-            "opening": str(start_plug),
-            "calculated": str(balance_amount),
-            "equal": bool(plug_unchanged),
-        },
     }
 
 

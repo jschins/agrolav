@@ -4,9 +4,9 @@
 #   powershell -File scripts/pull-remote-backup.ps1
 #   powershell -File scripts/pull-remote-backup.ps1 -CopyOnly
 #
-# Remote keeps only agrolav.bak (INIT overwrite). Local file is
-# agrolavYYYYMMDD_HHMM.bak from the backup file time (no seconds).
-# -CopyOnly skips BACKUP and pulls the file already on the droplet.
+# Remote keeps no .bak after a successful pull (Enable Banking keys).
+# Local file is agrolavYYYYMMDD_HHMM.bak from the backup file time (no seconds).
+# -CopyOnly skips BACKUP, pulls the file already on the droplet, then deletes it.
 
 param(
     [switch]$CopyOnly
@@ -100,14 +100,28 @@ function Copy-RemoteBak {
     $stamp = $item.LastWriteTime.ToString("yyyyMMdd_HHmm")
     $dest = "$LocalDir/agrolav$stamp.bak"
     Move-Item -Force $tmp $dest
+    return $dest
+}
+
+function Remove-RemoteBak {
+    Write-Host "Removing the backup on the droplet (SSH, then sudo) ..."
+    & ssh -tt -p $SshPort $Target -- "sudo rm -f $RemoteWorking; sudo rm -f $RemoteDir/agrolav????????_*.bak; sudo ls -la $RemoteDir"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Copied locally, but the droplet file is still there. Remove $RemoteWorking by hand."
+    }
+}
+
+function Finish-Pull {
+    $dest = Copy-RemoteBak
+    Remove-RemoteBak
     Get-Item $dest | Format-Table Name, Length, LastWriteTime
-    Write-Host "Done. Local file: $dest"
+    Write-Host "Done. Local file: $dest (nothing left on the droplet)"
 }
 
 if ($CopyOnly) {
     Write-Host "Copying existing ${RemoteHost}:$RemoteWorking (no BACKUP) ..."
-    Write-Host "Enter the password twice"
-    Copy-RemoteBak
+    Write-Host "Enter the SSH password for scp, then SSH and sudo to delete the droplet file."
+    Finish-Pull
     return
 }
 
@@ -117,7 +131,7 @@ $staleMux = Join-Path $env:TEMP "agrlv-ssh"
 if (Test-Path $staleMux) { Remove-Item -Force $staleMux }
 
 Write-Host "Backing up on ${RemoteHost} as agrolav.bak ..."
-Write-Host "Enter the password three times"
+Write-Host "Enter SSH and sudo for the backup, SSH again for scp, then SSH and sudo to delete the droplet file."
 $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($remoteBash))
 # -tt gives sudo a TTY. Do not pipe the script on stdin (sudo would steal it).
 & ssh -tt -p $SshPort $Target -- "echo $b64 | base64 -d > /tmp/pull-remote-backup.sh && bash /tmp/pull-remote-backup.sh; status=`$?; rm -f /tmp/pull-remote-backup.sh; exit `$status"
@@ -127,4 +141,4 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Copying agrolav.bak (SSH password again) ..."
 Start-Sleep -Seconds 2
-Copy-RemoteBak
+Finish-Pull
