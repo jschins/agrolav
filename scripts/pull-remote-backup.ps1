@@ -104,10 +104,24 @@ function Copy-RemoteBak {
 }
 
 function Remove-RemoteBak {
-    Write-Host "Removing the backup on the droplet (SSH, then sudo) ..."
-    & ssh -tt -p $SshPort $Target -- "sudo rm -f $RemoteWorking; sudo rm -f $RemoteDir/agrolav????????_*.bak; sudo ls -la $RemoteDir"
+    Write-Host "Removing every .bak on the droplet under $RemoteDir (SSH, then sudo) ..."
+    $remoteRm = @'
+set -euo pipefail
+DIR="/opt/sql_backups/remote_backups"
+sudo find "$DIR" -type f \( -name '*.bak' -o -name '*.bak.partial' \) -delete
+sudo rm -f /tmp/agrolav.bak /tmp/pull-remote-backup.sh
+sudo ls -la "$DIR"
+left=$(sudo find "$DIR" -type f -name '*.bak' | wc -l)
+if [ "$left" -ne 0 ]; then
+  echo "still has .bak files in $DIR" >&2
+  sudo find "$DIR" -type f -name '*.bak' -ls >&2
+  exit 1
+fi
+'@
+    $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($remoteRm))
+    & ssh -tt -p $SshPort $Target -- "echo $b64 | base64 -d > /tmp/pull-remote-backup-rm.sh && bash /tmp/pull-remote-backup-rm.sh; status=`$?; rm -f /tmp/pull-remote-backup-rm.sh; exit `$status"
     if ($LASTEXITCODE -ne 0) {
-        throw "Copied locally, but the droplet file is still there. Remove $RemoteWorking by hand."
+        throw "Copied locally, but a .bak is still on the droplet under $RemoteDir. Remove it with: sudo find $RemoteDir -name '*.bak' -delete"
     }
 }
 
