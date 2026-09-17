@@ -17,8 +17,9 @@ The folder names `local_backups` and `remote_backups` mean **where the file
 was written**, and they are the same on both machines. Each SQL container
 bind-mounts its host backup root at `/var/opt/mssql/backup`, so SSMS always
 uses the container path (a Windows path such as `C:\SQLBackups\…` fails with
-MSG 3201). Working copy is `agrolav.bak` (`INIT` overwrites it). Dated names
-(`agrolav20260915_1039.bak`) stay in the same folder as archive.
+MSG 3201). On the droplet the working copy is `agrolav.bak` (`INIT`
+overwrites it). Dated names (`agrolav20260917_1150.bak`) are local archive
+only, written when you pull.
 
 | | Local PC | Remote droplet |
 |:--|:---------|:---------------|
@@ -49,9 +50,7 @@ mirrored folders — no `.bak` files at the root:
 /opt/sql_backups/                  host, bind-mounted
 ├── local_backups/                 copies written on the PC (§1.3 / §2.1)
 └── remote_backups/                written here by MSSQL2022 (§1.1)
-    ├── agrolav.bak                working copy (`INIT` overwrites)
-    ├── agrolav20260915_1039.bak   dated archives
-    └── …
+    └── agrolav.bak                last backup (`INIT` overwrites)
 ```
 
 Inside the container that is the same disk:
@@ -71,6 +70,22 @@ SQL Server (uid **10001**) must **own the folder** to create a new dated
 sudo chown 10001:10001 /opt/sql_backups/remote_backups
 sudo chmod 775 /opt/sql_backups/remote_backups
 ```
+
+### 1.1–1.2 Remote backup and copy to this PC
+
+From Windows, one script overwrites `agrolav.bak` on the droplet, then
+`scp`s it to `C:\SQLBackups\remote_backups\agrolav{YYYYMMDD_HHMM}.bak`
+(stamp from the PC clock, no seconds):
+
+```powershell
+powershell -File scripts/pull-remote-backup.ps1
+```
+
+You need SSH as `agrolav` on port **4523**, and sudo on the droplet for
+`docker exec` / `chown`. The `sa` password is read on the server from
+`/root/sqlserver/.env` or `/opt/agrolav/.env` (never typed into the script).
+
+What the script runs is the same as the two steps below.
 
 ### 1.1 SQL to write the database to disk
 
@@ -102,14 +117,12 @@ sudo ls -lh /opt/sql_backups/remote_backups/agrolav.bak
 From Windows into the folder that holds **copies of the remote** database:
 
 ```powershell
-scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolav.bak
+scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolav20260917_1204.bak
 ```
 
-That is `C:\SQLBackups\remote_backups\agrolav.bak` on the PC =
-`/var/opt/mssql/backup/remote_backups/agrolav.bak` inside `agrolav-sql`.
-
-To pull every dated archive: `/opt/sql_backups/remote_backups/*.bak` →
-`C:\SQLBackups\remote_backups\`.
+That is `C:\SQLBackups\remote_backups\agrolavYYYYMMDD_HHMM.bak` on the PC,
+copied from `/var/opt/mssql/backup/remote_backups/agrolav.bak` inside
+`MSSQL2022`. The droplet keeps only `agrolav.bak`.
 
 ### 1.3 SQL for restoring a local backup
 
