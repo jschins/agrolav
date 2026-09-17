@@ -145,12 +145,17 @@ class RecordVisitTests(unittest.TestCase):
         server = mock.patch.object(hub_ip, "development_hub", return_value=False)
         server.start()
         self.addCleanup(server.stop)
+        from app import hub_ip as hub_ip_mod
+
+        hub_ip_mod._reset_visit_log_cache()
+        self.addCleanup(hub_ip_mod._reset_visit_log_cache)
 
     def test_refused_login_inserts_empty_username(self):
         from app import hub_ip
 
         cursor = mock.Mock()
-        cursor.fetchone.side_effect = [(1,), None]
+        cursor.rowcount = 1
+        cursor.fetchone.side_effect = [(1,), (1,), None]
         conn = mock.Mock()
         with mock.patch.object(hub_ip, "_cursor", return_value=cursor), mock.patch(
             "app.user_store._sql_connect", return_value=conn
@@ -158,28 +163,48 @@ class RecordVisitTests(unittest.TestCase):
             hub_ip.record_visit("1.2.3.4", None)
         insert_sql, insert_params = cursor.execute.call_args_list[-1][0]
         self.assertIn("INSERT INTO dbo.visitor_ip", insert_sql)
-        self.assertEqual(insert_params, ("1.2.3.4", ""))
+        self.assertEqual(insert_params, ("1.2.3.4", "", 1, None, ""))
         conn.commit.assert_called_once()
 
-    def test_refused_login_skips_existing_empty_username(self):
+    def test_refused_login_increments_existing(self):
         from app import hub_ip
 
         cursor = mock.Mock()
-        cursor.fetchone.side_effect = [(1,), (9,)]
+        cursor.rowcount = 1
+        cursor.fetchone.side_effect = [(1,), (1,), (9,)]
         conn = mock.Mock()
         with mock.patch.object(hub_ip, "_cursor", return_value=cursor), mock.patch(
             "app.user_store._sql_connect", return_value=conn
         ):
             hub_ip.record_visit("1.2.3.4", None)
         sqls = [call.args[0] for call in cursor.execute.call_args_list]
-        self.assertFalse(any("INSERT INTO dbo.visitor_ip" in sql for sql in sqls))
-        conn.commit.assert_not_called()
+        self.assertTrue(any("UPDATE dbo.visitor_ip" in sql for sql in sqls))
+        conn.commit.assert_called_once()
+
+    def test_non_login_inserts_login_page_zero(self):
+        from app import hub_ip
+
+        cursor = mock.Mock()
+        cursor.rowcount = 1
+        cursor.fetchone.side_effect = [(1,), (1,), None]
+        conn = mock.Mock()
+        with mock.patch.object(hub_ip, "_cursor", return_value=cursor), mock.patch(
+            "app.user_store._sql_connect", return_value=conn
+        ):
+            hub_ip.record_visit(
+                "8.8.8.8", None, login_page=False, path="/.env", status=404
+            )
+        insert_sql, insert_params = cursor.execute.call_args_list[-1][0]
+        self.assertIn("INSERT INTO dbo.visitor_ip", insert_sql)
+        self.assertEqual(insert_params, ("8.8.8.8", "", 0, 404, "/.env"))
+        conn.commit.assert_called_once()
 
     def test_successful_login_stores_username(self):
         from app import hub_ip
 
         cursor = mock.Mock()
-        cursor.fetchone.side_effect = [(1,), None]
+        cursor.rowcount = 1
+        cursor.fetchone.side_effect = [(1,), (1,), None]
         conn = mock.Mock()
         with mock.patch.object(hub_ip, "_cursor", return_value=cursor), mock.patch(
             "app.user_store._sql_connect", return_value=conn
@@ -187,7 +212,7 @@ class RecordVisitTests(unittest.TestCase):
             hub_ip.record_visit("1.2.3.4", "beheer")
         insert_sql, insert_params = cursor.execute.call_args_list[-1][0]
         self.assertIn("INSERT INTO dbo.visitor_ip", insert_sql)
-        self.assertEqual(insert_params, ("1.2.3.4", "beheer"))
+        self.assertEqual(insert_params, ("1.2.3.4", "beheer", 1, None, ""))
 
     def test_skips_loopback(self):
         from app import hub_ip
@@ -219,7 +244,8 @@ class RecordVisitTests(unittest.TestCase):
         from app import hub_ip
 
         cursor = mock.Mock()
-        cursor.fetchone.side_effect = [(1,), None]
+        cursor.rowcount = 1
+        cursor.fetchone.side_effect = [(1,), (1,), None]
         conn = mock.Mock()
         with mock.patch.object(hub_ip, "_cursor", return_value=cursor), mock.patch(
             "app.user_store._sql_connect", return_value=conn
@@ -227,7 +253,7 @@ class RecordVisitTests(unittest.TestCase):
             hub_ip.record_visit("80.12.34.56", "dkg")
         insert_sql, insert_params = cursor.execute.call_args_list[-1][0]
         self.assertIn("INSERT INTO dbo.visitor_ip", insert_sql)
-        self.assertEqual(insert_params, ("80.12.34.56", "dkg"))
+        self.assertEqual(insert_params, ("80.12.34.56", "dkg", 1, None, ""))
         own_list.assert_not_called()
 
     def test_unreadable_administrator_table_still_logs(self):
@@ -235,7 +261,8 @@ class RecordVisitTests(unittest.TestCase):
 
         self.is_administrator.side_effect = RuntimeError("no sql")
         cursor = mock.Mock()
-        cursor.fetchone.side_effect = [(1,), None]
+        cursor.rowcount = 1
+        cursor.fetchone.side_effect = [(1,), (1,), None]
         conn = mock.Mock()
         with mock.patch.object(hub_ip, "_cursor", return_value=cursor), mock.patch(
             "app.user_store._sql_connect", return_value=conn
@@ -243,7 +270,7 @@ class RecordVisitTests(unittest.TestCase):
             hub_ip.record_visit("80.12.34.56", None)
         insert_sql, insert_params = cursor.execute.call_args_list[-1][0]
         self.assertIn("INSERT INTO dbo.visitor_ip", insert_sql)
-        self.assertEqual(insert_params, ("80.12.34.56", ""))
+        self.assertEqual(insert_params, ("80.12.34.56", "", 1, None, ""))
 
 
 class DevelopmentHubTests(unittest.TestCase):
@@ -323,7 +350,8 @@ class IPv6Tests(unittest.TestCase):
         from app import hub_ip
 
         cursor = mock.Mock()
-        cursor.fetchone.side_effect = [(1,), None]
+        cursor.rowcount = 1
+        cursor.fetchone.side_effect = [(1,), (1,), None]
         conn = mock.Mock()
         with mock.patch.object(
             hub_ip, "administrator_ip_allowed", return_value=False
@@ -332,9 +360,10 @@ class IPv6Tests(unittest.TestCase):
         ), mock.patch.object(hub_ip, "_cursor", return_value=cursor), mock.patch(
             "app.user_store._sql_connect", return_value=conn
         ):
+            hub_ip._reset_visit_log_cache()
             hub_ip.record_visit(self.ADDRESS, "beheer")
         _, insert_params = cursor.execute.call_args_list[-1][0]
-        self.assertEqual(insert_params, (self.ADDRESS, "beheer"))
+        self.assertEqual(insert_params, (self.ADDRESS, "beheer", 1, None, ""))
         self.assertEqual(len(self.ADDRESS), 39)
 
 

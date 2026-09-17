@@ -11,11 +11,13 @@ A development hub (``HUB_DEV_LOGIN`` set, caller on loopback) skips the gate
 entirely and writes no visitor rows: browser, client and hub share one machine
 there, so no public address exists to list or to record.
 
-``dbo.visitor_ip`` records attempted client IPs. Successful login stores the
-username; a refused attempt stores ``''`` (not NULL) so
-``UNIQUE (egress_ip, username)`` collapses repeats from the same IP. Addresses
-listed in ``dbo.administrator`` are not logged; every other visitor is, whether
-or not a country or center lists it.
+``dbo.visitor_ip`` records attempted client IPs. ``login_page = 1`` is a
+login/OTP POST and is written immediately (counter + last_seen).
+``login_page = 0`` is any other HTTP hit, at most once per UTC day.
+Successful login stores the username; a refused attempt stores ``''``.
+``UNIQUE (egress_ip, username, login_page)`` collapses repeats. Addresses
+listed in ``dbo.administrator`` are not logged. A development hub records
+nothing at all.
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ from typing import Any
 
 from shared.net import canonical_ip, is_public_egress_ip
 from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON
+from shared.visitor_report import visit_path
 
 _TARGET_RE = re.compile(r"^(C_[1-9]\d*|L_[1-9]\d*)$")
 
@@ -235,15 +238,47 @@ def login_ip_allowed(user: dict[str, Any], client_ip: str | None) -> bool:
     return allowed
 
 
-def record_visit(client_ip: str | None, username: str | None = None) -> None:
-    """Insert ``dbo.visitor_ip`` if this (ip, username) pair is new.
+_visit_log_full: bool | None = None
+_access_seen: dict[str, str] = {}
 
-    Refused login uses ``username = ''`` so ``UNIQUE (egress_ip, username)``
-    blocks a second row for the same IP. Only a public address is stored
-    (the router WAN as seen by Caddy), never loopback or LAN. An address in
-    ``dbo.administrator`` is ours and is skipped; anything else is logged,
-    whether or not a country or center lists it. A development hub records
-    nothing at all.
+
+def _reset_visit_log_cache() -> None:
+    global _visit_log_full
+    _visit_log_full = None
+    _access_seen.clear()
+
+
+def _has_visit_log_columns(cursor) -> bool:
+    global _visit_log_full
+    if _visit_log_full is not None:
+        return _visit_log_full
+    cursor.execute("SELECT COL_LENGTH(N'dbo.visitor_ip', N'login_page')")
+    row = cursor.fetchone()
+    _visit_log_full = bool(row and row[0])
+    return _visit_log_full
+
+
+def _utc_day() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def record_visit(
+    client_ip: str | None,
+    username: str | None = None,
+    *,
+    login_page: bool = True,
+    path: str | None = None,
+    status: int | None = None,
+) -> None:
+    """Insert or update ``dbo.visitor_ip``.
+
+    ``login_page=True`` (login/OTP POST) always bumps ``number_of_attempts``
+    and ``last_seen``. ``login_page=False`` writes at most once per UTC day.
+    Refused login uses ``username = ''``. Only a public address is stored.
+    An address in ``dbo.administrator`` is skipped. A development hub
+    records nothing at all.
     """
     if development_hub():
         return
@@ -256,30 +291,86 @@ def record_visit(client_ip: str | None, username: str | None = None) -> None:
     except Exception as exc:  # noqa: BLE001
         # Rather log one of our own addresses than lose a real visitor.
         print(f"visitor_ip: could not read dbo.administrator for {ip_s!r}: {exc}")
-    # 45 matches the column: a compressed IPv6 address runs to 39 characters,
-    # so the old cap of 32 stored a truncated, wrong address.
     ip_s = ip_s[:45]
     name = str(username or "").strip()[:64]
+    flag = 1 if login_page else 0
+    if flag == 0:
+        today = _utc_day()
+        if _access_seen.get(ip_s) == today:
+            return
+    path_s = visit_path(path)
+    status_n = int(status) if status is not None else None
     cursor = _cursor()
     if cursor is None or not _has_visitor_table(cursor):
         return
     try:
+        full = _has_visit_log_columns(cursor)
+        if not full:
+            if flag == 0:
+                return
+            cursor.execute(
+                """
+                SELECT TOP 1 visitor_id FROM dbo.visitor_ip
+                WHERE egress_ip = ? AND username = ?
+                """,
+                (ip_s, name),
+            )
+            if cursor.fetchone():
+                return
+            cursor.execute(
+                "INSERT INTO dbo.visitor_ip (egress_ip, username) VALUES (?, ?)",
+                (ip_s, name),
+            )
+            from app import user_store
+
+            user_store._sql_connect().commit()
+            return
         cursor.execute(
             """
             SELECT TOP 1 visitor_id FROM dbo.visitor_ip
-            WHERE egress_ip = ? AND username = ?
+            WHERE egress_ip = ? AND username = ? AND login_page = ?
             """,
-            (ip_s, name),
+            (ip_s, name, flag),
         )
-        if cursor.fetchone():
+        row = cursor.fetchone()
+        if row:
+            visitor_id = int(row[0])
+            cursor.execute(
+                """
+                UPDATE dbo.visitor_ip
+                SET number_of_attempts = number_of_attempts + 1,
+                    last_seen = SYSUTCDATETIME(),
+                    last_path = CASE WHEN LEN(?) = 0 THEN last_path ELSE ? END,
+                    last_status = COALESCE(?, last_status)
+                WHERE visitor_id = ?
+                  AND (
+                    login_page = 1
+                    OR CONVERT(date, last_seen) < CONVERT(date, SYSUTCDATETIME())
+                  )
+                """,
+                (path_s, path_s, status_n, visitor_id),
+            )
+            if cursor.rowcount:
+                from app import user_store
+
+                user_store._sql_connect().commit()
+                if flag == 0:
+                    _access_seen[ip_s] = _utc_day()
             return
         cursor.execute(
-            "INSERT INTO dbo.visitor_ip (egress_ip, username) VALUES (?, ?)",
-            (ip_s, name),
+            """
+            INSERT INTO dbo.visitor_ip
+                (egress_ip, username, login_page, number_of_attempts,
+                 first_seen, last_seen, last_status, last_path)
+            VALUES (?, ?, ?, 1, SYSUTCDATETIME(), SYSUTCDATETIME(), ?, ?)
+            """,
+            (ip_s, name, flag, status_n, path_s),
         )
         from app import user_store
 
         user_store._sql_connect().commit()
+        if flag == 0:
+            _access_seen[ip_s] = _utc_day()
     except Exception as exc:  # noqa: BLE001
         print(f"visitor_ip: failed to record {ip_s!r}: {exc}")
 

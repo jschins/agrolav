@@ -49,6 +49,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
+        try:
+            from shared.http_ip import request_client_ip
+            from shared.visitor_report import report_access
+
+            report_access(request_client_ip(request), path, response.status_code)
+        except Exception:  # noqa: BLE001
+            pass
+
         if session and session.get("username"):
             from app.centrale_sync import maybe_browser_session_heartbeat
 

@@ -43,7 +43,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.session = session
         if needs_auth and not (session and session.get("username")):
             return JSONResponse({"detail": "aanmelden vereist"}, status_code=401)
-        return await call_next(request)
+        response = await call_next(request)
+        try:
+            from shared.http_ip import request_client_ip
+            from shared.visitor_report import is_login_path, report_access, report_login
+
+            ip = request_client_ip(request)
+            if is_login_path(path):
+                report_login(ip, path, response.status_code)
+            else:
+                report_access(ip, path, response.status_code)
+        except Exception:  # noqa: BLE001
+            pass
+        return response
 
 
 app.add_middleware(AuthMiddleware)

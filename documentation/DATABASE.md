@@ -577,18 +577,27 @@ SSMS; there is no UI for it. See `hub/sql/administrator.sql`.
 
 ### `visitor_ip`
 
-Login attempts, so you can see who is knocking. See `hub/sql/visitor_ip.sql`.
+Login attempts and other HTTP hits, so you can see who is knocking. See
+`hub/sql/visitor_ip.sql`. `login_page = 1` is a login/OTP POST (written
+immediately). `login_page = 0` is any other public HTTP hit (at most once
+per UTC day).
 
 | column | type | notes |
 |:-------|:-----|:------|
 | `visitor_id` | `INT` PK IDENTITY | |
 | `egress_ip` | `VARCHAR(45)` | 45 fits a compressed IPv6 address (39) |
-| `username` | `VARCHAR(64)` NOT NULL, default `''` | `''` for a refused attempt |
-| Unique `(egress_ip, username)` | | the only uniqueness condition; repeats collapse |
+| `username` | `VARCHAR(64)` NOT NULL, default `''` | `''` when they did not log in |
+| `login_page` | `BIT` NOT NULL, default `1` | `1` login POST; `0` other HTTP |
+| `number_of_attempts` | `INT` NOT NULL, default `1` | incremented on collapse |
+| `first_seen` | `DATETIME2` NOT NULL | UTC |
+| `last_seen` | `DATETIME2` NOT NULL | UTC |
+| `last_status` | `SMALLINT` NULL | last HTTP status |
+| `last_path` | `VARCHAR(256)` NOT NULL, default `''` | URI without query string |
+| Unique `(egress_ip, username, login_page)` | | repeats collapse |
 
 Not recorded: loopback and LAN addresses, anything listed in
-`dbo.administrator`, and — on a development hub (`HUB_DEV_LOGIN`) — nothing
-at all.
+`dbo.administrator`, static `/assets` files, and — on a development hub
+(`HUB_DEV_LOGIN`) — nothing at all.
 
 ### `maaltijden_users`
 

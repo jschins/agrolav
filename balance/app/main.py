@@ -15,13 +15,32 @@ import re
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from shared.balance_values import CatalogError
 
 app = FastAPI(title="balance-hub", version="0.1")
+
+
+class AccessLogMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):  # type: ignore[no-untyped-def]
+        response = await call_next(request)
+        try:
+            from shared.http_ip import request_client_ip
+            from shared.visitor_report import report_access
+
+            report_access(
+                request_client_ip(request), request.url.path, response.status_code
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return response
+
+
+app.add_middleware(AccessLogMiddleware)
 
 
 @app.exception_handler(CatalogError)

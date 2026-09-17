@@ -69,7 +69,25 @@ async def bind_request_country(request: Request, call_next):  # type: ignore[no-
     country_token = set_request_country(raw or None)
     host_token = set_request_host(request.headers.get("host") or request.url.netloc)
     try:
-        return await call_next(request)
+        response = await call_next(request)
+        try:
+            from shared.http_ip import request_client_ip
+            from shared.visitor_report import skip_access_path
+
+            from app import hub_ip
+
+            path = request.url.path
+            if not skip_access_path(path):
+                hub_ip.record_visit(
+                    request_client_ip(request),
+                    None,
+                    login_page=False,
+                    path=path,
+                    status=response.status_code,
+                )
+        except Exception:  # noqa: BLE001
+            pass
+        return response
     finally:
         reset_request_country(country_token)
         reset_request_host(host_token)
@@ -157,7 +175,7 @@ def api_auth_login(
     from app import hub_ip, user_store
     from app.person_otp import OtpError, issue_and_send
 
-    hub_ip.record_visit(body.client_ip, None)
+    hub_ip.record_visit(body.client_ip, None, login_page=True, path="/api/auth/login")
     user = user_store.authenticate_public(body.username, body.password)
     if user is None:
         raise HTTPException(status_code=401, detail="invalid username or password")
@@ -176,7 +194,7 @@ def api_auth_login(
                 return issue_and_send(name, phone)
             except OtpError as exc:
                 raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
-    hub_ip.record_visit(body.client_ip, name)
+    hub_ip.record_visit(body.client_ip, name, login_page=True, path="/api/auth/login", status=200)
     _refresh_afschrijvingen(user)
     return {"user": user}
 
@@ -195,7 +213,7 @@ def api_auth_otp_verify(
     from app import hub_ip, user_store
     from app.person_otp import verify_otp_token
 
-    hub_ip.record_visit(body.client_ip, None)
+    hub_ip.record_visit(body.client_ip, None, login_page=True, path="/api/auth/otp/verify")
     username = verify_otp_token(body.otp_token, body.code)
     if username is None:
         raise HTTPException(status_code=401, detail="invalid or expired code")
@@ -207,7 +225,9 @@ def api_auth_otp_verify(
             status_code=403,
             detail="This login is not allowed from your IP address",
         )
-    hub_ip.record_visit(body.client_ip, username)
+    hub_ip.record_visit(
+        body.client_ip, username, login_page=True, path="/api/auth/otp/verify", status=200
+    )
     public = user_store._public_user(raw)
     _refresh_afschrijvingen(public)
     return {"user": public}
@@ -316,6 +336,31 @@ def _hub_ip_http(exc: Exception) -> HTTPException:
         code = 403 if "cannot edit" in msg.lower() else 400
         return HTTPException(status_code=code, detail=msg)
     return HTTPException(status_code=502, detail=str(exc))
+
+
+class VisitorRequest(BaseModel):
+    client_ip: str | None = None
+    path: str = ""
+    status: int | None = None
+    login_page: bool = False
+
+
+@app.post("/api/visitor")
+def api_visitor(
+    body: VisitorRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Non-login HTTP hit (login_page=0). Login posts use /api/auth/login."""
+    from app import hub_ip
+
+    hub_ip.record_visit(
+        body.client_ip,
+        None,
+        login_page=bool(body.login_page),
+        path=body.path,
+        status=body.status,
+    )
+    return {"ok": True}
 
 
 @app.get("/api/ip-access")
