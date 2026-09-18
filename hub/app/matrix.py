@@ -645,11 +645,27 @@ def _refresh_one_person(
     date_to: str | None = None,
     new_year: bool = False,
 ) -> tuple[dict[str, Any], list[str]]:
-    from app.core.single_client import EnableBankingError
+    from app.core.single_client import EnableBankingError, needs_consent_renewal
 
     try:
+        from app import enable_sql
+
         stamp: str | None = None
-        if pack.has_pem and not new_year:
+        try:
+            if enable_sql.person_needs_year_fetch(pack.person_name):
+                new_year = True
+                today = date.today()
+                date_from = f"{today.year}-01-01"
+                date_to = today.isoformat()
+        except Exception:  # noqa: BLE001
+            pass
+        consent_gap = False
+        if pack.has_pem:
+            try:
+                consent_gap = needs_consent_renewal()
+            except Exception:  # noqa: BLE001
+                consent_gap = True
+        if pack.has_pem and not new_year and not consent_gap:
             from app import user_store
 
             updated = user_store.account_last_booked(pack.person_name)

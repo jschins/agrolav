@@ -655,6 +655,25 @@ type RefreshStatusScope = {
   person: string;
 };
 
+function openBankAuthorization(results: RefreshPersonResult[]): string {
+  const authorizationUrl = results.find(
+    (result) =>
+      result.skipped &&
+      result.reason === "needs_consent_renewal" &&
+      result.authorization_url
+  )?.authorization_url;
+  if (authorizationUrl) {
+    const authorizationWindow = window.open(
+      authorizationUrl,
+      "_blank",
+      "noopener,noreferrer"
+    );
+    if (!authorizationWindow) window.location.assign(authorizationUrl);
+    return authorizationUrl;
+  }
+  return "";
+}
+
 function refreshStatusStorageKey(scope?: RefreshStatusScope | null): string {
   if (scope?.center && scope?.person) {
     return `${REFRESH_STATUS_KEY}:${scope.center}:${scope.person}`;
@@ -2114,10 +2133,9 @@ function MainApp({
   }, [selection]);
 
   const bankAuthRequired =
-    banks?.needs_initial_authorization === true && Boolean(banks?.person);
-  const autoFirstDownload =
     Boolean(banks?.person) &&
     (banks?.needs_initial_authorization === true || banks?.first_download === true);
+  const autoFirstDownload = bankAuthRequired;
   const firstDownloadAutoRef = useRef(false);
   useEffect(() => {
     if (!autoFirstDownload) return;
@@ -2129,8 +2147,12 @@ function MainApp({
     function attempt() {
       if (cancelled) return;
       if (hasSecrets) {
-        firstDownloadAutoRef.current = true;
-        doFirstDownload(person_name);
+        if (doFirstDownload(person_name)) {
+          firstDownloadAutoRef.current = true;
+        } else if (tries < 10 && !cancelled) {
+          tries += 1;
+          window.setTimeout(attempt, 300);
+        }
         return;
       }
       tries += 1;
@@ -2392,20 +2414,7 @@ function MainApp({
             results: res.results || [],
             warnings: res.warnings || [],
           };
-          const authorizationUrl = payload.results.find(
-            (result) =>
-              result.skipped &&
-              result.reason === "needs_consent_renewal" &&
-              result.authorization_url
-          )?.authorization_url;
-          if (authorizationUrl) {
-            const authorizationWindow = window.open(
-              authorizationUrl,
-              "_blank",
-              "noopener,noreferrer"
-            );
-            if (!authorizationWindow) window.location.assign(authorizationUrl);
-          }
+          openBankAuthorization(payload.results);
           saveStoredRefreshStatus(payload, refreshScope);
           setRefreshStatus(payload);
           setSelection(null);
@@ -2419,8 +2428,8 @@ function MainApp({
     });
   }
 
-  function doFirstDownload(person_name: string) {
-    if (refreshing || firstDownloading) return;
+  function doFirstDownload(person_name: string): boolean {
+    if (refreshing || firstDownloading) return false;
     beginRefreshBusy();
     flushSync(() => {
       setFirstDownloading(true);
@@ -2449,6 +2458,7 @@ function MainApp({
           const payload: StoredRefreshStatus = { results, warnings };
           saveStoredRefreshStatus(payload, refreshScope);
           setRefreshStatus(payload);
+          openBankAuthorization(payload.results);
           setConsentReady({});
           setSelection(null);
           setDetail(null);
@@ -2459,6 +2469,7 @@ function MainApp({
           endRefreshBusy();
         });
     });
+    return true;
   }
 
   const awaitingPostConsentFetch = (refreshStatus?.results || []).some(
@@ -2526,8 +2537,15 @@ function MainApp({
         label: refreshing
           ? "Downloading…"
           : tableHeaderTerm(matrix?.table_header_terms, "Download transactions"),
-        disabled: refreshing,
-        onClick: doRefresh,
+        disabled: refreshing || firstDownloading,
+        onClick: () => {
+          const person_name = (banks?.person || "").trim();
+          if (person_name && autoFirstDownload) {
+            doFirstDownload(person_name);
+            return;
+          }
+          doRefresh();
+        },
       });
     }
     if (canAddPerson && addPersonUrl) {
@@ -2547,6 +2565,9 @@ function MainApp({
     addPersonUrl,
     bankAuthRequired,
     bankAuthUrl,
+    firstDownloading,
+    autoFirstDownload,
+    banks,
     setHeaderActions,
     matrix,
   ]);
@@ -2563,15 +2584,6 @@ function MainApp({
     () => loginHasUsernameRole(categoryRoles, loginName),
     [categoryRoles, loginName]
   );
-
-  const authOpenedRef = useRef<string>("");
-  useEffect(() => {
-    if (!bankAuthUrl) return;
-    if (bankAuthUrl === authOpenedRef.current) return;
-    authOpenedRef.current = bankAuthUrl;
-    window.open(bankAuthUrl, "_blank", "noopener,noreferrer");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bankAuthUrl]);
 
   const sidebarTitle = (() => {
     const title = brandName;

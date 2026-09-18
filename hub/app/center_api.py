@@ -116,9 +116,13 @@ def person_banks(center: str, person_name: str, *, year: str | None = None) -> d
                 has_credentials = enable_sql.person_has_pem_light(person_name)
                 consent_active = enable_sql.person_consent_ready(person_name) is True
                 has_downloads = enable_sql.person_has_transactions(person_name)
-                first_download = bool(consent_active) and not has_downloads
-                needs_initial_authorization = (
-                    bool(has_credentials) and not consent_active and not has_downloads
+                year_fetch = enable_sql.person_needs_year_fetch(person_name)
+                session_reset = enable_sql.person_session_reset(person_name)
+                first_download = bool(year_fetch) or (
+                    bool(consent_active) and not has_downloads
+                )
+                needs_initial_authorization = bool(has_credentials) and (
+                    not consent_active or session_reset
                 )
         except Exception:  # noqa: BLE001
             token = token or ""

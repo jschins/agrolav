@@ -145,6 +145,7 @@ class TransactionSplitSave(BaseModel):
 class RefreshRequest(BaseModel):
     date_from: str | None = None
     date_to: str | None = None
+    new_year: bool = False
 
 
 class PersonRefreshRequest(BaseModel):
@@ -815,13 +816,12 @@ def api_refresh(body: RefreshRequest | None = None) -> dict[str, Any]:
     try:
         person = configured_person()
         if person:
-            # Scoped client: refresh that person only (append-only, no new-year).
             result = hub_post(
                 f"/refresh/{urllib.parse.quote(person)}",
                 {
                     "date_from": req.date_from,
                     "date_to": req.date_to,
-                    "new_year": False,
+                    "new_year": req.new_year,
                 },
                 timeout=300.0,
             )

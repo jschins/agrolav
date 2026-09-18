@@ -170,5 +170,26 @@ class SaveConsentDbTests(unittest.TestCase):
         self.upsert.assert_not_called()
 
 
+class ConnectionFlagTests(unittest.TestCase):
+    def test_missing_valid_until_is_expired(self):
+        self.assertTrue(single_client._connection_expired({}))
+        self.assertTrue(single_client._connection_expired({"valid_until": None}))
+        self.assertTrue(single_client._connection_expired({"valid_until": ""}))
+        self.assertFalse(single_client._connection_expired({"valid_until": "2099-01-01"}))
+
+    def test_missing_created_at_is_renewal_day(self):
+        profile = {"person": "janpiet"}
+        with mock.patch.object(
+            single_client,
+            "_load_consent",
+            return_value={"connections": [{"aspsp": "ING", "country": "NL"}]},
+        ), mock.patch.object(
+            single_client,
+            "_profile_connection",
+            return_value={"created_at": None},
+        ):
+            self.assertTrue(single_client._connection_created_today(profile))
+
+
 if __name__ == "__main__":
     unittest.main()

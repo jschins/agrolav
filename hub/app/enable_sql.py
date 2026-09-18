@@ -139,11 +139,46 @@ def center_has_pem(center: str) -> bool:
     return cursor.fetchone() is not None
 
 
+def person_session_reset(username: str) -> bool:
+    """True when any linked connection has a NULLed session field.
+
+    NULLing ``session_id``, ``valid_until``, or ``created_at`` on any
+    ``dbo.enable_connection`` row for the person is the reset signal — including
+    when another row still has a live session.
+    """
+    cursor = _cursor()
+    if cursor is None:
+        return False
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        return False
+    ids = _connection_ids_for_person(cursor, person_id)
+    if not ids:
+        return False
+    placeholders = ",".join("?" for _ in ids)
+    cursor.execute(
+        f"""
+        SELECT TOP 1 1
+        FROM dbo.enable_connection
+        WHERE connection_id IN ({placeholders})
+          AND (
+            session_id IS NULL
+            OR valid_until IS NULL
+            OR created_at IS NULL
+          )
+        """,
+        tuple(ids),
+    )
+    return cursor.fetchone() is not None
+
+
 def person_consent_ready(username: str) -> bool | None:
     """Return SQL consent readiness, or None when SQL is not configured."""
     cursor = _cursor()
     if cursor is None:
         return None
+    if person_session_reset(username):
+        return False
     person_id = _person_id(cursor, username)
     if person_id is None:
         return False
@@ -176,6 +211,49 @@ def person_consent_ready(username: str) -> bool | None:
         if expires.tzinfo is None:
             expires = expires.replace(tzinfo=timezone.utc)
     return expires >= datetime.now(timezone.utc)
+
+
+def person_needs_year_fetch(username: str) -> bool:
+    """True after a session reset, or when ``created_at`` is today (UTC)."""
+    if person_session_reset(username):
+        return True
+    cursor = _cursor()
+    if cursor is None:
+        return False
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        return False
+    ids = _connection_ids_for_person(cursor, person_id)
+    if not ids:
+        return False
+    placeholders = ",".join("?" for _ in ids)
+    cursor.execute(
+        f"""
+        SELECT created_at
+        FROM dbo.enable_connection
+        WHERE connection_id IN ({placeholders})
+        """,
+        tuple(ids),
+    )
+    today = datetime.now(timezone.utc).date()
+    for row in cursor.fetchall():
+        created_at = row[0] if row else None
+        if created_at is None:
+            return True
+        if isinstance(created_at, datetime):
+            created = created_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+        else:
+            try:
+                created = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+            except ValueError:
+                return True
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+        if created.date() == today:
+            return True
+    return False
 
 
 def person_has_transactions(username: str) -> bool:

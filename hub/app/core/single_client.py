@@ -131,11 +131,12 @@ def _connection_created_today(profile: dict[str, Any]) -> bool:
         return False
     created_at = connection.get("created_at")
     if not created_at:
-        return False
+        # NULLed in dbo.enable_connection: force the year-start fetch window.
+        return True
     try:
         created = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
     except ValueError:
-        return False
+        return True
     if created.tzinfo is None:
         created = created.replace(tzinfo=timezone.utc)
     return created.astimezone(AIB_TZ).date() == _aib_today()
@@ -399,11 +400,11 @@ def _extract_code(code_or_url: str) -> str:
 def _connection_expired(connection: dict[str, Any]) -> bool:
     valid_until = connection.get("valid_until")
     if not valid_until:
-        return False
+        return True
     try:
         expires = datetime.fromisoformat(str(valid_until))
     except ValueError:
-        return False
+        return True
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=timezone.utc)
     return expires < datetime.now(timezone.utc)
