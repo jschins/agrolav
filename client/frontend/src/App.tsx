@@ -395,6 +395,17 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     while (next.length < monthCount) next.push(0);
     return next.slice(0, monthCount);
   };
+  if (data.incoming_1053) {
+    const parts = padMonths(data.incoming_1053.months);
+    const monthSum = parts.reduce((sum, n) => sum + n, 0);
+    const cumul = parts.some((n) => n !== 0) ? monthSum : data.incoming_1053.amount;
+    rows.push([
+      String(data.incoming_1053.code),
+      data.incoming_1053.label,
+      ...parts.map((n) => euro2(n)),
+      euro2(cumul),
+    ]);
+  }
   const monthTotals = padMonths(data.total_months);
   for (const line of data.resultaat) {
     const parts = padMonths(line.months);

@@ -168,6 +168,7 @@ export interface ExportResultaatData {
   person?: string | null;
   center?: string | null;
   month_count?: number;
+  incoming_1053?: ExportExcelLine | null;
   resultaat: ExportExcelLine[];
   total_months?: number[];
   total_resultaat: number;

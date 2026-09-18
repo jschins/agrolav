@@ -1114,7 +1114,8 @@ def export_resultaat_excel_data(
     calculated in the client. Month columns run from January through the
     current month of this year (all twelve when the export year is already
     over). Cumulatief is their sum. Saldo is the sum of the displayed P&L
-    rows.
+    rows. The third Excel row is incoming (amount > 0) on the bank account
+    mapped to category 1053, by booked month.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()
@@ -1127,6 +1128,7 @@ def export_resultaat_excel_data(
         from decimal import Decimal
 
         from shared.balance_values import (
+            account_links,
             category_local_codes,
             is_hit_forbidden_role,
             is_resultaat,
@@ -1352,12 +1354,57 @@ def export_resultaat_excel_data(
                     "warme": warm,
                     "warm_hd": warm_hd,
                 }
+        incoming_1053_months = [0.0] * month_count
+        incoming_1053_label = "Ontvangsten"
+        if table and month_count > 0:
+            cursor.execute(
+                """
+                SELECT TOP 1 d.category_id
+                FROM dbo.dim_category d
+                WHERE d.country_id = ? AND d.local_code = 1053
+                """,
+                (int(country_id),),
+            )
+            cat_1053 = cursor.fetchone()
+            account_id = None
+            links = account_links(int(country_id), cursor)
+            if cat_1053 is not None:
+                account_id = links.get(int(cat_1053[0]))
+            if account_id is None:
+                account_id = links.get(1053)
+            if account_id is not None:
+                cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+                if cursor.fetchone()[0] is not None:
+                    cursor.execute(
+                        f"""
+                        SELECT MONTH(t.booked_on),
+                               SUM(CAST(t.amount AS decimal(19, 2)))
+                        FROM {table} t
+                        WHERE t.year = ?
+                          AND t.account_id = ?
+                          AND t.amount > 0
+                          AND t.booked_on IS NOT NULL
+                          AND MONTH(t.booked_on) BETWEEN 1 AND ?
+                        GROUP BY MONTH(t.booked_on)
+                        """,
+                        (int(year), int(account_id), month_count),
+                    )
+                    for month, amount in cursor.fetchall():
+                        m = int(month)
+                        if 1 <= m <= month_count:
+                            incoming_1053_months[m - 1] = float(amount or 0)
         return {
             "year": int(year),
             "country": name,
             "person": person_name or None,
             "center": center_name or None,
             "month_count": month_count,
+            "incoming_1053": {
+                "code": 1053,
+                "label": incoming_1053_label,
+                "months": incoming_1053_months,
+                "amount": float(sum(incoming_1053_months)),
+            },
             "resultaat": rows,
             "total_months": [float(part) for part in total_months[:month_count]],
             "total_resultaat": float(total),
