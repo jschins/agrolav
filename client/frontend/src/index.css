@@ -606,6 +606,27 @@ th {
   width: max-content;
 }
 
+.resultaat-preview {
+  margin-top: 1.75rem;
+}
+
+.resultaat-preview-table {
+  width: max-content;
+}
+
+.resultaat-preview-table th.code,
+.resultaat-preview-table td.code {
+  white-space: nowrap;
+}
+
+.resultaat-preview-table tr.resultaat-spacer-row td {
+  border-left: none;
+  border-right: none;
+  background: transparent;
+  height: 0.7rem;
+  padding: 0.1rem;
+}
+
 .totals-table .num {
   text-align: right;
   font-variant-numeric: tabular-nums;

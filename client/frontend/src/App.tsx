@@ -383,7 +383,7 @@ function resultaatVisibleMonthCount(year: number, reported?: number): number {
   return cap;
 }
 
-function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
+function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
   const monthCount = resultaatVisibleMonthCount(data.year, data.month_count);
   const monthNames = RESULTAAT_MONTHS.slice(0, monthCount);
   const rows: (string | number)[][] = [];
@@ -486,10 +486,15 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     rows.push([]);
     cashLine(data.cashflow_1053.banksaldo, "none");
   }
+  return rows;
+}
+
+function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
+  const monthCount = resultaatVisibleMonthCount(data.year, data.month_count);
   return [
     {
       name: "Resultaat",
-      rows,
+      rows: resultaatTableRows(data),
       widths: [10, 40, ...Array.from({ length: monthCount }, () => 12), 14],
     },
   ];
@@ -538,6 +543,48 @@ function categoryHasTransactions(
 function categoryRowGreyed(matrix: MatrixResponse, category: string, person?: string): boolean {
   if (isMatrixFooter(matrix, category)) return false;
   return !categoryHasTransactions(matrix, category, person);
+}
+
+const SYSTEM_CATEGORY_ROLES = new Set([
+  "remainder",
+  "balance",
+  "last_booked",
+  "equity",
+  "never",
+  "profit",
+  "bank",
+  "no_hit",
+  "source",
+  "mirror",
+]);
+
+function loginHasUsernameRole(
+  roles: Record<string, string> | undefined,
+  login: string
+): boolean {
+  const loginL = login.trim().toLowerCase();
+  if (!loginL) return false;
+  return Object.values(roles ?? {}).some((role) => {
+    const text = String(role || "").trim().toLowerCase();
+    return text === loginL && !SYSTEM_CATEGORY_ROLES.has(text);
+  });
+}
+
+function visibleMatrixCategories(
+  matrix: MatrixResponse,
+  roles: Record<string, string> | undefined,
+  login: string
+): string[] {
+  const loginL = login.trim().toLowerCase();
+  if (!loginHasUsernameRole(roles, login)) return matrix.categories;
+  const greyPerson =
+    matrix.people.length === 1 ? matrix.people[0].person_name : undefined;
+  return matrix.categories.filter((cat) => {
+    if (isMatrixFooter(matrix, cat)) return true;
+    const role = String(roles?.[cat] ?? "").trim().toLowerCase();
+    if (role !== loginL) return false;
+    return !categoryRowGreyed(matrix, cat, greyPerson);
+  });
 }
 
 function patchDetail(
@@ -1961,6 +2008,8 @@ function MainApp({
     transactionId: string;
   } | null>(null);
   const [termMenuSettings, setTermMenuSettings] = useState<SettingsResponse | null>(null);
+  const [loginName, setLoginName] = useState("");
+  const [categoryRoles, setCategoryRoles] = useState<Record<string, string>>({});
   const selectionRef = useRef<CellSelection | null>(null);
   const dirtyRef = useRef(false);
   const viewInitRef = useRef(false);
@@ -1982,6 +2031,7 @@ function MainApp({
         }
         // Personal login: restore this person's refresh status only (no auto-fetch).
         const person = (s.person || "").trim();
+        setLoginName((person || s.username || s.center || "").trim());
         const scope =
           scoped && ws && person ? { center: ws, person } : null;
         setRefreshScope(scope);
@@ -1994,8 +2044,23 @@ function MainApp({
         setHasSecrets(false);
         setCanAddPerson(false);
         setAddPersonUrl(null);
+        setLoginName("");
       });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSettings()
+      .then((s) => {
+        if (!cancelled) setCategoryRoles(s.category_roles ?? {});
+      })
+      .catch(() => {
+        if (!cancelled) setCategoryRoles({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataRev]);
 
   useEffect(() => {
     const awaitingAuth = (refreshStatus?.results || []).some(
@@ -2470,6 +2535,17 @@ function MainApp({
   ]);
 
   const inPView = selection !== null;
+  const displayMatrix = useMemo(() => {
+    if (!matrix) return null;
+    return {
+      ...matrix,
+      categories: visibleMatrixCategories(matrix, categoryRoles, loginName),
+    };
+  }, [matrix, categoryRoles, loginName]);
+  const roleListed = useMemo(
+    () => loginHasUsernameRole(categoryRoles, loginName),
+    [categoryRoles, loginName]
+  );
 
   const authOpenedRef = useRef<string>("");
   useEffect(() => {
@@ -2497,7 +2573,7 @@ function MainApp({
       <aside className="sidebar">
         {sidebarTitle ? <FitSidebarTitle text={sidebarTitle} /> : null}
 
-        {inPView && matrix && (
+        {inPView && displayMatrix && (
           <>
             <div className="winbar">
               <div className="sidebar-field">
@@ -2510,7 +2586,7 @@ function MainApp({
               </div>
             </div>
             <PersonColumnTable
-              matrix={matrix}
+              matrix={displayMatrix}
               person_name={selection.person_name}
               selectedCategory={selection.category}
               onPick={(category) => selectCell(selection.person_name, category)}
@@ -2523,8 +2599,11 @@ function MainApp({
       <main className="content">
         {error && <p className="error">{error}</p>}
         {!inPView && !matrix && !error && <p>Loading…</p>}
-        {!inPView && matrix && (
-          <MatrixTable matrix={matrix} selection={selection} onPick={selectCell} />
+        {!inPView && displayMatrix && (
+          <>
+            <MatrixTable matrix={displayMatrix} selection={selection} onPick={selectCell} />
+            {roleListed ? <ResultaatPreviewTable year={year} dataRev={dataRev} /> : null}
+          </>
         )}
         {inPView && !detail && !error && <p>Loading…</p>}
         {inPView && detail && (
@@ -3310,6 +3389,96 @@ function IpAccessApp() {
           <p>Loading…</p>
         )}
       </main>
+    </div>
+  );
+}
+
+function formatResultaatPreviewCell(cell: string | number | undefined): string {
+  if (cell === "" || cell === undefined) return "";
+  return formatDisplayNumber(cell);
+}
+
+function ResultaatPreviewTable({
+  year,
+  dataRev,
+}: {
+  year: string;
+  dataRev: number;
+}) {
+  const [data, setData] = useState<ExportResultaatData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getExportResultaat(year)
+      .then((payload) => {
+        if (cancelled) return;
+        setData(payload);
+        setError(null);
+      })
+      .catch((e: Error) => {
+        if (cancelled) return;
+        setData(null);
+        setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [year, dataRev]);
+
+  if (error) return <p className="error">{error}</p>;
+  if (!data) return null;
+  const rows = resultaatTableRows(data);
+  if (rows.length < 2) return null;
+  const title = String(rows[0]?.[0] ?? "");
+  const header = rows[1] ?? [];
+  const body = rows.slice(2);
+  const colCount = header.length;
+  const strongLabels = new Set(["Saldo", "Resultaat", "Banksaldo einde maand"]);
+  return (
+    <div className="resultaat-preview">
+      <table className="totals-table resultaat-preview-table">
+        <thead>
+          <tr>
+            <th colSpan={colCount}>{title}</th>
+          </tr>
+          <tr>
+            {header.map((cell, i) => (
+              <th key={i} className={i >= 2 ? "num" : i === 0 ? "code" : "cat"}>
+                {String(cell)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, ri) => {
+            if (row.length === 0) {
+              return (
+                <tr key={ri} className="resultaat-spacer-row">
+                  <td colSpan={colCount}>&nbsp;</td>
+                </tr>
+              );
+            }
+            const label = String(row[1] ?? "");
+            return (
+              <tr key={ri} className={strongLabels.has(label) ? "banksaldo-row" : ""}>
+                {Array.from({ length: colCount }, (_, i) => {
+                  const cell = row[i];
+                  const isNum = i >= 2;
+                  return (
+                    <td
+                      key={i}
+                      className={isNum ? "num" : i === 0 ? "code" : "cat"}
+                    >
+                      {isNum ? formatResultaatPreviewCell(cell) : String(cell ?? "")}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
