@@ -84,11 +84,19 @@ export function getMatrix(year?: string, bank?: string): Promise<MatrixResponse>
 }
 
 export interface ExportExcelLine {
-  code: number;
+  code: number | string;
   label: string;
   amount: number;
   months?: number[];
   source?: string;
+}
+
+export interface ExportResultaatCashflow {
+  stichting: ExportExcelLine;
+  inkomsten: ExportExcelLine;
+  uitgaven: ExportExcelLine;
+  resultaat: ExportExcelLine;
+  banksaldo: ExportExcelLine;
 }
 
 export interface CondensedLine {
@@ -173,6 +181,7 @@ export interface ExportResultaatData {
   total_months?: number[];
   total_resultaat: number;
   maaltijden?: ExportResultaatMaaltijden | null;
+  cashflow_1053?: ExportResultaatCashflow | null;
 }
 
 export function getExportResultaat(year?: string): Promise<ExportResultaatData> {

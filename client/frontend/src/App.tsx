@@ -466,6 +466,32 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
       costCell(foodCumul, equivCumul),
     ]);
   }
+  if (data.cashflow_1053) {
+    const cashLine = (line: ExportExcelLine, cumulMode: "sum" | "last") => {
+      const parts = padMonths(line.months);
+      const monthSum = parts.reduce((sum, n) => sum + n, 0);
+      const last = parts.length ? parts[parts.length - 1] : line.amount;
+      const cumul =
+        cumulMode === "last"
+          ? last
+          : parts.some((n) => n !== 0)
+            ? monthSum
+            : line.amount;
+      rows.push([
+        line.code === "" || line.code == null ? "" : String(line.code),
+        line.label,
+        ...parts.map((n) => euro2(n)),
+        euro2(cumul),
+      ]);
+    };
+    rows.push([]);
+    cashLine(data.cashflow_1053.stichting, "sum");
+    cashLine(data.cashflow_1053.inkomsten, "sum");
+    cashLine(data.cashflow_1053.uitgaven, "sum");
+    cashLine(data.cashflow_1053.resultaat, "sum");
+    rows.push([]);
+    cashLine(data.cashflow_1053.banksaldo, "last");
+  }
   return [
     {
       name: "Resultaat",

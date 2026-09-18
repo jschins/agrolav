@@ -1115,7 +1115,10 @@ def export_resultaat_excel_data(
     current month of this year (all twelve when the export year is already
     over). Cumulatief is their sum. Saldo is the sum of the displayed P&L
     rows. The third Excel row is incoming (amount > 0) on the bank account
-    mapped to category 1053, by booked month.
+    mapped to category 1053, by booked month. The sheet ends with that same
+    account's cash flow: Q Stichting de Oude Gracht (signed amounts to/from
+    IBAN NL94INGB0006200605), R other inkomsten, S other uitgaven, their
+    Resultaat, then Banksaldo at each month end.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()
@@ -1124,6 +1127,7 @@ def export_resultaat_excel_data(
         raise ValueError("country is required")
 
     def _run() -> dict[str, Any]:
+        import calendar as _calendar
         import datetime
         from decimal import Decimal
 
@@ -1356,43 +1360,144 @@ def export_resultaat_excel_data(
                 }
         incoming_1053_months = [0.0] * month_count
         incoming_1053_label = "Ontvangsten"
-        if table and month_count > 0:
+        q_months = [0.0] * month_count
+        r_months = [0.0] * month_count
+        s_months = [0.0] * month_count
+        banksaldo_months = [0.0] * month_count
+        stichting_iban = "NL94INGB0006200605"
+        account_id_1053: int | None = None
+        links = account_links(int(country_id), cursor)
+        cursor.execute(
+            """
+            SELECT TOP 1 d.category_id
+            FROM dbo.dim_category d
+            WHERE d.country_id = ? AND d.local_code = 1053
+            """,
+            (int(country_id),),
+        )
+        cat_1053 = cursor.fetchone()
+        if cat_1053 is not None:
+            account_id_1053 = links.get(int(cat_1053[0]))
+        if account_id_1053 is None:
+            account_id_1053 = links.get(1053)
+        table_ok = False
+        if table:
+            cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+            table_ok = cursor.fetchone()[0] is not None
+        if table_ok and account_id_1053 is not None and month_count > 0:
             cursor.execute(
-                """
-                SELECT TOP 1 d.category_id
-                FROM dbo.dim_category d
-                WHERE d.country_id = ? AND d.local_code = 1053
+                f"""
+                SELECT MONTH(t.booked_on),
+                       SUM(CAST(t.amount AS decimal(19, 2)))
+                FROM {table} t
+                WHERE t.year = ?
+                  AND t.account_id = ?
+                  AND t.amount > 0
+                  AND t.booked_on IS NOT NULL
+                  AND MONTH(t.booked_on) BETWEEN 1 AND ?
+                GROUP BY MONTH(t.booked_on)
                 """,
-                (int(country_id),),
+                (int(year), int(account_id_1053), month_count),
             )
-            cat_1053 = cursor.fetchone()
-            account_id = None
-            links = account_links(int(country_id), cursor)
-            if cat_1053 is not None:
-                account_id = links.get(int(cat_1053[0]))
-            if account_id is None:
-                account_id = links.get(1053)
-            if account_id is not None:
-                cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
-                if cursor.fetchone()[0] is not None:
-                    cursor.execute(
-                        f"""
-                        SELECT MONTH(t.booked_on),
-                               SUM(CAST(t.amount AS decimal(19, 2)))
-                        FROM {table} t
-                        WHERE t.year = ?
-                          AND t.account_id = ?
-                          AND t.amount > 0
-                          AND t.booked_on IS NOT NULL
-                          AND MONTH(t.booked_on) BETWEEN 1 AND ?
-                        GROUP BY MONTH(t.booked_on)
-                        """,
-                        (int(year), int(account_id), month_count),
-                    )
-                    for month, amount in cursor.fetchall():
-                        m = int(month)
-                        if 1 <= m <= month_count:
-                            incoming_1053_months[m - 1] = float(amount or 0)
+            for month, amount in cursor.fetchall():
+                m = int(month)
+                if 1 <= m <= month_count:
+                    incoming_1053_months[m - 1] = float(amount or 0)
+            iban_sql = (
+                "REPLACE(REPLACE(UPPER(ISNULL(t.counterparty_iban, N'')), "
+                "N' ', N''), N'-', N'')"
+            )
+            cursor.execute(
+                f"""
+                SELECT MONTH(t.booked_on),
+                       SUM(CASE WHEN {iban_sql} = ?
+                                THEN CAST(t.amount AS decimal(19, 2))
+                                ELSE 0 END),
+                       SUM(CASE WHEN {iban_sql} <> ?
+                                 AND t.amount > 0
+                                THEN CAST(t.amount AS decimal(19, 2))
+                                ELSE 0 END),
+                       SUM(CASE WHEN {iban_sql} <> ?
+                                 AND t.amount < 0
+                                THEN CAST(t.amount AS decimal(19, 2))
+                                ELSE 0 END)
+                FROM {table} t
+                WHERE t.year = ?
+                  AND t.account_id = ?
+                  AND t.booked_on IS NOT NULL
+                  AND MONTH(t.booked_on) BETWEEN 1 AND ?
+                GROUP BY MONTH(t.booked_on)
+                """,
+                (
+                    stichting_iban,
+                    stichting_iban,
+                    stichting_iban,
+                    int(year),
+                    int(account_id_1053),
+                    month_count,
+                ),
+            )
+            for month, q_amt, r_amt, s_amt in cursor.fetchall():
+                m = int(month)
+                if 1 <= m <= month_count:
+                    q_months[m - 1] = float(q_amt or 0)
+                    r_months[m - 1] = float(r_amt or 0)
+                    s_months[m - 1] = float(s_amt or 0)
+            cursor.execute(
+                "SELECT balance FROM dbo.account WHERE account_id = ?",
+                (int(account_id_1053),),
+            )
+            bal_row = cursor.fetchone()
+            live = float(bal_row[0] or 0) if bal_row else 0.0
+
+            def _as_date(value: object) -> datetime.date:
+                if isinstance(value, datetime.datetime):
+                    return value.date()
+                if isinstance(value, datetime.date):
+                    return value
+                return datetime.date.fromisoformat(str(value)[:10])
+
+            cutoffs: list[datetime.date] = []
+            for month in range(1, month_count + 1):
+                last_day = _calendar.monthrange(int(year), month)[1]
+                cutoff = datetime.date(int(year), month, last_day)
+                if int(year) == today.year and month == today.month:
+                    cutoff = today
+                cutoffs.append(cutoff)
+            later_by_date: list[tuple[datetime.date, float]] = []
+            earliest = min(cutoffs)
+            cursor.execute(
+                f"""
+                SELECT t.booked_on,
+                       SUM(CAST(t.amount AS decimal(19, 2)))
+                FROM {table} t
+                WHERE t.account_id = ?
+                  AND t.booked_on > ?
+                GROUP BY t.booked_on
+                """,
+                (int(account_id_1053), earliest.isoformat()),
+            )
+            for booked_on, amount in cursor.fetchall():
+                if booked_on is None:
+                    continue
+                later_by_date.append((_as_date(booked_on), float(amount or 0)))
+            for i, cutoff in enumerate(cutoffs):
+                later = sum(
+                    amt for booked, amt in later_by_date if booked > cutoff
+                )
+                banksaldo_months[i] = live - later
+        resultaat_months = [
+            q_months[i] + r_months[i] + s_months[i] for i in range(month_count)
+        ]
+
+        def _line(code: object, label: str, months: list[float]) -> dict[str, Any]:
+            return {
+                "code": code,
+                "label": label,
+                "months": list(months),
+                "amount": float(sum(months)),
+            }
+
         return {
             "year": int(year),
             "country": name,
@@ -1409,6 +1514,20 @@ def export_resultaat_excel_data(
             "total_months": [float(part) for part in total_months[:month_count]],
             "total_resultaat": float(total),
             "maaltijden": maaltijden,
+            "cashflow_1053": {
+                "stichting": _line(
+                    "Q", "Stichting de Oude Gracht", q_months
+                ),
+                "inkomsten": _line("R", "Inkomsten", r_months),
+                "uitgaven": _line("S", "Uitgaven", s_months),
+                "resultaat": _line("", "Resultaat", resultaat_months),
+                "banksaldo": {
+                    "code": "",
+                    "label": "Banksaldo",
+                    "months": banksaldo_months,
+                    "amount": float(banksaldo_months[-1] if banksaldo_months else 0),
+                },
+            },
         }
 
     try:
