@@ -1107,7 +1107,7 @@ def export_resultaat_excel_data(
     overlay so Saldo matches the balance-sheet Resultaat sheet.
 
     ``category_role`` can hold a login username. If that username appears on
-    any P&L row, only those tagged rows are listed; otherwise every P&L
+    any P&L row, only those tagged rows plus ``remainder`` are listed; otherwise every P&L
     category is listed. That same case also sends monthly meal counts from
     ``dbo.maaltijden_aantallen`` (ontbijt / koud / warm / warm_hd) for the Excel
     footer; equivalent tafelgenoten and food cost per tafelgenoot are
@@ -1135,6 +1135,7 @@ def export_resultaat_excel_data(
             account_links,
             category_local_codes,
             is_hit_forbidden_role,
+            is_remainder_role,
             is_resultaat,
             journal_deltas,
             spaar_source_exclude_clause,
@@ -1310,7 +1311,7 @@ def export_resultaat_excel_data(
             if is_hit_forbidden_role(role):
                 continue
             role_text = str(role or "").strip()
-            if role_listed and role_text.lower() != login_l:
+            if role_listed and role_text.lower() != login_l and not is_remainder_role(role):
                 continue
             cid = int(category_id)
             months = list(monthly.get(cid, [Decimal("0")] * 12))[:month_count]
