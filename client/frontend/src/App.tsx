@@ -3448,12 +3448,25 @@ function ResultaatPreviewTable({
   const sections = resultaatSections(data);
   if (sections.length === 0) return null;
   const strongLabels = new Set(["Totaal", "Resultaat", "Banksaldo einde maand"]);
+  const numCols = Math.max(0, (sections[0]?.header.length ?? 2) - 2);
   return (
-    <div className="resultaat-preview">
+    <div
+      className="resultaat-preview"
+      style={{ ["--resultaat-num-cols" as string]: String(numCols) }}
+    >
       {sections.map((section) => {
         const colCount = section.header.length;
+        const monthCols = Math.max(0, colCount - 3);
         return (
           <table key={section.title} className="totals-table resultaat-preview-table">
+            <colgroup>
+              <col className="col-code" />
+              <col className="col-post" />
+              {Array.from({ length: monthCols }, (_, i) => (
+                <col key={i} className="col-month" />
+              ))}
+              <col className="col-cumul" />
+            </colgroup>
             <thead>
               <tr>
                 <th colSpan={colCount}>{section.title}</th>

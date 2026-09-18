@@ -607,6 +607,10 @@ th {
 }
 
 .resultaat-preview {
+  --resultaat-code: 4.5rem;
+  --resultaat-post: 18.5rem;
+  --resultaat-num: 6rem;
+  --resultaat-num-cols: 10;
   margin-top: 1.75rem;
   display: flex;
   flex-direction: column;
@@ -614,12 +618,41 @@ th {
 }
 
 .resultaat-preview-table {
-  width: max-content;
+  table-layout: fixed;
+  width: calc(
+    var(--resultaat-code) + var(--resultaat-post) +
+      var(--resultaat-num) * var(--resultaat-num-cols)
+  );
+  min-width: 0;
+}
+
+.resultaat-preview-table col.col-code {
+  width: var(--resultaat-code);
+}
+
+.resultaat-preview-table col.col-post {
+  width: var(--resultaat-post);
+}
+
+.resultaat-preview-table col.col-month,
+.resultaat-preview-table col.col-cumul {
+  width: var(--resultaat-num);
 }
 
 .resultaat-preview-table th.code,
 .resultaat-preview-table td.code {
   white-space: nowrap;
+  overflow: hidden;
+}
+
+.resultaat-preview-table th.cat,
+.resultaat-preview-table td.cat {
+  overflow-wrap: anywhere;
+}
+
+.resultaat-preview-table th.num,
+.resultaat-preview-table td.num {
+  overflow: hidden;
 }
 
 .resultaat-preview-table tr.resultaat-spacer-row td {
