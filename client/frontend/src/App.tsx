@@ -467,22 +467,16 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     ]);
   }
   if (data.cashflow_1053) {
-    const cashLine = (line: ExportExcelLine, cumulMode: "sum" | "last") => {
+    const cashLine = (line: ExportExcelLine, cumulMode: "sum" | "none") => {
       const parts = padMonths(line.months);
       const monthSum = parts.reduce((sum, n) => sum + n, 0);
-      const last = parts.length ? parts[parts.length - 1] : line.amount;
       const cumul =
-        cumulMode === "last"
-          ? last
+        cumulMode === "none"
+          ? ""
           : parts.some((n) => n !== 0)
-            ? monthSum
-            : line.amount;
-      rows.push([
-        line.code === "" || line.code == null ? "" : String(line.code),
-        line.label,
-        ...parts.map((n) => euro2(n)),
-        euro2(cumul),
-      ]);
+            ? euro2(monthSum)
+            : euro2(line.amount);
+      rows.push(["", line.label, ...parts.map((n) => euro2(n)), cumul]);
     };
     rows.push([]);
     cashLine(data.cashflow_1053.stichting, "sum");
@@ -490,7 +484,7 @@ function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
     cashLine(data.cashflow_1053.uitgaven, "sum");
     cashLine(data.cashflow_1053.resultaat, "sum");
     rows.push([]);
-    cashLine(data.cashflow_1053.banksaldo, "last");
+    cashLine(data.cashflow_1053.banksaldo, "none");
   }
   return [
     {

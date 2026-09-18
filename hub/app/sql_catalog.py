@@ -1516,14 +1516,14 @@ def export_resultaat_excel_data(
             "maaltijden": maaltijden,
             "cashflow_1053": {
                 "stichting": _line(
-                    "Q", "Stichting de Oude Gracht", q_months
+                    "", "Stichting de Oude Gracht", q_months
                 ),
-                "inkomsten": _line("R", "Inkomsten", r_months),
-                "uitgaven": _line("S", "Uitgaven", s_months),
+                "inkomsten": _line("", "Overige inkomsten", r_months),
+                "uitgaven": _line("", "Uitgaven", s_months),
                 "resultaat": _line("", "Resultaat", resultaat_months),
                 "banksaldo": {
                     "code": "",
-                    "label": "Banksaldo",
+                    "label": "Banksaldo einde maand",
                     "months": banksaldo_months,
                     "amount": float(banksaldo_months[-1] if banksaldo_months else 0),
                 },
