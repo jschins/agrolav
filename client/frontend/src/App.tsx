@@ -579,9 +579,12 @@ function visibleMatrixCategories(
   if (!loginHasUsernameRole(roles, login)) return matrix.categories;
   const greyPerson =
     matrix.people.length === 1 ? matrix.people[0].person_name : undefined;
+  const saldoName = matrixFooterNames(matrix).balance;
   return matrix.categories.filter((cat) => {
+    if (cat === saldoName) return false;
     if (isMatrixFooter(matrix, cat)) return true;
     const role = String(roles?.[cat] ?? "").trim().toLowerCase();
+    if (role === "remainder") return true;
     if (role !== loginL) return false;
     return !categoryRowGreyed(matrix, cat, greyPerson);
   });
