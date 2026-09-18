@@ -3410,9 +3410,28 @@ function IpAccessApp() {
   );
 }
 
+function formatEuro2Display(n: number): string {
+  const rounded = Math.round((n + Number.EPSILON) * 100) / 100;
+  const sign = rounded < 0 ? "-" : "";
+  const [intPart, frac = "00"] = Math.abs(rounded).toFixed(2).split(".");
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${sign}${grouped},${frac}`;
+}
+
 function formatResultaatPreviewCell(cell: string | number | undefined): string {
   if (cell === "" || cell === undefined) return "";
   return formatDisplayNumber(cell);
+}
+
+function formatResultaatEuro2Cell(cell: string | number | undefined): string {
+  if (cell === "" || cell === undefined) return "";
+  if (typeof cell === "number") {
+    return Number.isFinite(cell) ? formatEuro2Display(cell) : "";
+  }
+  const text = String(cell).trim();
+  if (!text) return "";
+  const n = Number(text.replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) ? formatEuro2Display(n) : text;
 }
 
 function ResultaatPreviewTable({
@@ -3489,6 +3508,7 @@ function ResultaatPreviewTable({
                   );
                 }
                 const label = String(row[1] ?? "");
+                const twoDecimals = label === "Voedselkosten per tafelgenoot";
                 return (
                   <tr key={ri} className={strongLabels.has(label) ? "banksaldo-row" : ""}>
                     {Array.from({ length: colCount }, (_, i) => {
@@ -3499,7 +3519,11 @@ function ResultaatPreviewTable({
                           key={i}
                           className={isNum ? "num" : i === 0 ? "code" : "cat"}
                         >
-                          {isNum ? formatResultaatPreviewCell(cell) : String(cell ?? "")}
+                          {isNum
+                            ? twoDecimals
+                              ? formatResultaatEuro2Cell(cell)
+                              : formatResultaatPreviewCell(cell)
+                            : String(cell ?? "")}
                         </td>
                       );
                     })}
