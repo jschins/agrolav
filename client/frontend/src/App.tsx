@@ -383,36 +383,32 @@ function resultaatVisibleMonthCount(year: number, reported?: number): number {
   return cap;
 }
 
-function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
+function resultaatSections(data: ExportResultaatData): {
+  title: string;
+  header: (string | number)[];
+  body: (string | number)[][];
+}[] {
   const monthCount = resultaatVisibleMonthCount(data.year, data.month_count);
   const monthNames = RESULTAAT_MONTHS.slice(0, monthCount);
-  const rows: (string | number)[][] = [];
-  const scope = (data.person || data.center || data.country || "").trim();
-  rows.push([scope ? `Resultaat ${scope} ${data.year}` : `Resultaat ${data.year}`]);
-  rows.push(["Code", "Post", ...monthNames, "Cumulatief"]);
+  const header: (string | number)[] = ["Code", "Post", ...monthNames, "Cumulatief"];
   const padMonths = (raw: number[] | undefined): number[] => {
     const next = [...(raw ?? [])];
     while (next.length < monthCount) next.push(0);
     return next.slice(0, monthCount);
   };
+  const sections: {
+    title: string;
+    header: (string | number)[];
+    body: (string | number)[][];
+  }[] = [];
+
+  const categoryBody: (string | number)[][] = [];
   const saldoMonths = Array.from({ length: monthCount }, () => 0);
-  if (data.incoming_1053) {
-    const parts = padMonths(data.incoming_1053.months);
-    const monthSum = parts.reduce((sum, n) => sum + n, 0);
-    const cumul = parts.some((n) => n !== 0) ? monthSum : data.incoming_1053.amount;
-    rows.push([
-      String(data.incoming_1053.code),
-      data.incoming_1053.label,
-      ...parts.map((n) => euro2(n)),
-      euro2(cumul),
-    ]);
-    for (let i = 0; i < monthCount; i++) saldoMonths[i] += parts[i];
-  }
   for (const line of data.resultaat) {
     const parts = padMonths(line.months);
     const monthSum = parts.reduce((sum, n) => sum + n, 0);
     const cumul = parts.some((n) => n !== 0) ? monthSum : line.amount;
-    rows.push([
+    categoryBody.push([
       String(line.code),
       line.label,
       ...parts.map((n) => euro2(n)),
@@ -421,12 +417,14 @@ function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
     for (let i = 0; i < monthCount; i++) saldoMonths[i] += parts[i];
   }
   const saldoCumul = saldoMonths.reduce((sum, n) => sum + n, 0);
-  rows.push([
+  categoryBody.push([
     "",
-    "Saldo",
+    "Totaal",
     ...saldoMonths.map((n) => euro2(n)),
     euro2(saldoCumul),
   ]);
+  sections.push({ title: "Totalen per categorie", header, body: categoryBody });
+
   if (data.maaltijden) {
     const ont = padMonths(data.maaltijden.ontbijten);
     const koude = padMonths(data.maaltijden.koude);
@@ -445,10 +443,10 @@ function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
       (o + 2 * k + 3 * w + 3 * wh) / 6;
     const costCell = (foodAmt: number, eq: number): number | "" =>
       eq === 0 ? "" : euro2(-(foodAmt / eq));
+    const mealBody: (string | number)[][] = [];
     const countRow = (label: string, parts: number[], cumul: number) => {
-      rows.push(["", label, ...parts.map((n) => euro2(n)), euro2(cumul)]);
+      mealBody.push(["", label, ...parts.map((n) => euro2(n)), euro2(cumul)]);
     };
-    rows.push([]);
     countRow("Aantal ontbijten", ont, ontCumul);
     countRow("Aantal koude maaltijden", koude, koudeCumul);
     countRow("Aantal warme maaltijden", warme, warmeCumul);
@@ -456,20 +454,22 @@ function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
       equivalent(ont[i], koude[i], warme[i], warmHd[i])
     );
     const equivCumul = equivalent(ontCumul, koudeCumul, warmeCumul, warmHdCumul);
-    rows.push([
+    mealBody.push([
       "",
       "Equivalent aantal tafelgenoten",
       ...equivMonths.map((n) => euro2(n)),
       euro2(equivCumul),
     ]);
-    rows.push([
+    mealBody.push([
       "",
       "Voedselkosten per tafelgenoot",
       ...equivMonths.map((eq, i) => costCell(food[i], eq)),
       costCell(foodCumul, equivCumul),
     ]);
+    sections.push({ title: "Maaltijden", header, body: mealBody });
   }
   if (data.cashflow_1053) {
+    const cashBody: (string | number)[][] = [];
     const cashLine = (line: ExportExcelLine, cumulMode: "sum" | "none") => {
       const parts = padMonths(line.months);
       const monthSum = parts.reduce((sum, n) => sum + n, 0);
@@ -479,15 +479,26 @@ function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
           : parts.some((n) => n !== 0)
             ? euro2(monthSum)
             : euro2(line.amount);
-      rows.push(["", line.label, ...parts.map((n) => euro2(n)), cumul]);
+      cashBody.push(["", line.label, ...parts.map((n) => euro2(n)), cumul]);
     };
-    rows.push([]);
     cashLine(data.cashflow_1053.stichting, "sum");
     cashLine(data.cashflow_1053.inkomsten, "sum");
     cashLine(data.cashflow_1053.uitgaven, "sum");
     cashLine(data.cashflow_1053.resultaat, "sum");
-    rows.push([]);
+    cashBody.push([]);
     cashLine(data.cashflow_1053.banksaldo, "none");
+    sections.push({ title: "Resultaat", header, body: cashBody });
+  }
+  return sections;
+}
+
+function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
+  const rows: (string | number)[][] = [];
+  for (const section of resultaatSections(data)) {
+    if (rows.length) rows.push([]);
+    rows.push([section.title]);
+    rows.push(section.header);
+    rows.push(...section.body);
   }
   return rows;
 }
@@ -3434,57 +3445,58 @@ function ResultaatPreviewTable({
 
   if (error) return <p className="error">{error}</p>;
   if (!data) return null;
-  const rows = resultaatTableRows(data);
-  if (rows.length < 2) return null;
-  const title = String(rows[0]?.[0] ?? "");
-  const header = rows[1] ?? [];
-  const body = rows.slice(2);
-  const colCount = header.length;
-  const strongLabels = new Set(["Saldo", "Resultaat", "Banksaldo einde maand"]);
+  const sections = resultaatSections(data);
+  if (sections.length === 0) return null;
+  const strongLabels = new Set(["Totaal", "Resultaat", "Banksaldo einde maand"]);
   return (
     <div className="resultaat-preview">
-      <table className="totals-table resultaat-preview-table">
-        <thead>
-          <tr>
-            <th colSpan={colCount}>{title}</th>
-          </tr>
-          <tr>
-            {header.map((cell, i) => (
-              <th key={i} className={i >= 2 ? "num" : i === 0 ? "code" : "cat"}>
-                {String(cell)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {body.map((row, ri) => {
-            if (row.length === 0) {
-              return (
-                <tr key={ri} className="resultaat-spacer-row">
-                  <td colSpan={colCount}>&nbsp;</td>
-                </tr>
-              );
-            }
-            const label = String(row[1] ?? "");
-            return (
-              <tr key={ri} className={strongLabels.has(label) ? "banksaldo-row" : ""}>
-                {Array.from({ length: colCount }, (_, i) => {
-                  const cell = row[i];
-                  const isNum = i >= 2;
-                  return (
-                    <td
-                      key={i}
-                      className={isNum ? "num" : i === 0 ? "code" : "cat"}
-                    >
-                      {isNum ? formatResultaatPreviewCell(cell) : String(cell ?? "")}
-                    </td>
-                  );
-                })}
+      {sections.map((section) => {
+        const colCount = section.header.length;
+        return (
+          <table key={section.title} className="totals-table resultaat-preview-table">
+            <thead>
+              <tr>
+                <th colSpan={colCount}>{section.title}</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+              <tr>
+                {section.header.map((cell, i) => (
+                  <th key={i} className={i >= 2 ? "num" : i === 0 ? "code" : "cat"}>
+                    {String(cell)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {section.body.map((row, ri) => {
+                if (row.length === 0) {
+                  return (
+                    <tr key={ri} className="resultaat-spacer-row">
+                      <td colSpan={colCount}>&nbsp;</td>
+                    </tr>
+                  );
+                }
+                const label = String(row[1] ?? "");
+                return (
+                  <tr key={ri} className={strongLabels.has(label) ? "banksaldo-row" : ""}>
+                    {Array.from({ length: colCount }, (_, i) => {
+                      const cell = row[i];
+                      const isNum = i >= 2;
+                      return (
+                        <td
+                          key={i}
+                          className={isNum ? "num" : i === 0 ? "code" : "cat"}
+                        >
+                          {isNum ? formatResultaatPreviewCell(cell) : String(cell ?? "")}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        );
+      })}
     </div>
   );
 }

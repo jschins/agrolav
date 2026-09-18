@@ -1113,12 +1113,11 @@ def export_resultaat_excel_data(
     footer; equivalent tafelgenoten and food cost per tafelgenoot are
     calculated in the client. Month columns run from January through the
     current month of this year (all twelve when the export year is already
-    over). Cumulatief is their sum. Saldo is the sum of the displayed P&L
-    rows plus incoming on category 1053. The third Excel row is incoming (amount > 0) on the bank account
-    mapped to category 1053, by booked month. The sheet ends with that same
-    account's cash flow: Q Stichting de Oude Gracht (signed amounts to/from
-    IBAN NL94INGB0006200605), R other inkomsten, S other uitgaven, their
-    Resultaat, then Banksaldo at each month end.
+    over). Cumulatief is their sum. Totaal is the sum of the displayed P&L
+    rows. Incoming on category 1053 is used only in the cash-flow block at
+    the end: Stichting de Oude Gracht (signed amounts to/from IBAN
+    NL94INGB0006200605), Overige inkomsten, Uitgaven, their Resultaat, then
+    Banksaldo einde maand.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()
