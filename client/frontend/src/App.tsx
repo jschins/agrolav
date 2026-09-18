@@ -395,6 +395,7 @@ function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
     while (next.length < monthCount) next.push(0);
     return next.slice(0, monthCount);
   };
+  const saldoMonths = Array.from({ length: monthCount }, () => 0);
   if (data.incoming_1053) {
     const parts = padMonths(data.incoming_1053.months);
     const monthSum = parts.reduce((sum, n) => sum + n, 0);
@@ -405,8 +406,8 @@ function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
       ...parts.map((n) => euro2(n)),
       euro2(cumul),
     ]);
+    for (let i = 0; i < monthCount; i++) saldoMonths[i] += parts[i];
   }
-  const monthTotals = padMonths(data.total_months);
   for (const line of data.resultaat) {
     const parts = padMonths(line.months);
     const monthSum = parts.reduce((sum, n) => sum + n, 0);
@@ -417,12 +418,14 @@ function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
       ...parts.map((n) => euro2(n)),
       euro2(cumul),
     ]);
+    for (let i = 0; i < monthCount; i++) saldoMonths[i] += parts[i];
   }
+  const saldoCumul = saldoMonths.reduce((sum, n) => sum + n, 0);
   rows.push([
     "",
     "Saldo",
-    ...monthTotals.map((n) => euro2(n)),
-    euro2(data.total_resultaat),
+    ...saldoMonths.map((n) => euro2(n)),
+    euro2(saldoCumul),
   ]);
   if (data.maaltijden) {
     const ont = padMonths(data.maaltijden.ontbijten);
