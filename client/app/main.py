@@ -601,23 +601,74 @@ def api_years() -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+def _append_enable_debug(tag: str, payload: object) -> None:
+    try:
+        import json
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        path = root / "debug_enable_fetch.log"
+        rec = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "src": tag,
+            "data": payload,
+        }
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, default=str) + "\n")
+    except Exception:
+        pass
+
+
 @app.get("/api/banks")
 def api_banks(year: str | None = Query(default=None)) -> dict[str, Any]:
     from app.centrale_sync import configured_person, hub_get, load_config
     from shared.user_access import ACCESS_PERSON
     import urllib.parse
 
-    if load_config().access != ACCESS_PERSON:
-        return {"folders": [], "multi_bank": False, "show_switcher": False}
+    cfg = load_config()
+    if cfg.access != ACCESS_PERSON:
+        out = {
+            "folders": [],
+            "multi_bank": False,
+            "show_switcher": False,
+            "enable_debug": {
+                "bff_access": cfg.access,
+                "bff_skip": "not_personal",
+            },
+        }
+        _append_enable_debug("api_banks_skip", out["enable_debug"])
+        return out
     person = configured_person()
     if not person:
-        return {"folders": [], "multi_bank": False, "show_switcher": False}
+        out = {
+            "folders": [],
+            "multi_bank": False,
+            "show_switcher": False,
+            "enable_debug": {
+                "bff_access": cfg.access,
+                "bff_skip": "no_configured_person",
+            },
+        }
+        _append_enable_debug("api_banks_skip", out["enable_debug"])
+        return out
     try:
         suffix = f"/people/{urllib.parse.quote(person)}/banks"
         if year:
             suffix += f"?year={urllib.parse.quote(year)}"
-        return hub_get(suffix)
+        result = hub_get(suffix)
+        if isinstance(result, dict):
+            debug = dict(result.get("enable_debug") or {})
+            debug["bff_person"] = person
+            debug["bff_access"] = cfg.access
+            result = {**result, "enable_debug": debug}
+            _append_enable_debug("api_banks", debug)
+        return result
     except Exception as exc:
+        _append_enable_debug(
+            "api_banks_error",
+            {"person": person, "error": str(exc)},
+        )
         raise _hub_error(exc) from exc
 
 
@@ -831,8 +882,19 @@ def api_refresh(body: RefreshRequest | None = None) -> dict[str, Any]:
                 {"date_from": req.date_from, "date_to": req.date_to},
                 timeout=300.0,
             )
-        return scope_refresh(result) if isinstance(result, dict) else result
+        scoped = scope_refresh(result) if isinstance(result, dict) else result
+        if isinstance(scoped, dict):
+            _append_enable_debug(
+                "api_refresh",
+                {
+                    "person": person,
+                    "new_year": req.new_year,
+                    "results": scoped.get("results"),
+                },
+            )
+        return scoped
     except Exception as exc:
+        _append_enable_debug("api_refresh_error", {"error": str(exc)})
         raise _hub_error(exc) from exc
 
 
@@ -853,7 +915,19 @@ def api_refresh_person(person_name: str, body: PersonRefreshRequest | None = Non
             },
             timeout=1200.0,
         )
-        return scope_refresh(result) if isinstance(result, dict) else result
+        scoped = scope_refresh(result) if isinstance(result, dict) else result
+        if isinstance(scoped, dict):
+            _append_enable_debug(
+                "api_refresh_person",
+                {
+                    "person": person_name,
+                    "new_year": req.new_year,
+                    "date_from": req.date_from,
+                    "date_to": req.date_to,
+                    "results": scoped.get("results"),
+                },
+            )
+        return scoped
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:

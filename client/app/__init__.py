@@ -30,8 +30,8 @@ def _load_dotenv() -> None:
     """Seed os.environ from ``client/.env`` then the repo-root ``/.env``.
 
     Secrets live only in the root ``/.env`` (single source; see
-    ``documentation/passwords.md``). Already-set vars (e.g. systemd
-    ``EnvironmentFile`` on the server) are never overridden.
+    ``documentation/passwords.md``). The root file is loaded last and always
+    overrides, so a stale exported ``HUB_DATABASE_URL`` can never beat it.
     """
     here = Path(__file__).resolve()
     candidates = [
@@ -48,7 +48,7 @@ def _load_dotenv() -> None:
             key, _, val = raw.partition("=")
             key = key.strip()
             val = val.strip().strip('"').strip("'")
-            if key and not str(os.environ.get(key) or "").strip():
+            if key:
                 os.environ[key] = val
 
 

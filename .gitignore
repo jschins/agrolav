@@ -10,6 +10,8 @@ build/
 # Scratch scripts and logs: bulky or useless, no secrets in them.
 .tmp_*.py
 upload.log
+debug_enable_fetch.log
+hub/enable_fetch_debug.log
 
 # === Secrets ===
 # /.env is the ONLY file excluded because it contains passwords. It is the

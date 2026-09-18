@@ -62,8 +62,9 @@ export interface BanksResponse {
   year?: string;
   /** Consent active and the person has never downloaded transactions yet. */
   first_download?: boolean;
-  /** PEM credentials exist but consent is not active and nothing was downloaded yet. */
-  needs_initial_authorization?: boolean;
+    /** PEM credentials exist but consent is not active and nothing was downloaded yet. */
+    needs_initial_authorization?: boolean;
+    enable_debug?: Record<string, unknown>;
 }
 
 export function getYears(): Promise<YearsResponse> {

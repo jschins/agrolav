@@ -106,6 +106,7 @@ def person_banks(center: str, person_name: str, *, year: str | None = None) -> d
         token = ""
         first_download = False
         needs_initial_authorization = False
+        enable_debug: dict[str, Any] = {"person_name": person_name, "center": ws}
         try:
             from app import enable_sql, user_store
 
@@ -113,6 +114,7 @@ def person_banks(center: str, person_name: str, *, year: str | None = None) -> d
                 (person_name, ws), ""
             ) or ""
             if user_store.database_url() and person_name:
+                enable_debug = enable_sql.session_debug(person_name)
                 has_credentials = enable_sql.person_has_pem_light(person_name)
                 consent_active = enable_sql.person_consent_ready(person_name) is True
                 has_downloads = enable_sql.person_has_transactions(person_name)
@@ -124,7 +126,28 @@ def person_banks(center: str, person_name: str, *, year: str | None = None) -> d
                 needs_initial_authorization = bool(has_credentials) and (
                     not consent_active or session_reset
                 )
-        except Exception:  # noqa: BLE001
+                enable_debug.update(
+                    {
+                        "has_credentials": bool(has_credentials),
+                        "consent_active": bool(consent_active),
+                        "has_downloads": bool(has_downloads),
+                        "year_fetch": bool(year_fetch),
+                        "session_reset": bool(session_reset),
+                        "first_download": bool(first_download),
+                        "needs_initial_authorization": bool(needs_initial_authorization),
+                    }
+                )
+            else:
+                enable_debug["database_url"] = bool(user_store.database_url())
+            enable_sql.write_fetch_debug("person_banks", enable_debug)
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+
+            from app import enable_sql as _enable_sql
+
+            enable_debug["error"] = f"{type(exc).__name__}: {exc}"
+            enable_debug["traceback"] = traceback.format_exc()
+            _enable_sql.write_fetch_debug("person_banks_error", enable_debug, always=True)
             token = token or ""
         return {
             "center": ws,
@@ -133,6 +156,7 @@ def person_banks(center: str, person_name: str, *, year: str | None = None) -> d
             "upload_token": token,
             "first_download": first_download,
             "needs_initial_authorization": needs_initial_authorization,
+            "enable_debug": enable_debug,
             **opts,
         }
 

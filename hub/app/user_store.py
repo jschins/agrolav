@@ -90,7 +90,7 @@ def _load_dotenv() -> None:
             key, _, val = raw.partition("=")
             key = key.strip()
             val = val.strip().strip('"').strip("'")
-            if key and not str(os.environ.get(key) or "").strip():
+            if key:
                 os.environ[key] = val
 
 

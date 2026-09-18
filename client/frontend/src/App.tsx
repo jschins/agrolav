@@ -645,6 +645,13 @@ const VIEW_CHANGE_EVENT = "boekhouding-view";
 
 const HeaderActionsContext = createContext<(items: HeaderAction[]) => void>(() => {});
 
+type BanksFlags = {
+  person?: string;
+  first_download: boolean;
+  needs_initial_authorization: boolean;
+  enable_debug?: Record<string, unknown>;
+};
+
 type StoredRefreshStatus = {
   results: RefreshPersonResult[];
   warnings: string[];
@@ -1082,7 +1089,7 @@ function SyncNotifyShell({
     activeYear: string,
     bankView: string,
     dataRev: number,
-    banks: { person?: string; first_download: boolean; needs_initial_authorization: boolean },
+    banks: BanksFlags,
     bankOptions: BankAccount[],
     menuTerms: Record<string, string>
   ) => ReactNode;
@@ -1130,11 +1137,10 @@ function SyncNotifyShell({
     };
   }, [status?.center, dataRev]);
 
-  const [banksState, setBanksState] = useState<{
-    person?: string;
-    first_download: boolean;
-    needs_initial_authorization: boolean;
-  }>({ first_download: false, needs_initial_authorization: false });
+  const [banksState, setBanksState] = useState<BanksFlags>({
+    first_download: false,
+    needs_initial_authorization: false,
+  });
 
   const brandName = (status?.title || initialTitle || "").trim();
 
@@ -1160,7 +1166,11 @@ function SyncNotifyShell({
       setBankOptions([]);
       setBankView("consolidated");
       setUploadUrl("");
-      setBanksState({ first_download: false, needs_initial_authorization: false });
+      setBanksState({
+        first_download: false,
+        needs_initial_authorization: false,
+        enable_debug: { ui_skip: "access_not_personal_or_no_year", access },
+      });
       return;
     }
     let cancelled = false;
@@ -1193,9 +1203,10 @@ function SyncNotifyShell({
             person: person || undefined,
             first_download: res.first_download === true,
             needs_initial_authorization: res.needs_initial_authorization === true,
+            enable_debug: res.enable_debug,
           });
         })
-        .catch(() => {
+        .catch((e: Error) => {
           if (cancelled) return;
           setShowBankSwitcher(false);
           setBankOptions([]);
@@ -1203,6 +1214,7 @@ function SyncNotifyShell({
           setBanksState({
             first_download: false,
             needs_initial_authorization: false,
+            enable_debug: { ui_error: e.message },
           });
         });
     }
@@ -2021,7 +2033,7 @@ function MainApp({
   year: string;
   bankView: string;
   dataRev: number;
-  banks?: { person?: string; first_download: boolean; needs_initial_authorization: boolean };
+  banks?: BanksFlags;
   bankOptions?: BankAccount[];
   menuTerms?: Record<string, string>;
 }) {
@@ -2045,6 +2057,8 @@ function MainApp({
   } | null>(null);
   const [termMenuSettings, setTermMenuSettings] = useState<SettingsResponse | null>(null);
   const [loginName, setLoginName] = useState("");
+  const [loginAccess, setLoginAccess] = useState("");
+  const [lastAction, setLastAction] = useState("");
   const [categoryRoles, setCategoryRoles] = useState<Record<string, string>>({});
   const selectionRef = useRef<CellSelection | null>(null);
   const dirtyRef = useRef(false);
@@ -2068,6 +2082,7 @@ function MainApp({
         // Personal login: restore this person's refresh status only (no auto-fetch).
         const person = (s.person || "").trim();
         setLoginName((person || s.username || s.center || "").trim());
+        setLoginAccess((s.access || "").trim());
         const scope =
           scoped && ws && person ? { center: ws, person } : null;
         setRefreshScope(scope);
@@ -2398,6 +2413,7 @@ function MainApp({
 
   function doRefresh() {
     if (refreshing) return;
+    setLastAction("doRefresh");
     beginRefreshBusy();
     flushSync(() => {
       setRefreshing(true);
@@ -2430,6 +2446,7 @@ function MainApp({
 
   function doFirstDownload(person_name: string): boolean {
     if (refreshing || firstDownloading) return false;
+    setLastAction(`doFirstDownload:${person_name}`);
     beginRefreshBusy();
     flushSync(() => {
       setFirstDownloading(true);
@@ -2626,6 +2643,36 @@ function MainApp({
       </aside>
 
       <main className="content">
+        <pre className="enable-debug">
+          {JSON.stringify(
+            {
+              ui: {
+                access: loginAccess,
+                hasSecrets,
+                autoFirstDownload,
+                bankAuthRequired,
+                lastAction,
+                person: banks?.person,
+                first_download: banks?.first_download,
+                needs_initial_authorization: banks?.needs_initial_authorization,
+              },
+              hub_banks: banks?.enable_debug ?? null,
+              last_refresh: (refreshStatus?.results || []).map((r) => ({
+                person_name: r.person_name,
+                skipped: r.skipped,
+                reason: r.reason,
+                date_from: r.date_from,
+                date_to: r.date_to,
+                new_year: r.new_year,
+                authorization_url: Boolean(r.authorization_url),
+                enable_debug: r.enable_debug ?? null,
+              })),
+              warnings: refreshStatus?.warnings || [],
+            },
+            null,
+            2
+          )}
+        </pre>
         {error && <p className="error">{error}</p>}
         {!inPView && !matrix && !error && <p>Loading…</p>}
         {!inPView && displayMatrix && (

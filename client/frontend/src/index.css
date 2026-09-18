@@ -960,6 +960,19 @@ textarea.cell-edit {
   color: #b91c1c;
 }
 
+.enable-debug {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  max-height: 18rem;
+  overflow: auto;
+  font: 0.75rem/1.3 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #7c2d12;
+}
+
 .ok {
   color: #166534;
   font-weight: 700;

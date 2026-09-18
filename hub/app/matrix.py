@@ -647,31 +647,66 @@ def _refresh_one_person(
 ) -> tuple[dict[str, Any], list[str]]:
     from app.core.single_client import EnableBankingError, needs_consent_renewal
 
+    enable_debug: dict[str, Any] = {
+        "person_name": pack.person_name,
+        "has_pem": False,
+        "requested_new_year": new_year,
+        "requested_date_from": date_from,
+        "requested_date_to": date_to,
+    }
+
+    def _finish(
+        result: dict[str, Any], extra: list[str]
+    ) -> tuple[dict[str, Any], list[str]]:
+        from app import enable_sql
+
+        enable_debug["new_year"] = new_year
+        enable_debug["date_from"] = date_from
+        enable_debug["date_to"] = date_to
+        enable_debug["skipped"] = result.get("skipped")
+        enable_debug["reason"] = result.get("reason")
+        enable_debug["authorization_url"] = bool(result.get("authorization_url"))
+        enable_sql.write_fetch_debug("refresh", enable_debug, always=True)
+        return {**result, "enable_debug": enable_debug}, extra
+
     try:
         from app import enable_sql
 
         stamp: str | None = None
+        enable_debug["has_pem"] = bool(pack.has_pem)
         try:
-            if enable_sql.person_needs_year_fetch(pack.person_name):
+            session = enable_sql.session_debug(pack.person_name)
+            enable_debug["session"] = session
+            year_fetch = bool(
+                session.get("needs_year_fetch_fn")
+                or session.get("session_reset_fn")
+                or session.get("session_reset_from_rows")
+                or enable_sql.person_needs_year_fetch(pack.person_name)
+            )
+            enable_debug["year_fetch"] = year_fetch
+            if year_fetch:
                 new_year = True
                 today = date.today()
                 date_from = f"{today.year}-01-01"
                 date_to = today.isoformat()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            enable_debug["year_fetch_error"] = f"{type(exc).__name__}: {exc}"
         consent_gap = False
         if pack.has_pem:
             try:
                 consent_gap = needs_consent_renewal()
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 consent_gap = True
+                enable_debug["consent_gap_error"] = f"{type(exc).__name__}: {exc}"
+        enable_debug["consent_gap"] = consent_gap
         if pack.has_pem and not new_year and not consent_gap:
             from app import user_store
 
             updated = user_store.account_last_booked(pack.person_name)
             period = monthly_refresh_period(updated)
             if period is None:
-                return (
+                enable_debug["monthly_skip"] = True
+                return _finish(
                     {
                         "person_name": pack.person_name,
                         "skipped": True,
@@ -694,10 +729,12 @@ def _refresh_one_person(
                 if str(err).strip()
             ]
             result = excel
+            enable_debug["excel_path"] = True
         _record_account_last_booked(pack.person_name, result, stamp=stamp)
-        return result, extra
+        return _finish(result, extra)
     except EnableBankingError as exc:
-        return (
+        enable_debug["enable_error"] = str(exc)
+        return _finish(
             {
                 "person_name": pack.person_name,
                 "skipped": True,
@@ -706,7 +743,8 @@ def _refresh_one_person(
             [f"{pack.person_name}: {exc}"],
         )
     except Exception as exc:
-        return (
+        enable_debug["error"] = f"{type(exc).__name__}: {exc}"
+        return _finish(
             {
                 "person_name": pack.person_name,
                 "skipped": True,

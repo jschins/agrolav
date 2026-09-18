@@ -5,8 +5,15 @@ A connection row can exist for a person before any ``dbo.account`` rows.
 """
 from __future__ import annotations
 
+import json
+import logging
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("enable_fetch_debug")
+_last_banks_debug_mono = 0.0
 
 
 def _cursor():
@@ -254,6 +261,107 @@ def person_needs_year_fetch(username: str) -> bool:
         if created.date() == today:
             return True
     return False
+
+
+def write_fetch_debug(tag: str, payload: dict[str, Any], *, always: bool = False) -> None:
+    """Append one JSON line to hub/enable_fetch_debug.log and the process log."""
+    global _last_banks_debug_mono
+    if tag == "person_banks" and not always:
+        now = time.monotonic()
+        if now - _last_banks_debug_mono < 10:
+            return
+        _last_banks_debug_mono = now
+    rec = {"tag": tag, "ts": datetime.now(timezone.utc).isoformat(), **payload}
+    text = json.dumps(rec, default=str)
+    _log.warning("%s", text)
+    try:
+        path = Path(__file__).resolve().parents[1] / "enable_fetch_debug.log"
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def session_debug(username: str) -> dict[str, Any]:
+    """Connection-row snapshot for the year-fetch reset (no PEM / full session id)."""
+    out: dict[str, Any] = {"username": username, "sql": False}
+    try:
+        cursor = _cursor()
+    except Exception as exc:  # noqa: BLE001
+        out["cursor_error"] = f"{type(exc).__name__}: {exc}"
+        return out
+    if cursor is None:
+        out["sql_error"] = "no cursor / database_url empty"
+        return out
+    out["sql"] = True
+    try:
+        person_id = _person_id(cursor, username)
+    except Exception as exc:  # noqa: BLE001
+        out["person_id_error"] = f"{type(exc).__name__}: {exc}"
+        return out
+    out["person_id"] = person_id
+    if person_id is None:
+        return out
+    try:
+        out["connection_ids"] = _connection_ids_for_person(cursor, person_id)
+    except Exception as exc:  # noqa: BLE001
+        out["ids_error"] = f"{type(exc).__name__}: {exc}"
+        out["connection_ids"] = []
+    rows: list[dict[str, Any]] = []
+    try:
+        cursor.execute(
+            """
+            SELECT connection_id, person_id,
+                   CASE WHEN pem IS NULL THEN 0 ELSE 1 END,
+                   CASE WHEN session_id IS NULL THEN 1 ELSE 0 END,
+                   CASE WHEN valid_until IS NULL THEN 1 ELSE 0 END,
+                   CASE WHEN created_at IS NULL THEN 1 ELSE 0 END,
+                   CONVERT(varchar(33), valid_until, 126),
+                   CONVERT(varchar(33), created_at, 126)
+            FROM dbo.enable_connection
+            WHERE person_id = ?
+            ORDER BY connection_id
+            """,
+            (person_id,),
+        )
+        for raw in cursor.fetchall():
+            rows.append(
+                {
+                    "connection_id": int(raw[0]),
+                    "person_id": int(raw[1]) if raw[1] is not None else None,
+                    "has_pem": bool(raw[2]),
+                    "session_id_null": bool(raw[3]),
+                    "valid_until_null": bool(raw[4]),
+                    "created_at_null": bool(raw[5]),
+                    "valid_until": raw[6],
+                    "created_at": raw[7],
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        out["rows_error"] = f"{type(exc).__name__}: {exc}"
+    out["rows"] = rows
+    try:
+        cursor.execute(
+            "SELECT COUNT(*) FROM dbo.account WHERE person_id = ?",
+            (person_id,),
+        )
+        count_row = cursor.fetchone()
+        out["account_count"] = int(count_row[0] or 0) if count_row else 0
+    except Exception as exc:  # noqa: BLE001
+        out["account_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        out["session_reset_fn"] = person_session_reset(username)
+        out["needs_year_fetch_fn"] = person_needs_year_fetch(username)
+        out["consent_ready_fn"] = person_consent_ready(username)
+        out["has_pem_light_fn"] = person_has_pem_light(username)
+        out["has_transactions_fn"] = person_has_transactions(username)
+    except Exception as exc:  # noqa: BLE001
+        out["flag_error"] = f"{type(exc).__name__}: {exc}"
+    out["session_reset_from_rows"] = any(
+        r["session_id_null"] or r["valid_until_null"] or r["created_at_null"]
+        for r in rows
+    )
+    return out
 
 
 def person_has_transactions(username: str) -> bool:

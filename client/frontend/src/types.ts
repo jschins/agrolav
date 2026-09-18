@@ -23,6 +23,7 @@ export interface RefreshPersonResult {
   account_errors?: string[];
   authorization_url?: string | null;
   new_year?: boolean;
+  enable_debug?: Record<string, unknown>;
 }
 
 export interface RefreshResponse {
