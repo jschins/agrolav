@@ -3921,6 +3921,105 @@ function SplitApp() {
   );
 }
 
+function categoryPickerItems(
+  names: string[],
+  codes: number[]
+): { code: number; label: string }[] {
+  const byCode = new Map<number, string>();
+  for (const name of names) {
+    const match = String(name).match(/^(\d{4})\s+(.*)$/);
+    if (!match) continue;
+    const code = parseInt(match[1], 10);
+    if (code < 1000 || code > 4999) continue;
+    byCode.set(code, match[2].trim());
+  }
+  for (const code of codes) {
+    if (code < 1000 || code > 4999) continue;
+    if (!byCode.has(code)) byCode.set(code, "");
+  }
+  return [...byCode.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([code, label]) => ({ code, label }));
+}
+
+function CategoryPickerPopup({
+  currentCode,
+  extraCodes,
+  onPick,
+  onClose,
+}: {
+  currentCode: number | null;
+  extraCodes: number[];
+  onPick: (code: number) => void;
+  onClose: () => void;
+}) {
+  const [items, setItems] = useState<{ code: number; label: string }[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        setItems(
+          categoryPickerItems(settings.categories, [
+            ...(settings.valid_category_codes ?? []),
+            ...extraCodes,
+          ])
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setItems(categoryPickerItems([], extraCodes));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="category-picker-backdrop" onClick={onClose}>
+      <div
+        className="category-picker"
+        role="dialog"
+        aria-label="Categorie"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {items == null ? (
+          <p className="category-picker-loading">Loading…</p>
+        ) : (
+          <table className="category-picker-table">
+            <thead>
+              <tr>
+                <th className="code">Code</th>
+                <th>Post</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr
+                  key={item.code}
+                  className={`category-picker-row${item.code === currentCode ? " selected" : ""}`}
+                  onClick={() => onPick(item.code)}
+                >
+                  <td className="code">{String(item.code).padStart(4, "0")}</td>
+                  <td>{item.label}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PTable({
   categoryName,
   detail,
@@ -3938,6 +4037,7 @@ function PTable({
   onCategoryError?: (message: string | null) => void;
   onTermContextMenu?: (e: MouseEvent, cellText: string, transactionId: string) => void;
 }) {
+  const [picker, setPicker] = useState<Transaction | null>(null);
   const transactions = Array.isArray(detail.transactions) ? detail.transactions : [];
   const keywords = Array.isArray(detail.keywords) ? detail.keywords : [];
   const validCategoryCodes = new Set(detail.valid_category_codes ?? []);
@@ -4037,20 +4137,12 @@ function PTable({
     if (column === "category") {
       const catModified = categoryModified.has(String(t.id));
       return (
-        <td key={column} className={`num${catModified ? " category-modified" : ""}`}>
-          <EditableField
-            value={formatCell(t.category)}
-            onCommit={(v) => {
-              const code = parseInt(v, 10);
-              if (Number.isNaN(code) || !validCategoryCodes.has(code)) {
-                onCategoryError?.(
-                  `Unknown category code. Use one of: ${[...validCategoryCodes].sort((a, b) => a - b).join(", ")}`
-                );
-                return;
-              }
-              onModify({ ...t, category: code });
-            }}
-          />
+        <td
+          key={column}
+          className={`num category-pick${catModified ? " category-modified" : ""}`}
+          onClick={() => setPicker(t)}
+        >
+          <span className="editable">{formatCell(t.category)}</span>
         </td>
       );
     }
@@ -4124,6 +4216,19 @@ function PTable({
           </div>
         </>
       )}
+      {picker ? (
+        <CategoryPickerPopup
+          currentCode={Number(picker.category)}
+          extraCodes={[...validCategoryCodes]}
+          onPick={(code) => {
+            const current = Number(picker.category);
+            setPicker(null);
+            onCategoryError?.(null);
+            if (code !== current) onModify({ ...picker, category: code });
+          }}
+          onClose={() => setPicker(null)}
+        />
+      ) : null}
     </div>
   );
 }

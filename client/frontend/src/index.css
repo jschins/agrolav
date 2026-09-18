@@ -856,6 +856,80 @@ tr.modified td:not(.amount) {
   font-weight: 700;
 }
 
+.p-table td.category-pick {
+  cursor: pointer;
+}
+
+.p-table td.category-pick .editable {
+  cursor: pointer;
+}
+
+.category-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.category-picker {
+  max-height: 100vh;
+  max-width: 100vw;
+  width: max-content;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.22);
+}
+
+.category-picker-loading {
+  margin: 0;
+  padding: 1rem 1.25rem;
+}
+
+.category-picker-table {
+  width: max-content;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  background: #fbfdef;
+}
+
+.category-picker-table th,
+.category-picker-table td {
+  border: 1px solid #e3e3e6;
+  padding: 0.2rem 0.65rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.category-picker-table thead th {
+  position: sticky;
+  top: 0;
+  background: #ffecbc;
+  z-index: 1;
+}
+
+.category-picker-table .code {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.category-picker-row {
+  cursor: pointer;
+}
+
+.category-picker-row:hover {
+  background: #eef2ff;
+}
+
+.category-picker-row.selected {
+  background: #dbeafe;
+  font-weight: 600;
+}
+
 .editable {
   display: block;
   min-height: 1em;
