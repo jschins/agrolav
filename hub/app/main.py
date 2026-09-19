@@ -1,6 +1,7 @@
 """FastAPI centrale hub: immediate file sync, events, categories merge."""
 from __future__ import annotations
 
+import json
 import os
 import time
 import zipfile
@@ -1356,15 +1357,15 @@ def consent_callback(
             status_code=500,
         )
 
+    dest = client_return_url() + "/"
     return HTMLResponse(
         content=(
             "<!doctype html><html><head><meta charset='utf-8'>"
             "<title>Bank consent received</title></head><body>"
             f"<h1>Bank consent received — {person_name}</h1>"
             f"<p>Updated consent for {person_name} in center {ws}.</p>"
-            f"<p>Return to Boekhouding and use <strong>fetch for {person_name}</strong> "
-            "(optional new year overwrite). You can close this tab.</p>"
-            "<script>window.close();</script>"
+            "<p>Returning to Boekhouding…</p>"
+            f"<script>location.replace({json.dumps(dest)});</script>"
             "</body></html>"
         )
     )
@@ -1519,6 +1520,62 @@ def api_bootstrap_person_fetch(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/local/{center}/people/{person_name}/prepare-consent")
+def api_prepare_person_consent(
+    center: str,
+    person_name: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import center_api
+
+    try:
+        return center_api.prepare_person_consent(center, person_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/local/{center}/people/{person_name}/invalidate-consent")
+def api_invalidate_person_consent(
+    center: str,
+    person_name: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import center_api
+
+    try:
+        return center_api.invalidate_person_consent(center, person_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/local/{center}/people/{person_name}/wipe-transactions")
+def api_wipe_person_transactions(
+    center: str,
+    person_name: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import center_api
+
+    try:
+        return center_api.wipe_person_transactions(center, person_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -1791,7 +1848,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
     <div id="step2" class="step">
       <p>Person created: <strong id="createdLabel"></strong>.</p>
       <div class="actions">
-        <a class="link-btn" id="ebLink" href="https://enablebanking.com/cp/applications" target="_blank" rel="noopener noreferrer">Open Enable Banking applications</a>
+        <button type="button" id="ebLink">Open Enable Banking applications</button>
       </div>
 
       <div class="remind">
@@ -1814,7 +1871,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
           <dt>ASPSP</dt><dd>e.g. <code id="hintAspsp">ING</code></dd>
           <dt>Usage type</dt><dd><code>personal</code></dd>
         </dl>
-        <p class="note">Then hit <strong>Link</strong>.</p>
+        <p class="note">Then hit <strong>Link</strong>. This page does not watch that tab.</p>
       </div>
 
       <div class="remind">
@@ -1822,7 +1879,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         <ol>
           <li>Save the <code>.pem</code> on this laptop (do not rename if possible — stem becomes <code>app_id</code>).</li>
           <li>Return to this wizard and choose the file below.</li>
-          <li>Click <strong>Upload PEM</strong> — this writes <code>app_id</code> and the private key into the database. Bank consent and download happen after personal login.</li>
+          <li>Click <strong>Upload PEM</strong> — this writes <code>app_id</code> and the private key into the database. Then you return to the matrix. Bank consent and YTD download are separate menu steps (center or country login).</li>
         </ol>
       </div>
 
@@ -1933,7 +1990,13 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         }
         document.getElementById("createdLabel").textContent =
           `${created.person} in ${created.center}`;
-        document.getElementById("ebLink").href = created.enable_banking_url || "https://enablebanking.com/cp/applications";
+        document.getElementById("ebLink").onclick = () => {
+          window.open(
+            created.enable_banking_url || "https://enablebanking.com/cp/applications",
+            "_blank",
+            "noopener,noreferrer"
+          );
+        };
         document.getElementById("hintAppName").textContent =
           `boekh-${(created.person || person || "person").toLowerCase()}`;
         document.getElementById("hintCountry").textContent = "Netherlands";

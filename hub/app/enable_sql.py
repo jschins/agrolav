@@ -743,6 +743,62 @@ def update_person_connection(username: str, connection: dict[str, Any]) -> int:
     return connection_id
 
 
+def invalidate_person_consent(username: str) -> dict[str, Any]:
+    """NULL session_id, valid_until, and created_at on every linked connection."""
+    cursor = _cursor()
+    if cursor is None:
+        raise RuntimeError("SQL Server is not configured")
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        raise ValueError(f"Unknown person login: {username}")
+    ids = _connection_ids_for_person(cursor, person_id)
+    if not ids:
+        return {"ok": True, "person": username, "connections": 0}
+    placeholders = ",".join("?" for _ in ids)
+    cursor.execute(
+        f"""
+        UPDATE dbo.enable_connection
+        SET session_id = NULL, valid_until = NULL, created_at = NULL
+        WHERE connection_id IN ({placeholders})
+        """,
+        tuple(ids),
+    )
+    updated = int(cursor.rowcount or 0)
+    from app import user_store
+
+    user_store._sql_connect().commit()
+    return {"ok": True, "person": username, "connections": updated}
+
+
+def wipe_person_transactions(username: str) -> dict[str, Any]:
+    """Delete every booking row for this person (all years) and clear last_booked."""
+    cursor = _cursor()
+    if cursor is None:
+        raise RuntimeError("SQL Server is not configured")
+    person_id = _person_id(cursor, username)
+    if person_id is None:
+        raise ValueError(f"Unknown person login: {username}")
+    country = person_country_username(username)
+    from app.sql_replica import _transaction_table
+
+    table = _transaction_table(country)
+    if not table:
+        raise ValueError(f"No transaction table for {username}")
+    cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE person_id = ?", (person_id,))
+    count_row = cursor.fetchone()
+    tx_count = int(count_row[0] or 0) if count_row else 0
+    cursor.execute(f"DELETE FROM {table} WHERE person_id = ?", (person_id,))
+    cursor.execute("DELETE FROM dbo.category_total WHERE person_id = ?", (person_id,))
+    cursor.execute(
+        "UPDATE dbo.account SET last_booked = NULL WHERE person_id = ?",
+        (person_id,),
+    )
+    from app import user_store
+
+    user_store._sql_connect().commit()
+    return {"ok": True, "person": username, "transactions": tx_count}
+
+
 def upsert_person_pem(username: str, *, app_id: str, pem: str) -> dict[str, Any]:
     """Write application id + PEM for this person. Does not write files."""
     app = str(app_id or "").strip()

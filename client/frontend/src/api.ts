@@ -226,6 +226,30 @@ export function refreshPerson(
   return sendJson(`/api/refresh/${encodeURIComponent(person_name)}`, "POST", body);
 }
 
+export function prepareConsent(person: string): Promise<{
+  authorization_url: string;
+  person?: string;
+}> {
+  return sendJson("/api/prepare-consent", "POST", { person });
+}
+
+export function invalidateConsent(person: string): Promise<{
+  ok: boolean;
+  person?: string;
+  connections?: number;
+}> {
+  return sendJson("/api/invalidate-consent", "POST", { person });
+}
+
+export function wipePersonTransactions(person: string): Promise<{
+  ok: boolean;
+  person?: string;
+  transactions: number;
+  matrix?: MatrixResponse;
+}> {
+  return sendJson("/api/wipe-person-transactions", "POST", { person });
+}
+
 export function getTransactions(
   person_name: string,
   category: string,

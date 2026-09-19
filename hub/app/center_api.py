@@ -926,6 +926,59 @@ def upload_person_pem(
     }
 
 
+def prepare_person_consent(center: str, person_name: str) -> dict[str, Any]:
+    """Return an Enable Banking authorization URL. Does not fetch transactions."""
+    from app.core.single_client import get_authorization_url
+    from app.people import get_person
+    from app.runtime import bind_scope
+
+    person = _valid_person_name(person_name)
+    with _center_scope(center) as ws:
+        pack = get_person(person)
+        with bind_scope(pack):
+            url = get_authorization_url(center=ws, person_name=pack.person_name)
+    return {
+        "ok": True,
+        "center": ws,
+        "person": pack.person_name,
+        "authorization_url": url,
+    }
+
+
+def invalidate_person_consent(center: str, person_name: str) -> dict[str, Any]:
+    from app import enable_sql
+    from app.people import get_person
+
+    person = _valid_person_name(person_name)
+    with _center_scope(center) as ws:
+        pack = get_person(person)
+        result = enable_sql.invalidate_person_consent(pack.person_name)
+    return {**result, "center": ws}
+
+
+def wipe_person_transactions(center: str, person_name: str) -> dict[str, Any]:
+    from app import enable_sql
+    from app.matrix import build_matrix
+    from app.people import get_person
+    from app.settings import refresh_people
+
+    person = _valid_person_name(person_name)
+    with _center_scope(center) as ws:
+        pack = get_person(person)
+        result = enable_sql.wipe_person_transactions(pack.person_name)
+        refresh_people()
+        matrix = build_matrix()
+    mut = store.mutate_and_publish(ws, [], source="central")
+    matrix_payload = mut.get("matrix") or matrix or {}
+    if isinstance(matrix_payload, dict):
+        matrix_payload = {**matrix_payload, "center": ws}
+    return {
+        **result,
+        "center": ws,
+        "matrix": matrix_payload,
+    }
+
+
 def bootstrap_person_fetch(
     center: str,
     person_name: str,

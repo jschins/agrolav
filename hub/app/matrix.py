@@ -670,27 +670,8 @@ def _refresh_one_person(
         return {**result, "enable_debug": enable_debug}, extra
 
     try:
-        from app import enable_sql
-
         stamp: str | None = None
         enable_debug["has_pem"] = bool(pack.has_pem)
-        try:
-            session = enable_sql.session_debug(pack.person_name)
-            enable_debug["session"] = session
-            year_fetch = bool(
-                session.get("needs_year_fetch_fn")
-                or session.get("session_reset_fn")
-                or session.get("session_reset_from_rows")
-                or enable_sql.person_needs_year_fetch(pack.person_name)
-            )
-            enable_debug["year_fetch"] = year_fetch
-            if year_fetch:
-                new_year = True
-                today = date.today()
-                date_from = f"{today.year}-01-01"
-                date_to = today.isoformat()
-        except Exception as exc:  # noqa: BLE001
-            enable_debug["year_fetch_error"] = f"{type(exc).__name__}: {exc}"
         consent_gap = False
         if pack.has_pem:
             try:

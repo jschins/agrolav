@@ -154,6 +154,10 @@ class PersonRefreshRequest(BaseModel):
     new_year: bool = False
 
 
+class PersonActionRequest(BaseModel):
+    person: str
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -928,6 +932,85 @@ def api_refresh_person(person_name: str, body: PersonRefreshRequest | None = Non
                 },
             )
         return scoped
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+def _require_center_or_country() -> None:
+    from app.centrale_sync import load_config
+    from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY
+
+    access = load_config().access
+    if access not in (ACCESS_CENTER, ACCESS_COUNTRY):
+        raise HTTPException(
+            status_code=403,
+            detail="Center or country login required",
+        )
+
+
+@app.post("/api/prepare-consent")
+def api_prepare_consent(body: PersonActionRequest) -> dict[str, Any]:
+    from app.centrale_sync import hub_post, require_person
+    import urllib.parse
+
+    _require_center_or_country()
+    person = (body.person or "").strip()
+    if not person:
+        raise HTTPException(status_code=400, detail="person is required")
+    try:
+        require_person(person)
+        return hub_post(
+            f"/people/{urllib.parse.quote(person)}/prepare-consent",
+            {},
+            timeout=60.0,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.post("/api/invalidate-consent")
+def api_invalidate_consent(body: PersonActionRequest) -> dict[str, Any]:
+    from app.centrale_sync import hub_post, require_person
+    import urllib.parse
+
+    _require_center_or_country()
+    person = (body.person or "").strip()
+    if not person:
+        raise HTTPException(status_code=400, detail="person is required")
+    try:
+        require_person(person)
+        return hub_post(
+            f"/people/{urllib.parse.quote(person)}/invalidate-consent",
+            {},
+            timeout=30.0,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.post("/api/wipe-person-transactions")
+def api_wipe_person_transactions(body: PersonActionRequest) -> dict[str, Any]:
+    from app.centrale_sync import hub_post, require_person, scope_refresh
+    import urllib.parse
+
+    _require_center_or_country()
+    person = (body.person or "").strip()
+    if not person:
+        raise HTTPException(status_code=400, detail="person is required")
+    try:
+        require_person(person)
+        result = hub_post(
+            f"/people/{urllib.parse.quote(person)}/wipe-transactions",
+            {},
+            timeout=120.0,
+        )
+        return scope_refresh(result) if isinstance(result, dict) else result
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:

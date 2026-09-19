@@ -37,6 +37,9 @@ import {
   recordModification,
   refreshAll,
   refreshPerson,
+  prepareConsent,
+  invalidateConsent,
+  wipePersonTransactions,
   saveCatalog,
   getTransactionSplit,
   saveTransactionSplit,
@@ -661,25 +664,6 @@ type RefreshStatusScope = {
   center: string;
   person: string;
 };
-
-function openBankAuthorization(results: RefreshPersonResult[]): string {
-  const authorizationUrl = results.find(
-    (result) =>
-      result.skipped &&
-      result.reason === "needs_consent_renewal" &&
-      result.authorization_url
-  )?.authorization_url;
-  if (authorizationUrl) {
-    const authorizationWindow = window.open(
-      authorizationUrl,
-      "_blank",
-      "noopener,noreferrer"
-    );
-    if (!authorizationWindow) window.location.assign(authorizationUrl);
-    return authorizationUrl;
-  }
-  return "";
-}
 
 function refreshStatusStorageKey(scope?: RefreshStatusScope | null): string {
   if (scope?.center && scope?.person) {
@@ -1599,6 +1583,19 @@ function tableHeaderTerm(
   return label || key;
 }
 
+function uiIsDutch(terms?: Record<string, string>): boolean {
+  return (
+    tableHeaderTerm(terms, "Log out") === "Uitloggen" ||
+    tableHeaderTerm(terms, "Download transactions") === "Uitlezen bankafschriften"
+  );
+}
+
+function ytdConsentHint(terms?: Record<string, string>): string {
+  return uiIsDutch(terms)
+    ? "Gebruik achtereenvolgens 'Verwijder toestemming', 'Bereid toestemming', en tenslotte opnieuw 'YTD bankafschriften'"
+    : "Use sequentially 'Invalidate consent',  'Prepare consent', and 'Download YTD'";
+}
+
 const COLUMN_HEADER_KEYS: Record<string, string> = {
   amount: "Amount",
   type: "Type",
@@ -2043,7 +2040,6 @@ function MainApp({
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [firstDownloading, setFirstDownloading] = useState(false);
-  const [consentReady, setConsentReady] = useState<Record<string, boolean>>({});
   const [refreshScope, setRefreshScope] = useState<RefreshStatusScope | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<StoredRefreshStatus | null>(null);
   const [hasSecrets, setHasSecrets] = useState(false);
@@ -2058,7 +2054,6 @@ function MainApp({
   const [termMenuSettings, setTermMenuSettings] = useState<SettingsResponse | null>(null);
   const [loginName, setLoginName] = useState("");
   const [loginAccess, setLoginAccess] = useState("");
-  const [lastAction, setLastAction] = useState("");
   const [categoryRoles, setCategoryRoles] = useState<Record<string, string>>({});
   const selectionRef = useRef<CellSelection | null>(null);
   const dirtyRef = useRef(false);
@@ -2114,71 +2109,8 @@ function MainApp({
   }, [dataRev]);
 
   useEffect(() => {
-    const awaitingAuth = (refreshStatus?.results || []).some(
-      (r) => r.skipped && r.reason === "needs_consent_renewal"
-    );
-    if (!awaitingAuth) {
-      setConsentReady({});
-      return;
-    }
-    let cancelled = false;
-    function pollReady() {
-      getCentraleStatus()
-        .then((s) => {
-          if (cancelled) return;
-          const next: Record<string, boolean> = {};
-          for (const item of s.consent_ready || []) {
-            const person_name = (item.person_name || "").trim();
-            if (person_name) next[person_name] = true;
-          }
-          setConsentReady(next);
-        })
-        .catch(() => {});
-    }
-    pollReady();
-    const id = window.setInterval(pollReady, 1000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [refreshStatus]);
-
-  useEffect(() => {
     selectionRef.current = selection;
   }, [selection]);
-
-  const bankAuthRequired =
-    Boolean(banks?.person) &&
-    (banks?.needs_initial_authorization === true || banks?.first_download === true);
-  const autoFirstDownload = bankAuthRequired;
-  const firstDownloadAutoRef = useRef(false);
-  useEffect(() => {
-    if (!autoFirstDownload) return;
-    if (firstDownloadAutoRef.current) return;
-    const person_name = banks?.person || "";
-    if (!person_name) return;
-    let cancelled = false;
-    let tries = 0;
-    function attempt() {
-      if (cancelled) return;
-      if (hasSecrets) {
-        if (doFirstDownload(person_name)) {
-          firstDownloadAutoRef.current = true;
-        } else if (tries < 10 && !cancelled) {
-          tries += 1;
-          window.setTimeout(attempt, 300);
-        }
-        return;
-      }
-      tries += 1;
-      if (tries < 10 && !cancelled) window.setTimeout(attempt, 300);
-    }
-    attempt();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoFirstDownload, hasSecrets]);
 
   useEffect(() => {
     return () => endRefreshBusy();
@@ -2413,13 +2345,11 @@ function MainApp({
 
   function doRefresh() {
     if (refreshing) return;
-    setLastAction("doRefresh");
     beginRefreshBusy();
     flushSync(() => {
       setRefreshing(true);
       setError(null);
       setRefreshStatus(null);
-      setConsentReady({});
     });
     clearStoredRefreshStatus(refreshScope);
     afterPaint(() => {
@@ -2430,7 +2360,6 @@ function MainApp({
             results: res.results || [],
             warnings: res.warnings || [],
           };
-          openBankAuthorization(payload.results);
           saveStoredRefreshStatus(payload, refreshScope);
           setRefreshStatus(payload);
           setSelection(null);
@@ -2444,9 +2373,43 @@ function MainApp({
     });
   }
 
-  function doFirstDownload(person_name: string): boolean {
-    if (refreshing || firstDownloading) return false;
-    setLastAction(`doFirstDownload:${person_name}`);
+  const manageConsent = loginAccess === "local" || loginAccess === "country";
+  const termsForUi = matrix?.table_header_terms ?? menuTerms;
+
+  function pickManagedPerson(): string | null {
+    const selected = (selection?.person_name || "").trim();
+    const names = (matrix?.people || [])
+      .map((p) => (p.person_name || "").trim())
+      .filter(Boolean);
+    if (selected && names.includes(selected)) return selected;
+    if (names.length === 1) return names[0];
+    const dutch = uiIsDutch(termsForUi);
+    const hint = names.length ? ` (${names.join(", ")})` : "";
+    const raw = window.prompt(
+      dutch ? `Persoon${hint}` : `Person${hint}`,
+      selected || names[0] || ""
+    );
+    if (raw == null) return null;
+    return raw.trim() || null;
+  }
+
+  function ytdNotAllowed(
+    res: { results?: RefreshPersonResult[]; warnings?: string[] },
+    start: string
+  ): boolean {
+    for (const r of res.results || []) {
+      if (r.skipped && r.reason === "needs_consent_renewal") return true;
+      if (r.date_from && r.date_from > start) return true;
+    }
+    return (res.warnings || []).some((w) =>
+      /raised to|renew consent|only the last/i.test(w)
+    );
+  }
+
+  function doYtdDownload() {
+    if (refreshing || firstDownloading) return;
+    const person_name = pickManagedPerson();
+    if (!person_name) return;
     beginRefreshBusy();
     flushSync(() => {
       setFirstDownloading(true);
@@ -2457,28 +2420,18 @@ function MainApp({
       const end = isoDate(new Date());
       refreshPerson(person_name, { date_from: start, date_to: end, new_year: true })
         .then((res) => {
-          setMatrix(res.matrix);
-          const nextResult = (res.results || [])[0];
-          const prev = refreshStatus || { results: [], warnings: [] };
-          const results = nextResult
-            ? [
-                ...prev.results.filter((r) => r.person_name !== person_name),
-                nextResult,
-              ]
-            : prev.results.filter((r) => r.person_name !== person_name);
-          const warnings = [
-            ...prev.warnings.filter(
-              (w) => !w.startsWith(`${person_name}:`) && !w.startsWith(`${person_name} (`)
-            ),
-            ...(res.warnings || []),
-          ];
-          const payload: StoredRefreshStatus = { results, warnings };
+          if (res.matrix) setMatrix(res.matrix);
+          const payload: StoredRefreshStatus = {
+            results: res.results || [],
+            warnings: res.warnings || [],
+          };
           saveStoredRefreshStatus(payload, refreshScope);
           setRefreshStatus(payload);
-          openBankAuthorization(payload.results);
-          setConsentReady({});
           setSelection(null);
           setDetail(null);
+          if (ytdNotAllowed(res, start)) {
+            window.alert(ytdConsentHint(termsForUi));
+          }
         })
         .catch((e: Error) => setError(e.message))
         .finally(() => {
@@ -2486,83 +2439,108 @@ function MainApp({
           endRefreshBusy();
         });
     });
-    return true;
   }
 
-  const awaitingPostConsentFetch = (refreshStatus?.results || []).some(
-    (r) =>
-      r.skipped &&
-      r.reason === "needs_consent_renewal" &&
-      Boolean(consentReady[r.person_name])
-  );
-
-  const postConsentFiredRef = useRef<string[]>([]);
-  useEffect(() => {
-    if (!awaitingPostConsentFetch) return;
-    const person_name = (banks?.person || "").trim();
+  function doPrepareConsent() {
+    const person_name = pickManagedPerson();
     if (!person_name) return;
-    if (postConsentFiredRef.current.includes(person_name)) return;
-    let cancelled = false;
-    let tries = 0;
-    function attempt() {
-      if (cancelled) return;
-      if (hasSecrets) {
-        postConsentFiredRef.current.push(person_name);
-        doFirstDownload(person_name);
-        return;
-      }
-      tries += 1;
-      if (tries < 10 && !cancelled) window.setTimeout(attempt, 300);
-    }
-    attempt();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [awaitingPostConsentFetch, banks?.person, hasSecrets]);
+    setError(null);
+    prepareConsent(person_name)
+      .then((res) => {
+        const url = (res.authorization_url || "").trim();
+        if (!url) {
+          setError("No authorization URL");
+          return;
+        }
+        window.location.assign(url);
+      })
+      .catch((e: Error) => setError(e.message));
+  }
 
-  const bankAuthUrl = (() => {
-    if (!bankAuthRequired) return "";
-    const person_name = banks?.person || "";
-    for (const r of refreshStatus?.results || []) {
-      if (
-        r.person_name === person_name &&
-        r.skipped &&
-        r.reason === "needs_consent_renewal" &&
-        r.authorization_url
-      ) {
-        return r.authorization_url;
-      }
-    }
-    return "";
-  })();
+  function doInvalidateConsent() {
+    const person_name = pickManagedPerson();
+    if (!person_name) return;
+    const dutch = uiIsDutch(termsForUi);
+    const ok = window.confirm(
+      dutch
+        ? `Toestemming voor ${person_name} verwijderen?`
+        : `Invalidate consent for ${person_name}?`
+    );
+    if (!ok) return;
+    setError(null);
+    invalidateConsent(person_name).catch((e: Error) => setError(e.message));
+  }
+
+  function doWipePersonTransactions() {
+    const person_name = pickManagedPerson();
+    if (!person_name) return;
+    const dutch = uiIsDutch(termsForUi);
+    const ok = window.confirm(
+      dutch
+        ? `Alle bankafschriften van ${person_name} verwijderen? Dit kan niet ongedaan worden.`
+        : `Delete all transactions for ${person_name}? This cannot be undone.`
+    );
+    if (!ok) return;
+    beginRefreshBusy();
+    flushSync(() => {
+      setRefreshing(true);
+      setError(null);
+    });
+    afterPaint(() => {
+      wipePersonTransactions(person_name)
+        .then((res) => {
+          if (res.matrix) setMatrix(res.matrix);
+          else void loadMatrixOnly();
+          setSelection(null);
+          setDetail(null);
+        })
+        .catch((e: Error) => setError(e.message))
+        .finally(() => {
+          setRefreshing(false);
+          endRefreshBusy();
+        });
+    });
+  }
 
   const setHeaderActions = useContext(HeaderActionsContext);
   useEffect(() => {
     const items: HeaderAction[] = [];
-    const consentAuthRequired =
-      bankAuthRequired && Boolean(bankAuthUrl) && !awaitingPostConsentFetch;
-    if (consentAuthRequired) {
-      items.push({
-        id: "authorize-bank",
-        label: "Authorize bank",
-        onClick: () => window.location.assign(bankAuthUrl),
-      });
-    } else if (hasSecrets && !awaitingPostConsentFetch) {
+    if (hasSecrets) {
       items.push({
         id: "refresh",
         label: refreshing
           ? "Downloading…"
           : tableHeaderTerm(matrix?.table_header_terms, "Download transactions"),
         disabled: refreshing || firstDownloading,
-        onClick: () => {
-          const person_name = (banks?.person || "").trim();
-          if (person_name && autoFirstDownload) {
-            doFirstDownload(person_name);
-            return;
-          }
-          doRefresh();
-        },
+        onClick: doRefresh,
+      });
+    }
+    if (manageConsent) {
+      items.push({
+        id: "prepare-consent",
+        label: tableHeaderTerm(termsForUi, "Prepare consent"),
+        disabled: refreshing || firstDownloading,
+        onClick: doPrepareConsent,
+      });
+      items.push({
+        id: "invalidate-consent",
+        label: tableHeaderTerm(termsForUi, "Invalidate consent"),
+        disabled: refreshing || firstDownloading,
+        onClick: doInvalidateConsent,
+      });
+      items.push({
+        id: "download-ytd",
+        label: firstDownloading
+          ? "Downloading…"
+          : tableHeaderTerm(termsForUi, "Download YTD"),
+        disabled: refreshing || firstDownloading,
+        onClick: doYtdDownload,
+      });
+      items.push({
+        id: "wipe-person-transactions",
+        label: tableHeaderTerm(termsForUi, "Delete all transactions"),
+        disabled: refreshing || firstDownloading,
+        onClick: doWipePersonTransactions,
       });
     }
     if (canAddPerson && addPersonUrl) {
@@ -2576,17 +2554,16 @@ function MainApp({
     return () => setHeaderActions([]);
   }, [
     hasSecrets,
-    awaitingPostConsentFetch,
     refreshing,
+    firstDownloading,
     canAddPerson,
     addPersonUrl,
-    bankAuthRequired,
-    bankAuthUrl,
-    firstDownloading,
-    autoFirstDownload,
-    banks,
+    manageConsent,
+    loginAccess,
     setHeaderActions,
     matrix,
+    menuTerms,
+    selection,
   ]);
 
   const inPView = selection !== null;
@@ -2643,36 +2620,6 @@ function MainApp({
       </aside>
 
       <main className="content">
-        <pre className="enable-debug">
-          {JSON.stringify(
-            {
-              ui: {
-                access: loginAccess,
-                hasSecrets,
-                autoFirstDownload,
-                bankAuthRequired,
-                lastAction,
-                person: banks?.person,
-                first_download: banks?.first_download,
-                needs_initial_authorization: banks?.needs_initial_authorization,
-              },
-              hub_banks: banks?.enable_debug ?? null,
-              last_refresh: (refreshStatus?.results || []).map((r) => ({
-                person_name: r.person_name,
-                skipped: r.skipped,
-                reason: r.reason,
-                date_from: r.date_from,
-                date_to: r.date_to,
-                new_year: r.new_year,
-                authorization_url: Boolean(r.authorization_url),
-                enable_debug: r.enable_debug ?? null,
-              })),
-              warnings: refreshStatus?.warnings || [],
-            },
-            null,
-            2
-          )}
-        </pre>
         {error && <p className="error">{error}</p>}
         {!inPView && !matrix && !error && <p>Loading…</p>}
         {!inPView && displayMatrix && (
