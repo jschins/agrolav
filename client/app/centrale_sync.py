@@ -556,6 +556,15 @@ def scope_settings(payload: dict[str, Any]) -> dict[str, Any]:
             for k, v in personal.items()
             if str(k).strip().lower() == scope.lower()
         }
+    groups = out.get("account_groups")
+    if isinstance(groups, list):
+        needle = scope.lower()
+        out["account_groups"] = [
+            group
+            for group in groups
+            if isinstance(group, dict)
+            and str(group.get("person") or "").strip().lower() == needle
+        ]
     return out
 
 

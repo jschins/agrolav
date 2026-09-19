@@ -1139,7 +1139,7 @@ def api_settings() -> dict[str, Any]:
 
 def _is_account_group(group: str) -> bool:
     """True when ``group`` is an account-modality account key (a ``dbo.account.uid``)."""
-    from app.centrale_sync import hub_get
+    from app.centrale_sync import hub_get, scope_settings
 
     try:
         payload = hub_get("/settings")
@@ -1147,6 +1147,7 @@ def _is_account_group(group: str) -> bool:
         return False
     if not isinstance(payload, dict):
         return False
+    payload = scope_settings(payload)
     for entry in payload.get("account_groups") or []:
         if isinstance(entry, dict) and str(entry.get("account_key") or "") == str(group).strip():
             return True

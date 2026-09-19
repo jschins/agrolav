@@ -51,6 +51,7 @@ import {
   type SyncNotification,
 } from "./api";
 import type {
+  AccountGroup,
   CatalogCategory,
   MatrixResponse,
   RefreshPersonResult,
@@ -614,6 +615,18 @@ function firstResultaatRestrict(
     if (list) return list;
   }
   return null;
+}
+
+function scopedAccountGroups(
+  groups: AccountGroup[] | undefined,
+  personScope?: string
+): AccountGroup[] {
+  const all = groups ?? [];
+  const needle = (personScope || "").trim().toLowerCase();
+  if (!needle) return all;
+  return all.filter(
+    (group) => String(group.person || "").trim().toLowerCase() === needle
+  );
 }
 
 function visibleMatrixCategories(
@@ -2081,6 +2094,7 @@ function MainApp({
   } | null>(null);
   const [termMenuSettings, setTermMenuSettings] = useState<SettingsResponse | null>(null);
   const [loginName, setLoginName] = useState("");
+  const [loginPerson, setLoginPerson] = useState("");
   const [loginAccess, setLoginAccess] = useState("");
   const [categoryRoles, setCategoryRoles] = useState<Record<string, string>>({});
   const selectionRef = useRef<CellSelection | null>(null);
@@ -2104,6 +2118,7 @@ function MainApp({
         }
         // Personal login: restore this person's refresh status only (no auto-fetch).
         const person = (s.person || "").trim();
+        setLoginPerson(person);
         setLoginName((person || s.username || s.center || "").trim());
         setLoginAccess((s.access || "").trim());
         const scope =
@@ -2673,6 +2688,7 @@ function MainApp({
             settings={termMenuSettings}
             initialTerm={termMenu.term}
             personName={detail?.person || selection?.person_name || loginName}
+            personScope={loginPerson}
             bankIban={bankView !== "consolidated" ? bankView : undefined}
             x={termMenu.x}
             y={termMenu.y}
@@ -2688,6 +2704,7 @@ function MainApp({
 function TermsApp() {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [loginName, setLoginName] = useState("");
+  const [personScope, setPersonScope] = useState("");
   const [error, setError] = useState<string | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
 
@@ -2698,6 +2715,7 @@ function TermsApp() {
         .then(([data, status]) => {
           if (cancelled) return;
           setSettings(data);
+          setPersonScope((status?.person || "").trim());
           setLoginName((status?.person || status?.username || status?.center || "").trim());
         })
         .catch((e: Error) => {
@@ -2805,7 +2823,12 @@ function TermsApp() {
       <main className="content terms-content">
         {error && <p className="error">{error}</p>}
         {settings ? (
-          <TermsTables settings={settings} loginName={loginName} onUpdate={updateTerms} />
+          <TermsTables
+            settings={settings}
+            loginName={loginName}
+            personScope={personScope}
+            onUpdate={updateTerms}
+          />
         ) : (
           <p>Loading…</p>
         )}
@@ -4294,6 +4317,7 @@ function TermContextMenu({
   settings,
   initialTerm,
   personName,
+  personScope,
   bankIban,
   x,
   y,
@@ -4303,6 +4327,7 @@ function TermContextMenu({
   settings: SettingsResponse;
   initialTerm: string;
   personName?: string;
+  personScope?: string;
   bankIban?: string;
   x: number;
   y: number;
@@ -4319,7 +4344,7 @@ function TermContextMenu({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState({ left: x, top: y });
 
-  const accountGroups = settings.account_groups ?? [];
+  const accountGroups = scopedAccountGroups(settings.account_groups, personScope);
   const accountModality = accountGroups.length > 0;
   const [accountKey, setAccountKey] = useState(() => {
     const preset = bankIban
@@ -4577,16 +4602,19 @@ const EMPTY_TERMS: string[] = [];
 function TermsTables({
   settings,
   loginName,
+  personScope,
   onUpdate,
 }: {
   settings: SettingsResponse;
   loginName?: string;
+  personScope?: string;
   onUpdate: (group: string, category: string, terms: string[]) => void;
 }) {
-  const { people, general, personal, account_groups } = settings;
+  const { people, general, personal } = settings;
+  const account_groups = scopedAccountGroups(settings.account_groups, personScope);
   const [selectedPerson, setSelectedPerson] = useState(people[0]?.person_name ?? "");
-  const [selectedAccount, setSelectedAccount] = useState(account_groups?.[0]?.account_key ?? "");
-  const selectedAccountGroup = account_groups?.find((g) => g.account_key === selectedAccount);
+  const [selectedAccount, setSelectedAccount] = useState(account_groups[0]?.account_key ?? "");
+  const selectedAccountGroup = account_groups.find((g) => g.account_key === selectedAccount);
   const columns = termsTableCategories(
     settings,
     selectedPerson,
@@ -4602,6 +4630,15 @@ function TermsTables({
       setSelectedCategory(columns[0] ?? "");
     }
   }, [columns, selectedCategory]);
+
+  useEffect(() => {
+    if (
+      account_groups.length > 0 &&
+      !account_groups.some((group) => group.account_key === selectedAccount)
+    ) {
+      setSelectedAccount(account_groups[0].account_key);
+    }
+  }, [account_groups, selectedAccount]);
 
   const selectedGroupKey = accountModality ? selectedAccount : selectedPerson;
 
