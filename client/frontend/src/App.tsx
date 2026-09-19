@@ -587,6 +587,35 @@ function loginHasUsernameRole(
   });
 }
 
+/** P&L rows shown in Resultaat when ``category_role`` is this username. */
+function resultaatEditCategoryNames(
+  settings: SettingsResponse,
+  username: string
+): string[] | null {
+  const key = username.trim().toLowerCase();
+  if (!key || SYSTEM_CATEGORY_ROLES.has(key)) return null;
+  if (!loginHasUsernameRole(settings.category_roles, key)) return null;
+  return settings.categories.filter((name) => {
+    const code = categoryCodeFromName(name);
+    if (code == null || code < 3000 || code > 4999) return false;
+    const role = String(settings.category_roles?.[name] ?? "")
+      .trim()
+      .toLowerCase();
+    return role === key || role === "remainder";
+  });
+}
+
+function firstResultaatRestrict(
+  settings: SettingsResponse,
+  ...usernames: (string | undefined)[]
+): string[] | null {
+  for (const name of usernames) {
+    const list = resultaatEditCategoryNames(settings, name || "");
+    if (list) return list;
+  }
+  return null;
+}
+
 function visibleMatrixCategories(
   matrix: MatrixResponse,
   roles: Record<string, string> | undefined,
@@ -2022,7 +2051,6 @@ function MainApp({
   year,
   bankView,
   dataRev,
-  banks,
   bankOptions,
   menuTerms,
 }: {
@@ -2041,7 +2069,7 @@ function MainApp({
   const [refreshing, setRefreshing] = useState(false);
   const [firstDownloading, setFirstDownloading] = useState(false);
   const [refreshScope, setRefreshScope] = useState<RefreshStatusScope | null>(null);
-  const [refreshStatus, setRefreshStatus] = useState<StoredRefreshStatus | null>(null);
+  const [, setRefreshStatus] = useState<StoredRefreshStatus | null>(null);
   const [hasSecrets, setHasSecrets] = useState(false);
   const [canAddPerson, setCanAddPerson] = useState(false);
   const [addPersonUrl, setAddPersonUrl] = useState<string | null>(null);
@@ -2644,6 +2672,7 @@ function MainApp({
           <TermContextMenu
             settings={termMenuSettings}
             initialTerm={termMenu.term}
+            personName={detail?.person || selection?.person_name || loginName}
             bankIban={bankView !== "consolidated" ? bankView : undefined}
             x={termMenu.x}
             y={termMenu.y}
@@ -2658,15 +2687,18 @@ function MainApp({
 
 function TermsApp() {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
+  const [loginName, setLoginName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     function load() {
-      getSettings()
-        .then((data) => {
-          if (!cancelled) setSettings(data);
+      Promise.all([getSettings(), getCentraleStatus().catch(() => null)])
+        .then(([data, status]) => {
+          if (cancelled) return;
+          setSettings(data);
+          setLoginName((status?.person || status?.username || status?.center || "").trim());
         })
         .catch((e: Error) => {
           if (!cancelled) setError(e.message);
@@ -2773,7 +2805,7 @@ function TermsApp() {
       <main className="content terms-content">
         {error && <p className="error">{error}</p>}
         {settings ? (
-          <TermsTables settings={settings} onUpdate={updateTerms} />
+          <TermsTables settings={settings} loginName={loginName} onUpdate={updateTerms} />
         ) : (
           <p>Loading…</p>
         )}
@@ -3951,11 +3983,13 @@ function categoryPickerItems(
 function CategoryPickerPopup({
   currentCode,
   extraCodes,
+  personName,
   onPick,
   onClose,
 }: {
   currentCode: number | null;
   extraCodes: number[];
+  personName?: string;
   onPick: (code: number) => void;
   onClose: () => void;
 }) {
@@ -3963,9 +3997,25 @@ function CategoryPickerPopup({
 
   useEffect(() => {
     let cancelled = false;
-    getSettings()
-      .then((settings) => {
+    Promise.all([getSettings(), getCentraleStatus().catch(() => null)])
+      .then(([settings, status]) => {
         if (cancelled) return;
+        const restrict = firstResultaatRestrict(
+          settings,
+          personName,
+          status?.person,
+          status?.username
+        );
+        if (restrict) {
+          const codes = restrict
+            .map((name) => categoryCodeFromName(name))
+            .filter((code): code is number => code != null);
+          if (currentCode != null && !codes.includes(currentCode)) {
+            codes.push(currentCode);
+          }
+          setItems(categoryPickerItems(restrict, codes));
+          return;
+        }
         setItems(
           categoryPickerItems(settings.categories, [
             ...(settings.valid_category_codes ?? []),
@@ -3979,7 +4029,7 @@ function CategoryPickerPopup({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentCode, personName]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -4226,6 +4276,7 @@ function PTable({
         <CategoryPickerPopup
           currentCode={Number(picker.category)}
           extraCodes={[...validCategoryCodes]}
+          personName={detail.person}
           onPick={(code) => {
             const current = Number(picker.category);
             setPicker(null);
@@ -4242,6 +4293,7 @@ function PTable({
 function TermContextMenu({
   settings,
   initialTerm,
+  personName,
   bankIban,
   x,
   y,
@@ -4250,6 +4302,7 @@ function TermContextMenu({
 }: {
   settings: SettingsResponse;
   initialTerm: string;
+  personName?: string;
   bankIban?: string;
   x: number;
   y: number;
@@ -4279,10 +4332,12 @@ function TermContextMenu({
     return preset?.account_key ?? accountGroups[0]?.account_key ?? "";
   });
 
-  const categories = settings.categories.filter(
-    (name) =>
-      name !== settings.remainder_category && isHitCategoryName(name, settings)
-  );
+  const categories =
+    firstResultaatRestrict(settings, personName) ??
+    settings.categories.filter(
+      (name) =>
+        name !== settings.remainder_category && isHitCategoryName(name, settings)
+    );
 
   useEffect(() => {
     setTerm(initialTerm);
@@ -4492,10 +4547,16 @@ function wordAtClick(root: EventTarget, clientX: number, clientY: number): strin
   return wordAtIndex(text, offset);
 }
 
-function termsTableCategories(settings: SettingsResponse): string[] {
-  return settings.categories.filter(
-    (name) =>
-      name !== settings.remainder_category && isHitCategoryName(name, settings)
+function termsTableCategories(
+  settings: SettingsResponse,
+  ...usernames: (string | undefined)[]
+): string[] {
+  return (
+    firstResultaatRestrict(settings, ...usernames) ??
+    settings.categories.filter(
+      (name) =>
+        name !== settings.remainder_category && isHitCategoryName(name, settings)
+    )
   );
 }
 
@@ -4515,18 +4576,26 @@ const EMPTY_TERMS: string[] = [];
 
 function TermsTables({
   settings,
+  loginName,
   onUpdate,
 }: {
   settings: SettingsResponse;
+  loginName?: string;
   onUpdate: (group: string, category: string, terms: string[]) => void;
 }) {
   const { people, general, personal, account_groups } = settings;
-  const columns = termsTableCategories(settings);
+  const [selectedPerson, setSelectedPerson] = useState(people[0]?.person_name ?? "");
+  const [selectedAccount, setSelectedAccount] = useState(account_groups?.[0]?.account_key ?? "");
+  const selectedAccountGroup = account_groups?.find((g) => g.account_key === selectedAccount);
+  const columns = termsTableCategories(
+    settings,
+    selectedPerson,
+    selectedAccountGroup?.person,
+    loginName
+  );
   const accountModality = Boolean(account_groups && account_groups.length > 0);
 
   const [selectedCategory, setSelectedCategory] = useState(columns[0] ?? "");
-  const [selectedPerson, setSelectedPerson] = useState(people[0]?.person_name ?? "");
-  const [selectedAccount, setSelectedAccount] = useState(account_groups?.[0]?.account_key ?? "");
 
   useEffect(() => {
     if (!columns.includes(selectedCategory)) {
@@ -4535,7 +4604,6 @@ function TermsTables({
   }, [columns, selectedCategory]);
 
   const selectedGroupKey = accountModality ? selectedAccount : selectedPerson;
-  const selectedAccountGroup = account_groups?.find((g) => g.account_key === selectedAccount);
 
   const gTerms = selectedCategory ? (general[selectedCategory] ?? EMPTY_TERMS) : EMPTY_TERMS;
   const pTerms = selectedCategory
