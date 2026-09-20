@@ -908,14 +908,55 @@ def afschrijving_amount(fraction: object, present: Decimal) -> Decimal:
     )
 
 
+def is_kosten_local(local_code: int) -> bool:
+    """True for the 3000-series (kosten), not 4000-series opbrengsten."""
+    return 3000 <= int(local_code) <= 3999
+
+
+def category_transaction_sum(
+    country_id: int,
+    year: int,
+    category_id: int,
+    cursor: object,
+) -> Decimal:
+    """SUM of booking rows for one category; journal and mirror are omitted.
+
+    Every person in the country is included. ``dbo.journal`` is a different
+    table and is not read.
+    """
+    table = transaction_table(country_id, cursor)
+    if table is None:
+        return Decimal("0")
+    cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        return Decimal("0")
+    cursor.execute(
+        f"""
+        SELECT SUM(CAST(t.amount AS decimal(19, 2)))
+        FROM {table} t
+        JOIN dbo.person p ON p.id = t.person_id
+        JOIN dbo.center n ON n.center_id = p.center_id
+        WHERE n.country_id = ?
+          AND t.year = ?
+          AND t.category_id = ?
+        """,
+        (int(country_id), int(year), int(category_id)),
+    )
+    row = cursor.fetchone()
+    return _decimal(row[0]) if row and row[0] is not None else Decimal("0")
+
+
 def apply_afschrijvingen(country_id: int, cursor: object) -> int:
     """Replace ``[afschrijving]`` journal rows from ``dbo.afschrijvingen``.
 
     Existing marker rows are deleted first so the bron amount is the live
     sheet without last login's depreciation. Then one journal is written per
     rule and year: FROM ``local_code_van`` TO ``local_code_naar`` of
-    ``fraction * present(local_code_bron)``. Empty rules still wipe leftover
-    marker rows. ``0`` when the table is missing. Does not commit.
+    ``fraction * present(local_code_bron)``. When bron is kosten (local_code
+    3000–3999), present is the SUM of ``transaction_*`` rows for that
+    category — not openings, not ``dbo.journal``. Empty rules still wipe
+    leftover marker rows. ``0`` when the table is missing. Does not commit.
     """
     cursor.execute("SELECT OBJECT_ID(N'dbo.afschrijvingen', N'U')")
     row = cursor.fetchone()
@@ -941,6 +982,14 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
         (cid,),
     )
     years.update(int(r[0]) for r in cursor.fetchall() if r and r[0] is not None)
+    table = transaction_table(cid, cursor)
+    if table:
+        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+        if cursor.fetchone()[0] is not None:
+            cursor.execute(f"SELECT DISTINCT year FROM {table}")
+            years.update(
+                int(r[0]) for r in cursor.fetchall() if r and r[0] is not None
+            )
     if not years:
         return 0
     codes = category_local_codes(cid, cursor)
@@ -966,7 +1015,12 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
             naar_id = local_to_id.get(naar_local)
             if bron_id is None or van_id is None or naar_id is None:
                 continue
-            present = Decimal(cents.get(bron_id, 0)) / Decimal(100)
+            if is_kosten_local(bron_local):
+                present = category_transaction_sum(
+                    cid, int(year), bron_id, cursor
+                )
+            else:
+                present = Decimal(cents.get(bron_id, 0)) / Decimal(100)
             amount = afschrijving_amount(fraction, present)
             if amount == 0:
                 continue

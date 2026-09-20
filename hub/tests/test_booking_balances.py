@@ -12,6 +12,7 @@ from shared.balance_values import (
     category_display_name,
     is_activa,
     is_balance_sheet_code,
+    is_kosten_local,
     is_resultaat,
     is_hit_forbidden_code,
     is_journal_forbidden_code,
@@ -414,6 +415,12 @@ class CategoryRoleTests(unittest.TestCase):
             afschrijving_amount("-0.20", Decimal("50000")),
             Decimal("-10000.00"),
         )
+
+    def test_kosten_bron_range(self):
+        self.assertTrue(is_kosten_local(3001))
+        self.assertTrue(is_kosten_local(3999))
+        self.assertFalse(is_kosten_local(2999))
+        self.assertFalse(is_kosten_local(4000))
 
 
 if __name__ == "__main__":
