@@ -242,7 +242,7 @@ button.subadmin-amount:focus-visible {
 }
 .journal-table th { background: #ffecbc; }
 .journal-table col.col-date { width: 90px; }
-.journal-table col.col-cat { width: 90px; }
+.journal-table col.col-cat { width: 220px; }
 .journal-table col.col-amount { width: 100px; }
 .journal-table col.col-act { width: 90px; }
 .journal-table col.col-desc { width: auto; }

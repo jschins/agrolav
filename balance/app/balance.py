@@ -33,6 +33,7 @@ from shared.balance_values import (
     country_has_balance as shared_country_has_balance,
     eigen_vermogen_id as shared_eigen_vermogen_id,
     ensure_category_role_booking_rules,
+    infer_side,
     is_balance_sheet_code,
     is_journal_forbidden_code,
     apply_afschrijvingen,
@@ -279,7 +280,8 @@ def _dim_category_ids(country_id: int) -> set[int]:
 
 
 def _category_ids(country_id: int) -> set[int]:
-    return {i for i in _dim_category_ids(country_id) if 1000 <= i <= 4999}
+    """All booking ``category_id``s (local_code 1000–4999), including Instudo ids."""
+    return _dim_category_ids(country_id)
 
 
 def _category_map(country_id: int) -> dict[int, tuple[str, int | None]]:
@@ -613,19 +615,20 @@ def list_categories(country_id: int) -> dict[str, Any]:
     category_map = _category_map(country_id)
     ids = _category_ids(country_id)
     with connect() as conn:
-        remainder_id, _remainder_code = require_remainder_row(
-            country_id, conn.cursor()
-        )
+        cur = conn.cursor()
+        remainder_id, _remainder_code = require_remainder_row(country_id, cur)
+        local_codes = shared_category_local_codes(country_id, cur)
     ids.add(int(remainder_id))
     result = []
-    for cat_id in sorted(ids):
-        if is_journal_forbidden_code(cat_id, roles.get(cat_id)):
+    for cat_id in sorted(ids, key=lambda i: local_codes.get(i, i)):
+        local = int(local_codes.get(cat_id, cat_id))
+        if is_journal_forbidden_code(local, roles.get(cat_id)):
             continue
-        side, account_id = category_map.get(cat_id, (_infer_side(cat_id), None))
+        side, account_id = category_map.get(cat_id, (infer_side(local), None))
         row: dict[str, Any] = {
             "category_id": cat_id,
-            "code": cat_id,
-            "label": labels.get(cat_id, f"cat_{cat_id}"),
+            "code": local,
+            "label": labels.get(cat_id, f"cat_{local}"),
             "side": side,
             "account_id": account_id,
         }
@@ -634,16 +637,6 @@ def list_categories(country_id: int) -> dict[str, Any]:
             row["account_balance"] = float(acct.get(account_id, Decimal("0")))
         result.append(row)
     return {"categories": result, "remainder_id": int(remainder_id)}
-
-
-def _infer_side(cat_id: int) -> str:
-    if 1000 <= cat_id <= 1999:
-        return "activa"
-    if 2000 <= cat_id <= 2999:
-        return "passiva"
-    if 3000 <= cat_id <= 3999:
-        return "kosten"
-    return "opbrengsten"
 
 
 def _iban_for_account(account_id: int) -> str:
@@ -920,7 +913,7 @@ def _afschrijving_category_options(country_id: int) -> list[dict[str, Any]]:
         out.append({
             "local_code": code,
             "label": labels.get(int(cat_id), f"cat_{code}"),
-            "side": _infer_side(code),
+            "side": infer_side(code),
         })
     out.sort(key=lambda row: int(row["local_code"]))
     return out

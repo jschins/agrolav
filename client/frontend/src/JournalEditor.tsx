@@ -62,6 +62,12 @@ function sideShort(side: string): string {
   }
 }
 
+function categorySelectLabel(
+  cat: { code: number; label: string; side: string }
+): string {
+  return `${String(cat.code).padStart(4, "0")} ${cat.label} (${sideShort(cat.side)})`;
+}
+
 function term(terms: Record<string, string> | undefined, key: string): string {
   const label = terms?.[key]?.trim();
   return label || key;
@@ -101,10 +107,7 @@ export default function JournalEditor({
         setCats(data.categories);
         setLabels(
           Object.fromEntries(
-            data.categories.map((c) => [
-              c.code,
-              `${String(c.code).padStart(4, "0")} ${c.label} (${sideShort(c.side)})`,
-            ])
+            data.categories.map((c) => [c.category_id, categorySelectLabel(c)])
           )
         );
         setRemainderId(data.remainder_id);
@@ -121,8 +124,8 @@ export default function JournalEditor({
     };
   }, [year]);
 
-  function usedCodes(): Set<number> {
-    const set = new Set<number>(cats.map((c) => c.code));
+  function usedCategoryIds(): number[] {
+    const set = new Set<number>(cats.map((c) => c.category_id));
     for (const r of rows) {
       set.add(r.category_from);
       set.add(r.category_to);
@@ -131,19 +134,21 @@ export default function JournalEditor({
       set.add(box.category_from);
       set.add(box.category_to);
     }
-    return set;
+    const localOf = (id: number) =>
+      cats.find((c) => c.category_id === id)?.code ?? id;
+    return [...set].sort((a, b) => localOf(a) - localOf(b));
   }
 
-  const codeOptions = usedCodes()
-    .size === 0
-    ? []
-    : [...usedCodes()]
-        .sort((a, b) => a - b)
-        .map((code) => (
-          <option key={code} value={code}>
-            {labels[code] ?? `cat_${code}`}
-          </option>
-        ));
+  const codeOptions = usedCategoryIds().map((id) => (
+    <option key={id} value={id}>
+      {labels[id] ?? `cat_${id}`}
+    </option>
+  ));
+
+  function displayLocalCode(categoryId: number): string {
+    const local = cats.find((c) => c.category_id === categoryId)?.code ?? categoryId;
+    return String(local).padStart(4, "0");
+  }
 
   function persist(list: Draft[]): Promise<{ ok: boolean; saved: number }> {
     setError(null);
@@ -347,8 +352,8 @@ Naar ({term(terms, "Category")})
                       ) : (
                         <>
                           <td className="nowrap">{formatDate(r.date)}</td>
-                          <td className="code">{String(r.category_from).padStart(4, "0")}</td>
-                          <td className="code">{String(r.category_to).padStart(4, "0")}</td>
+                          <td className="code">{displayLocalCode(r.category_from)}</td>
+                          <td className="code">{displayLocalCode(r.category_to)}</td>
                           <td className="num">{r.amount}</td>
                           <td>
                             <button
