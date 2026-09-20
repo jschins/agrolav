@@ -4620,9 +4620,7 @@ function TermsTables({
   const selectedAccountGroup = account_groups.find((g) => g.account_key === selectedAccount);
   const columns = termsTableCategories(
     settings,
-    selectedPerson,
-    selectedAccountGroup?.person,
-    loginName
+    ...(personScope ? [personScope, loginName] : [])
   );
   const accountModality = Boolean(account_groups && account_groups.length > 0);
 
