@@ -487,17 +487,29 @@ def country_has_balance(country_id: int, cursor: object) -> bool:
     return bool(row[0]) if row else False
 
 
+# Instudo posts that have a leftover mapping_banks row but are openings,
+# not live Enable Banking accounts (11019 / 11021).
+_OPENING_NOT_ACCOUNT_IDS = frozenset({11019, 11021})
+
+
 def account_links(country_id: int, cursor: object) -> dict[int, int]:
     """category_id → account_id from ``dbo.mapping_banks`` for a country.
 
     The mapping table records which live bank account feeds each balance
     category (the ``source`` post is the spaar checking account).
+    ``11019`` and ``11021`` always use ``dbo.balance_opening``.
     """
     cursor.execute(
         "SELECT category_id, account_id FROM dbo.mapping_banks WHERE country_id = ?",
         (int(country_id),),
     )
-    return {int(r[0]): int(r[1]) for r in cursor.fetchall()}
+    return {
+        int(category_id): int(account_id)
+        for category_id, account_id in cursor.fetchall()
+        if category_id is not None
+        and account_id is not None
+        and int(category_id) not in _OPENING_NOT_ACCOUNT_IDS
+    }
 
 
 def _dim_category_ids(country_id: int, cursor: object) -> set[int]:
