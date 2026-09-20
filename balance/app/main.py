@@ -219,7 +219,7 @@ def balance_subadministratie(
 
 
 class AfschrijvingItem(BaseModel):
-    local_code_bron: int
+    role: int = 1
     fraction: float = 0.0
     local_code_van: int
     local_code_naar: int

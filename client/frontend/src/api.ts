@@ -565,14 +565,14 @@ export interface AfschrijvingCategory {
 
 export interface AfschrijvingRow {
   id: number;
-  local_code_bron: number;
+  role: number;
   fraction: number;
   local_code_van: number;
   local_code_naar: number;
 }
 
 export interface AfschrijvingItemPayload {
-  local_code_bron: number;
+  role: number;
   fraction: number;
   local_code_van: number;
   local_code_naar: number;

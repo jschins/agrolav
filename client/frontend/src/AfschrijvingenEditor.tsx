@@ -4,7 +4,7 @@ import type { AfschrijvingCategory, AfschrijvingRow } from "./api";
 
 type Draft = {
   key: string;
-  local_code_bron: number;
+  role: number;
   fraction: string;
   local_code_van: number;
   local_code_naar: number;
@@ -14,7 +14,7 @@ let keySeq = 1;
 
 const emptyBox = (defaultCode: number): Draft => ({
   key: `box-${keySeq++}`,
-  local_code_bron: defaultCode,
+  role: 1,
   fraction: "",
   local_code_van: defaultCode,
   local_code_naar: defaultCode,
@@ -23,7 +23,7 @@ const emptyBox = (defaultCode: number): Draft => ({
 function draftFromRow(r: AfschrijvingRow): Draft {
   return {
     key: `id-${r.id}`,
-    local_code_bron: r.local_code_bron,
+    role: r.role ? 1 : 0,
     fraction: String(r.fraction),
     local_code_van: r.local_code_van,
     local_code_naar: r.local_code_naar,
@@ -114,12 +114,10 @@ export default function AfschrijvingenEditor({
   function usedCodes(): Set<number> {
     const set = new Set<number>(cats.map((c) => c.local_code));
     for (const r of rows) {
-      set.add(r.local_code_bron);
       set.add(r.local_code_van);
       set.add(r.local_code_naar);
     }
     if (box) {
-      set.add(box.local_code_bron);
       set.add(box.local_code_van);
       set.add(box.local_code_naar);
     }
@@ -179,7 +177,7 @@ export default function AfschrijvingenEditor({
 
   function matchesFilter(r: Draft): boolean {
     const f = filters;
-    if (f.bron && String(r.local_code_bron) !== f.bron) return false;
+    if (f.bron && String(r.role) !== f.bron) return false;
     if (f.van && String(r.local_code_van) !== f.van) return false;
     if (f.naar && String(r.local_code_naar) !== f.naar) return false;
     if (f.fraction && !String(r.fraction).includes(f.fraction.trim())) return false;
@@ -204,10 +202,11 @@ export default function AfschrijvingenEditor({
           <h2>{term(terms, "Automatic journal posts")}</h2>
           <div className="journal-filters">
             <label>
-              Bron
+              Role
               <select value={filters.bron} onChange={(e) => setFilter("bron", e.target.value)}>
                 <option value="">alle</option>
-                {codeOptions}
+                <option value="1">1</option>
+                <option value="0">0</option>
               </select>
             </label>
             <label>
@@ -248,7 +247,7 @@ export default function AfschrijvingenEditor({
               </colgroup>
               <thead>
                 <tr>
-                  <th>Bron</th>
+                  <th>Role</th>
                   <th>Fraction</th>
                   <th>Van</th>
                   <th>Naar</th>
@@ -258,12 +257,11 @@ export default function AfschrijvingenEditor({
               <tbody>
                 <tr className="box-line">
                   <td>
-                    <select
-                      value={box.local_code_bron}
-                      onChange={(e) => patchBox({ local_code_bron: Number(e.target.value) })}
-                    >
-                      {codeOptions}
-                    </select>
+                    <input
+                      type="checkbox"
+                      checked={box.role === 1}
+                      onChange={(e) => patchBox({ role: e.target.checked ? 1 : 0 })}
+                    />
                   </td>
                   <td>
                     <input
@@ -302,14 +300,13 @@ export default function AfschrijvingenEditor({
                       {editing ? (
                         <>
                           <td>
-                            <select
-                              value={r.local_code_bron}
+                            <input
+                              type="checkbox"
+                              checked={r.role === 1}
                               onChange={(e) =>
-                                patchRow(r.key, { local_code_bron: Number(e.target.value) })
+                                patchRow(r.key, { role: e.target.checked ? 1 : 0 })
                               }
-                            >
-                              {codeOptions}
-                            </select>
+                            />
                           </td>
                           <td>
                             <input
@@ -352,7 +349,7 @@ export default function AfschrijvingenEditor({
                         </>
                       ) : (
                         <>
-                          <td className="code">{padCode(r.local_code_bron)}</td>
+                          <td className="code">{r.role ? 1 : 0}</td>
                           <td className="num">{r.fraction}</td>
                           <td className="code">{padCode(r.local_code_van)}</td>
                           <td className="code">{padCode(r.local_code_naar)}</td>
@@ -388,13 +385,13 @@ export default function AfschrijvingenEditor({
 }
 
 function rowToPayload(r: Draft): {
-  local_code_bron: number;
+  role: number;
   fraction: number;
   local_code_van: number;
   local_code_naar: number;
 } {
   return {
-    local_code_bron: r.local_code_bron,
+    role: r.role ? 1 : 0,
     fraction: Number(r.fraction) || 0,
     local_code_van: r.local_code_van,
     local_code_naar: r.local_code_naar,

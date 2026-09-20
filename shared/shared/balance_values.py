@@ -1265,6 +1265,7 @@ def category_transaction_sum(
         JOIN dbo.center n ON n.center_id = p.center_id
         WHERE n.country_id = ?
           AND t.year = ?
+          AND t.bank_id IS NULL
           AND t.category_id = ?
         """,
         (int(country_id), int(year), int(category_id)),
@@ -1273,15 +1274,24 @@ def category_transaction_sum(
     return _decimal(row[0]) if row and row[0] is not None else Decimal("0")
 
 
+def is_afschrijving_present_role(role: object) -> bool:
+    """True when ``dbo.afschrijvingen.role`` is 1 (present amount of van)."""
+    if role is True or role == 1:
+        return True
+    if isinstance(role, str) and role.strip() in {"1", "true", "True"}:
+        return True
+    return False
+
+
 def apply_afschrijvingen(country_id: int, cursor: object) -> int:
     """Replace ``[afschrijving]`` journal rows from ``dbo.afschrijvingen``.
 
-    Existing marker rows are deleted first so the bron amount is the live
-    sheet without last login's depreciation. Then one journal is written per
-    rule and year: FROM ``local_code_van`` TO ``local_code_naar`` of
-    ``fraction * present(local_code_bron)``. When bron is kosten (local_code
-    3000–3999), present is the SUM of ``transaction_*`` rows for that
-    category — not openings, not ``dbo.journal``. Empty rules still wipe
+    Existing marker rows are deleted first so the amount is the live sheet
+    without last login's depreciation. Then one journal is written per rule
+    and year: FROM ``local_code_van`` TO ``local_code_naar``. ``role = 1``
+    uses ``fraction * present(van)``. ``role = 0`` uses ``fraction`` times
+    the SUM of ``transaction_*`` bookings on van (all persons, that year,
+    ``bank_id IS NULL``; no journal or mirror). Empty rules still wipe
     leftover marker rows. ``0`` when the table is missing. Does not commit.
     """
     cursor.execute("SELECT OBJECT_ID(N'dbo.afschrijvingen', N'U')")
@@ -1292,7 +1302,7 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
         return 0
     cid = int(country_id)
     cursor.execute(
-        "SELECT local_code_bron, fraction, local_code_van, local_code_naar "
+        "SELECT role, fraction, local_code_van, local_code_naar "
         "FROM dbo.afschrijvingen WHERE country_id = ? ORDER BY id",
         (cid,),
     )
@@ -1329,28 +1339,26 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
             (cid, int(year), like),
         )
         cents = present_balance_cents(cid, int(year), cursor)
-        for bron, fraction, van, naar in rules:
+        for role, fraction, van, naar in rules:
             try:
-                bron_local = int(bron)
                 van_local = int(van)
                 naar_local = int(naar)
             except (TypeError, ValueError):
                 continue
-            bron_id = local_to_id.get(bron_local)
             van_id = local_to_id.get(van_local)
             naar_id = local_to_id.get(naar_local)
-            if bron_id is None or van_id is None or naar_id is None:
+            if van_id is None or naar_id is None:
                 continue
-            if is_kosten_local(bron_local):
-                present = category_transaction_sum(
-                    cid, int(year), bron_id, cursor
-                )
+            if is_afschrijving_present_role(role):
+                present = Decimal(cents.get(van_id, 0)) / Decimal(100)
             else:
-                present = Decimal(cents.get(bron_id, 0)) / Decimal(100)
+                present = category_transaction_sum(
+                    cid, int(year), van_id, cursor
+                )
             amount = afschrijving_amount(fraction, present)
             if amount == 0:
                 continue
-            description = f"{AFSCHRIJVING_MARKER} {bron_local}×{fraction}"
+            description = f"{AFSCHRIJVING_MARKER} {van_local}×{fraction}"
             cursor.execute(
                 "INSERT INTO dbo.journal "
                 "(year, country_id, date, category_from, category_to, "

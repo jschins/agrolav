@@ -906,7 +906,7 @@ def list_afschrijvingen_rules(country_id: int) -> dict[str, Any]:
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT id, local_code_bron, fraction, local_code_van, "
+                "SELECT id, role, fraction, local_code_van, "
                 "local_code_naar FROM dbo.afschrijvingen "
                 "WHERE country_id = ? ORDER BY id",
                 int(country_id),
@@ -915,10 +915,10 @@ def list_afschrijvingen_rules(country_id: int) -> dict[str, Any]:
             if "42S02" in str(exc) or "Invalid object" in str(exc):
                 return {"categories": categories, "rows": []}
             raise
-        for rule_id, bron, fraction, van, naar in cur.fetchall():
+        for rule_id, role, fraction, van, naar in cur.fetchall():
             rows.append({
                 "id": int(rule_id),
-                "local_code_bron": int(bron),
+                "role": 1 if role in (1, True) else 0,
                 "fraction": float(fraction),
                 "local_code_van": int(van),
                 "local_code_naar": int(naar),
@@ -933,7 +933,7 @@ def save_afschrijvingen_rules(
     parsed: list[tuple[int, Decimal, int, int]] = []
     for item in items:
         parsed.append((
-            int(item["local_code_bron"]),
+            1 if item.get("role", 1) in (1, True, "1") else 0,
             Decimal(str(item.get("fraction") or 0)),
             int(item["local_code_van"]),
             int(item["local_code_naar"]),
@@ -948,14 +948,14 @@ def save_afschrijvingen_rules(
             "DELETE FROM dbo.afschrijvingen WHERE country_id = ?",
             int(country_id),
         )
-        for bron, fraction, van, naar in parsed:
+        for role, fraction, van, naar in parsed:
             cur.execute(
                 "INSERT INTO dbo.afschrijvingen "
-                "(country_id, local_code_bron, fraction, "
+                "(country_id, role, fraction, "
                 "local_code_van, local_code_naar) "
                 "VALUES (?, ?, ?, ?, ?)",
                 int(country_id),
-                bron,
+                role,
                 fraction,
                 van,
                 naar,
