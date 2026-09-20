@@ -1244,11 +1244,13 @@ def category_transaction_sum(
     year: int,
     category_id: int,
     cursor: object,
+    *,
+    local_code: int | None = None,
 ) -> Decimal:
-    """SUM of booking rows for one category; journal and mirror are omitted.
+    """SUM of booking rows shown when clicking that category in the matrix.
 
-    Every person in the country is included. ``dbo.journal`` is a different
-    table and is not read.
+    Same filter as the 1060 drill-down: ``bank_id IS NULL``, ``dim.local_code``
+    (so Instudo ``11060`` counts as 1060). Journal and mirror are omitted.
     """
     table = transaction_table(country_id, cursor)
     if table is None:
@@ -1257,18 +1259,22 @@ def category_transaction_sum(
     row = cursor.fetchone()
     if row is None or row[0] is None:
         return Decimal("0")
+    local = int(local_code) if local_code is not None else int(category_id)
+    cid = int(country_id)
+    y = int(year)
     cursor.execute(
         f"""
         SELECT SUM(CAST(t.amount AS decimal(19, 2)))
         FROM {table} t
         JOIN dbo.person p ON p.id = t.person_id
         JOIN dbo.center n ON n.center_id = p.center_id
+        JOIN dbo.dim_category d ON d.category_id = t.category_id
         WHERE n.country_id = ?
           AND t.year = ?
           AND t.bank_id IS NULL
-          AND t.category_id = ?
+          AND d.local_code = ?
         """,
-        (int(country_id), int(year), int(category_id)),
+        (cid, y, local),
     )
     row = cursor.fetchone()
     return _decimal(row[0]) if row and row[0] is not None else Decimal("0")
@@ -1347,18 +1353,32 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
                 continue
             van_id = local_to_id.get(van_local)
             naar_id = local_to_id.get(naar_local)
+            if van_id is None and van_local in codes:
+                van_id = van_local
+            if naar_id is None and naar_local in codes:
+                naar_id = naar_local
             if van_id is None or naar_id is None:
                 continue
-            if is_afschrijving_present_role(role):
-                present = Decimal(cents.get(van_id, 0)) / Decimal(100)
+            use_present = is_afschrijving_present_role(role)
+            if use_present:
+                present = Decimal(cents.get(van_id, cents.get(van_local, 0))) / Decimal(
+                    100
+                )
             else:
                 present = category_transaction_sum(
-                    cid, int(year), van_id, cursor
+                    cid, int(year), van_id, cursor, local_code=van_local
                 )
             amount = afschrijving_amount(fraction, present)
-            if amount == 0:
+            if use_present and amount == 0:
                 continue
-            description = f"{AFSCHRIJVING_MARKER} {van_local}×{fraction}"
+            kind = (
+                "TRUE: huidige balanswaarde"
+                if use_present
+                else "FALSE: afgeboekte bedragen"
+            )
+            description = (
+                f"{AFSCHRIJVING_MARKER} {kind} [{van_local}] × {fraction}"
+            )
             cursor.execute(
                 "INSERT INTO dbo.journal "
                 "(year, country_id, date, category_from, category_to, "
