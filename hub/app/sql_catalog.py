@@ -1035,6 +1035,147 @@ def save_category_terms(
     _sql_retry(_run)
 
 
+def apply_center_account_term_delta(
+    center: str,
+    category_name: str,
+    *,
+    add: list[str] | None = None,
+    remove: list[str] | None = None,
+    person: str | None = None,
+) -> dict[str, Any]:
+    """Add/remove keywords on every account in a center (optionally one person).
+
+    Each removed term is deleted once per ``dbo.account`` row. Each added
+    term is inserted once per account that does not already have it.
+    """
+    label = (category_name or "").strip()
+    ws = (center or "").strip()
+    person_name = (person or "").strip() or None
+    added = [str(item).strip().lower() for item in (add or []) if str(item or "").strip()]
+    removed = [str(item).strip().lower() for item in (remove or []) if str(item or "").strip()]
+    if not label or not ws:
+        raise ValueError("center and category are required")
+    if not _sql_ready():
+        raise ValueError("center-account terms require the database")
+    try:
+        code = int(label[:4])
+    except ValueError:
+        code = None
+
+    def _run() -> dict[str, Any]:
+        from app import user_store
+
+        conn = user_store._sql_connect()
+        cursor = conn.cursor()
+        was = conn.autocommit
+        try:
+            conn.autocommit = False
+            cursor.execute(
+                """
+                SELECT d.category_id
+                FROM dbo.dim_category d
+                JOIN dbo.country c ON c.country_id = d.country_id
+                JOIN dbo.center n ON n.country_id = c.country_id
+                WHERE n.username = ? COLLATE Latin1_General_CI_AI
+                  AND (d.label = ? OR d.local_code = ?)
+                """,
+                (ws, label, code),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise ValueError(f"Unknown category {label!r} for center {ws!r}")
+            category_id = int(row[0])
+            if person_name:
+                cursor.execute(
+                    """
+                    SELECT a.account_id, p.id
+                    FROM dbo.account a
+                    JOIN dbo.person p ON p.id = a.person_id
+                    JOIN dbo.center n ON n.center_id = p.center_id
+                    WHERE n.username = ? COLLATE Latin1_General_CI_AI
+                      AND p.username = ? COLLATE Latin1_General_CI_AI
+                    ORDER BY a.account_id
+                    """,
+                    (ws, person_name),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT a.account_id, p.id
+                    FROM dbo.account a
+                    JOIN dbo.person p ON p.id = a.person_id
+                    JOIN dbo.center n ON n.center_id = p.center_id
+                    WHERE n.username = ? COLLATE Latin1_General_CI_AI
+                    ORDER BY a.account_id
+                    """,
+                    (ws,),
+                )
+            accounts = [
+                (int(account_id), int(person_id))
+                for account_id, person_id in cursor.fetchall()
+                if account_id is not None and person_id is not None
+            ]
+            person_ids = {person_id for _, person_id in accounts}
+            for person_id in person_ids:
+                for term in removed:
+                    cursor.execute(
+                        """
+                        DELETE FROM dbo.category_term
+                        WHERE category_id = ? AND person_id = ?
+                          AND account_id IS NULL AND term = ?
+                        """,
+                        (category_id, person_id, term),
+                    )
+            for account_id, person_id in accounts:
+                for term in removed:
+                    cursor.execute(
+                        """
+                        DELETE FROM dbo.category_term
+                        WHERE category_id = ? AND person_id = ?
+                          AND account_id = ? AND term = ?
+                        """,
+                        (category_id, person_id, account_id, term),
+                    )
+                for term in added:
+                    cursor.execute(
+                        """
+                        SELECT 1 FROM dbo.category_term
+                        WHERE category_id = ? AND person_id = ?
+                          AND account_id = ? AND term = ?
+                        """,
+                        (category_id, person_id, account_id, term),
+                    )
+                    if cursor.fetchone() is None:
+                        cursor.execute(
+                            """
+                            INSERT INTO dbo.category_term
+                                (category_id, person_id, account_id, term, sort_order)
+                            VALUES (?, ?, ?, ?, 0)
+                            """,
+                            (category_id, person_id, account_id, term),
+                        )
+            conn.commit()
+            _CAT_CACHE.clear()
+            return {
+                "accounts": len(accounts),
+                "added": added,
+                "removed": removed,
+            }
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                conn.autocommit = was
+            except Exception:
+                pass
+
+    return _sql_retry(_run)
+
+
 def _country_id_for(cursor, country: str) -> int | None:
     cursor.execute(
         """

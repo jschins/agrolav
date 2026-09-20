@@ -112,6 +112,12 @@ class SettingsTermsRequest(BaseModel):
     terms: list[str] = Field(default_factory=list)
 
 
+class CenterAccountTermsRequest(BaseModel):
+    category: str
+    add: list[str] = Field(default_factory=list)
+    remove: list[str] = Field(default_factory=list)
+
+
 class AddTermRequest(BaseModel):
     category_name: str
     term: str
@@ -1171,6 +1177,35 @@ def _hub_update_settings(group: str, category: str, body: SettingsTermsRequest) 
             result = {**result, "matrix": scope_matrix(result["matrix"])}
         result = scope_settings(result)
     return result
+
+
+@app.put("/api/settings-center-accounts")
+def api_update_center_account_terms(body: CenterAccountTermsRequest) -> dict[str, Any]:
+    from app.centrale_sync import configured_person, hub_put, load_config, scope_matrix, scope_settings
+    from shared.user_access import ACCESS_PERSON
+
+    try:
+        payload: dict[str, Any] = {
+            "category": body.category,
+            "add": body.add,
+            "remove": body.remove,
+            "source": _source(),
+        }
+        cfg = load_config()
+        if cfg.access == ACCESS_PERSON:
+            person = configured_person()
+            if person:
+                payload["person"] = person
+        result = hub_put("/settings-center-accounts", payload)
+        if isinstance(result, dict):
+            if isinstance(result.get("matrix"), dict):
+                result = {**result, "matrix": scope_matrix(result["matrix"])}
+            result = scope_settings(result)
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _hub_error(exc) from exc
 
 
 @app.put("/api/settings/{group}")

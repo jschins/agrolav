@@ -45,6 +45,7 @@ import {
   saveTransactionSplit,
   setCenter,
   updateSettings,
+  updateCenterAccountTerms,
   type CentralWinsAlert,
   type CentraleSyncStatus,
   type CondensedPage,
@@ -2708,6 +2709,7 @@ function TermsApp() {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [loginName, setLoginName] = useState("");
   const [personScope, setPersonScope] = useState("");
+  const [centerName, setCenterName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
 
@@ -2719,6 +2721,7 @@ function TermsApp() {
           if (cancelled) return;
           setSettings(data);
           setPersonScope((status?.person || "").trim());
+          setCenterName((status?.center || "").trim());
           setLoginName((status?.person || status?.username || status?.center || "").trim());
         })
         .catch((e: Error) => {
@@ -2792,14 +2795,74 @@ function TermsApp() {
   }
 
   function updateTerms(group: string, category: string, terms: string[]) {
-    setSettings((prev) => (prev ? patchSettings(prev, group, category, terms) : prev));
-    updateSettings(group, category, terms)
-      .then((res) => {
+    updateTermsMany([{ group, category, terms }]);
+  }
+
+  function updateTermsMany(
+    items: { group: string; category: string; terms: string[] }[]
+  ) {
+    if (!items.length) return;
+    setSettings((prev) =>
+      items.reduce(
+        (acc, item) =>
+          acc ? patchSettings(acc, item.group, item.category, item.terms) : acc,
+        prev
+      )
+    );
+    Promise.all(
+      items.map((item) => updateSettings(item.group, item.category, item.terms))
+    )
+      .then((results) => {
         setSettings((prev) =>
-          prev ? patchSettings(prev, group, category, res.terms ?? terms) : prev
+          results.reduce(
+            (acc, res, i) =>
+              acc
+                ? patchSettings(
+                    acc,
+                    items[i].group,
+                    items[i].category,
+                    res.terms ?? items[i].terms
+                  )
+                : acc,
+            prev
+          )
         );
         channelRef.current?.postMessage("recalculated");
       })
+      .catch((e: Error) => setError(e.message));
+  }
+
+  function applyCenterAccountTerms(
+    category: string,
+    add: string[],
+    remove: string[]
+  ) {
+    setSettings((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        account_groups: (prev.account_groups || []).map((group) => {
+          const current = group.categories[category] ?? [];
+          const next = [
+            ...current.filter((term) => !remove.includes(term)),
+            ...add.filter((term) => !current.includes(term)),
+          ];
+          return {
+            ...group,
+            categories: {
+              ...group.categories,
+              [category]: sortTerms(next),
+            },
+          };
+        }),
+      };
+    });
+    updateCenterAccountTerms({ category, add, remove })
+      .then(() => {
+        channelRef.current?.postMessage("recalculated");
+        return getSettings();
+      })
+      .then((data) => setSettings(data))
       .catch((e: Error) => setError(e.message));
   }
 
@@ -2830,7 +2893,10 @@ function TermsApp() {
             settings={settings}
             loginName={loginName}
             personScope={personScope}
+            centerName={centerName}
             onUpdate={updateTerms}
+            onUpdateMany={updateTermsMany}
+            onUpdateCenter={applyCenterAccountTerms}
           />
         ) : (
           <p>Loading…</p>
@@ -4602,19 +4668,53 @@ function patchCategories(
 /** Stable empty list so `?? EMPTY_TERMS` does not allocate a new [] every render. */
 const EMPTY_TERMS: string[] = [];
 
+const CENTER_ACCOUNT_PREFIX = "__center__:";
+
+function centerAccountKey(centerName: string): string {
+  return `${CENTER_ACCOUNT_PREFIX}${centerName}`;
+}
+
+function unionAccountTerms(
+  groups: AccountGroup[],
+  category: string
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const group of groups) {
+    for (const term of group.categories[category] ?? []) {
+      const text = String(term || "").trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      out.push(text);
+    }
+  }
+  return sortTerms(out);
+}
+
 function TermsTables({
   settings,
   loginName,
   personScope,
+  centerName,
   onUpdate,
+  onUpdateMany,
+  onUpdateCenter,
 }: {
   settings: SettingsResponse;
   loginName?: string;
   personScope?: string;
+  centerName?: string;
   onUpdate: (group: string, category: string, terms: string[]) => void;
+  onUpdateMany?: (
+    items: { group: string; category: string; terms: string[] }[]
+  ) => void;
+  onUpdateCenter?: (category: string, add: string[], remove: string[]) => void;
 }) {
   const { people, general, personal } = settings;
   const account_groups = scopedAccountGroups(settings.account_groups, personScope);
+  const centerKey = (centerName || "").trim()
+    ? centerAccountKey((centerName || "").trim())
+    : "";
   const [selectedPerson, setSelectedPerson] = useState(people[0]?.person_name ?? "");
   const [selectedAccount, setSelectedAccount] = useState(account_groups[0]?.account_key ?? "");
   const selectedAccountGroup = account_groups.find((g) => g.account_key === selectedAccount);
@@ -4623,6 +4723,7 @@ function TermsTables({
     ...(personScope ? [personScope, loginName] : [])
   );
   const accountModality = Boolean(account_groups && account_groups.length > 0);
+  const centerIntegrated = Boolean(accountModality && centerKey);
 
   const [selectedCategory, setSelectedCategory] = useState(columns[0] ?? "");
 
@@ -4633,25 +4734,65 @@ function TermsTables({
   }, [columns, selectedCategory]);
 
   useEffect(() => {
+    if (centerKey && selectedAccount === centerKey) return;
     if (
       account_groups.length > 0 &&
       !account_groups.some((group) => group.account_key === selectedAccount)
     ) {
       setSelectedAccount(account_groups[0].account_key);
     }
-  }, [account_groups, selectedAccount]);
+  }, [account_groups, selectedAccount, centerKey]);
 
   const selectedGroupKey = accountModality ? selectedAccount : selectedPerson;
+  const centerSelected = Boolean(centerKey && selectedAccount === centerKey);
 
   const gTerms = selectedCategory ? (general[selectedCategory] ?? EMPTY_TERMS) : EMPTY_TERMS;
   const pTerms = selectedCategory
     ? accountModality
-      ? (selectedAccountGroup?.categories[selectedCategory] ?? EMPTY_TERMS)
+      ? centerSelected
+        ? unionAccountTerms(account_groups, selectedCategory)
+        : (selectedAccountGroup?.categories[selectedCategory] ?? EMPTY_TERMS)
       : (personal[selectedPerson]?.[selectedCategory] ?? EMPTY_TERMS)
     : EMPTY_TERMS;
   const personalEditable = Boolean(
-    selectedCategory && (accountModality ? selectedAccount : selectedPerson)
+    selectedCategory &&
+      (accountModality
+        ? centerSelected
+          ? account_groups.length > 0
+          : selectedAccount
+        : selectedPerson)
   );
+
+  function commitPersonal(next: string[]) {
+    if (!selectedCategory) return;
+    if (centerSelected) {
+      const previous = new Set(pTerms);
+      const incoming = new Set(next);
+      const added = next.filter((term) => !previous.has(term));
+      const removed = pTerms.filter((term) => !incoming.has(term));
+      if (onUpdateCenter) {
+        onUpdateCenter(selectedCategory, added, removed);
+        return;
+      }
+      const items = account_groups.map((group) => {
+        const current = group.categories[selectedCategory] ?? [];
+        const merged = [
+          ...current.filter((term) => !removed.includes(term)),
+          ...added.filter((term) => !current.includes(term)),
+        ];
+        return {
+          group: group.account_key,
+          category: selectedCategory,
+          terms: sortTerms(merged),
+        };
+      });
+      (onUpdateMany ?? ((rows) => rows.forEach((row) => onUpdate(row.group, row.category, row.terms))))(
+        items
+      );
+      return;
+    }
+    onUpdate(selectedGroupKey, selectedCategory, next);
+  }
 
   return (
     <div className="terms-scroll">
@@ -4700,21 +4841,37 @@ function TermsTables({
           </h2>
           <div className="terms-list">
             {accountModality ? (
-              (account_groups ?? []).map((g) => (
-                <button
-                  key={g.account_key}
-                  type="button"
-                  className={
-                    g.account_key === selectedAccount
-                      ? "terms-list-item selected"
-                      : "terms-list-item"
-                  }
-                  onClick={() => setSelectedAccount(g.account_key)}
-                >
-                  {g.account_name || g.account_key}
-                  {g.person ? <span className="terms-list-sub">{g.person}</span> : null}
-                </button>
-              ))
+              <>
+                {centerIntegrated ? (
+                  <button
+                    type="button"
+                    className={
+                      centerSelected
+                        ? "terms-list-item selected"
+                        : "terms-list-item"
+                    }
+                    onClick={() => setSelectedAccount(centerKey)}
+                  >
+                    {centerName}
+                    <span className="terms-list-sub">center</span>
+                  </button>
+                ) : null}
+                {(account_groups ?? []).map((g) => (
+                  <button
+                    key={g.account_key}
+                    type="button"
+                    className={
+                      g.account_key === selectedAccount
+                        ? "terms-list-item selected"
+                        : "terms-list-item"
+                    }
+                    onClick={() => setSelectedAccount(g.account_key)}
+                  >
+                    {g.account_name || g.account_key}
+                    {g.person ? <span className="terms-list-sub">{g.person}</span> : null}
+                  </button>
+                ))}
+              </>
             ) : (
               people.map((p) => (
                 <button
@@ -4742,7 +4899,7 @@ function TermsTables({
             {personalEditable ? (
               <EditableCell
                 terms={pTerms}
-                onCommit={(t) => onUpdate(selectedGroupKey, selectedCategory, t)}
+                onCommit={commitPersonal}
               />
             ) : (
               <p className="terms-empty">

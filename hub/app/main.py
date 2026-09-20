@@ -806,6 +806,14 @@ class SettingsTermsRequest(BaseModel):
     source: str = "local"
 
 
+class CenterAccountTermsRequest(BaseModel):
+    category: str
+    add: list[str] = Field(default_factory=list)
+    remove: list[str] = Field(default_factory=list)
+    person: str | None = None
+    source: str = "local"
+
+
 class AddTermRequest(BaseModel):
     category_name: str
     term: str
@@ -1129,6 +1137,31 @@ def api_update_catalog(
         raise HTTPException(
             status_code=500, detail=f"{type(err).__name__}: {err}"
         ) from err
+
+
+@app.put("/api/local/{center}/settings-center-accounts")
+def api_update_center_account_terms(
+    center: str,
+    body: CenterAccountTermsRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import center_api
+
+    try:
+        return center_api.update_center_account_terms(
+            center,
+            body.category,
+            add=body.add,
+            remove=body.remove,
+            person=body.person,
+            source=body.source,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.put("/api/local/{center}/settings/{group}")

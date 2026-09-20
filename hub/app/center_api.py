@@ -525,6 +525,55 @@ def update_settings(
     }
 
 
+def update_center_account_terms(
+    center: str,
+    category_name: str,
+    *,
+    add: list[str] | None = None,
+    remove: list[str] | None = None,
+    person: str | None = None,
+    source: str = "local",
+) -> dict[str, Any]:
+    """Apply one add/remove set to every account in the center, then recategorize."""
+    from app.matrix import build_matrix
+    from app.sql_catalog import apply_center_account_term_delta
+
+    added = [str(item).strip() for item in (add or []) if str(item or "").strip()]
+    removed = [str(item).strip() for item in (remove or []) if str(item or "").strip()]
+    with _center_scope(center) as ws:
+        delta = apply_center_account_term_delta(
+            ws,
+            category_name,
+            add=added,
+            remove=removed,
+            person=person,
+        )
+        result: dict[str, Any] = {"affected_files": [], "matrix": None}
+        if added or removed:
+            result = store.mutate_and_ircft(
+                ws,
+                [],
+                source=source,
+                recalc_all_centers=False,
+                added=added,
+                removed=removed,
+                personal=True,
+                category_name=category_name,
+            )
+        with _center_scope(ws):
+            matrix = result.get("matrix") or {**build_matrix(), "center": ws}
+        return {
+            "center": ws,
+            "group": "center",
+            "category": category_name,
+            "added": delta.get("added") or added,
+            "removed": delta.get("removed") or removed,
+            "accounts": int(delta.get("accounts") or 0),
+            "matrix": matrix,
+            "affected_files": result.get("affected_files") or [],
+        }
+
+
 def add_term(
     center: str,
     *,

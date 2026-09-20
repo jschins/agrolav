@@ -293,6 +293,19 @@ export function updateSettings(
   );
 }
 
+export function updateCenterAccountTerms(body: {
+  category: string;
+  add: string[];
+  remove: string[];
+}): Promise<{
+  category: string;
+  added: string[];
+  removed: string[];
+  accounts: number;
+}> {
+  return sendJson("/api/settings-center-accounts", "PUT", body);
+}
+
 export function addCategoryTerm(body: {
   category_name: string;
   term: string;
