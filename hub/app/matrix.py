@@ -283,6 +283,7 @@ def build_matrix(
     balance_names: dict[int, str] = {}
     balance_country: int | None = None
     y_int: int | None = None
+    spaar_mirror_centers: dict[int, str] = {}
     if not bank:
         from app import user_store
         from app.sql_replica import load_center_year_matrix
@@ -326,7 +327,7 @@ def build_matrix(
                     if (code := _category_code(name)) is not None and 1000 <= code <= 2999
                 }
                 try:
-                    from shared.balance_values import present_balance_cents
+                    from shared.balance_values import present_balance_cents, spaar_mirrors
 
                     cursor = user_store._sql_connect().cursor()
                     id_to_local = _local_codes(balance_country, cursor)
@@ -336,8 +337,17 @@ def build_matrix(
                         local = id_to_local.get(int(cat_id), int(cat_id))
                         balance_cents[local] = cents
                         balance_cents[int(cat_id)] = cents
+                    spaar_mirror_centers = {}
+                    for pair in spaar_mirrors(balance_country, cursor):
+                        owner = str(pair.get("center") or "").strip().lower()
+                        if not owner:
+                            continue
+                        target = int(pair["target_category"])
+                        spaar_mirror_centers[target] = owner
+                        spaar_mirror_centers[int(id_to_local.get(target, target))] = owner
                 except Exception:  # noqa: BLE001
                     balance_cents = None
+                    spaar_mirror_centers = {}
     if sql_matrix is not None:
         totals_map, dates, balances, used_codes, account_persons = sql_matrix
         used = {
@@ -379,10 +389,16 @@ def build_matrix(
     if balance_cents is not None:
         for pack in packs:
             family = pack.person_name
+            pack_center = str(pack.center or "").strip().lower()
             for code, name in balance_names.items():
                 cents = balance_cents.get(code)
-                if cents is not None:
-                    cells[name][family] = f"{cents / 100:.2f}"
+                if cents is None:
+                    continue
+                owner = spaar_mirror_centers.get(code)
+                if owner and pack_center and owner != pack_center:
+                    cells[name][family] = "0.00"
+                    continue
+                cells[name][family] = f"{cents / 100:.2f}"
     # Grey/black and click-through: a person column is live when that person
     # has booking rows (``used``) *or* the category has a country journal /
     # spaar-mirror row. ``entries`` is journal+mirror only — not other
@@ -415,9 +431,20 @@ def build_matrix(
                     used[name] = sorted(account_persons.get(int(account_id), ()))
                     continue
                 if local in entry_locals or cat_id in entry_ids:
-                    entries_names.add(name)
-                    for pack in packs:
-                        used.setdefault(name, []).append(pack.person_name)
+                    owner = spaar_mirror_centers.get(local) or spaar_mirror_centers.get(
+                        int(cat_id)
+                    )
+                    live_packs = [
+                        pack
+                        for pack in packs
+                        if not owner
+                        or not str(pack.center or "").strip()
+                        or str(pack.center or "").strip().lower() == owner
+                    ]
+                    if live_packs:
+                        entries_names.add(name)
+                        for pack in live_packs:
+                            used.setdefault(name, []).append(pack.person_name)
         except Exception as exc:  # noqa: BLE001
             print(f"matrix: drill presence lookup failed: {exc}")
     payload: dict[str, Any] = {

@@ -544,8 +544,7 @@ function categoryHasAmounts(matrix: MatrixResponse, category: string, person?: s
 
 function personHasTransactions(matrix: MatrixResponse, category: string, person: string): boolean {
   if (matrix.used !== undefined) {
-    if ((matrix.used[category] ?? []).includes(person)) return true;
-    return (matrix.entries ?? []).includes(category);
+    return (matrix.used[category] ?? []).includes(person);
   }
   return amountHasValue(matrix.cells[category]?.[person] ?? "");
 }
@@ -557,7 +556,7 @@ function categoryHasTransactions(
 ): boolean {
   if (person) return personHasTransactions(matrix, category, person);
   if (matrix.used !== undefined) {
-    return (matrix.used[category]?.length ?? 0) > 0 || (matrix.entries ?? []).includes(category);
+    return (matrix.used[category]?.length ?? 0) > 0;
   }
   return categoryHasAmounts(matrix, category);
 }

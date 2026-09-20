@@ -281,49 +281,235 @@ def recorded_resultaat_totals(
     }
 
 
-def spaar_mirror(
-    country_id: int, cursor: object | None = None
-) -> dict[str, object] | None:
-    """Spaar pair from ``category_role`` ``source`` / ``mirror`` and ``dbo.mapping_banks``.
+def _spaar_pair(
+    source: dict[str, int], mirror: dict[str, int]
+) -> dict[str, object]:
+    center_id = source.get("center_id")
+    if center_id is None:
+        center_id = mirror.get("center_id")
+    center = str(source.get("center") or mirror.get("center") or "").strip()
+    out: dict[str, object] = {
+        "source_category": int(source["category_id"]),
+        "target_category": int(mirror["category_id"]),
+        "source_account_id": int(source["account_id"]),
+        "keyword": SPAAR_KEYWORD,
+        "center": center,
+    }
+    if center_id is not None:
+        out["center_id"] = int(center_id)
+    return out
 
-    Returns ``source_category``, ``target_category``, ``source_account_id``,
-    and ``keyword``, or ``None`` when the country has no complete pair.
+
+def _pair_spaar_mirrors(
+    sources: list[dict[str, int]],
+    mirrors: list[dict[str, int]],
+    term_links: list[dict[str, int]],
+) -> list[dict[str, object]]:
+    """Match each source to the mirror in the same center. Never cross centers."""
+    if not sources or not mirrors:
+        return []
+    if len(sources) == 1 and len(mirrors) == 1:
+        return [_spaar_pair(sources[0], mirrors[0])]
+
+    for mirror in mirrors:
+        if mirror.get("center_id") is not None:
+            continue
+        centers = {
+            int(link["center_id"])
+            for link in term_links
+            if int(link["mirror_id"]) == int(mirror["category_id"])
+            and link.get("center_id") is not None
+        }
+        if len(centers) == 1:
+            mirror["center_id"] = next(iter(centers))
+            names = {
+                str(link.get("center") or "").strip()
+                for link in term_links
+                if int(link["mirror_id"]) == int(mirror["category_id"])
+                and str(link.get("center") or "").strip()
+            }
+            if len(names) == 1:
+                mirror["center"] = names.pop()
+
+    used_src: set[int] = set()
+    used_mir: set[int] = set()
+    pairs: list[dict[str, object]] = []
+    by_account: dict[int, list[int]] = {}
+    for link in term_links:
+        by_account.setdefault(int(link["account_id"]), []).append(int(link["mirror_id"]))
+
+    def _same_center(source: dict[str, int], mirror: dict[str, int]) -> bool:
+        src = source.get("center_id")
+        dst = mirror.get("center_id")
+        if src is None or dst is None:
+            return True
+        return int(src) == int(dst)
+
+    def _take(
+        source: dict[str, int],
+        candidates: list[dict[str, int]],
+        *,
+        require_center: bool = True,
+    ) -> bool:
+        unique = [
+            item
+            for item in candidates
+            if int(item["category_id"]) not in used_mir
+            and (not require_center or _same_center(source, item))
+        ]
+        if len(unique) != 1:
+            return False
+        pairs.append(_spaar_pair(source, unique[0]))
+        used_src.add(int(source["category_id"]))
+        used_mir.add(int(unique[0]["category_id"]))
+        return True
+
+    for source in sources:
+        wanted = set(by_account.get(int(source["account_id"]), []))
+        _take(
+            source,
+            [item for item in mirrors if int(item["category_id"]) in wanted],
+            require_center=False,
+        )
+    for source in sources:
+        if int(source["category_id"]) in used_src:
+            continue
+        center_id = source.get("center_id")
+        if center_id is None:
+            continue
+        _take(
+            source,
+            [
+                item
+                for item in mirrors
+                if item.get("center_id") is not None
+                and int(item["center_id"]) == int(center_id)
+            ],
+        )
+    for source in sources:
+        if int(source["category_id"]) in used_src:
+            continue
+        center_id = source.get("center_id")
+        if center_id is None:
+            continue
+        scores: dict[int, int] = {}
+        for link in term_links:
+            if link.get("center_id") is None or int(link["center_id"]) != int(center_id):
+                continue
+            mid = int(link["mirror_id"])
+            scores[mid] = scores.get(mid, 0) + 1
+        if not scores:
+            continue
+        best = max(scores.values())
+        winners = [mid for mid, score in scores.items() if score == best]
+        if len(winners) != 1:
+            continue
+        _take(
+            source,
+            [item for item in mirrors if int(item["category_id"]) == winners[0]],
+        )
+    return pairs
+
+
+def spaar_mirrors(
+    country_id: int, cursor: object | None = None
+) -> list[dict[str, object]]:
+    """Every complete source→mirror pair for a country.
+
+    A country may have several (Instudo: one spaarrekening per center). Each
+    ``source`` needs ``dbo.mapping_banks.account_id``. A source is paired only
+    with the mirror in the same center (mapping leftover or a spaarrekening
+    term that lives only in that center). Leftovers are not zipped.
     """
     if cursor is None:
-        return None
+        return []
     cursor.execute(
         """
-        SELECT d.category_id, d.category_role, m.account_id
+        SELECT d.category_id, d.local_code, d.category_role, m.account_id,
+               p.center_id, n.username
         FROM dbo.dim_category d
         LEFT JOIN dbo.mapping_banks m
           ON m.category_id = d.category_id AND m.country_id = d.country_id
+        LEFT JOIN dbo.account a ON a.account_id = m.account_id
+        LEFT JOIN dbo.person p ON p.id = a.person_id
+        LEFT JOIN dbo.center n ON n.center_id = p.center_id
         WHERE d.country_id = ?
           AND d.category_role IN (N'source', N'mirror')
         """,
         (int(country_id),),
     )
-    source_category: int | None = None
-    target_category: int | None = None
-    source_account_id: int | None = None
-    for category_id, role, account_id in cursor.fetchall():
-        if category_id is None:
+    sources: list[dict[str, int]] = []
+    mirrors: list[dict[str, int]] = []
+    for row in cursor.fetchall():
+        if not row or row[0] is None:
             continue
+        category_id = int(row[0])
+        center_name = ""
+        if len(row) >= 5:
+            local_raw, role, account_id, center_id = row[1], row[2], row[3], row[4]
+            if len(row) >= 6:
+                center_name = str(row[5] or "").strip()
+            try:
+                local_code = int(local_raw) if local_raw is not None else category_id
+            except (TypeError, ValueError):
+                local_code = category_id
+        else:
+            role, account_id = row[1], row[2]
+            local_code = category_id
+            center_id = None
         text = category_role_text(role)
-        code = int(category_id)
+        item: dict[str, int] = {
+            "category_id": category_id,
+            "local_code": local_code,
+        }
+        if center_id is not None:
+            item["center_id"] = int(center_id)
+        if center_name:
+            item["center"] = center_name  # type: ignore[assignment]
         if text == CATEGORY_ROLE_SOURCE:
-            source_category = code
-            if account_id is not None:
-                source_account_id = int(account_id)
+            if account_id is None:
+                continue
+            item["account_id"] = int(account_id)
+            sources.append(item)
         elif text == CATEGORY_ROLE_MIRROR:
-            target_category = code
-    if source_category is None or target_category is None or source_account_id is None:
-        return None
-    return {
-        "source_category": source_category,
-        "target_category": target_category,
-        "source_account_id": source_account_id,
-        "keyword": SPAAR_KEYWORD,
-    }
+            mirrors.append(item)
+
+    term_links: list[dict[str, int]] = []
+    try:
+        cursor.execute(
+            """
+            SELECT t.account_id, d.category_id, p.center_id, n.username
+            FROM dbo.category_term t
+            JOIN dbo.dim_category d ON d.category_id = t.category_id
+            LEFT JOIN dbo.account a ON a.account_id = t.account_id
+            LEFT JOIN dbo.person p ON p.id = a.person_id
+            LEFT JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE d.country_id = ?
+              AND d.category_role = N'mirror'
+              AND LOWER(t.term) LIKE ?
+            """,
+            (int(country_id), f"%{SPAAR_KEYWORD}%"),
+        )
+        for account_id, mirror_id, center_id, center_name in cursor.fetchall():
+            if account_id is None or mirror_id is None:
+                continue
+            link = {"account_id": int(account_id), "mirror_id": int(mirror_id)}
+            if center_id is not None:
+                link["center_id"] = int(center_id)
+            if center_name:
+                link["center"] = str(center_name).strip()  # type: ignore[assignment]
+            term_links.append(link)
+    except Exception:
+        term_links = []
+    return _pair_spaar_mirrors(sources, mirrors, term_links)
+
+
+def spaar_mirror(
+    country_id: int, cursor: object | None = None
+) -> dict[str, object] | None:
+    """First spaar pair (sdog / single-center countries)."""
+    pairs = spaar_mirrors(country_id, cursor)
+    return pairs[0] if pairs else None
 
 
 def spaar_mirror_target(
@@ -331,6 +517,12 @@ def spaar_mirror_target(
 ) -> int | None:
     mirror = spaar_mirror(country_id, cursor)
     return int(mirror["target_category"]) if mirror else None
+
+
+def spaar_mirror_targets(
+    country_id: int, cursor: object | None = None
+) -> set[int]:
+    return {int(pair["target_category"]) for pair in spaar_mirrors(country_id, cursor)}
 
 
 def spaar_mirror_posted_amount(source_bank_amount: Decimal) -> Decimal:
@@ -344,23 +536,86 @@ def spaar_mirror_posted_amount(source_bank_amount: Decimal) -> Decimal:
     return -source_bank_amount
 
 
+def rebuild_spaar_mirror_rows(
+    country_id: int, year: int, cursor: object
+) -> int:
+    """Replace generated ``dbo.transaction_mirror`` rows for every spaar pair.
+
+    Each source-account keyword row becomes one stored counterpart on that
+    pair's mirror category. Returns the number of inserted rows.
+    """
+    pairs = spaar_mirrors(country_id, cursor)
+    if not pairs:
+        return 0
+    targets = [int(pair["target_category"]) for pair in pairs]
+    placeholders = ",".join("?" * len(targets))
+    cursor.execute(
+        f"""
+        DELETE FROM dbo.transaction_mirror
+        WHERE year = ? AND country_id = ? AND category_id IN ({placeholders})
+          AND description LIKE ? ESCAPE '!'
+        """,
+        [int(year), int(country_id), *targets, "![" + SPAAR_MARKER[1:] + "%"],
+    )
+    table = transaction_table(country_id, cursor)
+    if table is None:
+        return 0
+    generated = 0
+    for pair in pairs:
+        cursor.execute(
+            f"SELECT booked_on, amount, description FROM {table} "
+            "WHERE year = ? AND account_id = ? "
+            "AND LOWER(COALESCE(description, N'')) LIKE ? "
+            "ORDER BY booked_on",
+            (
+                int(year),
+                int(pair["source_account_id"]),
+                f"%{pair['keyword']}%",
+            ),
+        )
+        rows = list(cursor.fetchall())
+        for booked_on, amount, description in rows:
+            cursor.execute(
+                """
+                INSERT INTO dbo.transaction_mirror
+                    (year, country_id, date, category_id, amount, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, SYSUTCDATETIME())
+                """,
+                (
+                    int(year),
+                    int(country_id),
+                    booked_on,
+                    int(pair["target_category"]),
+                    spaar_mirror_posted_amount(_decimal(amount)),
+                    f"{SPAAR_MARKER} {str(description or '')[:180]}",
+                ),
+            )
+            generated += 1
+    return generated
+
+
 def spaar_source_exclude_clause(
     country_id: int, alias: str = "t", *, cursor: object | None = None
 ) -> tuple[str, list[object]]:
     """SQL that drops source-account spaar-transfer rows (counterpart = mirror).
 
     ``alias`` is the table alias in the caller (``t`` by default). Use ``""``
-    when the FROM table has no alias.
+    when the FROM table has no alias. Every source account in the country
+    is excluded (Instudo has one per center).
     """
-    mirror = spaar_mirror(country_id, cursor)
-    if not mirror:
+    pairs = spaar_mirrors(country_id, cursor)
+    if not pairs:
         return "", []
     col = f"{alias}." if alias else ""
-    return (
-        f" AND NOT ({col}account_id = ? AND "
-        f"LOWER(COALESCE({col}description, N'')) LIKE ?)",
-        [int(mirror["source_account_id"]), f"%{mirror['keyword']}%"],
-    )
+    parts: list[str] = []
+    params: list[object] = []
+    for pair in pairs:
+        parts.append(
+            f"({col}account_id = ? AND "
+            f"LOWER(COALESCE({col}description, N'')) LIKE ?)"
+        )
+        params.extend([int(pair["source_account_id"]), f"%{pair['keyword']}%"])
+    return f" AND NOT ({' OR '.join(parts)})", params
 
 
 def journal_deltas(
@@ -497,8 +752,15 @@ def account_links(country_id: int, cursor: object) -> dict[int, int]:
 
     The mapping table records which live bank account feeds each balance
     category (the ``source`` post is the spaar checking account).
-    ``11019`` and ``11021`` always use ``dbo.balance_opening``.
+    ``11019`` and ``11021`` always use ``dbo.balance_opening``. Mirror-role
+    posts never ride a leftover ``mapping_banks`` row as a live account.
     """
+    skip = set(_OPENING_NOT_ACCOUNT_IDS)
+    skip.update(
+        cat_id
+        for cat_id, role in category_roles(country_id, cursor).items()
+        if category_role_canonical(role) == CATEGORY_ROLE_MIRROR
+    )
     cursor.execute(
         "SELECT category_id, account_id FROM dbo.mapping_banks WHERE country_id = ?",
         (int(country_id),),
@@ -508,7 +770,7 @@ def account_links(country_id: int, cursor: object) -> dict[int, int]:
         for category_id, account_id in cursor.fetchall()
         if category_id is not None
         and account_id is not None
-        and int(category_id) not in _OPENING_NOT_ACCOUNT_IDS
+        and int(category_id) not in skip
     }
 
 
@@ -676,26 +938,29 @@ def spaar_source_sums(
     ``mirror`` post (``-d`` as stored). They must not also move HIT categories
     or Saldo.
     """
-    mirror = spaar_mirror(country_id, cursor)
+    pairs = spaar_mirrors(country_id, cursor)
     table = transaction_table(country_id, cursor)
-    if mirror is None or table is None:
+    if not pairs or table is None:
         return {}
     cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
     row = cursor.fetchone()
     if row is None or row[0] is None:
         return {}
+    accounts = [int(pair["source_account_id"]) for pair in pairs]
+    placeholders = ",".join("?" * len(accounts))
     q = (
         f"SELECT t.category_id, SUM(t.amount) FROM {table} t "
         "JOIN dbo.person p ON p.id = t.person_id "
         "JOIN dbo.center n ON n.center_id = p.center_id "
         "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
-        "AND t.account_id = ? AND LOWER(COALESCE(t.description, N'')) LIKE ?"
+        f"AND t.account_id IN ({placeholders}) "
+        "AND LOWER(COALESCE(t.description, N'')) LIKE ?"
     )
     p: list[object] = [
         int(country_id),
         int(year),
-        int(mirror["source_account_id"]),
-        f"%{mirror['keyword']}%",
+        *accounts,
+        f"%{pairs[0]['keyword']}%",
     ]
     if as_of is not None:
         q += " AND t.booked_on <= ?"
@@ -890,7 +1155,7 @@ def balance_category_breakdown(
         if is_computed_post_role(role)
     }
     computed.update(i for i in (result_id, balance_id) if i is not None)
-    mirror_target = spaar_mirror_target(country_id, cursor)
+    mirror_targets = spaar_mirror_targets(country_id, cursor)
     mapping = category_map(country_id, cursor)
     opening = _opening_balances(country_id, year, cursor)
     journal = _journal_balances(country_id, year, cursor, as_of=as_of)
@@ -906,7 +1171,7 @@ def balance_category_breakdown(
         if cat_id in computed:
             continue
         side, account_id = mapping[cat_id]
-        is_mirror = mirror_target is not None and cat_id == mirror_target
+        is_mirror = cat_id in mirror_targets
         if account_id is not None and not is_mirror:
             amount = acct.get(account_id, Decimal("0"))
             source = f"account:{account_id}"

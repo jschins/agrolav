@@ -353,17 +353,18 @@ def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any
         from shared.balance_values import (
             category_local_codes,
             category_map,
-            spaar_mirror,
+            spaar_mirrors,
         )
 
         codes = category_local_codes(country_id, bound.cursor)
         mapped = category_map(country_id, bound.cursor)
-        pair = spaar_mirror(country_id, bound.cursor)
-        if pair:
+        targets: set[int] = set()
+        for pair in spaar_mirrors(country_id, bound.cursor):
             target_id = int(pair["target_category"])
-            target_local = codes.get(target_id, target_id)
-            if int(category_code) in {target_id, target_local}:
-                return _load_nonbank_category_rows(bound, country_id, category_code)
+            targets.add(target_id)
+            targets.add(int(codes.get(target_id, target_id)))
+        if int(category_code) in targets:
+            return _load_nonbank_category_rows(bound, country_id, category_code)
         # Bank-linked posts show that account's live rows. The spaar mirror
         # post is handled above even if dbo.mapping_banks also points at an account.
         cat_id = next(
@@ -780,9 +781,17 @@ def load_center_year_matrix(
         cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
         if cursor.fetchone()[0] is None:
             return None
-        from shared.balance_values import spaar_source_exclude_clause
+        from shared.balance_values import (
+            rebuild_spaar_mirror_rows,
+            spaar_source_exclude_clause,
+        )
 
         country_id = _country_id_for_username(cursor, country) or 0
+        if country_id:
+            try:
+                rebuild_spaar_mirror_rows(int(country_id), int(year), cursor)
+            except Exception as exc:  # noqa: BLE001
+                print(f"sql replica: spaar-mirror rebuild failed: {exc}")
         exclude_sql, exclude_params = spaar_source_exclude_clause(
             country_id, cursor=cursor
         )

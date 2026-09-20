@@ -20,7 +20,9 @@ from shared.balance_values import (
     journal_leg_amount,
     parse_sum_local_codes,
     result_overlay_cents,
+    _pair_spaar_mirrors,
     spaar_mirror_posted_amount,
+    spaar_mirrors,
     spaar_source_exclude_clause,
 )
 
@@ -57,7 +59,17 @@ class _FakeBookingCursor:
             if self._params:
                 cid = int(self._params[0])
             if cid == 4:
-                return [(1051, "source", 18), (1052, "mirror", None)]
+                return [
+                    (1051, 1051, "source", 18, 1, "beh_stichtingen"),
+                    (1052, 1052, "mirror", None, 1, "beh_stichtingen"),
+                ]
+            if cid == 5:
+                return [
+                    (11018, 1018, "source", 39, 7, "instudo_sia"),
+                    (11019, 1019, "mirror", None, 7, "instudo_sia"),
+                    (11020, 1020, "source", 40, 8, "instudo_sib"),
+                    (11021, 1021, "mirror", None, 8, "instudo_sib"),
+                ]
             return []
         return list(self.rows)
 
@@ -169,12 +181,12 @@ class BookingBalancesTests(unittest.TestCase):
         cursor = _FakeBookingCursor(rows=[])
         _booking_balances(4, 2026, cursor)
         sql = cursor.sql.lower()
-        self.assertIn("not (t.account_id", sql)
+        self.assertIn("not ((t.account_id", sql)
         self.assertIn("like ?", sql)
 
     def test_country_without_mirror_skips_spaar_filter(self):
         cursor = _FakeBookingCursor(rows=[])
-        _booking_balances(5, 2026, cursor)
+        _booking_balances(6, 2026, cursor)
         self.assertNotIn("not (t.account_id", cursor.sql.lower())
 
 
@@ -198,12 +210,53 @@ class SpaarMirrorTests(unittest.TestCase):
 
     def test_exclude_clause_from_category_roles(self):
         sql, params = spaar_source_exclude_clause(4, cursor=_FakeBookingCursor())
-        self.assertIn("not (t.account_id", sql.lower())
+        self.assertIn("not ((t.account_id", sql.lower())
         self.assertEqual(params[0], 18)
         self.assertEqual(params[1], "%spaarrekening%")
         sql5, params5 = spaar_source_exclude_clause(5, cursor=_FakeBookingCursor())
-        self.assertEqual(sql5, "")
-        self.assertEqual(params5, [])
+        self.assertIn("not (", sql5.lower())
+        self.assertEqual(params5, [39, "%spaarrekening%", 40, "%spaarrekening%"])
+
+    def test_instudo_pairs_one_mirror_per_source(self):
+        pairs = spaar_mirrors(5, _FakeBookingCursor())
+        self.assertEqual(
+            [
+                (
+                    pair["source_category"],
+                    pair["target_category"],
+                    pair["source_account_id"],
+                )
+                for pair in pairs
+            ],
+            [(11018, 11019, 39), (11020, 11021, 40)],
+        )
+
+    def test_instudo_pairing_does_not_cross_centers(self):
+        sources = [
+            {
+                "category_id": 11018,
+                "local_code": 1018,
+                "account_id": 39,
+                "center_id": 7,
+                "center": "instudo_sia",
+            },
+            {
+                "category_id": 11020,
+                "local_code": 1020,
+                "account_id": 40,
+                "center_id": 8,
+                "center": "instudo_sib",
+            },
+        ]
+        mirrors = [
+            {"category_id": 11021, "local_code": 1021, "center_id": 7, "center": "instudo_sia"},
+            {"category_id": 11019, "local_code": 1019, "center_id": 8, "center": "instudo_sib"},
+        ]
+        pairs = _pair_spaar_mirrors(sources, mirrors, [])
+        self.assertEqual(
+            {(pair["source_category"], pair["target_category"]) for pair in pairs},
+            {(11018, 11021), (11020, 11019)},
+        )
 
 
 class BookingSignedAmountTests(unittest.TestCase):

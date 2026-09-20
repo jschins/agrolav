@@ -42,7 +42,7 @@ from shared.balance_values import (
     require_remainder_row,
     recorded_resultaat_totals,
     result_overlay_cents,
-    spaar_mirror,
+    rebuild_spaar_mirror_rows,
     spaar_mirror_posted_amount,
     spaar_source_exclude_clause,
     sql_ident,
@@ -159,7 +159,10 @@ def _spaar_mirror_rows(country_id: int, year: int) -> list[tuple[int, str, Decim
     Each source-account row whose description contains the keyword gives one
     target-category ``transaction_mirror`` of ``-d`` (d = source bank amount):
     a transfer out (d = -X, X > 0) increases the mirror by X so plug 2000 is still.
+    One pair per source/mirror in the country (Instudo: one spaar per center).
     """
+    from shared.balance_values import spaar_mirrors
+
     table = _transaction_table(country_id)
     if table is None:
         return []
@@ -167,28 +170,26 @@ def _spaar_mirror_rows(country_id: int, year: int) -> list[tuple[int, str, Decim
     with connect() as conn:
         cur = conn.cursor()
         ensure_category_role_booking_rules(cur)
-        mirror = spaar_mirror(country_id, cur)
-        if not mirror:
-            return []
-        cur.execute(
-            f"SELECT booked_on, amount, description FROM {table} "
-            "WHERE year = ? AND account_id = ? "
-            "AND LOWER(COALESCE(description, N'')) LIKE ? "
-            "ORDER BY booked_on",
-            year,
-            int(mirror["source_account_id"]),
-            f"%{mirror['keyword']}%",
-        )
-        for booked_on, amount, description in cur.fetchall():
-            d = Decimal(str(amount))
-            rows.append(
-                (
-                    int(mirror["target_category"]),
-                    str(booked_on),
-                    spaar_mirror_posted_amount(d),
-                    f"{SPAAR_MARKER} {str(description or '')[:180]}",
-                )
+        for mirror in spaar_mirrors(country_id, cur):
+            cur.execute(
+                f"SELECT booked_on, amount, description FROM {table} "
+                "WHERE year = ? AND account_id = ? "
+                "AND LOWER(COALESCE(description, N'')) LIKE ? "
+                "ORDER BY booked_on",
+                year,
+                int(mirror["source_account_id"]),
+                f"%{mirror['keyword']}%",
             )
+            for booked_on, amount, description in cur.fetchall():
+                d = Decimal(str(amount))
+                rows.append(
+                    (
+                        int(mirror["target_category"]),
+                        str(booked_on),
+                        spaar_mirror_posted_amount(d),
+                        f"{SPAAR_MARKER} {str(description or '')[:180]}",
+                    )
+                )
     return rows
 
 
@@ -692,38 +693,16 @@ def generate_spaarmirror(country_id: int, year: int) -> dict[str, Any]:
     """(Re)build the faked spaarrekening mirror journal for a country/year.
 
     Idempotent: any previously generated mirror rows for the country/year are
-    deleted first, then re-derived from the current source rows. This keeps the
-    balance sheet correct after bank data is refreshed.
+    deleted first, then re-derived from the current source rows. Writes one
+    ``[spaar-mirror]`` row per source-account keyword booking, on every
+    source/mirror pair (Instudo: both spaarrekeningen).
     """
-    rows = _spaar_mirror_rows(country_id, year)
     with connect() as conn:
         cur = conn.cursor()
         ensure_category_role_booking_rules(cur)
-        mirror = spaar_mirror(country_id, cur)
-        if mirror:
-            cur.execute(
-                "DELETE FROM dbo.transaction_mirror "
-                "WHERE year = ? AND country_id = ? AND category_id = ? "
-                "AND description LIKE ? ESCAPE '!'",
-                year,
-                country_id,
-                int(mirror["target_category"]),
-                "![" + SPAAR_MARKER[1:] + "%",
-            )
-        for category_id, booked_on, amount, description in rows:
-            cur.execute(
-                "INSERT INTO dbo.transaction_mirror "
-                "(year, country_id, date, category_id, amount, description, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
-                year,
-                country_id,
-                booked_on,
-                category_id,
-                amount,
-                description,
-            )
+        generated = rebuild_spaar_mirror_rows(country_id, year, cur)
         conn.commit()
-    return {"ok": True, "year": year, "country_id": country_id, "generated": len(rows)}
+    return {"ok": True, "year": year, "country_id": country_id, "generated": generated}
 
 
 def list_subadministratie_sheet(country_id: int) -> dict[str, Any]:
