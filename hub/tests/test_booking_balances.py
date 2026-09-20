@@ -18,6 +18,7 @@ from shared.balance_values import (
     is_journal_forbidden_code,
     journal_deltas,
     journal_leg_amount,
+    parse_sum_local_codes,
     result_overlay_cents,
     spaar_mirror_posted_amount,
     spaar_source_exclude_clause,
@@ -421,6 +422,22 @@ class CategoryRoleTests(unittest.TestCase):
         self.assertTrue(is_kosten_local(3999))
         self.assertFalse(is_kosten_local(2999))
         self.assertFalse(is_kosten_local(4000))
+
+    def test_sum_local_code_range(self):
+        defined = {
+            3001, 3002, 3005, 3010, 3015, 3020, 3025, 3026, 3027, 3035,
+            3036, 3037, 3038, 3040, 3045, 3050, 3055, 3080, 3100, 3101,
+            3102, 3240, 3250, 3070, 3210, 3220, 4000,
+        }
+        self.assertEqual(
+            parse_sum_local_codes("3001-3220", defined),
+            sorted(code for code in defined if 3001 <= code <= 3220),
+        )
+        self.assertNotIn(3240, parse_sum_local_codes("3001-3220", defined))
+        self.assertEqual(
+            parse_sum_local_codes("1051,3001-3010", {1051, 3001, 3002, 3010, 3015}),
+            [1051, 3001, 3002, 3010],
+        )
 
 
 if __name__ == "__main__":

@@ -196,6 +196,55 @@ def is_resultaat(cat_id: int) -> bool:
     return 3000 <= int(cat_id) <= 4999
 
 
+_SUM_CODE_RANGE = re.compile(r"^(\d+)\s*-\s*(\d+)$")
+_SUM_CODE_ONE = re.compile(r"^\d+$")
+
+
+def parse_sum_local_codes(
+    raw: object,
+    defined: set[int] | None = None,
+) -> list[int]:
+    """Expand ``dbo.condensed_balance.sum_local_code``.
+
+    Comma-separated tokens. A dash ``3001-3220`` is every *defined*
+    ``dim_category.local_code`` in that closed interval (the endpoints
+    themselves only when they exist). A bare number is that code.
+    Tokens keep first-appearance order; duplicates are dropped.
+    """
+    known = {int(code) for code in (defined or ())}
+    known_sorted = sorted(known)
+    out: list[int] = []
+    seen: set[int] = set()
+
+    def _add(code: int) -> None:
+        if code in seen:
+            return
+        seen.add(code)
+        out.append(code)
+
+    for part in str(raw or "").split(","):
+        token = part.strip()
+        if not token:
+            continue
+        ranged = _SUM_CODE_RANGE.fullmatch(token)
+        if ranged:
+            lo, hi = int(ranged.group(1)), int(ranged.group(2))
+            if lo > hi:
+                lo, hi = hi, lo
+            if known_sorted:
+                for code in known_sorted:
+                    if lo <= code <= hi:
+                        _add(code)
+            else:
+                _add(lo)
+                if hi != lo:
+                    _add(hi)
+            continue
+        if _SUM_CODE_ONE.fullmatch(token):
+            _add(int(token))
+    return out
+
+
 def recorded_resultaat_totals(
     country_id: int,
     year: int,

@@ -1773,9 +1773,9 @@ def _export_condensed_balance(
     Reads ``dbo.condensed_balance`` in ``id`` order; ``font_size``,
     ``background_color`` and ``bold`` pass through. Rows are bucketed by
     ``excel_page`` (NULL → page 3) into ``pages``.
-    ``sum_local_code`` is a comma-separated list of
-    ``dbo.dim_category.local_code`` values summed into the post; NULL/empty
-    means a post without categories (shown blank). ``section_name``:
+    ``sum_local_code`` lists ``dbo.dim_category.local_code`` values summed
+    into the post (NULL/empty = blank). Commas separate tokens; ``3001-3220``
+    is every defined local_code in that closed range. ``section_name``:
     - ``{Titel}`` → the ``post_name`` is the page title; a non-NULL
       ``background_color`` there is the default background for the whole page;
     - ``{SideA,SideB,…}`` → the ``post_name`` is a heading for those sides,
@@ -1796,6 +1796,8 @@ def _export_condensed_balance(
     → empty ``pages``.
     """
     from decimal import Decimal
+
+    from shared.balance_values import parse_sum_local_codes
 
     empty = {"pages": []}
     try:
@@ -1878,7 +1880,7 @@ def _export_condensed_balance(
                     }
                 )
             continue
-        codes = [int(token) for token in str(sum_local_code or "").split(",") if token.strip()]
+        codes = parse_sum_local_codes(sum_local_code, set(local_to_cat))
         parts = [part.strip() for part in raw_section.split(",") if part.strip()]
         side_name = parts[0] if parts else ""
         group_name = parts[1] if len(parts) > 1 else None

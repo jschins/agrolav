@@ -359,9 +359,11 @@ Drives the "Export balans" sheets after the computed Balans (sheet 1) and
 Resultaat (sheet 2) for balance countries. Rows render in `id` order;
 `excel_page` buckets rows into one output sheet per page (NULL → page 3,
 rendered as "Gecondenseerde balans"; page 4 as "Gecondenseerd resultaat").
-`sum_local_code` is a comma-separated list of `dim_category.local_code`
-values summed into the post (NULL/empty = post without categories, shown
-blank). `section_name` is a comma-separated path: the first part is the side
+`sum_local_code` lists `dim_category.local_code` values summed into the
+post (NULL/empty = post without categories, shown blank). Tokens are
+comma-separated. A dash is a closed range over codes that exist in
+`dim_category` for that country: `3001-3220` equals every defined code
+from 3001 through 3220. `section_name` is a comma-separated path: the first part is the side
 (`Activa` / `Passiva`), an optional second part the group; or a braced heading:
 `{Titel}` makes `post_name` the sheet title (its non-NULL `background_color`
 is the default background for the whole page), `{SideA,SideB,…}` makes
@@ -378,7 +380,7 @@ the font size of a heading/post row; `background_color` (6-hex RGB, optional
 | `id` | `INT` PK | identity, render order |
 | `country_id` | `INT` FK | |
 | `post_name` | `VARCHAR(64)` NOT NULL | printed post label / heading / title |
-| `sum_local_code` | `VARCHAR(256)` NULL | e.g. `'1051,1053,1054,1055,1056'` |
+| `sum_local_code` | `VARCHAR(256)` NULL | e.g. `'1051,1053-1056'` or `'3001-3220'` |
 | `section_name` | `VARCHAR(64)` NOT NULL | `Activa, Vaste activa` / `Passiva, schulden` / `Activa` / `{Titel}` |
 | `font_size` | `INT` NULL | row font size (content rows: 12, headings/titles: 16) |
 | `excel_page` | `INT` NULL | output sheet page; NULL = 3 |
