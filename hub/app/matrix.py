@@ -383,13 +383,11 @@ def build_matrix(
                 cents = balance_cents.get(code)
                 if cents is not None:
                     cells[name][family] = f"{cents / 100:.2f}"
-    # Which categories carry at least one drill-down row decides the greyed-out
-    # state, not the net amount displayed: dbo.transaction_{country} (booking
-    # rows), dbo.transaction_mirror and dbo.journal (balance-access
-    # and spaar-mirror rows, country-wide). Join on local_code so category_id
-    # (country*10000+code, or the bare code) still matches the matrix name.
-    # A bank-linked category follows its mapped account rows instead of rows
-    # posted to that code.
+    # Grey/black and click-through: a person column is live when that person
+    # has booking rows (``used``) *or* the category has a country journal /
+    # spaar-mirror row. ``entries`` is journal+mirror only — not other
+    # people's transactions — so a person login is not un-greyed by someone
+    # else's HIT. Bank-linked categories still follow the mapped account.
     entries_names: set[str] = set()
     if balance_country is not None and y_int is not None:
         name_by_local = {
@@ -407,10 +405,6 @@ def build_matrix(
             mapped = _balance_category_map(balance_country, cursor)
             entry_ids = balance_entry_codes(balance_country, y_int, cursor)
             entry_locals = {id_to_local.get(i, i) for i in entry_ids} | set(entry_ids)
-            txn_locals: set[int] = set()
-            if sql_matrix is not None:
-                for person_codes in used_codes.values():
-                    txn_locals.update(person_codes)
             for local, name in name_by_local.items():
                 cat_id = next(
                     (cid for cid, lc in id_to_local.items() if lc == local),
@@ -420,13 +414,10 @@ def build_matrix(
                 if account_id is not None and sql_matrix is not None:
                     used[name] = sorted(account_persons.get(int(account_id), ()))
                     continue
-                if (
-                    local in entry_locals
-                    or cat_id in entry_ids
-                    or local in txn_locals
-                    or cat_id in txn_locals
-                ):
+                if local in entry_locals or cat_id in entry_ids:
                     entries_names.add(name)
+                    for pack in packs:
+                        used.setdefault(name, []).append(pack.person_name)
         except Exception as exc:  # noqa: BLE001
             print(f"matrix: drill presence lookup failed: {exc}")
     payload: dict[str, Any] = {
