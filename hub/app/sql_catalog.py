@@ -1559,9 +1559,11 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         from shared.balance_values import (
             balance_category_breakdown,
             category_labels,
+            category_local_codes,
             category_map,
             country_has_balance,
             eigen_vermogen_id,
+            recorded_resultaat_totals,
             result_overlay_cents,
             verlies_id,
         )
@@ -1572,23 +1574,10 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             raise ValueError(f"unknown country: {name}")
         has_balance = country_has_balance(country_id, cursor)
 
-        cursor.execute(
-            """
-            SELECT ct.category_id, SUM(CAST(ct.amount AS decimal(19, 2)))
-            FROM dbo.category_total ct
-            JOIN dbo.person p ON p.id = ct.person_id
-            JOIN dbo.center c ON c.center_id = p.center_id
-            WHERE c.country_id = ?
-              AND ct.year = ?
-              AND ct.bank_id IS NULL
-              AND ct.category_id BETWEEN 3000 AND 4999
-            GROUP BY ct.category_id
-            """,
-            (int(country_id), int(year)),
-        )
-        recorded = {int(r[0]): Decimal(str(r[1] or 0)) for r in cursor.fetchall()}
+        recorded = recorded_resultaat_totals(country_id, int(year), cursor)
         overlay = result_overlay_cents(country_id, int(year), cursor)
         labels = category_labels(country_id, cursor)
+        local_codes = category_local_codes(country_id, cursor)
 
         combined: dict[int, Decimal] = {}
         for code, amount in recorded.items():
@@ -1597,7 +1586,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
         result_rows = [
             {
-                "code": code,
+                "code": local_codes.get(code, code),
                 "label": labels.get(code, f"cat_{code}"),
                 "amount": float(combined[code]),
             }

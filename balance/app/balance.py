@@ -39,6 +39,7 @@ from shared.balance_values import (
     afschrijving_like_pattern,
     AFSCHRIJVING_MARKER,
     require_remainder_row,
+    recorded_resultaat_totals,
     result_overlay_cents,
     spaar_mirror,
     spaar_mirror_posted_amount,
@@ -302,31 +303,16 @@ def _result_overlay(country_id: int, year: int, as_of: str | None = None) -> Dec
 
 
 def _recorded_result(country_id: int, year: int) -> Decimal:
-    """Resultaat R: sum of the P&L category totals (3000-4999).
+    """Resultaat R: sum of the P&L category totals (local_code 3000-4999).
 
-    Reads the recorded per-person category totals from ``dbo.category_total``
-    (consolidated rows with ``bank_id IS NULL``) for the country's persons,
-    plus the beheer journal overlay so R matches the client matrix "Saldo"
-    (numerical sum of 3000-4999; K and O same sign). Passiva 2100 uses this same R.
+    Reads consolidated ``dbo.category_total`` (``bank_id IS NULL``) for every
+    person in every center of the country, plus the journal overlay so R
+    matches the client matrix "Saldo". Passiva 2200 / ``profit`` uses this R.
     """
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT ROUND(SUM(CAST(ct.amount AS decimal(19,2))), 2)
-            FROM dbo.category_total ct
-            JOIN dbo.person p ON p.id = ct.person_id
-            JOIN dbo.center c ON c.center_id = p.center_id
-            WHERE c.country_id = ?
-              AND ct.year = ?
-              AND ct.bank_id IS NULL
-              AND ct.category_id BETWEEN 3000 AND 4999
-            """,
-            country_id,
-            year,
-        )
-        row = cur.fetchone()
-    base = Decimal("0") if row is None or row[0] is None else Decimal(str(row[0]))
+        recorded = recorded_resultaat_totals(country_id, year, cur)
+    base = sum(recorded.values(), Decimal("0"))
     return base + _result_overlay(country_id, year)
 
 
@@ -340,23 +326,9 @@ def list_result_rows(country_id: int, year: int) -> list[dict[str, Any]]:
     """
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT ct.category_id, ROUND(SUM(CAST(ct.amount AS decimal(19, 2))), 2)
-            FROM dbo.category_total ct
-            JOIN dbo.person p ON p.id = ct.person_id
-            JOIN dbo.center c ON c.center_id = p.center_id
-            WHERE c.country_id = ?
-              AND ct.year = ?
-              AND ct.bank_id IS NULL
-              AND ct.category_id BETWEEN 3000 AND 4999
-            GROUP BY ct.category_id
-            """,
-            country_id,
-            year,
-        )
-        records = {int(r[0]): Decimal(str(r[1] or 0)) for r in cur.fetchall()}
+        records = recorded_resultaat_totals(country_id, year, cur)
         overlay = result_overlay_cents(country_id, year, cur)
+        local_codes = shared_category_local_codes(country_id, cur)
     labels = _category_labels(country_id)
     combined: dict[int, Decimal] = {}
     for code, amount in records.items():
@@ -365,7 +337,7 @@ def list_result_rows(country_id: int, year: int) -> list[dict[str, Any]]:
         combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
     return [
         {
-            "code": code,
+            "code": local_codes.get(code, code),
             "label": labels.get(code, f"cat_{code}"),
             "amount": float(amount),
         }
@@ -481,16 +453,20 @@ def _result_amount(country_id: int, year: int, cutoff: date) -> Decimal:
                 country_id, cursor=cur
             )
             cur.execute(
-                f"SELECT category_id, amount FROM {table} t "
-                f"WHERE t.year = ? AND t.booked_on <= ?{exclude_sql}",
+                f"SELECT t.amount FROM {table} t "
+                "JOIN dbo.dim_category d ON d.category_id = t.category_id "
+                "AND d.country_id = ? "
+                f"WHERE t.year = ? AND t.booked_on <= ? "
+                "AND d.local_code BETWEEN 3000 AND 4999"
+                f"{exclude_sql}",
+                country_id,
                 year,
                 cutoff.isoformat(),
                 *exclude_params,
             )
-            for cat, amt in cur.fetchall():
+            for (amt,) in cur.fetchall():
                 try:
-                    if 3000 <= int(cat) <= 4999:
-                        total += Decimal(str(amt))
+                    total += Decimal(str(amt))
                 except (TypeError, ValueError):
                     continue
     return total + _result_overlay(country_id, year, cutoff.isoformat())

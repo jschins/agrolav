@@ -196,6 +196,42 @@ def is_resultaat(cat_id: int) -> bool:
     return 3000 <= int(cat_id) <= 4999
 
 
+def recorded_resultaat_totals(
+    country_id: int,
+    year: int,
+    cursor: object,
+) -> dict[int, Decimal]:
+    """category_id → SUM of consolidated ``dbo.category_total`` for P&L.
+
+    Every person in every center of the country is included. P&L is
+    ``dim_category.local_code`` 3000–4999. Filtering ``category_id`` in that
+    range is correct for Beheer (ids = local codes) and empty for Instudo
+    (ids are 10000 + local_code, e.g. 13001 for 3001).
+    """
+    cursor.execute(
+        """
+        SELECT ct.category_id, SUM(CAST(ct.amount AS decimal(19, 2)))
+        FROM dbo.category_total ct
+        JOIN dbo.person p ON p.id = ct.person_id
+        JOIN dbo.center c ON c.center_id = p.center_id
+        JOIN dbo.dim_category d
+          ON d.category_id = ct.category_id
+         AND d.country_id = c.country_id
+        WHERE c.country_id = ?
+          AND ct.year = ?
+          AND ct.bank_id IS NULL
+          AND d.local_code BETWEEN 3000 AND 4999
+        GROUP BY ct.category_id
+        """,
+        (int(country_id), int(year)),
+    )
+    return {
+        int(category_id): _decimal(amount)
+        for category_id, amount in cursor.fetchall()
+        if category_id is not None
+    }
+
+
 def spaar_mirror(
     country_id: int, cursor: object | None = None
 ) -> dict[str, object] | None:
