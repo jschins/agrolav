@@ -532,16 +532,6 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
   return sheets;
 }
 
-function exportScopeSlug(data: {
-  person?: string | null;
-  center?: string | null;
-  country?: string | null;
-}): string {
-  const raw = (data.person || data.center || data.country || "export").trim();
-  const slug = raw.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "");
-  return slug || "export";
-}
-
 const RESULTAAT_MONTHS = [
   "Januari",
   "Februari",
@@ -677,19 +667,6 @@ function resultaatSections(data: ExportResultaatData): {
   return sections;
 }
 
-function resultaatSectionRows(
-  sections: ReturnType<typeof resultaatSections>
-): (string | number)[][] {
-  const rows: (string | number)[][] = [];
-  for (const section of sections) {
-    if (rows.length) rows.push([]);
-    rows.push([section.title]);
-    rows.push(section.header);
-    rows.push(...section.body);
-  }
-  return rows;
-}
-
 /** Column headers: account name, suffixed with the person when names repeat. */
 function resultaatAccountHeaders(accounts: ExportResultaatAccount[]): string[] {
   const nameOf = (a: ExportResultaatAccount): string =>
@@ -704,68 +681,6 @@ function resultaatAccountHeaders(accounts: ExportResultaatAccount[]): string[] {
     const person = (a.person || "").trim();
     return (counts.get(name) ?? 0) > 1 && person ? `${name} (${person})` : name;
   });
-}
-
-/** Year totals per P&L category × bank account, plus Totaal column and row. */
-function resultaatPerAccountRows(
-  data: ExportResultaatData,
-  title: string
-): (string | number)[][] {
-  const accounts = data.accounts ?? [];
-  const rows: (string | number)[][] = [
-    [title],
-    ["Code", "Post", ...resultaatAccountHeaders(accounts), "Totaal"],
-  ];
-  const columnTotals = accounts.map(() => 0);
-  let grandTotal = 0;
-  for (const line of data.resultaat) {
-    const parts = accounts.map((_, i) => line.per_account?.[i] ?? 0);
-    const rowTotal = parts.reduce((sum, n) => sum + n, 0);
-    rows.push([String(line.code), line.label, ...parts.map(euro2), euro2(rowTotal)]);
-    parts.forEach((n, i) => {
-      columnTotals[i] += n;
-    });
-    grandTotal += rowTotal;
-  }
-  rows.push(["", "Totaal", ...columnTotals.map(euro2), euro2(grandTotal)]);
-  return rows;
-}
-
-function resultaatExcelSheets(
-  data: ExportResultaatData,
-  terms: Record<string, string>
-): XlsxSheet[] {
-  const monthCount = resultaatVisibleMonthCount(data.year, data.month_count);
-  const monthWidths = [10, 40, ...Array.from({ length: monthCount }, () => 12), 14];
-  const [perMonth, ...rest] = resultaatSections(data);
-  const perAccountTitle = tableHeaderTerm(terms, "Category totals per account");
-  const sheets: XlsxSheet[] = [];
-  if (data.result_tree?.length) {
-    const statementTitle = tableHeaderTerm(terms, "Income statement");
-    sheets.push(
-      treeSheet(statementTitle, `${statementTitle} ${data.year}`, data.result_tree)
-    );
-  }
-  if (perMonth) {
-    sheets.push({
-      name: tableHeaderTerm(terms, "Category totals per month"),
-      rows: resultaatSectionRows([perMonth]),
-      widths: monthWidths,
-    });
-  }
-  sheets.push({
-    name: perAccountTitle,
-    rows: resultaatPerAccountRows(data, perAccountTitle),
-    widths: [10, 40, ...(data.accounts ?? []).map(() => 16), 14],
-  });
-  if (rest.length) {
-    sheets.push({
-      name: tableHeaderTerm(terms, "Profit-loss"),
-      rows: resultaatSectionRows(rest),
-      widths: monthWidths,
-    });
-  }
-  return sheets;
 }
 
 function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
@@ -1633,19 +1548,6 @@ function SyncNotifyShell({
       .catch((e: Error) => setScratchError(e.message));
   }
 
-  function exportResultaat() {
-    if (!activeYear) return;
-    setScratchError(null);
-    getExportResultaat(activeYear)
-      .then((data) => {
-        downloadBlob(
-          `resultaat-${exportScopeSlug(data)}-${data.year}.xlsx`,
-          buildXlsx(resultaatExcelSheets(data, menuTerms))
-        );
-      })
-      .catch((e: Error) => setScratchError(e.message));
-  }
-
   function doWipeYear() {
     if (scratchBusy || wipeBusy) return;
     const dutch = uiIsDutch(menuTerms);
@@ -1739,11 +1641,6 @@ function SyncNotifyShell({
       });
     }
     if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
-      items.push({
-        id: "export-resultaat",
-        label: tableHeaderTerm(menuTerms, "Export profit-loss"),
-        onClick: exportResultaat,
-      });
       items.push({
         id: "back-to-matrix",
         label: tableHeaderTerm(menuTerms, "Back to summary"),

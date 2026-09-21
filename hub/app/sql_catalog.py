@@ -1455,12 +1455,6 @@ def export_resultaat_excel_data(
     the end: Stichting de Oude Gracht (signed amounts to/from IBAN
     NL94INGB0006200605), Overige inkomsten, Uitgaven, their Resultaat, then
     Banksaldo einde maand.
-
-    ``accounts`` lists every bank account in scope with a booking in the
-    displayed months; each P&L row carries ``per_account`` year totals in
-    that order (bank bookings only, so journal/mirror overlays are absent).
-    ``result_tree`` nests the displayed rows that have a ``dim_category.parent``
-    by that path (``build_parent_tree``); ``None`` when no row has one.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()
@@ -1475,9 +1469,7 @@ def export_resultaat_excel_data(
 
         from shared.balance_values import (
             account_links,
-            build_parent_tree,
             category_local_codes,
-            category_parents,
             is_hit_forbidden_role,
             is_remainder_role,
             is_resultaat,
@@ -1547,11 +1539,6 @@ def export_resultaat_excel_data(
             scope_sql = " AND n.username = ? COLLATE Latin1_General_CI_AI"
             scope_params = [center_name]
 
-        # "Per rekening" sheet: accounts in scope with at least one booking
-        # in the displayed months, and the year total per category × account.
-        accounts: list[dict[str, Any]] = []
-        per_account: dict[int, dict[int, Decimal]] = {}
-
         table = transaction_table(int(country_id), cursor)
         if table and month_count > 0:
             cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
@@ -1593,16 +1580,6 @@ def export_resultaat_excel_data(
                         int(month),
                         Decimal(str(amount or 0)),
                     )
-
-                accounts, per_account = _pnl_per_account(
-                    cursor,
-                    int(country_id),
-                    int(year),
-                    table,
-                    month_count=month_count,
-                    scope_sql=scope_sql,
-                    scope_params=tuple(scope_params),
-                )
 
         if not person_name and not center_name:
             codes = category_local_codes(country_id, cursor)
@@ -1685,32 +1662,14 @@ def export_resultaat_excel_data(
             total += amount
             for i, part in enumerate(months):
                 total_months[i] += part
-            by_acc = per_account.get(cid, {})
             rows.append(
                 {
                     "code": int(local_code),
                     "label": str(label or "").strip() or f"cat_{local_code}",
                     "months": [float(part) for part in months],
                     "amount": float(amount),
-                    "per_account": [
-                        float(by_acc.get(int(acc["account_id"]), Decimal("0")))
-                        for acc in accounts
-                    ],
                 }
             )
-        # "Resultaatrekening" sheet: the displayed P&L rows that carry a
-        # ``dim_category.parent``, nested by that path (year amounts).
-        parents = category_parents(int(country_id), cursor)
-        parented_rows = [
-            {"code": row["code"], "label": row["label"], "amount": row["amount"]}
-            for row in rows
-            if int(row["code"]) in parents
-        ]
-        result_tree = (
-            build_parent_tree(parented_rows, parents, "Resultaat")
-            if parented_rows
-            else None
-        )
         maaltijden: dict[str, list[float]] | None = None
         if role_listed and login:
             cursor.execute("SELECT OBJECT_ID(N'dbo.maaltijden_aantallen', N'U')")
@@ -1896,8 +1855,6 @@ def export_resultaat_excel_data(
                 "amount": float(sum(incoming_1053_months)),
             },
             "resultaat": rows,
-            "result_tree": result_tree,
-            "accounts": accounts,
             "total_months": [float(part) for part in total_months[:month_count]],
             "total_resultaat": float(total),
             "maaltijden": maaltijden,
