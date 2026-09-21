@@ -271,8 +271,8 @@ interface TreeSheetOptions {
   verticalCenter?: boolean;
 }
 
-/** Balans row bands by depth: bright light blue, faint light blue, bright yellow, weak yellow. */
-const BALANS_LEVEL_BACKGROUNDS = ["BDD7EE", "EEF5FC", "FFFF00", "FFF2CC"];
+/** Balans row bands by depth, bright → faint: deeper peach, FFECBC, its midpoint to FBFDEF, FBFDEF. */
+const BALANS_LEVEL_BACKGROUNDS = ["FFE2A3", "FFECBC", "FDF4D5", "FBFDEF"];
 
 function pruneZeroPosts(nodes: ExportTreeNode[]): ExportTreeNode[] {
   const kept: ExportTreeNode[] = [];
