@@ -272,6 +272,14 @@ SET MULTI_USER;
 To roll this PC back to its own last write, use
 `N'/var/opt/mssql/backup/local_backups/agrolav.bak'` instead.
 
+`scripts/upload-most-recent-remote-download-to-local.ps1` does the same
+restore from the command line: it picks the newest `agrolav*.bak` in
+`C:\SQLBackups\remote_backups`, reads `MSSQL_SA_PASSWORD` from the root `.env`,
+and restores it over `agrolav` in the local `agrolav-sql` container (logical
+file names from `FILELISTONLY`, `MOVE`d into `/var/opt/mssql/data`). It asks
+for a typed `YES` first; `-Yes` skips that. Stop the hub, BFF and balance apps
+before running it.
+
 Then the same table check and `visitor_ip.sql` / `administrator.sql` as
 §1.3. A local restore does not need production WAN rows in
 `dbo.administrator` if you sign in with `HUB_DEV_LOGIN=1` on loopback.
