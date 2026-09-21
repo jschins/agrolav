@@ -518,6 +518,23 @@ class CategoryRoleTests(unittest.TestCase):
         self.assertEqual(schulden[0]["name"], "Schulden")
         self.assertEqual([c["code"] for c in schulden[0]["children"]], [2300, 2301])
 
+    def test_parent_tree_sums_columns_per_group(self):
+        posts = [
+            {"code": 3001, "label": "Huur", "amount": -30.0, "columns": [-10.0, -20.0]},
+            {"code": 3002, "label": "Energie", "amount": -5.0, "columns": [-5.0, 0.0]},
+            {"code": 4000, "label": "Giften", "amount": 100.0, "columns": [0.0, 100.0]},
+        ]
+        parents = {
+            3001: "Lasten/Huisvesting",
+            3002: "Lasten/Huisvesting",
+            4000: "Baten",
+        }
+        lasten, baten = build_parent_tree(posts, parents, "Resultaat")
+        self.assertEqual(lasten["total"], -35.0)
+        self.assertEqual(lasten["columns"], [-15.0, -20.0])
+        self.assertEqual(lasten["children"][0]["columns"], [-15.0, -20.0])
+        self.assertEqual(baten["columns"], [0.0, 100.0])
+
     def test_parent_tree_default_root_for_missing_parent(self):
         roots = build_parent_tree(
             [{"code": 3001, "label": "Huur", "amount": -1.0}], {}, "Resultaat"

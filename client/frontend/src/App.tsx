@@ -233,25 +233,53 @@ function treeDepth(nodes: ExportTreeNode[], depth = 0): number {
 
 /**
  * Outline rows for a parent-structured sheet. One text column per nesting
- * level, amounts in the last column. Group names are bold; a group of two or
- * more children closes with a bold `Totaal <name>` row; roots are separated
- * by a blank row.
+ * level, then the amount column, then — when `headers` is given — one
+ * drill-down column per entry of a node's `columns` (e.g. per bank account).
+ * Row 1 holds the title and, from the amount column on, the `headers`
+ * (total first, then one per drill-down column). Group names are bold; a
+ * group of two or more children closes with a bold `Totaal <name>` row;
+ * roots are separated by a blank row.
  */
-function treeSheet(name: string, title: string, roots: ExportTreeGroup[]): XlsxSheet {
+function treeSheet(
+  name: string,
+  title: string,
+  roots: ExportTreeGroup[],
+  headers: string[] = []
+): XlsxSheet {
   const levels = treeDepth(roots) + 1;
   const amountCol = levels;
-  const rows: XlsxCell[][] = [[{ value: title, style: { bold: true, fontSize: 14 } }]];
-  const line = (depth: number, text: XlsxCell, amount?: XlsxCell): XlsxCell[] => {
-    const row: XlsxCell[] = Array.from({ length: amountCol + 1 }, () => "");
-    row[depth] = text;
-    if (amount !== undefined) row[amountCol] = amount;
-    return row;
-  };
+  const drill = Math.max(0, headers.length - 1);
+  const width = amountCol + 1 + drill;
   const bold = (text: string): XlsxCell => ({ value: text, style: { bold: true } });
   const boldAmount = (value: number): XlsxCell => ({ value: euro2(value), style: { bold: true } });
+  const blank = (): XlsxCell[] => Array.from({ length: width }, () => "");
+  const header = blank();
+  header[0] = { value: title, style: { bold: true, fontSize: 14 } };
+  headers.forEach((text, i) => {
+    header[amountCol + i] = bold(text);
+  });
+  const rows: XlsxCell[][] = [header];
+  const line = (
+    depth: number,
+    text: XlsxCell,
+    amount?: number,
+    columns?: number[],
+    strong = false
+  ): XlsxCell[] => {
+    const row = blank();
+    row[depth] = text;
+    if (amount !== undefined) {
+      row[amountCol] = strong ? boldAmount(amount) : euro2(amount);
+      for (let i = 0; i < drill; i += 1) {
+        const value = columns?.[i] ?? 0;
+        row[amountCol + 1 + i] = strong ? boldAmount(value) : euro2(value);
+      }
+    }
+    return row;
+  };
   const walk = (node: ExportTreeNode, depth: number) => {
     if (node.kind === "post") {
-      rows.push(line(depth, `${node.code} ${node.label}`, euro2(node.amount)));
+      rows.push(line(depth, `${node.code} ${node.label}`, node.amount, node.columns));
       return;
     }
     const heading =
@@ -259,7 +287,7 @@ function treeSheet(name: string, title: string, roots: ExportTreeGroup[]): XlsxS
     rows.push(line(depth, heading));
     for (const child of node.children) walk(child, depth + 1);
     if (node.children.length > 1 || depth === 0) {
-      rows.push(line(depth, bold(`Totaal ${node.name}`), boldAmount(node.total)));
+      rows.push(line(depth, bold(`Totaal ${node.name}`), node.total, node.columns, true));
     }
   };
   roots.forEach((root, i) => {
@@ -269,13 +297,14 @@ function treeSheet(name: string, title: string, roots: ExportTreeGroup[]): XlsxS
   const widths: number[] = Array.from({ length: levels }, (_, i) =>
     i === levels - 1 ? 44 : 4
   );
-  widths.push(14);
+  for (let i = 0; i <= drill; i += 1) widths.push(14);
   return { name, rows, widths };
 }
 
 function excelSheets(data: ExportExcelData): XlsxSheet[] {
   const sheets: XlsxSheet[] = [];
   const codeOf = (line: ExportExcelLine) => String(line.code);
+  const accountHeaders = resultaatAccountHeaders(data.result_accounts ?? []);
   if (data.has_balance) {
     if (data.balance_tree?.length) {
       sheets.push(treeSheet("Balans", `Balans ${data.year}`, data.balance_tree));
@@ -296,16 +325,32 @@ function excelSheets(data: ExportExcelData): XlsxSheet[] {
     }
   }
   if (data.result_tree?.length) {
-    sheets.push(treeSheet("Resultaat", `Resultaat ${data.year}`, data.result_tree));
+    sheets.push(
+      treeSheet(
+        "Resultaat",
+        `Resultaat ${data.year}`,
+        data.result_tree,
+        accountHeaders.length ? ["Totaal", ...accountHeaders] : []
+      )
+    );
   } else {
     const rows: (string | number)[][] = [];
+    const columnTotals = accountHeaders.map(() => 0);
     rows.push([`Resultaat ${data.year}`]);
-    rows.push(["Code", "Post", "Bedrag"]);
+    rows.push(["Code", "Post", "Bedrag", ...accountHeaders]);
     for (const line of data.resultaat) {
-      rows.push([codeOf(line), line.label, euro2(line.amount)]);
+      const parts = accountHeaders.map((_, i) => line.columns?.[i] ?? 0);
+      parts.forEach((n, i) => {
+        columnTotals[i] += n;
+      });
+      rows.push([codeOf(line), line.label, euro2(line.amount), ...parts.map(euro2)]);
     }
-    rows.push(["", "Totaal", euro2(data.total_resultaat)]);
-    sheets.push({ name: "Resultaat", rows, widths: [10, 60, 14] });
+    rows.push(["", "Totaal", euro2(data.total_resultaat), ...columnTotals.map(euro2)]);
+    sheets.push({
+      name: "Resultaat",
+      rows,
+      widths: [10, 60, 14, ...accountHeaders.map(() => 14)],
+    });
   }
   return sheets;
 }

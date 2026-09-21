@@ -91,6 +91,8 @@ export interface ExportExcelLine {
   months?: number[];
   /** Year totals per bank account, aligned with ExportResultaatData.accounts. */
   per_account?: number[];
+  /** Export balans Resultaat rows: year sum per account (result_accounts order). */
+  columns?: number[];
   source?: string;
 }
 
@@ -116,6 +118,8 @@ export interface ExportTreePost {
   label: string;
   amount: number;
   source?: string;
+  /** Drill-down parts of `amount`, e.g. per bank account (result_accounts order). */
+  columns?: number[];
 }
 
 /** A `dim_category.parent` path segment with its nested posts/groups. */
@@ -124,6 +128,8 @@ export interface ExportTreeGroup {
   name: string;
   total: number;
   children: ExportTreeNode[];
+  /** Element-wise sums of the children's `columns`. */
+  columns?: number[];
 }
 
 export type ExportTreeNode = ExportTreeGroup | ExportTreePost;
@@ -138,6 +144,8 @@ export interface ExportExcelData {
   /** Balance posts nested by `dim_category.parent`; roots are the sides. */
   balance_tree?: ExportTreeGroup[];
   resultaat: ExportExcelLine[];
+  /** Bank accounts behind the Resultaat columns, in `columns` order. */
+  result_accounts?: ExportResultaatAccount[];
   total_resultaat: number;
   /** P&L posts nested by `parent`; null when no P&L row has a parent. */
   result_tree?: ExportTreeGroup[] | null;

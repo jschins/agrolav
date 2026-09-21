@@ -241,7 +241,9 @@ def build_parent_tree(
     (a name, or a callable returning the name for that post). Group names
     match case-insensitively; the first spelling seen is kept. Children of
     every group — posts and sub-groups alike — are ordered by their lowest
-    local_code, and each group carries ``total`` (sum of its posts).
+    local_code, and each group carries ``total`` (sum of its posts). When
+    posts carry ``columns`` (a list of floats, e.g. per-account amounts) every
+    group gets ``columns`` with the element-wise sums as well.
 
     Returns the root groups::
 
@@ -272,17 +274,32 @@ def build_parent_tree(
             node = _group_under(node, segment)
         node["children"].append({**post, "kind": "post", "code": code})
 
-    def _finish(node: dict[str, Any]) -> tuple[Decimal, int | None]:
+    def _finish(node: dict[str, Any]) -> tuple[Decimal, list[Decimal] | None, int | None]:
         total = Decimal("0")
+        columns: list[Decimal] | None = None
         first: int | None = None
         for child in node["children"]:
             if child["kind"] == "group":
-                child_total, child_first = _finish(child)
+                child_total, child_columns, child_first = _finish(child)
             else:
                 child_total = Decimal(str(child.get("amount") or 0))
+                raw_columns = child.get("columns")
+                child_columns = (
+                    [Decimal(str(value or 0)) for value in raw_columns]
+                    if isinstance(raw_columns, list)
+                    else None
+                )
                 child_first = int(child["code"])
             child["_order"] = child_first if child_first is not None else 0
             total += child_total
+            if child_columns is not None:
+                if columns is None:
+                    columns = [Decimal("0")] * len(child_columns)
+                for i, value in enumerate(child_columns):
+                    if i < len(columns):
+                        columns[i] += value
+                    else:
+                        columns.append(value)
             if child_first is not None and (first is None or child_first < first):
                 first = child_first
         node["children"].sort(key=lambda child: child["_order"])
@@ -290,7 +307,9 @@ def build_parent_tree(
             child.pop("_order", None)
         node.pop("_index", None)
         node["total"] = float(total)
-        return total, first
+        if columns is not None:
+            node["columns"] = [float(value) for value in columns]
+        return total, columns, first
 
     _finish(root)
     return root["children"]

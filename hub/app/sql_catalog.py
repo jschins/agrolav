@@ -1334,6 +1334,101 @@ def country_has_balance(country: str) -> bool:
         return False
 
 
+def _pnl_per_account(
+    cursor,
+    country_id: int,
+    year: int,
+    table: str,
+    *,
+    month_count: int | None = None,
+    scope_sql: str = "",
+    scope_params: tuple[Any, ...] = (),
+) -> tuple[list[dict[str, Any]], dict[int, dict[int, Any]]]:
+    """Bank accounts with a booking in ``year`` and P&L sums per account.
+
+    Returns ``(accounts, sums)``: ``accounts`` are the accounts in scope
+    (``account_id``, ``account_name``, ``iban``, ``person``) ordered by
+    person then name; ``sums[category_id][account_id]`` is the year sum of
+    3000-4999 bookings (all bank_id copies, spaar source rows excluded — the
+    same bookings as ``dbo.category_total``). ``month_count`` limits both to
+    January..that month; ``None`` takes the whole year. ``scope_sql`` may
+    narrow on aliases ``p`` (person) / ``n`` (center) and must start with
+    ``AND``.
+    """
+    from decimal import Decimal
+
+    from shared.balance_values import spaar_source_exclude_clause
+
+    exclude_sql, exclude_params = spaar_source_exclude_clause(
+        int(country_id), cursor=cursor
+    )
+    month_sql = ""
+    month_params: list[Any] = []
+    if month_count is not None:
+        month_sql = " AND t.booked_on IS NOT NULL AND MONTH(t.booked_on) BETWEEN 1 AND ?"
+        month_params = [int(month_count)]
+
+    accounts: list[dict[str, Any]] = []
+    cursor.execute(
+        f"""
+        SELECT a.account_id, a.account_name, a.iban, p.username
+        FROM dbo.account a
+        JOIN dbo.person p ON p.id = a.person_id
+        JOIN dbo.center n ON n.center_id = p.center_id
+        WHERE n.country_id = ?
+          {scope_sql}
+          AND EXISTS (
+            SELECT 1 FROM {table} t
+            WHERE t.account_id = a.account_id
+              AND t.year = ?
+              {month_sql}
+              {exclude_sql}
+          )
+        ORDER BY p.username, a.account_name, a.account_id
+        """,
+        (int(country_id), *scope_params, int(year), *month_params, *exclude_params),
+    )
+    for account_id, account_name, iban, username in cursor.fetchall():
+        accounts.append(
+            {
+                "account_id": int(account_id),
+                "account_name": str(account_name or "").strip(),
+                "iban": str(iban or "").strip() or None,
+                "person": str(username or "").strip() or None,
+            }
+        )
+
+    sums: dict[int, dict[int, Any]] = {}
+    cursor.execute(
+        f"""
+        SELECT t.category_id, t.account_id,
+               SUM(CAST(t.amount AS decimal(19, 2)))
+        FROM {table} t
+        JOIN dbo.person p ON p.id = t.person_id
+        JOIN dbo.center n ON n.center_id = p.center_id
+        JOIN dbo.dim_category d
+          ON d.category_id = t.category_id
+         AND d.country_id = n.country_id
+        WHERE n.country_id = ?
+          AND t.year = ?
+          AND d.local_code BETWEEN 3000 AND 4999
+          {month_sql}
+          {exclude_sql}
+          {scope_sql}
+        GROUP BY t.category_id, t.account_id
+        """,
+        (int(country_id), int(year), *month_params, *exclude_params, *scope_params),
+    )
+    for category_id, account_id, amount in cursor.fetchall():
+        if account_id is None:
+            continue
+        by_acc = sums.setdefault(int(category_id), {})
+        by_acc[int(account_id)] = by_acc.get(int(account_id), Decimal("0")) + Decimal(
+            str(amount or 0)
+        )
+    return accounts, sums
+
+
 def export_resultaat_excel_data(
     country: str,
     year: int,
@@ -1499,70 +1594,15 @@ def export_resultaat_excel_data(
                         Decimal(str(amount or 0)),
                     )
 
-                cursor.execute(
-                    f"""
-                    SELECT a.account_id, a.account_name, a.iban, p.username
-                    FROM dbo.account a
-                    JOIN dbo.person p ON p.id = a.person_id
-                    JOIN dbo.center n ON n.center_id = p.center_id
-                    WHERE n.country_id = ?
-                      {scope_sql}
-                      AND EXISTS (
-                        SELECT 1 FROM {table} t
-                        WHERE t.account_id = a.account_id
-                          AND t.year = ?
-                          AND t.booked_on IS NOT NULL
-                          AND MONTH(t.booked_on) BETWEEN 1 AND ?
-                          {exclude_sql}
-                      )
-                    ORDER BY p.username, a.account_name, a.account_id
-                    """,
-                    (
-                        int(country_id),
-                        *scope_params,
-                        int(year),
-                        month_count,
-                        *exclude_params,
-                    ),
+                accounts, per_account = _pnl_per_account(
+                    cursor,
+                    int(country_id),
+                    int(year),
+                    table,
+                    month_count=month_count,
+                    scope_sql=scope_sql,
+                    scope_params=tuple(scope_params),
                 )
-                for account_id, account_name, iban, username in cursor.fetchall():
-                    accounts.append(
-                        {
-                            "account_id": int(account_id),
-                            "account_name": str(account_name or "").strip(),
-                            "iban": str(iban or "").strip() or None,
-                            "person": str(username or "").strip() or None,
-                        }
-                    )
-
-                cursor.execute(
-                    f"""
-                    SELECT t.category_id, t.account_id,
-                           SUM(CAST(t.amount AS decimal(19, 2)))
-                    FROM {table} t
-                    JOIN dbo.person p ON p.id = t.person_id
-                    JOIN dbo.center n ON n.center_id = p.center_id
-                    JOIN dbo.dim_category d
-                      ON d.category_id = t.category_id
-                     AND d.country_id = n.country_id
-                    WHERE n.country_id = ?
-                      AND t.year = ?
-                      AND d.local_code BETWEEN 3000 AND 4999
-                      AND t.booked_on IS NOT NULL
-                      AND MONTH(t.booked_on) BETWEEN 1 AND ?
-                      {exclude_sql}
-                      {scope_sql}
-                    GROUP BY t.category_id, t.account_id
-                    """,
-                    tuple(params),
-                )
-                for category_id, account_id, amount in cursor.fetchall():
-                    if account_id is None:
-                        continue
-                    by_acc = per_account.setdefault(int(category_id), {})
-                    by_acc[int(account_id)] = by_acc.get(
-                        int(account_id), Decimal("0")
-                    ) + Decimal(str(amount or 0))
 
         if not person_name and not center_name:
             codes = category_local_codes(country_id, cursor)
@@ -1895,8 +1935,10 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     path, each group with its total; posts without ``parent`` are omitted from
     the tree. Every country gets per-category ``resultaat`` rows (3000-4999)
     and, when any P&L row has a ``parent``, ``result_tree`` built the same
-    way from those rows. ``code`` is always the ``local_code``, never the
-    ``category_id``.
+    way from those rows. Each P&L row (and tree group) carries ``columns``:
+    its year sum per bank account in ``result_accounts`` order (bank bookings
+    only, so the journal/mirror overlay in ``amount`` has no column).
+    ``code`` is always the ``local_code``, never the ``category_id``.
     The Resultaat rows come from the recorded ``dbo.category_total`` plus the
     beheer journal/mirror overlay (R). Passiva 2100 Verlies uses that same R.
     """
@@ -1916,8 +1958,12 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             category_parents,
             country_has_balance,
             eigen_vermogen_id,
+            is_resultaat,
+            journal_deltas,
             recorded_resultaat_totals,
             result_overlay_cents,
+            spaar_mirrors,
+            transaction_table,
             verlies_id,
         )
 
@@ -1936,6 +1982,19 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         def _local(cat_id: int) -> int:
             return int(local_codes.get(int(cat_id), int(cat_id)))
 
+        # Resultaat drill-down: one column per bank account with a booking
+        # this year; each P&L row carries its per-account year sums.
+        result_accounts: list[dict[str, Any]] = []
+        pnl_sums: dict[int, dict[int, Any]] = {}
+        table = transaction_table(country_id, cursor)
+        if table:
+            cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+            if cursor.fetchone()[0] is not None:
+                result_accounts, pnl_sums = _pnl_per_account(
+                    cursor, int(country_id), int(year), table
+                )
+        account_ids = [int(a["account_id"]) for a in result_accounts]
+
         combined: dict[int, Decimal] = {}
         for code, amount in recorded.items():
             combined[code] = combined.get(code, Decimal("0")) + amount
@@ -1946,6 +2005,10 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                 "code": _local(code),
                 "label": labels.get(code, f"cat_{code}"),
                 "amount": float(combined[code]),
+                "columns": [
+                    float(pnl_sums.get(code, {}).get(aid, Decimal("0")))
+                    for aid in account_ids
+                ],
             }
             for code in sorted(combined, key=_local)
         ]
@@ -1969,6 +2032,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                 "total_passiva": 0.0,
                 "balance_tree": [],
                 "resultaat": result_rows,
+                "result_accounts": result_accounts,
                 "total_resultaat": total_result,
                 "result_tree": result_tree,
             }
@@ -2030,6 +2094,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             "total_passiva": float(total_passiva),
             "balance_tree": balance_tree,
             "resultaat": result_rows,
+            "result_accounts": result_accounts,
             "total_resultaat": total_result,
             "result_tree": result_tree,
         }
