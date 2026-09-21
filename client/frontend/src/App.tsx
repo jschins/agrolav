@@ -1582,7 +1582,14 @@ function SyncNotifyShell({
             {switching ? <span className="center-switcher-busy">switching…</span> : null}
             {scratchError ? <span> · {scratchError}</span> : null}
             {wipeError ? <span> · {wipeError}</span> : null}
-            {status?.error ? <span> · sync error: {status.error}</span> : null}
+            {status?.error ? (
+              <span>
+                {" · "}
+                {/timed out/i.test(status.error)
+                  ? "processing..."
+                  : `sync error: ${status.error}`}
+              </span>
+            ) : null}
           </div>
           <div className="sync-notify-row">
             {notes.map((n) => (
