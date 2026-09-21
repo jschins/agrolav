@@ -16,8 +16,9 @@ from typing import Any, Iterator
 
 from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY
 
-_active_center: str | None = None
-_active_country: str | None = None
+# Center, country, and bound person are per thread. A background rescore and a
+# request can both be in a calc scope without overwriting each other.
+_tls = threading.local()
 
 # Login / CSV country names, mapped to the canonical dbo.country key.
 _NL_KEYS = frozenset({"nederland", "netherlands", "the_netherlands", "nl"})
@@ -118,53 +119,57 @@ def resolve_country_for_center(center: str) -> str | None:
     sql_country = country_for_center(name)
     if sql_country:
         return country_folder(sql_country) or sql_country
-    preferred = request_country() or _active_country
+    preferred = request_country() or active_country()
     if preferred:
         return country_folder(preferred)
     return None
 
 
 def set_active_center(center: str | None, *, country: str | None = None) -> None:
-    """Bind the active center (+ country) used for the SQL calc scope."""
-    global _active_center, _active_country
-    _active_center = (center or "").strip() or None
+    """Bind the active center (+ country) for this thread's SQL calc scope."""
+    center_name = (center or "").strip() or None
     explicit = country_folder(country) or None
     if explicit:
-        _active_country = explicit
-    elif _active_center:
-        _active_country = resolve_country_for_center(_active_center)
+        country_name = explicit
+    elif center_name:
+        country_name = resolve_country_for_center(center_name)
     else:
-        _active_country = None
+        country_name = None
+    _tls.active_center = center_name
+    _tls.active_country = country_name
 
 
 def active_center() -> str | None:
-    return _active_center
+    return getattr(_tls, "active_center", None)
 
 
 def active_country() -> str | None:
-    return _active_country
+    return getattr(_tls, "active_country", None)
 
 
 def country_root() -> Path:
     """Virtual active country path (``categories.json`` beside the centers)."""
     root = data_root()
-    if _active_country:
-        return (root / _active_country).resolve()
+    country = active_country()
+    if country:
+        return (root / country).resolve()
     return root
 
 
 def app_root() -> Path:
     """Virtual active center path for diagnostic logs; never created on disk."""
     root = data_root()
-    if _active_country and _active_center:
-        return (root / _active_country / _active_center).resolve()
-    if _active_center:
-        country = resolve_country_for_center(_active_center)
-        if country:
-            return (root / country / _active_center).resolve()
-        return (root / _active_center).resolve()
-    if _active_country:
-        return (root / _active_country).resolve()
+    country = active_country()
+    center = active_center()
+    if country and center:
+        return (root / country / center).resolve()
+    if center:
+        resolved = resolve_country_for_center(center)
+        if resolved:
+            return (root / resolved / center).resolve()
+        return (root / center).resolve()
+    if country:
+        return (root / country).resolve()
     return root
 
 
@@ -199,11 +204,27 @@ class PersonScope:
         return person_has_pem(self.person)
 
 
-BOUND_COUNTRY: str = ""
-BOUND_CENTER: str = ""
-BOUND_PERSON: str = ""
-BOUND_YEAR: int | None = None
-BOUND_ACCOUNT: str | None = None
+_BOUND_FIELDS = (
+    "BOUND_COUNTRY",
+    "BOUND_CENTER",
+    "BOUND_PERSON",
+    "BOUND_YEAR",
+    "BOUND_ACCOUNT",
+)
+_BOUND_DEFAULTS: dict[str, Any] = {
+    "BOUND_COUNTRY": "",
+    "BOUND_CENTER": "",
+    "BOUND_PERSON": "",
+    "BOUND_YEAR": None,
+    "BOUND_ACCOUNT": None,
+}
+
+
+def __getattr__(name: str) -> Any:
+    """``BOUND_*`` reads the current thread's scope (tests may patch the module)."""
+    if name in _BOUND_DEFAULTS:
+        return getattr(_tls, name, _BOUND_DEFAULTS[name])
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def shared_categories_path(root: Path | None = None) -> Path:
@@ -216,7 +237,7 @@ def shared_categories_path(root: Path | None = None) -> Path:
         if here.is_file():
             return here
         return parent_cat if (root.parent / "categories.json").exists() else here
-    country = _active_country
+    country = active_country()
     if country:
         return (country_root() / "categories.json").resolve()
     # Center folder is app_root(); catalog lives one level up.
@@ -244,41 +265,35 @@ def app_id_from_profile_data(data: dict[str, Any]) -> str:
 
 
 def apply_scope(scope: PersonScope) -> None:
-    """Bind SQL identity for categorize / replica / Enable Banking."""
-    global BOUND_COUNTRY, BOUND_CENTER, BOUND_PERSON, BOUND_YEAR, BOUND_ACCOUNT
-
-    BOUND_COUNTRY = str(scope.country or "").strip()
-    BOUND_CENTER = str(scope.center or "").strip()
-    BOUND_PERSON = scope.person
+    """Bind SQL identity for categorize / replica / Enable Banking on this thread."""
+    _tls.BOUND_COUNTRY = str(scope.country or "").strip()
+    _tls.BOUND_CENTER = str(scope.center or "").strip()
+    _tls.BOUND_PERSON = scope.person
     try:
-        BOUND_YEAR = int(scope.year)
+        _tls.BOUND_YEAR = int(scope.year)
     except (TypeError, ValueError):
-        BOUND_YEAR = None
-    BOUND_ACCOUNT = str(scope.account or "").strip() or None
+        _tls.BOUND_YEAR = None
+    _tls.BOUND_ACCOUNT = str(scope.account or "").strip() or None
+
+
+def _bound_snapshot() -> dict[str, Any]:
+    return {name: getattr(_tls, name, _BOUND_DEFAULTS[name]) for name in _BOUND_FIELDS}
 
 
 @contextmanager
 def bind_scope(scope: PersonScope) -> Iterator[PersonScope]:
-    """Temporarily bind identity globals to ``scope``, then restore them."""
-    global BOUND_COUNTRY, BOUND_CENTER, BOUND_PERSON, BOUND_YEAR, BOUND_ACCOUNT
+    """Bind identity for this thread, then restore it. Does not take CALC_LOCK.
 
-    with CALC_LOCK:
-        snapshot = {
-            "BOUND_COUNTRY": BOUND_COUNTRY,
-            "BOUND_CENTER": BOUND_CENTER,
-            "BOUND_PERSON": BOUND_PERSON,
-            "BOUND_YEAR": BOUND_YEAR,
-            "BOUND_ACCOUNT": BOUND_ACCOUNT,
-        }
-        apply_scope(scope)
-        try:
-            yield scope
-        finally:
-            BOUND_COUNTRY = snapshot["BOUND_COUNTRY"]
-            BOUND_CENTER = snapshot["BOUND_CENTER"]
-            BOUND_PERSON = snapshot["BOUND_PERSON"]
-            BOUND_YEAR = snapshot["BOUND_YEAR"]
-            BOUND_ACCOUNT = snapshot["BOUND_ACCOUNT"]
+    Scope lives on the thread, so a background rescore can bind a person while
+    a request thread keeps its own.
+    """
+    snapshot = _bound_snapshot()
+    apply_scope(scope)
+    try:
+        yield scope
+    finally:
+        for name, value in snapshot.items():
+            setattr(_tls, name, value)
 
 
 def configure() -> list[PersonScope]:

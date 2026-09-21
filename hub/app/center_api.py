@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -19,16 +19,19 @@ def _clean_ws(center: str) -> str:
 
 
 @contextmanager
-def _center_scope(center: str) -> Iterator[str]:
-    """Bind active center + people list under CALC_LOCK for the whole request.
+def _center_scope(center: str, *, locked: bool = True) -> Iterator[str]:
+    """Bind this thread's center and people list.
 
-    Path globals and ``_active_center`` are process-wide; uvicorn runs sync
-    routes in a threadpool, so concurrent client requests must not interleave.
+    ``locked`` holds ``CALC_LOCK`` for the whole request so a recalculation
+    does not interleave with other writers. Reads that must stay available
+    while a background rescore holds that lock pass ``locked=False``. Identity
+    itself is per thread.
     """
     from app.runtime import request_country, set_active_center
 
     ws = _clean_ws(center)
-    with CALC_LOCK:
+    holder = CALC_LOCK if locked else nullcontext()
+    with holder:
         from app.sql_catalog import coerce_center, country_for_center
 
         ws = coerce_center(ws)
@@ -329,7 +332,8 @@ def save_transaction_split(
 
 
 def settings(center: str) -> dict[str, Any]:
-    with _center_scope(center) as ws:
+    # Unlocked so the right-click term menu can open while a rescore holds CALC_LOCK.
+    with _center_scope(center, locked=False) as ws:
         from app import user_store
         from app.core.categorize import (
             _category_map,
@@ -574,6 +578,104 @@ def update_center_account_terms(
         }
 
 
+def _add_term_background(
+    center: str,
+    *,
+    category_name: str,
+    term: str,
+    general: bool,
+    person: str | None = None,
+    account: str | None = None,
+    source: str = "local",
+) -> dict[str, Any]:
+    """Save one term and return. The rescore runs on a background thread."""
+    from app.sql_catalog import (
+        account_belongs_to_person,
+        append_category_term_sql,
+        coerce_center,
+        country_for_center,
+        country_has_balance,
+        people_in_center,
+    )
+
+    ws = coerce_center(_clean_ws(center))
+    country = country_for_center(ws) or ""
+    if not country:
+        raise ValueError(f"Unknown center: {center!r}")
+    cleaned = str(term or "").strip()
+    if not cleaned:
+        raise ValueError("term must not be empty")
+
+    if general:
+        terms, added = append_category_term_sql(country, category_name, cleaned)
+        if added:
+            store.schedule_background_ircft(
+                ws,
+                [store.SHARED_CATEGORIES],
+                source=source,
+                recalc_all_centers=True,
+                added=[cleaned],
+                removed=[],
+                personal=False,
+                category_name=category_name,
+            )
+        return {
+            "center": ws,
+            "group": "general",
+            "category": category_name,
+            "term": cleaned,
+            "terms": terms,
+            "rescore": "background" if added else "unchanged",
+            "matrix": None,
+            "affected_files": [],
+        }
+
+    person_name = (person or "").strip()
+    if not person_name:
+        raise ValueError("person is required when general=false")
+    known = {name.lower(): name for name in people_in_center(ws)}
+    canonical = known.get(person_name.lower())
+    if not canonical:
+        raise ValueError(f"Unknown person: {person_name!r}")
+    person_name = canonical
+    account_key = (account or "").strip() or None
+    if country_has_balance(country):
+        if not account_key:
+            raise ValueError("account is required for personal terms in this country")
+        if not account_belongs_to_person(ws, person_name, account_key):
+            raise ValueError(f"Account {account_key!r} does not belong to {person_name!r}")
+    else:
+        account_key = None
+    terms, added = append_category_term_sql(
+        country,
+        category_name,
+        cleaned,
+        person=person_name,
+        account=account_key,
+    )
+    if added:
+        store.schedule_background_ircft(
+            ws,
+            [store.person_secret_rel(person_name, store.PERSONAL_CATEGORIES)],
+            source=source,
+            added=[cleaned],
+            removed=[],
+            personal=True,
+            category_name=category_name,
+            account=account_key,
+        )
+    return {
+        "center": ws,
+        "group": account_key or person_name,
+        "category": category_name,
+        "term": cleaned,
+        "terms": terms,
+        "rescore": "background" if added else "unchanged",
+        "matrix": None,
+        "affected_files": [],
+    }
+
+
 def add_term(
     center: str,
     *,
@@ -584,6 +686,18 @@ def add_term(
     account: str | None = None,
     source: str = "local",
 ) -> dict[str, Any]:
+    from app import user_store
+
+    if user_store.database_url():
+        return _add_term_background(
+            center,
+            category_name=category_name,
+            term=term,
+            general=general,
+            person=person,
+            account=account,
+            source=source,
+        )
     with _center_scope(center) as ws:
         from app import user_store
         from app.core.categorize import (

@@ -1121,9 +1121,13 @@ def apply_ircft_terms(
             personal_maps=personal_maps,
             account=account,
         )
-    for term in added:
+    # Each add walks every unlocked row against the maps just loaded, so one
+    # call covers every term saved before this pass. Removals stay one-by-one:
+    # a locked row only drops its hit in ircft_remove_term.
+    pending = [term for term in added if _normalize_term(term)]
+    if pending:
         ircft_add_term(
-            term,
+            pending[0],
             personal=personal,
             category_name=category_name,
             general=general,

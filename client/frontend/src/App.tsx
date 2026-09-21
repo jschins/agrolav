@@ -2531,10 +2531,16 @@ function MainApp({
       account: general ? undefined : account,
     })
       .then((res) => {
-        setMatrix(res.matrix);
+        // The hub saves the term and rescores on a background thread. Keep the
+        // optimistic row move; the data-epoch refresh fills in the other rows.
+        if (res.rescore === "background") return;
+        if (res.matrix) setMatrix(res.matrix);
         if (sel) return loadDetail(sel.person_name, sel.category, { quiet: true });
       })
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => {
+        setError(err.message);
+        if (sel) return loadDetail(sel.person_name, sel.category, { quiet: true });
+      });
   }
 
   useEffect(() => {

@@ -5,6 +5,7 @@ Used when on-disk center folders are absent. Bookings stay in ``sql_replica``.
 from __future__ import annotations
 
 import re
+import threading
 import time
 from typing import Any
 
@@ -12,6 +13,7 @@ from app.yearpath import is_year_name
 
 _CAT_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _CAT_TTL_SEC = 3.0
+_term_write_lock = threading.Lock()
 _TERM_LANG_COL = re.compile(r"^term_lang([1-9]\d*)$")
 
 
@@ -1012,6 +1014,7 @@ def save_category_terms(
     *,
     person: str | None = None,
     account: str | None = None,
+    country: str | None = None,
 ) -> None:
     """Replace general (person_id NULL) or personal keyword rows in ``dbo.category_term``.
 
@@ -1025,14 +1028,15 @@ def save_category_terms(
     cleaned = [str(item).strip().lower() for item in terms if str(item or "").strip()]
     person_name = (person or "").strip() or None
     account_key = (account or "").strip() or None
-    country = ""
-    if person_name:
+    resolved = (country or "").strip()
+    if person_name and not resolved:
         layout = person_country_center(person_name)
-        country = layout[0] if layout else ""
-    if not country:
+        resolved = layout[0] if layout else ""
+    if not resolved:
         from app.runtime import active_center, active_country
 
-        country = (active_country() or country_for_center(active_center() or "") or "").strip()
+        resolved = (active_country() or country_for_center(active_center() or "") or "").strip()
+    country = resolved
     if not country:
         raise ValueError(f"Cannot save terms for {label!r}: no country")
     try:
@@ -1134,6 +1138,172 @@ def save_category_terms(
                 pass
 
     _sql_retry(_run)
+
+
+def _lookup_category_term_bucket(
+    cursor: Any,
+    country: str,
+    category_name: str,
+    *,
+    person: str | None,
+    account: str | None,
+) -> tuple[int, int | None, int | None, list[str]]:
+    """Return category_id, person_id, account_id, and the current term list."""
+    from shared.balance_values import is_remainder_role
+
+    label = category_name.strip()
+    try:
+        code = int(label[:4])
+    except ValueError:
+        code = None
+    cursor.execute(
+        """
+        SELECT d.category_id, d.category_role
+        FROM dbo.dim_category d
+        JOIN dbo.country c ON c.country_id = d.country_id
+        WHERE c.username = ? COLLATE Latin1_General_CI_AI
+          AND (d.label = ? OR d.local_code = ?)
+        """,
+        (country, label, code),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise ValueError(f"Unknown category {label!r} for {country!r}")
+    if is_remainder_role(row[1]):
+        raise ValueError(f"Cannot add terms to category {label!r}")
+    category_id = int(row[0])
+    person_id: int | None = None
+    account_id: int | None = None
+    person_name = (person or "").strip() or None
+    account_key = (account or "").strip() or None
+    if person_name:
+        cursor.execute(
+            "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (person_name,),
+        )
+        prow = cursor.fetchone()
+        if prow is None:
+            raise ValueError(f"Unknown person {person_name!r}")
+        person_id = int(prow[0])
+        if account_key:
+            cursor.execute(
+                "SELECT account_id FROM dbo.account WHERE person_id = ? AND uid = ?",
+                (person_id, account_key),
+            )
+            arow = cursor.fetchone()
+            if arow is None:
+                raise ValueError(f"Unknown account {account_key!r} for {person_name!r}")
+            account_id = int(arow[0])
+            cursor.execute(
+                """
+                SELECT term FROM dbo.category_term
+                WHERE category_id = ? AND person_id = ? AND account_id = ?
+                ORDER BY sort_order
+                """,
+                (category_id, person_id, account_id),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT term FROM dbo.category_term
+                WHERE category_id = ? AND person_id = ? AND account_id IS NULL
+                ORDER BY sort_order
+                """,
+                (category_id, person_id),
+            )
+    else:
+        cursor.execute(
+            """
+            SELECT term FROM dbo.category_term
+            WHERE category_id = ? AND person_id IS NULL
+            ORDER BY sort_order
+            """,
+            (category_id,),
+        )
+    terms = [str(item[0]) for item in cursor.fetchall() if str(item[0] or "").strip()]
+    return category_id, person_id, account_id, terms
+
+
+def append_category_term_sql(
+    country: str,
+    category_name: str,
+    term: str,
+    *,
+    person: str | None = None,
+    account: str | None = None,
+) -> tuple[list[str], bool]:
+    """Append one keyword and return ``(terms, added)``.
+
+    Serialized so two rapid adds cannot each rewrite the list without the other.
+    Does not use the process calc scope, so it can run while a rescore holds
+    ``CALC_LOCK``.
+    """
+    cleaned = str(term or "").strip().lower()
+    if not cleaned:
+        raise ValueError("term must not be empty")
+    name = (country or "").strip()
+    if not name:
+        raise ValueError(f"Cannot save terms for {category_name!r}: no country")
+
+    def _run() -> tuple[list[str], bool]:
+        from app import user_store
+
+        conn = user_store._sql_connect()
+        cursor = conn.cursor()
+        _category_id, _person_id, _account_id, existing = _lookup_category_term_bucket(
+            cursor,
+            name,
+            category_name,
+            person=person,
+            account=account,
+        )
+        lowered = [item.strip().lower() for item in existing]
+        if cleaned in lowered:
+            return existing, False
+        updated = [*existing, cleaned]
+        return updated, True
+
+    with _term_write_lock:
+        updated, added = _sql_retry(_run)
+        if added:
+            save_category_terms(
+                category_name,
+                updated,
+                person=person,
+                account=account,
+                country=name,
+            )
+        return updated, added
+
+
+def account_belongs_to_person(center: str, person: str, account_uid: str) -> bool:
+    """True when ``account_uid`` is an account of ``person`` in ``center``."""
+    ws = (center or "").strip()
+    who = (person or "").strip()
+    uid = (account_uid or "").strip()
+    if not ws or not who or not uid or not _sql_ready():
+        return False
+
+    def _run() -> bool:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            SELECT 1
+            FROM dbo.account a
+            JOIN dbo.person p ON p.id = a.person_id
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.username = ? COLLATE Latin1_General_CI_AI
+              AND p.username = ? COLLATE Latin1_General_CI_AI
+              AND a.uid = ?
+            """,
+            (ws, who, uid),
+        )
+        return cursor.fetchone() is not None
+
+    try:
+        return bool(_sql_retry(_run))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def apply_center_account_term_delta(

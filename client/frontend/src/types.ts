@@ -86,7 +86,8 @@ export interface AddTermResponse {
   category: string;
   term: string;
   terms: string[];
-  matrix: MatrixResponse;
+  matrix?: MatrixResponse | null;
+  rescore?: "background" | "unchanged";
 }
 
 export interface CatalogCategory {

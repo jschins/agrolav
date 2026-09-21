@@ -246,12 +246,16 @@ def ircft_center(
     personal: bool,
     category_name: str,
     account: str | None = None,
+    with_matrix: bool = True,
+    lock: bool = True,
 ) -> dict[str, Any]:
     """Apply iRCfT for one center; publish derived files; return the matrix.
 
     ``account`` (an account uid) scopes a personal edit to one account in
     account-modality countries.
     """
+    from contextlib import nullcontext
+
     from app.core.categorize import apply_ircft_terms
     from app.matrix import build_matrix
     from app.runtime import CALC_LOCK, bind_scope
@@ -260,7 +264,8 @@ def ircft_center(
 
     ws = _clean_center(center)
     wanted = {Path(name).name for name in person_folders} if person_folders else None
-    with CALC_LOCK:
+    holder = CALC_LOCK if lock else nullcontext()
+    with holder:
         set_active_center(ws)
         init_app()
         packs = refresh_people()
@@ -274,7 +279,8 @@ def ircft_center(
                     category_name=category_name,
                     account=account,
                 )
-        return {"ok": True, "center": ws, "matrix": build_matrix(packs)}
+        matrix = build_matrix(packs) if with_matrix else None
+        return {"ok": True, "center": ws, "matrix": matrix}
 
 
 def derived_paths_for_center(center: str, *, all_years: bool = False) -> list[str]:
@@ -616,8 +622,18 @@ def mutate_and_ircft(
     personal: bool,
     category_name: str,
     account: str | None = None,
+    defer_announce: bool = False,
+    with_matrix: bool = True,
+    lock: bool = True,
 ) -> dict[str, Any]:
-    """Announce expected files, iRCfT affected person(s)/center(s), return matrix."""
+    """iRCfT affected person(s)/center(s) and return the matrix.
+
+    ``defer_announce`` publishes the change event after the rescore, so a
+    client reload does not read the bookings before they are written.
+    ``lock`` is false when the caller already holds ``CALC_LOCK``.
+    """
+    from contextlib import nullcontext
+
     from app.runtime import CALC_LOCK
 
     primary = _clean_center(center)
@@ -630,9 +646,10 @@ def mutate_and_ircft(
     if primary not in targets:
         targets.insert(0, primary)
 
-    announced = announce_mutation(primary, expected, source=source)
+    announced = [] if defer_announce else announce_mutation(primary, expected, source=source)
     matrices: dict[str, Any] = {}
-    with CALC_LOCK:
+    holder = CALC_LOCK if lock else nullcontext()
+    with holder:
         for ws in targets:
             folders = person_folders if (person_folders and ws == primary) else (
                 None if person_folders is None else []
@@ -648,7 +665,11 @@ def mutate_and_ircft(
                 personal=personal,
                 category_name=category_name,
                 account=account,
+                with_matrix=with_matrix,
+                lock=False,
             )
+    if defer_announce:
+        announced = announce_mutation(primary, expected, source=source)
     primary_result = matrices.get(primary) or {}
     matrix_payload = primary_result.get("matrix")
     if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
@@ -660,6 +681,151 @@ def mutate_and_ircft(
         "matrix": matrix_payload,
         "recalculated": list(matrices.keys()),
     }
+
+
+_rescore_guard = threading.Lock()
+_rescore_running = False
+_rescore_again = False
+_rescore_job: dict[str, Any] | None = None
+
+
+def _uniq_terms(items: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in items:
+        term = str(raw or "").strip()
+        key = term.lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(term)
+    return out
+
+
+def _merge_rescore_job(current: dict[str, Any] | None, new: dict[str, Any]) -> dict[str, Any]:
+    """Collapse a burst of term edits into the widest scope one pass must cover."""
+    if current is None:
+        return {
+            **new,
+            "added": _uniq_terms(list(new.get("added") or [])),
+            "removed": _uniq_terms(list(new.get("removed") or [])),
+            "input_paths": _dedupe_paths(list(new.get("input_paths") or [])),
+        }
+    recalc = bool(current.get("recalc_all_centers") or new.get("recalc_all_centers"))
+    personal = bool(current.get("personal") and new.get("personal"))
+    if current.get("center") != new.get("center") or not personal:
+        recalc = True
+        personal = False
+    account = None
+    if personal and current.get("account") and current.get("account") == new.get("account"):
+        account = current.get("account")
+    return {
+        "center": current["center"],
+        "input_paths": _dedupe_paths(
+            [*list(current.get("input_paths") or []), *list(new.get("input_paths") or [])]
+        ),
+        "source": new.get("source") or current.get("source") or "local",
+        "recalc_all_centers": recalc,
+        "added": _uniq_terms([*list(current.get("added") or []), *list(new.get("added") or [])]),
+        "removed": _uniq_terms(
+            [*list(current.get("removed") or []), *list(new.get("removed") or [])]
+        ),
+        "personal": personal,
+        "category_name": new.get("category_name") or current.get("category_name") or "",
+        "account": account,
+    }
+
+
+def _run_scheduled_rescore(job: dict[str, Any]) -> None:
+    """One iRCfT pass. Terms are already saved; the event fires after the writes."""
+    from app.runtime import set_active_center
+    from app.sql_catalog import country_for_center
+
+    set_active_center(job["center"], country=country_for_center(str(job["center"])))
+    added = _uniq_terms(list(job.get("added") or []))
+    removed = _uniq_terms(list(job.get("removed") or []))
+    if not added and not removed:
+        return
+    mutate_and_ircft(
+        str(job["center"]),
+        list(job.get("input_paths") or []),
+        source=str(job.get("source") or "local"),
+        recalc_all_centers=bool(job.get("recalc_all_centers")),
+        added=added,
+        removed=removed,
+        personal=bool(job.get("personal")),
+        category_name=str(job.get("category_name") or ""),
+        account=job.get("account"),
+        defer_announce=True,
+        with_matrix=False,
+    )
+
+
+def _rescore_loop() -> None:
+    global _rescore_running, _rescore_again, _rescore_job
+    while True:
+        with _rescore_guard:
+            job = _rescore_job
+            _rescore_job = None
+            _rescore_again = False
+        if job is None:
+            with _rescore_guard:
+                if _rescore_job is not None or _rescore_again:
+                    continue
+                _rescore_running = False
+                return
+        try:
+            _run_scheduled_rescore(job)
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
+        with _rescore_guard:
+            if _rescore_job is None and not _rescore_again:
+                _rescore_running = False
+                return
+
+
+def schedule_background_ircft(
+    center: str,
+    input_paths: list[str],
+    *,
+    source: str = "local",
+    recalc_all_centers: bool = False,
+    added: list[str],
+    removed: list[str],
+    personal: bool,
+    category_name: str,
+    account: str | None = None,
+) -> None:
+    """Queue an iRCfT pass and return. A burst becomes one pass, then one follow-up.
+
+    The follow-up runs when another term is saved while a pass is already
+    walking bookings, so that pass's term lists are read again afterwards.
+    """
+    global _rescore_running, _rescore_again, _rescore_job
+    job = {
+        "center": _clean_center(center),
+        "input_paths": list(input_paths),
+        "source": source,
+        "recalc_all_centers": recalc_all_centers,
+        "added": list(added),
+        "removed": list(removed),
+        "personal": personal,
+        "category_name": category_name,
+        "account": account,
+    }
+    start = False
+    with _rescore_guard:
+        _rescore_job = _merge_rescore_job(_rescore_job, job)
+        _rescore_again = True
+        if not _rescore_running:
+            _rescore_running = True
+            start = True
+    if start:
+        threading.Thread(
+            target=_rescore_loop, name="ircft-rescore", daemon=True
+        ).start()
 
 
 def _meta_key(center: str, rel_path: str) -> str:
