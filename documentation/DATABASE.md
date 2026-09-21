@@ -348,47 +348,36 @@ Country-specific catalog. One row per (country, local code).
 | `label` | `NVARCHAR(128)` NOT NULL | `"12 Vervoer"`; footers `"saldo"` / `"datum"` |
 | `is_remainder` | `BIT` | unused; remainder is `category_role = remainder` |
 | `category_role` | `NVARCHAR(32)` NULL | `NULL` ordinary booking; `remainder` unclassified; `balance` / `last_booked` footers; `equity` Eigen vermogen (no HIT no journal); `profit` Verlies (no HIT no journal); `bank` / `source` / `mirror` (no HIT, journals allowed). `source` and `mirror` identify the spaar pair. |
+| `parent` | `NVARCHAR` NULL | Slash-separated place of the post in the exported balance sheet, e.g. `Activa/Vlottende activa/Bank SIa`, `Passiva/Schulden`, `Passiva`. See below. |
 
 Unique: `(country_id, local_code)` (`UQ_category_country_code`). Label is not unique.
 Footer rows have empty `category_term` lists and must not be assigned to
 transactions.
 
-### `condensed_balance`
+#### `parent` — structure of the "Export balans" workbook
 
-Drives the "Export balans" sheets after the computed Balans (sheet 1) and
-Resultaat (sheet 2) for balance countries. Rows render in `id` order;
-`excel_page` buckets rows into one output sheet per page (NULL → page 3,
-rendered as "Gecondenseerde balans"; page 4 as "Gecondenseerd resultaat").
-`sum_local_code` lists `dim_category.local_code` values summed into the
-post (NULL/empty = post without categories, shown blank). Tokens are
-comma-separated. A dash is a closed range over codes that exist in
-`dim_category` for that country: `3001-3220` equals every defined code
-from 3001 through 3220. `section_name` is a comma-separated path: the first part is the side
-(`Activa` / `Passiva`), an optional second part the group; or a braced heading:
-`{Titel}` makes `post_name` the sheet title (its non-NULL `background_color`
-is the default background for the whole page), `{SideA,SideB,…}` makes
-`post_name` a bold heading printed before those sides. Posts whose
-`post_name` starts with `Totaal ` are totals: group-level when the path has a
-group, side-level otherwise. Sides and groups keep first-appearance order;
-group matching is case-insensitive so totals join their group (e.g.
-`Passiva, Schulden` lands in the `Passiva, schulden` group). `font_size` sets
-the font size of a heading/post row; `background_color` (6-hex RGB, optional
-`#`) fills that row's cells (page-level on `{Titel}`).
+The Balans sheet of "Export balans" lists the A/P posts that have a `parent`,
+nested under the groups named by that path; posts with NULL `parent` are not
+on the sheet. The Resultaat sheet does the same for 3000–4999 posts as soon
+as any of them carries a `parent` (otherwise it stays the flat list of every
+P&L category). Rules, implemented in `shared.balance_values.build_parent_tree`:
 
-| column | type | notes |
-|:-------|:-----|:------|
-| `id` | `INT` PK | identity, render order |
-| `country_id` | `INT` FK | |
-| `post_name` | `VARCHAR(64)` NOT NULL | printed post label / heading / title |
-| `sum_local_code` | `VARCHAR(256)` NULL | e.g. `'1051,1053-1056'` or `'3001-3220'` |
-| `section_name` | `VARCHAR(64)` NOT NULL | `Activa, Vaste activa` / `Passiva, schulden` / `Activa` / `{Titel}` |
-| `font_size` | `INT` NULL | row font size (content rows: 12, headings/titles: 16) |
-| `excel_page` | `INT` NULL | output sheet page; NULL = 3 |
-| `background_color` | `VARCHAR(16)` NULL | row fill; page fill when set on a `{Titel}` row |
-| `bold` | `BIT` NULL | renders the row in bold when true |
+- The first segment is the side (`Activa` / `Passiva`); every further segment
+  is a nested group.
+- Group names match case-insensitively; the first spelling seen is printed
+  (`Passiva/Schulden` and `Passiva/schulden` are one group).
+- Within a group, posts and sub-groups are ordered by their lowest
+  `local_code`. Each group prints a `Totaal <group>` line when it has more
+  than one child; each side always prints its total.
+- Posts print as `<local_code> <label>` (`1000 Kas Huis`); `category_id` is
+  never shown.
 
-Seed lives in `balance/sql/condensed_balance.sql`. The hub also creates
-and seeds this table on first "Export balans" if it is missing.
+`dbo.condensed_balance` (post lists with `sum_local_code`, page colours,
+fonts) is discontinued and no longer read; drop it when convenient:
+
+```sql
+DROP TABLE dbo.condensed_balance;
+```
 
 ### `category_term`
 

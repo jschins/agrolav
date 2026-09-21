@@ -233,6 +233,9 @@ function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): stri
       const r = ri + 1;
       const cellsXml = row
         .map((cell, ci) => {
+          // A plain empty string is a blank cell: emit nothing so text in
+          // the cell to its left may overflow into it (outline layouts).
+          if (cell === "") return "";
           const ref = `${colLetter(ci)}${r}`;
           const styleId = styleIdOf(cell);
           if (typeof cell === "object") {

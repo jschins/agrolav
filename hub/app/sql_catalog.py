@@ -1870,11 +1870,15 @@ def export_resultaat_excel_data(
 def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     """One JSON payload for the client's "Export balance sheet" workbook.
 
-    Balance countries (``dbo.country.has_balance``) get three sheets:
-    ``activa``/``passiva`` exactly like the balance app's sheet (including the
-    computed Verlies and Eigen vermogen posts), per-category ``resultaat``
-    rows (3000-4999), and ``gecondenseerd`` from ``dbo.condensed_balance``.
-    Plain countries get ``resultaat`` only.
+    Balance countries (``dbo.country.has_balance``) get ``activa``/``passiva``
+    exactly like the balance app's sheet (including the computed Verlies and
+    Eigen vermogen posts) plus ``balance_tree``: the posts that carry a
+    ``dim_category.parent`` (``Activa/Vlottende activa/Kas``) nested by that
+    path, each group with its total; posts without ``parent`` are omitted from
+    the tree. Every country gets per-category ``resultaat`` rows (3000-4999)
+    and, when any P&L row has a ``parent``, ``result_tree`` built the same
+    way from those rows. ``code`` is always the ``local_code``, never the
+    ``category_id``.
     The Resultaat rows come from the recorded ``dbo.category_total`` plus the
     beheer journal/mirror overlay (R). Passiva 2100 Verlies uses that same R.
     """
@@ -1887,9 +1891,11 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
 
         from shared.balance_values import (
             balance_category_breakdown,
+            build_parent_tree,
             category_labels,
             category_local_codes,
             category_map,
+            category_parents,
             country_has_balance,
             eigen_vermogen_id,
             recorded_resultaat_totals,
@@ -1907,6 +1913,10 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         overlay = result_overlay_cents(country_id, int(year), cursor)
         labels = category_labels(country_id, cursor)
         local_codes = category_local_codes(country_id, cursor)
+        parents = category_parents(country_id, cursor)
+
+        def _local(cat_id: int) -> int:
+            return int(local_codes.get(int(cat_id), int(cat_id)))
 
         combined: dict[int, Decimal] = {}
         for code, amount in recorded.items():
@@ -1915,13 +1925,21 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
         result_rows = [
             {
-                "code": local_codes.get(code, code),
+                "code": _local(code),
                 "label": labels.get(code, f"cat_{code}"),
                 "amount": float(combined[code]),
             }
-            for code in sorted(combined)
+            for code in sorted(combined, key=_local)
         ]
         total_result = float(sum(combined.values()))
+        # Tree sheets list only posts that have a ``parent``; the Resultaat
+        # sheet stays a flat list when no P&L row has one.
+        parented_result = [row for row in result_rows if int(row["code"]) in parents]
+        result_tree = (
+            build_parent_tree(parented_result, parents, "Resultaat")
+            if parented_result
+            else None
+        )
 
         if not has_balance:
             return {
@@ -1931,8 +1949,10 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                 "passiva": [],
                 "total_activa": 0.0,
                 "total_passiva": 0.0,
+                "balance_tree": [],
                 "resultaat": result_rows,
                 "total_resultaat": total_result,
+                "result_tree": result_tree,
             }
 
         result_id = verlies_id(country_id, cursor)
@@ -1943,13 +1963,13 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         activa: list[dict[str, Any]] = []
         passiva: list[dict[str, Any]] = []
         skip_ids = {i for i in (balance_id, result_id) if i is not None}
-        for cat_id in sorted(cmap):
+        for cat_id in sorted(cmap, key=_local):
             if cat_id in skip_ids:
                 continue
             side, _account_id = cmap[cat_id]
             cents, _source = breakdown.get(cat_id, (0, "opening"))
             row = {
-                "code": cat_id,
+                "code": _local(cat_id),
                 "label": labels.get(cat_id, f"cat_{cat_id}"),
                 "amount": float(Decimal(cents) / Decimal(100)),
             }
@@ -1959,7 +1979,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         if result_id is not None:
             passiva.append(
                 {
-                    "code": result_id,
+                    "code": _local(result_id),
                     "label": labels.get(result_id, "Verlies"),
                     "amount": float(total_result),
                     "source": "category_total",
@@ -1969,20 +1989,19 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         if balance_id is not None:
             passiva.append(
                 {
-                    "code": balance_id,
+                    "code": _local(balance_id),
                     "label": labels.get(balance_id, "Eigen vermogen"),
                     "amount": float(total_activa - total_passiva_others),
                     "source": "computed",
                 }
             )
         total_passiva = total_activa  # Verlies + Eigen vermogen close the sheet
-        condensed = _export_condensed_balance(
-            cursor,
-            country_id,
-            {
-                row["code"]: Decimal(str(row["amount"]))
-                for row in activa + passiva + result_rows
-            },
+        # One tree over both sides, restricted to posts that have a ``parent``
+        # (its first segment names the side).
+        balance_tree = build_parent_tree(
+            [row for row in activa + passiva if int(row["code"]) in parents],
+            parents,
+            "Activa",
         )
         return {
             "year": int(year),
@@ -1991,9 +2010,10 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             "passiva": passiva,
             "total_activa": float(total_activa),
             "total_passiva": float(total_passiva),
+            "balance_tree": balance_tree,
             "resultaat": result_rows,
             "total_resultaat": total_result,
-            "gecondenseerd": condensed,
+            "result_tree": result_tree,
         }
 
     try:
@@ -2002,266 +2022,6 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         raise
     except Exception as exc:  # noqa: BLE001
         raise ValueError(str(exc)) from exc
-
-
-_BEHEER_CONDENSED_SEED: tuple[tuple[str, str, str, int, int, str | None, None], ...] = (
-    ("Gebouwen", "1000", "Activa, Vaste activa", 12, 3, None, None),
-    ("Verbouwingen", "1005", "Activa, Vaste activa", 12, 3, None, None),
-    ("Inventaris", "1010", "Activa, Vaste activa", 12, 3, None, None),
-    ("Auto's", "1015", "Activa, Vaste activa", 12, 3, None, None),
-    ("Bank en Giro", "1051,1053,1054,1055,1056", "Activa, Vlottende activa", 12, 3, None, None),
-    ("Kapitaalrekening", "1052", "Activa, Vlottende activa", 12, 3, None, None),
-    ("Debiteuren", "1110,1111", "Activa, Vlottende activa", 12, 3, None, None),
-    ("Eigen vermogen", "2000,2100", "Passiva, Eigen vermogen en voorzieningen", 12, 3, None, None),
-    ("Voorzieningen", "2050,2055", "Passiva, Eigen vermogen en voorzieningen", 12, 3, None, None),
-    ("Langlopende schulden", "2500", "Passiva, schulden", 12, 3, None, None),
-    ("Kortlopende schulden", "", "Passiva, schulden", 12, 3, None, None),
-    ("Totaal vaste activa", "1000,1005,1010,1015", "Activa, Vaste activa", 12, 3, None, None),
-    (
-        "Totaal vlottende activa",
-        "1110,1111,1051,1052,1053,1054,1055,1056",
-        "Activa, Vlottende activa",
-        12,
-        3,
-        None,
-        None,
-    ),
-    (
-        "Totaal activa",
-        "1000,1005,1010,1015,1110,1111,1051,1052,1053,1054,1055,1056",
-        "Activa",
-        12,
-        3,
-        None,
-        None,
-    ),
-    ("Totaal passiva", "2000,2050,2055,2100,2500", "Passiva", 12, 3, None, None),
-    (
-        "Totaal eigen vermogen en voorzieningen",
-        "2000,2050,2055,2100",
-        "Passiva, Eigen vermogen en voorzieningen",
-        12,
-        3,
-        None,
-        None,
-    ),
-    ("Totaal schulden", "2500", "Passiva, Schulden", 12, 3, None, None),
-)
-
-
-def _ensure_condensed_balance(cursor) -> None:
-    """Seed condensed posts when ``dbo.condensed_balance`` is empty for beheer_sdog."""
-    cursor.execute("SELECT OBJECT_ID(N'dbo.condensed_balance', N'U')")
-    if cursor.fetchone()[0] is None:
-        return
-    cursor.execute(
-        """
-        SELECT country_id FROM dbo.country
-        WHERE username = ? COLLATE Latin1_General_CI_AI
-        """,
-        ("beheer_sdog",),
-    )
-    row = cursor.fetchone()
-    if row is None:
-        return
-    country_id = int(row[0])
-    cursor.execute(
-        "SELECT 1 FROM dbo.condensed_balance WHERE country_id = ?",
-        (country_id,),
-    )
-    if cursor.fetchone() is not None:
-        return
-    for post_name, codes, section, font_size, excel_page, background_color, bold in _BEHEER_CONDENSED_SEED:
-        cursor.execute(
-            """
-            INSERT INTO dbo.condensed_balance
-                (country_id, post_name, sum_local_code, section_name,
-                 font_size, excel_page, background_color, bold)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                country_id,
-                post_name,
-                codes or None,
-                section,
-                font_size,
-                excel_page,
-                background_color,
-                bold,
-            ),
-        )
-
-
-def _export_condensed_balance(
-    cursor,
-    country_id: int,
-    amounts_by_id: dict[int, Any],
-) -> dict[str, Any]:
-    """Gecondenseerde posts for one balance country/year, split by Excel page.
-
-    Reads ``dbo.condensed_balance`` in ``id`` order; ``font_size``,
-    ``background_color`` and ``bold`` pass through. Rows are bucketed by
-    ``excel_page`` (NULL → page 3) into ``pages``.
-    ``sum_local_code`` lists ``dbo.dim_category.local_code`` values summed
-    into the post (NULL/empty = blank). Commas separate tokens; ``3001-3220``
-    is every defined local_code in that closed range. ``section_name``:
-    - ``{Titel}`` → the ``post_name`` is the page title; a non-NULL
-      ``background_color`` there is the default background for the whole page;
-    - ``{SideA,SideB,…}`` → the ``post_name`` is a heading for those sides,
-      whose ``background_color`` applies to its own cells only;
-    - otherwise a comma-separated path whose first part is the side and
-      optional second part the group. Posts whose ``post_name`` starts with
-      ``Totaal `` are totals: group-level when the path has a group,
-      side-level otherwise. Sides and groups keep their first-appearance
-      order; group matching is case-insensitive so totals land in the group
-      they belong to. Side-level (no-group) rows are kept in ``side.lines``
-      in ``id`` order with an ``is_total`` flag, so a side may end with a
-      non-total footer line such as ``Operationeel resultaat``. A non-NULL
-      ``background_color`` on a path post or heading is a cell-specific fill.
-      A non-NULL ``bold`` renders the row in bold (page title/heading or post).
-    ``amounts_by_id`` carries the balance amounts (activa/passiva) plus the
-    3000-4999 P&L category amounts read from the database, so posts may sum
-    any ``local_code`` including P&L categories. Missing table or no rows
-    → empty ``pages``.
-    """
-    from decimal import Decimal
-
-    from shared.balance_values import parse_sum_local_codes
-
-    empty = {"pages": []}
-    try:
-        _ensure_condensed_balance(cursor)
-        cursor.execute(
-            "SELECT post_name, sum_local_code, section_name, font_size, "
-            "excel_page, background_color, bold "
-            "FROM dbo.condensed_balance WHERE country_id = ? ORDER BY id",
-            (int(country_id),),
-        )
-        rows = cursor.fetchall()
-        if not rows:
-            return empty
-        cursor.execute(
-            "SELECT local_code, category_id FROM dbo.dim_category WHERE country_id = ?",
-            (int(country_id),),
-        )
-        local_to_cat = {
-            int(local_code): int(category_id)
-            for local_code, category_id in cursor.fetchall()
-            if local_code is not None and category_id is not None
-        }
-    except Exception as exc:  # noqa: BLE001
-        print(f"export: condensed balance lookup failed: {exc}")
-        return empty
-
-    def _amount_of(codes: list[int]) -> float | None:
-        if not codes:
-            return None
-        total = Decimal("0")
-        for code in codes:
-            category_id = local_to_cat.get(code)
-            if category_id is not None:
-                total += amounts_by_id.get(category_id, Decimal("0"))
-        return float(total)
-
-    def _page_for(page_number) -> dict[str, Any]:
-        number = int(page_number) if page_number is not None else 3
-        page = page_by_number.get(number)
-        if page is None:
-            page = {
-                "excel_page": number,
-                "title": None,
-                "background_color": None,
-                "headings": [],
-                "sides": [],
-                "_sides": {},
-                "_groups": {},
-            }
-            page_by_number[number] = page
-            pages.append(page)
-        return page
-
-    pages: list[dict[str, Any]] = []
-    page_by_number: dict[int, dict[str, Any]] = {}
-    for post_name, sum_local_code, section_name, font_size, excel_page, background_color, bold in rows:
-        raw_section = str(section_name or "").strip()
-        header_match = re.fullmatch(r"\{([^}]*)\}", raw_section, re.IGNORECASE)
-        if header_match is not None:
-            page = _page_for(excel_page)
-            inner = header_match.group(1)
-            if inner.strip().lower() == "titel":
-                page["title"] = str(post_name)
-                page["title_font_size"] = font_size
-                page["title_bold"] = bold
-                if background_color is not None:
-                    page["background_color"] = background_color
-            else:
-                page["headings"].append(
-                    {
-                        "name": str(post_name),
-                        "sections": [
-                            part.strip()
-                            for part in inner.split(",")
-                            if part.strip()
-                        ],
-                        "font_size": font_size,
-                        "background_color": background_color,
-                        "bold": bold,
-                    }
-                )
-            continue
-        codes = parse_sum_local_codes(sum_local_code, set(local_to_cat))
-        parts = [part.strip() for part in raw_section.split(",") if part.strip()]
-        side_name = parts[0] if parts else ""
-        group_name = parts[1] if len(parts) > 1 else None
-        if not side_name:
-            continue
-        page = _page_for(excel_page)
-        line = {
-            "post_name": str(post_name),
-            "amount": _amount_of(codes),
-            "font_size": font_size,
-            "background_color": background_color,
-            "bold": bold,
-        }
-        is_total = str(post_name).strip().lower().startswith("totaal")
-        side_key = side_name.lower()
-        side = page["_sides"].get(side_key)
-        if side is None:
-            side = {"name": side_name, "groups": [], "lines": []}
-            page["_sides"][side_key] = side
-            page["sides"].append(side)
-        if group_name:
-            group_key = (side_key, group_name.lower())
-            group = page["_groups"].get(group_key)
-            if group is None:
-                group = {"name": group_name, "posts": [], "totals": []}
-                page["_groups"][group_key] = group
-                side["groups"].append(group)
-            (group["totals"] if is_total else group["posts"]).append(line)
-        else:
-            side["lines"].append({**line, "is_total": is_total})
-
-    def _side_total(side: dict[str, Any]) -> float:
-        totals = [
-            Decimal(str(line["amount"]))
-            for line in side["lines"]
-            if line["is_total"] and line["amount"] is not None
-        ]
-        if totals:
-            return float(sum(totals))
-        amounts = [
-            Decimal(str(line["amount"]))
-            for group in side["groups"]
-            for line in group["totals"] + group["posts"]
-            if line["amount"] is not None
-        ]
-        return float(sum(amounts))
-
-    for page in pages:
-        del page["_sides"]
-        del page["_groups"]
-
-    return {"pages": pages}
 
 
 def display_digits(rows: list[dict[str, Any]]) -> int:

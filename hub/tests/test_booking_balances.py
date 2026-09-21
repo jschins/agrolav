@@ -18,7 +18,7 @@ from shared.balance_values import (
     is_journal_forbidden_code,
     journal_deltas,
     journal_leg_amount,
-    parse_sum_local_codes,
+    build_parent_tree,
     result_overlay_cents,
     _pair_spaar_mirrors,
     spaar_mirror_posted_amount,
@@ -476,21 +476,56 @@ class CategoryRoleTests(unittest.TestCase):
         self.assertFalse(is_kosten_local(2999))
         self.assertFalse(is_kosten_local(4000))
 
-    def test_sum_local_code_range(self):
-        defined = {
-            3001, 3002, 3005, 3010, 3015, 3020, 3025, 3026, 3027, 3035,
-            3036, 3037, 3038, 3040, 3045, 3050, 3055, 3080, 3100, 3101,
-            3102, 3240, 3250, 3070, 3210, 3220, 4000,
+    def test_parent_tree_nests_groups_and_totals(self):
+        posts = [
+            {"code": 1050, "label": "Gebouwen", "amount": 500.0},
+            {"code": 1000, "label": "Kas Huis", "amount": 10.0},
+            {"code": 1001, "label": "Kas Administratie", "amount": 5.0},
+            {"code": 1035, "label": "Debiteuren", "amount": 20.0},
+            {"code": 2000, "label": "Eigen vermogen", "amount": 535.0},
+            {"code": 2300, "label": "Schulden banken", "amount": 0.0},
+            {"code": 2301, "label": "ING STD", "amount": 0.0},
+        ]
+        parents = {
+            1050: "Activa/Vaste activa",
+            1000: "Activa/Vlottende activa/Kas",
+            1001: "Activa/Vlottende activa/Kas",
+            1035: "Activa/Vlottende activa",
+            2000: "Passiva",
+            2300: "Passiva/Schulden",
+            2301: "Passiva/schulden",
         }
-        self.assertEqual(
-            parse_sum_local_codes("3001-3220", defined),
-            sorted(code for code in defined if 3001 <= code <= 3220),
+        roots = build_parent_tree(
+            posts, parents, lambda p: "Activa" if p["code"] < 2000 else "Passiva"
         )
-        self.assertNotIn(3240, parse_sum_local_codes("3001-3220", defined))
+        self.assertEqual([r["name"] for r in roots], ["Activa", "Passiva"])
+        activa, passiva = roots
+        self.assertEqual(activa["total"], 535.0)
+        # Children ordered by lowest local_code: Vlottende (1000) before Vaste (1050).
         self.assertEqual(
-            parse_sum_local_codes("1051,3001-3010", {1051, 3001, 3002, 3010, 3015}),
-            [1051, 3001, 3002, 3010],
+            [c["name"] for c in activa["children"]], ["Vlottende activa", "Vaste activa"]
         )
+        vlottend = activa["children"][0]
+        self.assertEqual(vlottend["total"], 35.0)
+        kas, debiteuren = vlottend["children"]
+        self.assertEqual(kas["kind"], "group")
+        self.assertEqual([c["code"] for c in kas["children"]], [1000, 1001])
+        self.assertEqual(debiteuren["kind"], "post")
+        self.assertEqual(debiteuren["code"], 1035)
+        # Case-insensitive group merge keeps the first spelling.
+        schulden = [c for c in passiva["children"] if c["kind"] == "group"]
+        self.assertEqual(len(schulden), 1)
+        self.assertEqual(schulden[0]["name"], "Schulden")
+        self.assertEqual([c["code"] for c in schulden[0]["children"]], [2300, 2301])
+
+    def test_parent_tree_default_root_for_missing_parent(self):
+        roots = build_parent_tree(
+            [{"code": 3001, "label": "Huur", "amount": -1.0}], {}, "Resultaat"
+        )
+        self.assertEqual(len(roots), 1)
+        self.assertEqual(roots[0]["name"], "Resultaat")
+        self.assertEqual(roots[0]["children"][0]["kind"], "post")
+        self.assertEqual(roots[0]["total"], -1.0)
 
 
 if __name__ == "__main__":

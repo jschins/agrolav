@@ -17,8 +17,10 @@ No connection ownership is taken here.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 SPAAR_MARKER = "[spaar-mirror]"
 AFSCHRIJVING_MARKER = "[afschrijving]"
@@ -196,53 +198,102 @@ def is_resultaat(cat_id: int) -> bool:
     return 3000 <= int(cat_id) <= 4999
 
 
-_SUM_CODE_RANGE = re.compile(r"^(\d+)\s*-\s*(\d+)$")
-_SUM_CODE_ONE = re.compile(r"^\d+$")
+def parent_path_segments(path: object) -> list[str]:
+    """Split ``dim_category.parent`` (``Activa/Vlottende activa/Kas``) into names."""
+    return [seg.strip() for seg in str(path or "").split("/") if seg.strip()]
 
 
-def parse_sum_local_codes(
-    raw: object,
-    defined: set[int] | None = None,
-) -> list[int]:
-    """Expand ``dbo.condensed_balance.sum_local_code``.
+def category_parents(country_id: int, cursor: object) -> dict[int, str]:
+    """local_code → ``dim_category.parent`` path for one country.
 
-    Comma-separated tokens. A dash ``3001-3220`` is every *defined*
-    ``dim_category.local_code`` in that closed interval (the endpoints
-    themselves only when they exist). A bare number is that code.
-    Tokens keep first-appearance order; duplicates are dropped.
+    ``parent`` is the slash-separated place of a post in the balance sheet,
+    e.g. ``Activa/Vlottende activa/Bank SIa``. Rows with NULL/blank parent
+    are omitted; an empty dict when the column does not exist yet.
     """
-    known = {int(code) for code in (defined or ())}
-    known_sorted = sorted(known)
-    out: list[int] = []
-    seen: set[int] = set()
-
-    def _add(code: int) -> None:
-        if code in seen:
-            return
-        seen.add(code)
-        out.append(code)
-
-    for part in str(raw or "").split(","):
-        token = part.strip()
-        if not token:
+    cursor.execute("SELECT COL_LENGTH(N'dbo.dim_category', N'parent')")
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        return {}
+    cursor.execute(
+        "SELECT local_code, parent FROM dbo.dim_category "
+        "WHERE country_id = ? AND parent IS NOT NULL",
+        (int(country_id),),
+    )
+    out: dict[int, str] = {}
+    for local_code, parent in cursor.fetchall():
+        if local_code is None:
             continue
-        ranged = _SUM_CODE_RANGE.fullmatch(token)
-        if ranged:
-            lo, hi = int(ranged.group(1)), int(ranged.group(2))
-            if lo > hi:
-                lo, hi = hi, lo
-            if known_sorted:
-                for code in known_sorted:
-                    if lo <= code <= hi:
-                        _add(code)
-            else:
-                _add(lo)
-                if hi != lo:
-                    _add(hi)
-            continue
-        if _SUM_CODE_ONE.fullmatch(token):
-            _add(int(token))
+        segments = parent_path_segments(parent)
+        if segments:
+            out[int(local_code)] = "/".join(segments)
     return out
+
+
+def build_parent_tree(
+    posts: list[dict[str, Any]],
+    parents: dict[int, str],
+    default_root: str | Callable[[dict[str, Any]], str],
+) -> list[dict[str, Any]]:
+    """Nest ``posts`` under the groups named by their ``parent`` path.
+
+    Each post needs an int ``code`` (local_code), ``label`` and ``amount``.
+    A post whose code has no path lands directly under ``default_root``
+    (a name, or a callable returning the name for that post). Group names
+    match case-insensitively; the first spelling seen is kept. Children of
+    every group — posts and sub-groups alike — are ordered by their lowest
+    local_code, and each group carries ``total`` (sum of its posts).
+
+    Returns the root groups::
+
+        {"kind": "group", "name": "Activa", "total": 1.0, "children": [
+            {"kind": "post", "code": 1000, "label": "Kas Huis", "amount": 1.0},
+            {"kind": "group", "name": "Vaste activa", ...},
+        ]}
+    """
+    root: dict[str, Any] = {"kind": "group", "name": "", "children": [], "_index": {}}
+
+    def _group_under(node: dict[str, Any], name: str) -> dict[str, Any]:
+        key = name.lower()
+        group = node["_index"].get(key)
+        if group is None:
+            group = {"kind": "group", "name": name, "children": [], "_index": {}}
+            node["_index"][key] = group
+            node["children"].append(group)
+        return group
+
+    for post in posts:
+        code = int(post["code"])
+        segments = parent_path_segments(parents.get(code))
+        if not segments:
+            fallback = default_root(post) if callable(default_root) else default_root
+            segments = parent_path_segments(fallback) or [str(fallback)]
+        node = root
+        for segment in segments:
+            node = _group_under(node, segment)
+        node["children"].append({**post, "kind": "post", "code": code})
+
+    def _finish(node: dict[str, Any]) -> tuple[Decimal, int | None]:
+        total = Decimal("0")
+        first: int | None = None
+        for child in node["children"]:
+            if child["kind"] == "group":
+                child_total, child_first = _finish(child)
+            else:
+                child_total = Decimal(str(child.get("amount") or 0))
+                child_first = int(child["code"])
+            child["_order"] = child_first if child_first is not None else 0
+            total += child_total
+            if child_first is not None and (first is None or child_first < first):
+                first = child_first
+        node["children"].sort(key=lambda child: child["_order"])
+        for child in node["children"]:
+            child.pop("_order", None)
+        node.pop("_index", None)
+        node["total"] = float(total)
+        return total, first
+
+    _finish(root)
+    return root["children"]
 
 
 def recorded_resultaat_totals(

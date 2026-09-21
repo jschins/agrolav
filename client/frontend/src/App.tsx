@@ -48,7 +48,8 @@ import {
   updateCenterAccountTerms,
   type CentralWinsAlert,
   type CentraleSyncStatus,
-  type CondensedPage,
+  type ExportTreeGroup,
+  type ExportTreeNode,
   type SyncNotification,
 } from "./api";
 import type {
@@ -66,7 +67,6 @@ import {
   euro2,
   type XlsxCell,
   type XlsxSheet,
-  type XlsxStyle,
 } from "./xlsx";
 import AfschrijvingenEditor from "./AfschrijvingenEditor";
 import JournalEditor from "./JournalEditor";
@@ -218,136 +218,94 @@ function displayCategoryName(name: string): string {
   return shownLabel(parseInt(match[1], 10), match[2]);
 }
 
-function condensedFontStyle(
-  font_size?: number | null,
-  bold?: boolean,
-  background?: string | null
-): XlsxStyle | undefined {
-  const style: XlsxStyle = {};
-  if (bold) style.bold = true;
-  if (font_size) style.fontSize = font_size;
-  if (background) style.background = background;
-  return Object.keys(style).length > 0 ? style : undefined;
-}
-
-function condensedNamedCell(text: string, line: import("./api").CondensedLine): XlsxCell {
-  const style = condensedFontStyle(line.font_size, line.bold === true, line.background_color);
-  return style ? { value: text, style } : text;
-}
-
-function condensedAmountCell(line: import("./api").CondensedLine): XlsxCell {
-  if (line.amount == null) return "";
-  const style = condensedFontStyle(line.font_size, line.bold === true, line.background_color) ?? {};
-  style.format = '"€" #,##0;"€" -#,##0';
-  return { value: euro2(line.amount), style };
-}
-
-function condensedSheetName(excel_page: number): string {
-  if (excel_page === 3) return "Gecondenseerde balans";
-  if (excel_page === 4) return "Gecondenseerd resultaat";
-  return `Gecondenseerd ${excel_page}`;
-}
-
-function condensedPageRows(page: CondensedPage): XlsxCell[][] {
-  const rows: XlsxCell[][] = [];
-  if (page.title) {
-    const titleStyle = condensedFontStyle(page.title_font_size, page.title_bold === true, page.background_color);
-    rows.push([titleStyle ? { value: page.title, style: titleStyle } : page.title]);
-    rows.push([]);
-  }
-  const emitted = new Array(page.headings.length).fill(false);
-  for (const side of page.sides) {
-    const headingIdx = page.headings.findIndex(
-      (heading, i) =>
-        !emitted[i] &&
-        heading.sections.some(
-          (section) => section.toLowerCase() === side.name.toLowerCase()
-        )
-    );
-    if (headingIdx !== -1) {
-      emitted[headingIdx] = true;
-      const heading = page.headings[headingIdx];
-      const style = condensedFontStyle(heading.font_size, heading.bold === true, heading.background_color);
-      rows.push([style ? { value: heading.name, style } : heading.name]);
-      rows.push([]);
+/** Deepest level at which a post sits (root group = depth 0). */
+function treeDepth(nodes: ExportTreeNode[], depth = 0): number {
+  let max = depth;
+  for (const node of nodes) {
+    if (node.kind === "group") {
+      max = Math.max(max, treeDepth(node.children, depth + 1));
     } else {
-      rows.push([side.name]);
+      max = Math.max(max, depth);
     }
-    for (const group of side.groups) {
-      rows.push(["", group.name]);
-      for (const line of group.posts) {
-        rows.push(["", "", condensedNamedCell(line.post_name, line), condensedAmountCell(line)]);
-      }
-      for (const line of group.totals) {
-        rows.push(["", condensedNamedCell(line.post_name, line), condensedAmountCell(line)]);
-      }
-      rows.push([]);
-    }
-    for (const line of side.lines) {
-      rows.push(["", condensedNamedCell(line.post_name, line), condensedAmountCell(line)]);
-    }
-    rows.push([]);
   }
-  return rows;
+  return max;
 }
 
-function condensedSheet(page: CondensedPage): XlsxSheet {
-  const content = condensedPageRows(page);
-  const pageColor = page.background_color || undefined;
-  const totalWidth = 4;
-  const rows: XlsxCell[][] = content.map((row) => {
-    const filled: XlsxCell[] = [];
-    for (let c = 0; c < totalWidth; c += 1) {
-      const cell = row[c];
-      if (cell === undefined) {
-        filled.push(pageColor ? { value: "", style: { background: pageColor } } : "");
-      } else if (typeof cell === "object") {
-        if (cell.style?.background || !pageColor) filled.push(cell);
-        else filled.push({ value: cell.value, style: { ...cell.style, background: pageColor } });
-      } else {
-        filled.push(pageColor ? { value: cell, style: { background: pageColor } } : cell);
-      }
+/**
+ * Outline rows for a parent-structured sheet. One text column per nesting
+ * level, amounts in the last column. Group names are bold; a group of two or
+ * more children closes with a bold `Totaal <name>` row; roots are separated
+ * by a blank row.
+ */
+function treeSheet(name: string, title: string, roots: ExportTreeGroup[]): XlsxSheet {
+  const levels = treeDepth(roots) + 1;
+  const amountCol = levels;
+  const rows: XlsxCell[][] = [[{ value: title, style: { bold: true, fontSize: 14 } }]];
+  const line = (depth: number, text: XlsxCell, amount?: XlsxCell): XlsxCell[] => {
+    const row: XlsxCell[] = Array.from({ length: amountCol + 1 }, () => "");
+    row[depth] = text;
+    if (amount !== undefined) row[amountCol] = amount;
+    return row;
+  };
+  const bold = (text: string): XlsxCell => ({ value: text, style: { bold: true } });
+  const boldAmount = (value: number): XlsxCell => ({ value: euro2(value), style: { bold: true } });
+  const walk = (node: ExportTreeNode, depth: number) => {
+    if (node.kind === "post") {
+      rows.push(line(depth, `${node.code} ${node.label}`, euro2(node.amount)));
+      return;
     }
-    return filled;
+    const heading =
+      depth === 0 ? { value: node.name, style: { bold: true, fontSize: 12 } } : bold(node.name);
+    rows.push(line(depth, heading));
+    for (const child of node.children) walk(child, depth + 1);
+    if (node.children.length > 1 || depth === 0) {
+      rows.push(line(depth, bold(`Totaal ${node.name}`), boldAmount(node.total)));
+    }
+  };
+  roots.forEach((root, i) => {
+    if (i > 0) rows.push([]);
+    walk(root, 0);
   });
-  if (pageColor) {
-    for (let i = 0; i < 10; i += 1) {
-      rows.push(Array.from({ length: totalWidth }, () => ({ value: "", style: { background: pageColor } })));
-    }
-  }
-  return { name: condensedSheetName(page.excel_page), rows, widths: [12, 34, 44, 15] };
+  const widths: number[] = Array.from({ length: levels }, (_, i) =>
+    i === levels - 1 ? 44 : 4
+  );
+  widths.push(14);
+  return { name, rows, widths };
 }
 
 function excelSheets(data: ExportExcelData): XlsxSheet[] {
   const sheets: XlsxSheet[] = [];
   const codeOf = (line: ExportExcelLine) => String(line.code);
   if (data.has_balance) {
+    if (data.balance_tree?.length) {
+      sheets.push(treeSheet("Balans", `Balans ${data.year}`, data.balance_tree));
+    } else {
+      const rows: (string | number)[][] = [];
+      rows.push([`Balans ${data.year}`]);
+      rows.push(["Zijde", "Code", "Post", "Bedrag"]);
+      for (const line of data.activa) {
+        rows.push(["Activa", codeOf(line), line.label, euro2(line.amount)]);
+      }
+      rows.push(["Activa", "", "Totaal Activa", euro2(data.total_activa)]);
+      rows.push([]);
+      for (const line of data.passiva) {
+        rows.push(["Passiva", codeOf(line), line.label, euro2(line.amount)]);
+      }
+      rows.push(["Passiva", "", "Totaal Passiva", euro2(data.total_passiva)]);
+      sheets.push({ name: "Balans", rows, widths: [8, 10, 60, 14] });
+    }
+  }
+  if (data.result_tree?.length) {
+    sheets.push(treeSheet("Resultaat", `Resultaat ${data.year}`, data.result_tree));
+  } else {
     const rows: (string | number)[][] = [];
-    rows.push([`Balans ${data.year}`]);
-    rows.push(["Zijde", "Code", "Post", "Bedrag"]);
-    for (const line of data.activa) {
-      rows.push(["Activa", codeOf(line), line.label, euro2(line.amount)]);
+    rows.push([`Resultaat ${data.year}`]);
+    rows.push(["Code", "Post", "Bedrag"]);
+    for (const line of data.resultaat) {
+      rows.push([codeOf(line), line.label, euro2(line.amount)]);
     }
-    rows.push(["Activa", "", "Totaal Activa", euro2(data.total_activa)]);
-    rows.push([]);
-    for (const line of data.passiva) {
-      rows.push(["Passiva", codeOf(line), line.label, euro2(line.amount)]);
-    }
-    rows.push(["Passiva", "", "Totaal Passiva", euro2(data.total_passiva)]);
-    sheets.push({ name: "Balans", rows, widths: [8, 10, 60, 14] });
-  }
-  const rows: (string | number)[][] = [];
-  rows.push([`Resultaat ${data.year}`]);
-  rows.push(["Code", "Post", "Bedrag"]);
-  for (const line of data.resultaat) {
-    rows.push([codeOf(line), line.label, euro2(line.amount)]);
-  }
-  rows.push(["", "Totaal", euro2(data.total_resultaat)]);
-  sheets.push({ name: "Resultaat", rows, widths: [10, 60, 14] });
-  if (data.has_balance) {
-    for (const page of data.gecondenseerd?.pages ?? []) {
-      sheets.push(condensedSheet(page));
-    }
+    rows.push(["", "Totaal", euro2(data.total_resultaat)]);
+    sheets.push({ name: "Resultaat", rows, widths: [10, 60, 14] });
   }
   return sheets;
 }

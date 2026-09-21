@@ -109,52 +109,24 @@ export interface ExportResultaatCashflow {
   banksaldo: ExportExcelLine;
 }
 
-export interface CondensedLine {
-  post_name: string;
-  amount: number | null;
-  font_size?: number | null;
-  background_color?: string | null;
-  bold?: boolean | null;
+/** A post in the parent-structured export: local_code, label, amount. */
+export interface ExportTreePost {
+  kind: "post";
+  code: number;
+  label: string;
+  amount: number;
+  source?: string;
 }
 
-export interface CondensedGroup {
+/** A `dim_category.parent` path segment with its nested posts/groups. */
+export interface ExportTreeGroup {
+  kind: "group";
   name: string;
-  posts: CondensedLine[];
-  totals: CondensedLine[];
+  total: number;
+  children: ExportTreeNode[];
 }
 
-export interface CondensedSide {
-  name: string;
-  groups: CondensedGroup[];
-  lines: CondensedSideLine[];
-}
-
-export interface CondensedSideLine extends CondensedLine {
-  is_total: boolean;
-}
-
-export interface CondensedHeading {
-  name: string;
-  sections: string[];
-  font_size?: number | null;
-  background_color?: string | null;
-  bold?: boolean | null;
-}
-
-export interface CondensedPage {
-  excel_page: number;
-  title?: string | null;
-  title_font_size?: number | null;
-  title_bold?: boolean | null;
-  /** Page-wide default background; applied to every cell of the sheet. */
-  background_color?: string | null;
-  headings: CondensedHeading[];
-  sides: CondensedSide[];
-}
-
-export interface GecondenseerdData {
-  pages: CondensedPage[];
-}
+export type ExportTreeNode = ExportTreeGroup | ExportTreePost;
 
 export interface ExportExcelData {
   year: number;
@@ -163,9 +135,12 @@ export interface ExportExcelData {
   passiva: ExportExcelLine[];
   total_activa: number;
   total_passiva: number;
+  /** Balance posts nested by `dim_category.parent`; roots are the sides. */
+  balance_tree?: ExportTreeGroup[];
   resultaat: ExportExcelLine[];
   total_resultaat: number;
-  gecondenseerd?: GecondenseerdData;
+  /** P&L posts nested by `parent`; null when no P&L row has a parent. */
+  result_tree?: ExportTreeGroup[] | null;
 }
 
 export function getExportExcel(year?: string): Promise<ExportExcelData> {

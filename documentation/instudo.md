@@ -57,7 +57,7 @@ bank switcher.
 
 **Do not bundle center balances.** A center is an access group, not a
 balance grain. Journals, `balance_opening`, `afschrijvingen`,
-`dim_category`, `condensed_balance`, `mapping_banks`, and the 2000 plug are
+`dim_category` (incl. `parent`), `mapping_banks`, and the 2000 plug are
 all `country_id`. Two centers do not give two sheets. Instudo already has
 **Bijdrage SI centrale** (3125): inter-group bookings make “sum of two
 center 2000s = country 2000” false unless that contra is designed.
