@@ -20,6 +20,13 @@ export interface XlsxSheet {
   name: string;
   rows: XlsxCell[][];
   widths?: number[];
+  /**
+   * Row outline level per row (same index as `rows`; 0/undefined = none).
+   * Rows with level k > 0 form a collapsible group whose summary row is the
+   * nearest preceding row with a lower level, so Excel shows +/− buttons and
+   * the 1…N level buttons that expand or collapse the sheet progressively.
+   */
+  outlineLevels?: number[];
 }
 
 const XML_ESCAPES: Record<string, string> = {
@@ -227,10 +234,14 @@ function stylesXml(reg: StyleRegistry): string {
 }
 
 function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): string {
+  const levels = sheet.outlineLevels ?? [];
+  const maxLevel = Math.min(7, Math.max(0, ...levels.map((l) => l || 0)));
   const rowsXml = sheet.rows
     .map((row, ri) => {
       if (row.length === 0) return "";
       const r = ri + 1;
+      const level = Math.min(7, Math.max(0, levels[ri] || 0));
+      const outline = level > 0 ? ` outlineLevel="${level}"` : "";
       const cellsXml = row
         .map((cell, ci) => {
           // A plain empty string is a blank cell: emit nothing so text in
@@ -250,7 +261,7 @@ function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): stri
           return `<c r="${ref}" s="${styleId}" t="inlineStr"><is><t>${escXml(cell)}</t></is></c>`;
         })
         .join("");
-      return `<row r="${r}">${cellsXml}</row>`;
+      return `<row r="${r}"${outline}>${cellsXml}</row>`;
     })
     .join("");
   const colCount = Math.max(1, ...sheet.rows.map((row) => row.length));
@@ -264,8 +275,15 @@ function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): stri
           )
           .join("")}</cols>`
       : "";
+  // Summary (heading) rows sit above their group, so the +/− button lands
+  // on the heading; outlineLevelRow enables the 1…N level buttons.
+  const sheetPr = maxLevel > 0 ? `<sheetPr><outlinePr summaryBelow="0"/></sheetPr>` : "";
+  const formatPr =
+    maxLevel > 0
+      ? `<sheetFormatPr defaultRowHeight="15" outlineLevelRow="${maxLevel}"/>`
+      : "";
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${lastCol}${sheet.rows.length}"/>${colsXml}<sheetData>${rowsXml}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${sheetPr}<dimension ref="A1:${lastCol}${sheet.rows.length}"/>${formatPr}${colsXml}<sheetData>${rowsXml}</sheetData></worksheet>`;
 }
 
 /** Excel sheet names: max 31 chars, none of []:*?/\ , not empty. */

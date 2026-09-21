@@ -236,16 +236,20 @@ function treeDepth(nodes: ExportTreeNode[], depth = 0): number {
  * level, then the amount column, then — when `headers` is given — one
  * drill-down column per entry of a node's `columns` (e.g. per bank account).
  * Row 1 holds the title and, from the amount column on, the `headers`
- * (total first, then one per drill-down column). Group names are bold; a
- * group of two or more children closes with a bold `Totaal <name>` row;
- * roots are separated by a blank row.
+ * (total first, then one per drill-down column). Group names are bold. By
+ * default a group of two or more children closes with a bold `Totaal <name>`
+ * row; with `totalsOnHeading` the group's total is written on its heading
+ * row instead and no `Totaal` rows are emitted. Roots are separated by a
+ * blank row.
  */
 function treeSheet(
   name: string,
   title: string,
   roots: ExportTreeGroup[],
-  headers: string[] = []
+  headers: string[] = [],
+  options: { totalsOnHeading?: boolean } = {}
 ): XlsxSheet {
+  const totalsOnHeading = options.totalsOnHeading === true;
   const levels = treeDepth(roots) + 1;
   const amountCol = levels;
   const drill = Math.max(0, headers.length - 1);
@@ -259,6 +263,13 @@ function treeSheet(
     header[amountCol + i] = bold(text);
   });
   const rows: XlsxCell[][] = [header];
+  // Excel outline level per row = nesting depth, so the 1…N buttons collapse
+  // the sheet to roots, then root+groups, and so on.
+  const outlineLevels: number[] = [0];
+  const push = (row: XlsxCell[], depth: number) => {
+    rows.push(row);
+    outlineLevels.push(depth);
+  };
   const line = (
     depth: number,
     text: XlsxCell,
@@ -279,26 +290,30 @@ function treeSheet(
   };
   const walk = (node: ExportTreeNode, depth: number) => {
     if (node.kind === "post") {
-      rows.push(line(depth, `${node.code} ${node.label}`, node.amount, node.columns));
+      push(line(depth, `${node.code} ${node.label}`, node.amount, node.columns), depth);
       return;
     }
     const heading =
       depth === 0 ? { value: node.name, style: { bold: true, fontSize: 12 } } : bold(node.name);
-    rows.push(line(depth, heading));
+    if (totalsOnHeading) {
+      push(line(depth, heading, node.total, node.columns, true), depth);
+    } else {
+      push(line(depth, heading), depth);
+    }
     for (const child of node.children) walk(child, depth + 1);
-    if (node.children.length > 1 || depth === 0) {
-      rows.push(line(depth, bold(`Totaal ${node.name}`), node.total, node.columns, true));
+    if (!totalsOnHeading && (node.children.length > 1 || depth === 0)) {
+      push(line(depth, bold(`Totaal ${node.name}`), node.total, node.columns, true), depth);
     }
   };
   roots.forEach((root, i) => {
-    if (i > 0) rows.push([]);
+    if (i > 0) push([], 0);
     walk(root, 0);
   });
   const widths: number[] = Array.from({ length: levels }, (_, i) =>
     i === levels - 1 ? 44 : 4
   );
   for (let i = 0; i <= drill; i += 1) widths.push(14);
-  return { name, rows, widths };
+  return { name, rows, widths, outlineLevels };
 }
 
 /** Resultaat drill-down headers: accounts, spaarrekeningen, then Journaal. */
@@ -317,7 +332,11 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
   const accountHeaders = resultDrillHeaders(data, terms);
   if (data.has_balance) {
     if (data.balance_tree?.length) {
-      sheets.push(treeSheet("Balans", `Balans ${data.year}`, data.balance_tree));
+      sheets.push(
+        treeSheet("Balans", `Balans ${data.year}`, data.balance_tree, [], {
+          totalsOnHeading: true,
+        })
+      );
     } else {
       const rows: (string | number)[][] = [];
       rows.push([`Balans ${data.year}`]);
