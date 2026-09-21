@@ -172,16 +172,9 @@ class AccountBalanceFileTests(unittest.TestCase):
 
 
 class WipeCountryYearTests(unittest.TestCase):
-    def test_deletes_year_transactions_and_uploaded_files(self):
+    def _wipe(self, cursor, **scope):
         from app import sql_catalog
 
-        cursor = mock.Mock()
-        cursor.fetchone.side_effect = [
-            (1,),
-            (4,),
-            (12,),
-            (3,),
-        ]
         conn = mock.Mock()
         with mock.patch.object(sql_catalog, "_sql_ready", return_value=True), mock.patch.object(
             sql_catalog, "_sql_retry", side_effect=lambda fn: fn()
@@ -190,8 +183,14 @@ class WipeCountryYearTests(unittest.TestCase):
         ), mock.patch(
             "app.sql_replica._transaction_table", return_value="dbo.transaction_nederland"
         ):
-            result = sql_catalog.wipe_country_year("nederland", "2025")
-        sqls = [call.args[0] for call in cursor.execute.call_args_list]
+            result = sql_catalog.wipe_country_year("nederland", "2025", **scope)
+        return result, conn, [call.args[0] for call in cursor.execute.call_args_list]
+
+    def test_deletes_year_transactions_and_uploaded_files(self):
+        cursor = mock.Mock()
+        cursor.fetchone.side_effect = [(1,), (4,), (12,), (3,)]
+        cursor.fetchall.side_effect = [[(7,), (8,)], [(20,), (44,)]]
+        result, conn, sqls = self._wipe(cursor)
         self.assertTrue(any("DELETE FROM dbo.transaction_nederland" in sql for sql in sqls))
         self.assertTrue(any("DELETE FROM dbo.category_total" in sql for sql in sqls))
         self.assertTrue(any("DELETE FROM dbo.uploaded_files" in sql for sql in sqls))
@@ -199,6 +198,40 @@ class WipeCountryYearTests(unittest.TestCase):
         self.assertEqual(result["files"], 3)
         self.assertEqual(result["year"], "2025")
         conn.commit.assert_called_once()
+
+    def test_center_scope_limits_to_that_center(self):
+        cursor = mock.Mock()
+        cursor.fetchone.side_effect = [(1,), (4,), (5,), (2,)]
+        cursor.fetchall.side_effect = [[(7,)], [(20,)]]
+        result, _, sqls = self._wipe(cursor, center="instudo_sib")
+        person_lookup = next(sql for sql in sqls if "FROM dbo.person p" in sql)
+        self.assertIn("n.username = ?", person_lookup)
+        delete_tx = next(sql for sql in sqls if "DELETE FROM dbo.transaction_nederland" in sql)
+        self.assertIn("person_id IN (?)", delete_tx)
+        self.assertEqual(result["transactions"], 5)
+
+    def test_person_scope_deletes_only_that_person(self):
+        cursor = mock.Mock()
+        cursor.fetchone.side_effect = [(1,), (4,), (9,), (1,)]
+        cursor.fetchall.side_effect = [[(7,)], [(20,)]]
+        result, _, sqls = self._wipe(cursor, center="instudo_sib", person="janpiet")
+        person_lookup = next(sql for sql in sqls if "FROM dbo.person p" in sql)
+        self.assertIn("p.username = ?", person_lookup)
+        self.assertTrue(any("DELETE FROM dbo.category_total" in sql for sql in sqls))
+        self.assertEqual(result["transactions"], 9)
+
+    def test_account_scope_deletes_by_account_and_keeps_category_total(self):
+        cursor = mock.Mock()
+        cursor.fetchone.side_effect = [(1,), (4,), (6,), (1,)]
+        cursor.fetchall.side_effect = [[(44, 7)]]
+        result, _, sqls = self._wipe(
+            cursor, center="instudo_sib", person="janpiet", account="NL12 RABO 0123 4567 89"
+        )
+        delete_tx = next(sql for sql in sqls if "DELETE FROM dbo.transaction_nederland" in sql)
+        self.assertIn("account_id IN (?)", delete_tx)
+        self.assertFalse(any("DELETE FROM dbo.category_total" in sql for sql in sqls))
+        self.assertTrue(any("DELETE FROM dbo.uploaded_files" in sql for sql in sqls))
+        self.assertEqual(result["transactions"], 6)
 
 
 class UploadGrantAndIngestTests(unittest.TestCase):

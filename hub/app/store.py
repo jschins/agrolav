@@ -545,8 +545,14 @@ def recalculate_from_scratch_all(
     }
 
 
-def wipe_year(center: str, year: str) -> dict[str, Any]:
-    """Delete one year's bookings for every account in this center's country."""
+def wipe_year(
+    center: str,
+    year: str,
+    *,
+    person: str | None = None,
+    account: str | None = None,
+) -> dict[str, Any]:
+    """Delete one year's bookings for the selected center, person, or account."""
     from app.matrix import build_matrix
     from app.runtime import CALC_LOCK
     from app.runtime import (
@@ -572,7 +578,13 @@ def wipe_year(center: str, year: str) -> dict[str, Any]:
         set_request_country(country)
         set_active_center(primary, country=country)
         init_app()
-        stats = wipe_country_year(country, y)
+        stats = wipe_country_year(
+            country,
+            y,
+            center=primary,
+            person=person,
+            account=account,
+        )
         announced = announce_mutation(
             primary,
             derived_paths_for_center(primary, all_years=True),

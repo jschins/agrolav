@@ -849,17 +849,40 @@ def api_recalculate_from_scratch() -> dict[str, Any]:
 
 class WipeYearRequest(BaseModel):
     year: str
+    person: str | None = None
+    account: str | None = None
 
 
 @app.post("/api/wipe-year")
 def api_wipe_year(body: WipeYearRequest) -> dict[str, Any]:
-    from app.centrale_sync import hub_post, scope_matrix
-    from app.runtime import is_country
+    from app.centrale_sync import configured_person, hub_post, load_config, require_person, scope_matrix
+    from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON
 
-    if not is_country():
-        raise HTTPException(status_code=403, detail="Wipe year requires country login")
+    cfg = load_config()
+    payload: dict[str, Any] = {"year": body.year}
+    if cfg.access == ACCESS_COUNTRY:
+        pass
+    elif cfg.access == ACCESS_CENTER:
+        person = (body.person or "").strip()
+        if not person:
+            raise HTTPException(status_code=400, detail="person is required")
+        try:
+            require_person(person)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        payload["person"] = person
+    elif cfg.access == ACCESS_PERSON:
+        account = (body.account or "").strip()
+        if not account:
+            raise HTTPException(status_code=400, detail="account is required")
+        person = configured_person()
+        if person:
+            payload["person"] = person
+        payload["account"] = account
+    else:
+        raise HTTPException(status_code=403, detail="Wipe year requires a login")
     try:
-        result = hub_post("/wipe-year", {"year": body.year}, timeout=600.0)
+        result = hub_post("/wipe-year", payload, timeout=600.0)
         matrix = result.get("matrix")
         if isinstance(matrix, dict):
             result = {**result, "matrix": scope_matrix(matrix)}
@@ -994,29 +1017,6 @@ def api_invalidate_consent(body: PersonActionRequest) -> dict[str, Any]:
             {},
             timeout=30.0,
         )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except Exception as exc:
-        raise _hub_error(exc) from exc
-
-
-@app.post("/api/wipe-person-transactions")
-def api_wipe_person_transactions(body: PersonActionRequest) -> dict[str, Any]:
-    from app.centrale_sync import hub_post, require_person, scope_refresh
-    import urllib.parse
-
-    _require_center_or_country()
-    person = (body.person or "").strip()
-    if not person:
-        raise HTTPException(status_code=400, detail="person is required")
-    try:
-        require_person(person)
-        result = hub_post(
-            f"/people/{urllib.parse.quote(person)}/wipe-transactions",
-            {},
-            timeout=120.0,
-        )
-        return scope_refresh(result) if isinstance(result, dict) else result
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:

@@ -6,8 +6,7 @@ SELECT v.term_lang1, v.term_lang2
 FROM (VALUES
     ('Prepare consent', 'Bereid toestemming'),
     ('Invalidate consent', 'Verwijder toestemming'),
-    ('Download YTD', 'YTD bankafschriften'),
-    ('Delete all transactions', 'Verwijder alle bankafschriften')
+    ('Download YTD', 'YTD bankafschriften')
 ) AS v (term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1

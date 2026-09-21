@@ -198,14 +198,17 @@ export function recalculateFromScratch(): Promise<MatrixResponse> {
   return sendJson("/api/recalculate-from-scratch", "POST", {});
 }
 
-export function wipeYear(year: string): Promise<{
+export function wipeYear(
+  year: string,
+  body: { person?: string; account?: string } = {}
+): Promise<{
   ok: boolean;
   year: string;
   country?: string;
   transactions: number;
   files: number;
 }> {
-  return sendJson("/api/wipe-year", "POST", { year });
+  return sendJson("/api/wipe-year", "POST", { year, ...body });
 }
 
 export function refreshAll(body: {
@@ -239,15 +242,6 @@ export function invalidateConsent(person: string): Promise<{
   connections?: number;
 }> {
   return sendJson("/api/invalidate-consent", "POST", { person });
-}
-
-export function wipePersonTransactions(person: string): Promise<{
-  ok: boolean;
-  person?: string;
-  transactions: number;
-  matrix?: MatrixResponse;
-}> {
-  return sendJson("/api/wipe-person-transactions", "POST", { person });
 }
 
 export function getTransactions(

@@ -768,6 +768,8 @@ class RecalculateScratchRequest(BaseModel):
 
 class WipeYearRequest(BaseModel):
     year: str
+    person: str | None = None
+    account: str | None = None
 
 
 @app.post("/api/local/{center}/recalculate-from-scratch")
@@ -792,7 +794,12 @@ def api_wipe_year(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        return store.wipe_year(center, body.year)
+        return store.wipe_year(
+            center,
+            body.year,
+            person=body.person,
+            account=body.account,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
@@ -1589,24 +1596,6 @@ def api_invalidate_person_consent(
 
     try:
         return center_api.invalidate_person_consent(center, person_name)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-@app.post("/api/local/{center}/people/{person_name}/wipe-transactions")
-def api_wipe_person_transactions(
-    center: str,
-    person_name: str,
-    _: None = Depends(require_api_key),
-) -> dict[str, Any]:
-    from app import center_api
-
-    try:
-        return center_api.wipe_person_transactions(center, person_name)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

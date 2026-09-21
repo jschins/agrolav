@@ -368,18 +368,29 @@ def record_uploaded_file(username: str, file_name: str, fmt: str | None) -> None
         print(f"sql catalog: could not record upload file: {exc}")
 
 
-def wipe_country_year(country: str, year: str) -> dict[str, Any]:
-    """Delete one year's bookings for every person in ``country``.
+def wipe_country_year(
+    country: str,
+    year: str,
+    *,
+    center: str | None = None,
+    person: str | None = None,
+    account: str | None = None,
+) -> dict[str, Any]:
+    """Delete one year's bookings in ``country``, optionally narrowed.
 
-    Removes rows from ``dbo.transaction_{country}`` and ``dbo.category_total``
-    for that year, then all ``dbo.uploaded_files`` for accounts in the country
-    (that table has no year column). Recomputes ``dbo.account.last_booked``.
+    ``account`` (IBAN) → that account; ``person`` → that person; ``center`` →
+    every person in the center; otherwise every person in the country.
+    Also drops ``dbo.uploaded_files`` for the affected accounts (no year
+    column) and recomputes ``dbo.account.last_booked``.
     """
     from app import user_store
     from app.sql_replica import _transaction_table
     from app.yearpath import parse_year
 
     name = (country or "").strip()
+    center_name = (center or "").strip() or None
+    person_name = (person or "").strip() or None
+    account_key = (account or "").strip() or None
     y = int(parse_year(year))
     table = _transaction_table(name)
     if not name or not table:
@@ -404,71 +415,161 @@ def wipe_country_year(country: str, year: str) -> dict[str, Any]:
             raise ValueError(f"Unknown country {country!r}")
         country_id = int(row[0])
 
-        cursor.execute(
-            f"""
-            SELECT COUNT(*) FROM {table}
-            WHERE year = ?
-              AND person_id IN (SELECT id FROM dbo.person WHERE country_id = ?)
-            """,
-            (y, country_id),
-        )
+        person_ids: list[int] = []
+        account_ids: list[int] = []
+        if account_key:
+            iban = account_key.replace(" ", "").upper()
+            cursor.execute(
+                """
+                SELECT a.account_id, a.person_id
+                FROM dbo.account a
+                JOIN dbo.person p ON p.id = a.person_id
+                JOIN dbo.center n ON n.center_id = p.center_id
+                WHERE n.country_id = ?
+                  AND REPLACE(UPPER(ISNULL(a.iban, N'')), N' ', N'') = ?
+                  AND (
+                    ? IS NULL
+                    OR p.username = ? COLLATE Latin1_General_CI_AI
+                  )
+                  AND (
+                    ? IS NULL
+                    OR n.username = ? COLLATE Latin1_General_CI_AI
+                  )
+                """,
+                (
+                    country_id,
+                    iban,
+                    person_name,
+                    person_name,
+                    center_name,
+                    center_name,
+                ),
+            )
+            found = cursor.fetchall()
+            if not found:
+                raise ValueError(f"Unknown account {account_key!r}")
+            account_ids = [int(r[0]) for r in found if r[0] is not None]
+            person_ids = [int(r[1]) for r in found if r[1] is not None]
+        elif person_name:
+            cursor.execute(
+                """
+                SELECT p.id
+                FROM dbo.person p
+                JOIN dbo.center n ON n.center_id = p.center_id
+                WHERE n.country_id = ?
+                  AND p.username = ? COLLATE Latin1_General_CI_AI
+                  AND (
+                    ? IS NULL
+                    OR n.username = ? COLLATE Latin1_General_CI_AI
+                  )
+                """,
+                (country_id, person_name, center_name, center_name),
+            )
+            found = cursor.fetchall()
+            if not found:
+                raise ValueError(f"Unknown person {person_name!r}")
+            person_ids = [int(r[0]) for r in found if r[0] is not None]
+            cursor.execute(
+                f"""
+                SELECT account_id FROM dbo.account
+                WHERE person_id IN ({",".join("?" * len(person_ids))})
+                """,
+                tuple(person_ids),
+            )
+            account_ids = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
+        elif center_name:
+            cursor.execute(
+                """
+                SELECT p.id
+                FROM dbo.person p
+                JOIN dbo.center n ON n.center_id = p.center_id
+                WHERE n.country_id = ?
+                  AND n.username = ? COLLATE Latin1_General_CI_AI
+                """,
+                (country_id, center_name),
+            )
+            person_ids = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
+            if person_ids:
+                cursor.execute(
+                    f"""
+                    SELECT account_id FROM dbo.account
+                    WHERE person_id IN ({",".join("?" * len(person_ids))})
+                    """,
+                    tuple(person_ids),
+                )
+                account_ids = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
+        else:
+            cursor.execute(
+                "SELECT id FROM dbo.person WHERE country_id = ?",
+                (country_id,),
+            )
+            person_ids = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
+            if person_ids:
+                cursor.execute(
+                    f"""
+                    SELECT account_id FROM dbo.account
+                    WHERE person_id IN ({",".join("?" * len(person_ids))})
+                    """,
+                    tuple(person_ids),
+                )
+                account_ids = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
+
+        if not person_ids and not account_ids:
+            return {
+                "country": name,
+                "year": str(y),
+                "transactions": 0,
+                "files": 0,
+            }
+
+        if account_key and account_ids:
+            acc_ph = ",".join("?" * len(account_ids))
+            tx_where = f"year = ? AND account_id IN ({acc_ph})"
+            tx_params: tuple[object, ...] = (y, *account_ids)
+            tot_where = ""
+            tot_params: tuple[object, ...] = ()
+        else:
+            per_ph = ",".join("?" * len(person_ids))
+            tx_where = f"year = ? AND person_id IN ({per_ph})"
+            tx_params = (y, *person_ids)
+            tot_where = f"year = ? AND person_id IN ({per_ph})"
+            tot_params = (y, *person_ids)
+
+        cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE {tx_where}", tx_params)
         tx_count = int(cursor.fetchone()[0])
-        cursor.execute(
-            f"""
-            DELETE FROM {table}
-            WHERE year = ?
-              AND person_id IN (SELECT id FROM dbo.person WHERE country_id = ?)
-            """,
-            (y, country_id),
-        )
-        cursor.execute(
-            """
-            DELETE FROM dbo.category_total
-            WHERE year = ?
-              AND person_id IN (SELECT id FROM dbo.person WHERE country_id = ?)
-            """,
-            (y, country_id),
-        )
-        cursor.execute(
-            """
-            SELECT COUNT(*) FROM dbo.uploaded_files
-            WHERE account_id IN (
-                SELECT a.account_id
-                FROM dbo.account a
-                JOIN dbo.person p ON p.id = a.person_id
-                WHERE p.country_id = ?
+        cursor.execute(f"DELETE FROM {table} WHERE {tx_where}", tx_params)
+        if tot_where:
+            cursor.execute(
+                f"DELETE FROM dbo.category_total WHERE {tot_where}",
+                tot_params,
             )
-            """,
-            (country_id,),
-        )
-        file_count = int(cursor.fetchone()[0])
-        cursor.execute(
-            """
-            DELETE FROM dbo.uploaded_files
-            WHERE account_id IN (
-                SELECT a.account_id
-                FROM dbo.account a
-                JOIN dbo.person p ON p.id = a.person_id
-                WHERE p.country_id = ?
+
+        file_count = 0
+        if account_ids:
+            acc_ph = ",".join("?" * len(account_ids))
+            cursor.execute(
+                f"SELECT COUNT(*) FROM dbo.uploaded_files WHERE account_id IN ({acc_ph})",
+                tuple(account_ids),
             )
-            """,
-            (country_id,),
-        )
-        cursor.execute(
-            f"""
-            UPDATE a
-            SET last_booked = x.mx
-            FROM dbo.account a
-            INNER JOIN dbo.person p ON p.id = a.person_id
-            LEFT JOIN (
-                SELECT account_id, MAX(booked_on) AS mx
-                FROM {table}
-                GROUP BY account_id
-            ) x ON x.account_id = a.account_id
-            WHERE p.country_id = ?
-            """,
-            (country_id,),
-        )
+            file_count = int(cursor.fetchone()[0])
+            cursor.execute(
+                f"DELETE FROM dbo.uploaded_files WHERE account_id IN ({acc_ph})",
+                tuple(account_ids),
+            )
+            cursor.execute(
+                f"""
+                UPDATE a
+                SET last_booked = x.mx
+                FROM dbo.account a
+                LEFT JOIN (
+                    SELECT account_id, MAX(booked_on) AS mx
+                    FROM {table}
+                    GROUP BY account_id
+                ) x ON x.account_id = a.account_id
+                WHERE a.account_id IN ({acc_ph})
+                """,
+                tuple(account_ids),
+            )
         user_store._sql_connect().commit()
         return {
             "country": name,

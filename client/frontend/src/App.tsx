@@ -39,7 +39,6 @@ import {
   refreshPerson,
   prepareConsent,
   invalidateConsent,
-  wipePersonTransactions,
   saveCatalog,
   getTransactionSplit,
   saveTransactionSplit,
@@ -1399,16 +1398,30 @@ function SyncNotifyShell({
 
   function doWipeYear() {
     if (scratchBusy || wipeBusy) return;
+    const dutch = uiIsDutch(menuTerms);
     const suggested = activeYear || String(new Date().getFullYear());
-    const raw = window.prompt("Year to wipe (YYYY)", suggested);
+    const raw = window.prompt(dutch ? "Jaar (JJJJ)" : "Year to wipe (YYYY)", suggested);
     if (raw == null) return;
     const year = raw.trim();
     if (!/^\d{4}$/.test(year) || Number(year) < 1990 || Number(year) > 2100) {
-      setWipeError("Enter a four-digit year between 1990 and 2100");
+      setWipeError(dutch ? "Voer een jaartal in (1990–2100)" : "Enter a four-digit year between 1990 and 2100");
       return;
     }
+    const extra: { person?: string; account?: string } = {};
+    let scope = (status?.center || "").trim();
+    if (access === "personal") {
+      if (!bankView || bankView === "consolidated") {
+        setWipeError(dutch ? "Kies eerst een rekening" : "Select an account first");
+        return;
+      }
+      extra.account = bankView;
+      scope =
+        bankOptions.find((a) => a.iban === bankView)?.account_name?.trim() || bankView;
+    }
     const ok = window.confirm(
-      `Delete every ${year} transaction for all accounts in this country? Uploaded file names for those accounts will also be removed. This cannot be undone.`
+      dutch
+        ? `Alle ${year}-bankafschriften van ${scope} verwijderen? Dit kan niet ongedaan worden.`
+        : `Delete every ${year} transaction for ${scope}? This cannot be undone.`
     );
     if (!ok) return;
     beginRefreshBusy(`please wait... wiping ${year}`);
@@ -1417,7 +1430,7 @@ function SyncNotifyShell({
       setWipeError(null);
     });
     afterPaint(() => {
-      wipeYear(year)
+      wipeYear(year, extra)
         .then(() => {
           onCenterChanged?.();
         })
@@ -1487,7 +1500,7 @@ function SyncNotifyShell({
         onClick: () => openView("main"),
       });
     }
-    if (access === "country") {
+    if (access === "country" || access === "personal") {
       items.push({
         id: "wipe-year",
         label: wipeBusy ? "Wiping…" : tableHeaderTerm(menuTerms, "Wipe Year"),
@@ -2487,6 +2500,41 @@ function MainApp({
     });
   }
 
+  function doWipePersonYear() {
+    if (refreshing) return;
+    const person_name = pickManagedPerson();
+    if (!person_name) return;
+    const dutch = uiIsDutch(termsForUi);
+    const suggested = year || String(new Date().getFullYear());
+    const raw = window.prompt(dutch ? "Jaar (JJJJ)" : "Year to wipe (YYYY)", suggested);
+    if (raw == null) return;
+    const wipeY = raw.trim();
+    if (!/^\d{4}$/.test(wipeY) || Number(wipeY) < 1990 || Number(wipeY) > 2100) {
+      setError(dutch ? "Voer een jaartal in (1990–2100)" : "Enter a four-digit year between 1990 and 2100");
+      return;
+    }
+    const ok = window.confirm(
+      dutch
+        ? `Alle ${wipeY}-bankafschriften van ${person_name} verwijderen? Dit kan niet ongedaan worden.`
+        : `Delete every ${wipeY} transaction for ${person_name}? This cannot be undone.`
+    );
+    if (!ok) return;
+    beginRefreshBusy();
+    flushSync(() => {
+      setRefreshing(true);
+      setError(null);
+    });
+    afterPaint(() => {
+      wipeYear(wipeY, { person: person_name })
+        .then(() => loadMatrixOnly())
+        .catch((e: Error) => setError(e.message))
+        .finally(() => {
+          setRefreshing(false);
+          endRefreshBusy();
+        });
+    });
+  }
+
   function doPrepareConsent() {
     const person_name = pickManagedPerson();
     if (!person_name) return;
@@ -2515,37 +2563,6 @@ function MainApp({
     if (!ok) return;
     setError(null);
     invalidateConsent(person_name).catch((e: Error) => setError(e.message));
-  }
-
-  function doWipePersonTransactions() {
-    const person_name = pickManagedPerson();
-    if (!person_name) return;
-    const dutch = uiIsDutch(termsForUi);
-    const ok = window.confirm(
-      dutch
-        ? `Alle bankafschriften van ${person_name} verwijderen? Dit kan niet ongedaan worden.`
-        : `Delete all transactions for ${person_name}? This cannot be undone.`
-    );
-    if (!ok) return;
-    beginRefreshBusy();
-    flushSync(() => {
-      setRefreshing(true);
-      setError(null);
-    });
-    afterPaint(() => {
-      wipePersonTransactions(person_name)
-        .then((res) => {
-          if (res.matrix) setMatrix(res.matrix);
-          else void loadMatrixOnly();
-          setSelection(null);
-          setDetail(null);
-        })
-        .catch((e: Error) => setError(e.message))
-        .finally(() => {
-          setRefreshing(false);
-          endRefreshBusy();
-        });
-    });
   }
 
   const setHeaderActions = useContext(HeaderActionsContext);
@@ -2582,11 +2599,13 @@ function MainApp({
         disabled: refreshing || firstDownloading,
         onClick: doYtdDownload,
       });
+    }
+    if (loginAccess === "local") {
       items.push({
-        id: "wipe-person-transactions",
-        label: tableHeaderTerm(termsForUi, "Delete all transactions"),
+        id: "wipe-year",
+        label: tableHeaderTerm(termsForUi, "Wipe Year"),
         disabled: refreshing || firstDownloading,
-        onClick: doWipePersonTransactions,
+        onClick: doWipePersonYear,
       });
     }
     if (canAddPerson && addPersonUrl) {
