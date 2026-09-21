@@ -276,6 +276,8 @@ interface TreeSheetOptions {
   rootContour?: { lineColor: string; lineWidthPt?: number; cornerRadius?: number };
   /** Left indent (Excel indent units) for root labels. */
   rootIndent?: number;
+  /** Thin line under each root row across the band, in this hex colour. */
+  rootRule?: string;
 }
 
 /** Balans row bands by depth, bright → faint: deeper peach, FFECBC, its midpoint to FBFDEF, FBFDEF. */
@@ -324,6 +326,8 @@ function treeSheet(
   const isBold = (depth: number, kind: RowKind): boolean =>
     options.boldDepth !== undefined ? depth <= options.boldDepth : kind !== "post";
   const vCenter = options.verticalCenter === true;
+  const isRootHeading = (depth: number, kind?: RowKind): boolean =>
+    depth === 0 && kind === "heading";
   const textStyle = (depth: number, kind: RowKind, sizeDepth = depth): XlsxStyle => {
     const style: XlsxStyle = {};
     if (isBold(depth, kind)) style.bold = true;
@@ -332,6 +336,7 @@ function treeSheet(
     const background = backgroundAt(depth);
     if (background) style.background = background;
     if (vCenter) style.verticalCenter = true;
+    if (options.rootRule && isRootHeading(depth, kind)) style.borderBottom = options.rootRule;
     return style;
   };
   const styled = (value: string | number, style: XlsxStyle): XlsxCell =>
@@ -348,11 +353,14 @@ function treeSheet(
     if (options.amountFormat) style.format = options.amountFormat;
     return styled(euro2(value), style);
   };
-  const blank = (depth?: number): XlsxCell[] => {
+  const blank = (depth?: number, kind?: RowKind): XlsxCell[] => {
     const background = depth === undefined ? undefined : backgroundAt(depth);
     const style: XlsxStyle = {};
     if (background) style.background = background;
     if (vCenter) style.verticalCenter = true;
+    if (options.rootRule && depth !== undefined && isRootHeading(depth, kind)) {
+      style.borderBottom = options.rootRule;
+    }
     const filler: XlsxCell = Object.keys(style).length ? { value: "", style } : "";
     return Array.from({ length: width }, () => filler);
   };
@@ -394,7 +402,7 @@ function treeSheet(
     value?: number,
     columns?: number[]
   ): XlsxCell[] => {
-    const row = blank(depth);
+    const row = blank(depth, kind);
     row[depth] = text(depth, kind, label);
     if (value !== undefined) {
       row[amountCol] = amount(depth, kind, value);
@@ -473,8 +481,8 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
           trailingBandColumns: 1,
           verticalCenter: true,
           hideCodes: true,
-          rootContour: { lineColor: "BF9000", lineWidthPt: 1.5, cornerRadius: 0.3 },
           rootIndent: 1,
+          rootRule: "595959",
         })
       );
     } else {

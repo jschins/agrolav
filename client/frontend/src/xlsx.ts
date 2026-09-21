@@ -7,7 +7,8 @@ export interface XlsxStyle {
   fontColor?: string;
   /** Hex color without leading "#", e.g. "FFFF00". */
   background?: string;
-  borderBottom?: boolean;
+  /** Thin bottom border: `true` for black, or a hex colour without "#". */
+  borderBottom?: boolean | string;
   /** OOXML number-format code for number cells; default "#,##0.00". */
   format?: string;
   /** Vertically centre the cell content. */
@@ -87,7 +88,8 @@ interface ResolvedStyle {
   fontSize: number;
   fontColor: string;
   background: string;
-  borderBottom: boolean;
+  /** Bottom-border colour (ARGB) or "" for none. */
+  borderBottom: string;
   isNumber: boolean;
   formatCode: string;
   verticalCenter: boolean;
@@ -112,7 +114,12 @@ function resolveStyle(cell: XlsxCell): ResolvedStyle {
     fontSize: style.fontSize ?? DEFAULT_FONT_SIZE,
     fontColor: hexColor(style.fontColor, DEFAULT_FONT_COLOR),
     background: hexColor(style.background, ""),
-    borderBottom: style.borderBottom === true,
+    borderBottom:
+      style.borderBottom === true
+        ? "FF000000"
+        : typeof style.borderBottom === "string"
+          ? hexColor(style.borderBottom, "FF000000")
+          : "",
     isNumber: typeof value === "number",
     formatCode: style.format ?? (typeof value === "number" ? CURRENCY_FORMAT : ""),
     verticalCenter: style.verticalCenter === true,
@@ -132,6 +139,8 @@ interface Xf {
 interface StyleRegistry {
   fonts: ResolvedStyle[];
   fills: string[];
+  /** Bottom-border colours (ARGB); border id = index + 1 (0 = none). */
+  borders: string[];
   numFmts: { id: number; code: string }[];
   xfs: Xf[];
   styleIdOf: (cell: XlsxCell) => number;
@@ -140,10 +149,23 @@ interface StyleRegistry {
 function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
   const fonts: ResolvedStyle[] = [];
   const fills: string[] = [];
+  const borders: string[] = [];
   const numFmts: { id: number; code: string }[] = [];
   const xfs: Xf[] = [];
   const fontIds = new Map<string, number>();
   const fillIds = new Map<string, number>();
+  const borderIds = new Map<string, number>();
+
+  function borderIdOf(color: string): number {
+    if (!color) return 0;
+    let idx = borderIds.get(color);
+    if (idx === undefined) {
+      idx = borders.length;
+      borders.push(color);
+      borderIds.set(color, idx);
+    }
+    return idx + 1; // 0 is the empty border
+  }
   const numFmtIds = new Map<string, number>();
   const xfIds = new Map<string, number>();
   const styleIds = new Map<string, number>();
@@ -205,14 +227,14 @@ function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
     const style = resolveStyle(cell);
     const key =
       `s${style.fontSize}|b${+style.bold}|c${style.fontColor}` +
-      `|g${style.background}|n${+style.isNumber}|br${+style.borderBottom}` +
+      `|g${style.background}|n${+style.isNumber}|br${style.borderBottom}` +
       `|f${style.formatCode}|v${+style.verticalCenter}|i${style.indent}`;
     let id = styleIds.get(key);
     if (id === undefined) {
       const fontId = fontIdOf(style);
       const fillId = fillIdOf(style.background);
       const numFmtId = style.isNumber ? numFmtIdOf(style.formatCode) : 0;
-      const borderId = style.borderBottom ? 1 : 0;
+      const borderId = borderIdOf(style.borderBottom);
       id = xfIdOf(fontId, fillId, numFmtId, borderId, style.verticalCenter, style.indent);
       styleIds.set(key, id);
     }
@@ -225,7 +247,7 @@ function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
       for (const cell of row) styleIdOf(cell);
     }
   }
-  return { fonts, fills, numFmts, xfs, styleIdOf };
+  return { fonts, fills, borders, numFmts, xfs, styleIdOf };
 }
 
 function fontXml(style: ResolvedStyle): string {
@@ -274,9 +296,14 @@ function stylesXml(reg: StyleRegistry): string {
       .join("") +
     `</fills>`;
   const borders =
-    `<borders count="2">` +
+    `<borders count="${reg.borders.length + 1}">` +
     `<border><left/><right/><top/><bottom/><diagonal/></border>` +
-    `<border><left/><right/><top/><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border>` +
+    reg.borders
+      .map(
+        (color) =>
+          `<border><left/><right/><top/><bottom style="thin"><color rgb="${color}"/></bottom><diagonal/></border>`
+      )
+      .join("") +
     `</borders>`;
   const cellStyleXfs = `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>`;
   const cellXfs = `<cellXfs count="${reg.xfs.length}">${reg.xfs.map(xfXml).join("")}</cellXfs>`;
