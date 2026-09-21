@@ -11,7 +11,8 @@ FROM (VALUES
     ('Income statement', 'Resultaatrekening'),
     ('Category totals per month', 'Categorietotalen per maand'),
     ('Category totals per account', 'Categorietotalen per rekening'),
-    ('Profit-loss', 'Resultaat')
+    ('Profit-loss', 'Resultaat'),
+    ('Journal', 'Journaal')
 ) AS v (term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1

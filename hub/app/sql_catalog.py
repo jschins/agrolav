@@ -1936,8 +1936,10 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     the tree. Every country gets per-category ``resultaat`` rows (3000-4999)
     and, when any P&L row has a ``parent``, ``result_tree`` built the same
     way from those rows. Each P&L row (and tree group) carries ``columns``:
-    its year sum per bank account in ``result_accounts`` order (bank bookings
-    only, so the journal/mirror overlay in ``amount`` has no column).
+    its year sum per bank account (``result_accounts`` order), then per spaar
+    ``mirror`` post (``result_mirrors``: the P&L leg of journals against that
+    post), then one Journaal value holding the rest of the overlay, so the
+    columns always sum to ``amount``.
     ``code`` is always the ``local_code``, never the ``category_id``.
     The Resultaat rows come from the recorded ``dbo.category_total`` plus the
     beheer journal/mirror overlay (R). Passiva 2100 Verlies uses that same R.
@@ -1995,20 +1997,59 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                 )
         account_ids = [int(a["account_id"]) for a in result_accounts]
 
+        # Spaarrekening (mirror) columns: the P&L leg of every journal whose
+        # other side is that mirror post (interest and the like). The
+        # remaining overlay — journals without a bank side, mirror rows on a
+        # P&L category — lands in the trailing Journaal column below.
+        mirror_ids = sorted(
+            {int(pair["target_category"]) for pair in spaar_mirrors(country_id, cursor)},
+            key=_local,
+        )
+        mirror_parts: dict[int, dict[int, Decimal]] = {}
+        cursor.execute("SELECT OBJECT_ID(N'dbo.journal', N'U')")
+        journal_exists = cursor.fetchone()[0] is not None
+        if mirror_ids and journal_exists:
+            cursor.execute(
+                "SELECT category_from, category_to, amount FROM dbo.journal "
+                "WHERE country_id = ? AND year = ?",
+                (int(country_id), int(year)),
+            )
+            for cat_from, cat_to, amount in cursor.fetchall():
+                try:
+                    src, dst = int(cat_from), int(cat_to)
+                except (TypeError, ValueError):
+                    continue
+                src_delta, dst_delta = journal_deltas(
+                    _local(src), _local(dst), Decimal(str(amount or 0))
+                )
+                if is_resultaat(_local(src)) and dst in mirror_ids:
+                    by = mirror_parts.setdefault(src, {})
+                    by[dst] = by.get(dst, Decimal("0")) + src_delta
+                if is_resultaat(_local(dst)) and src in mirror_ids:
+                    by = mirror_parts.setdefault(dst, {})
+                    by[src] = by.get(src, Decimal("0")) + dst_delta
+        result_mirrors = [
+            {"code": _local(m), "label": labels.get(m, f"cat_{m}")} for m in mirror_ids
+        ]
+
         combined: dict[int, Decimal] = {}
         for code, amount in recorded.items():
             combined[code] = combined.get(code, Decimal("0")) + amount
         for code, cents in overlay.items():
             combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
+
+        def _result_columns(cat_id: int) -> list[float]:
+            acc = [pnl_sums.get(cat_id, {}).get(aid, Decimal("0")) for aid in account_ids]
+            mir = [mirror_parts.get(cat_id, {}).get(m, Decimal("0")) for m in mirror_ids]
+            journal = combined[cat_id] - sum(acc, Decimal("0")) - sum(mir, Decimal("0"))
+            return [float(v) for v in (*acc, *mir, journal)]
+
         result_rows = [
             {
                 "code": _local(code),
                 "label": labels.get(code, f"cat_{code}"),
                 "amount": float(combined[code]),
-                "columns": [
-                    float(pnl_sums.get(code, {}).get(aid, Decimal("0")))
-                    for aid in account_ids
-                ],
+                "columns": _result_columns(code),
             }
             for code in sorted(combined, key=_local)
         ]
@@ -2033,6 +2074,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                 "balance_tree": [],
                 "resultaat": result_rows,
                 "result_accounts": result_accounts,
+                "result_mirrors": result_mirrors,
                 "total_resultaat": total_result,
                 "result_tree": result_tree,
             }
@@ -2095,6 +2137,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             "balance_tree": balance_tree,
             "resultaat": result_rows,
             "result_accounts": result_accounts,
+            "result_mirrors": result_mirrors,
             "total_resultaat": total_result,
             "result_tree": result_tree,
         }

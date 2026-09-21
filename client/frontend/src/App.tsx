@@ -301,10 +301,20 @@ function treeSheet(
   return { name, rows, widths };
 }
 
-function excelSheets(data: ExportExcelData): XlsxSheet[] {
+/** Resultaat drill-down headers: accounts, spaarrekeningen, then Journaal. */
+function resultDrillHeaders(data: ExportExcelData, terms: Record<string, string>): string[] {
+  const accounts = resultaatAccountHeaders(data.result_accounts ?? []);
+  const mirrors = (data.result_mirrors ?? []).map((m) => m.label);
+  if (!accounts.length && !mirrors.length && !data.resultaat.some((l) => l.columns?.length)) {
+    return [];
+  }
+  return [...accounts, ...mirrors, tableHeaderTerm(terms, "Journal")];
+}
+
+function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}): XlsxSheet[] {
   const sheets: XlsxSheet[] = [];
   const codeOf = (line: ExportExcelLine) => String(line.code);
-  const accountHeaders = resultaatAccountHeaders(data.result_accounts ?? []);
+  const accountHeaders = resultDrillHeaders(data, terms);
   if (data.has_balance) {
     if (data.balance_tree?.length) {
       sheets.push(treeSheet("Balans", `Balans ${data.year}`, data.balance_tree));
@@ -1451,7 +1461,7 @@ function SyncNotifyShell({
         const filename = data.has_balance
           ? `balans-${data.year}.xlsx`
           : `resultaat-${data.year}.xlsx`;
-        downloadBlob(filename, buildXlsx(excelSheets(data)));
+        downloadBlob(filename, buildXlsx(excelSheets(data, menuTerms)));
       })
       .catch((e: Error) => setScratchError(e.message));
   }

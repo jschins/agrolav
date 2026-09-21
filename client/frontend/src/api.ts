@@ -144,8 +144,10 @@ export interface ExportExcelData {
   /** Balance posts nested by `dim_category.parent`; roots are the sides. */
   balance_tree?: ExportTreeGroup[];
   resultaat: ExportExcelLine[];
-  /** Bank accounts behind the Resultaat columns, in `columns` order. */
+  /** Bank accounts behind the first Resultaat columns, in `columns` order. */
   result_accounts?: ExportResultaatAccount[];
+  /** Spaar mirror posts that follow the accounts; a Journaal column closes the row. */
+  result_mirrors?: { code: number; label: string }[];
   total_resultaat: number;
   /** P&L posts nested by `parent`; null when no P&L row has a parent. */
   result_tree?: ExportTreeGroup[] | null;
