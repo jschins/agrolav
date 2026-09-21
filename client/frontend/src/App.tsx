@@ -66,6 +66,7 @@ import {
   downloadBlob,
   euro2,
   type XlsxCell,
+  type XlsxContour,
   type XlsxSheet,
   type XlsxStyle,
 } from "./xlsx";
@@ -269,6 +270,12 @@ interface TreeSheetOptions {
   trailingBandColumns?: number;
   /** Vertically centre every cell of the sheet. */
   verticalCenter?: boolean;
+  /** Print posts as their label only, without the leading local_code. */
+  hideCodes?: boolean;
+  /** Rounded outline around each root row, spanning the full band width. */
+  rootContour?: { lineColor: string; lineWidthPt?: number; cornerRadius?: number };
+  /** Left indent (Excel indent units) for root labels. */
+  rootIndent?: number;
 }
 
 /** Balans row bands by depth, bright → faint: deeper peach, FFECBC, its midpoint to FBFDEF, FBFDEF. */
@@ -329,8 +336,11 @@ function treeSheet(
   };
   const styled = (value: string | number, style: XlsxStyle): XlsxCell =>
     Object.keys(style).length ? { value, style } : value;
-  const text = (depth: number, kind: RowKind, value: string): XlsxCell =>
-    styled(value, textStyle(depth, kind));
+  const text = (depth: number, kind: RowKind, value: string): XlsxCell => {
+    const style = textStyle(depth, kind);
+    if (depth === 0 && kind === "heading" && options.rootIndent) style.indent = options.rootIndent;
+    return styled(value, style);
+  };
   const amount = (depth: number, kind: RowKind, value: number): XlsxCell => {
     // Root-row amounts take the next level's size unless one size is fixed.
     const style = textStyle(depth, kind, Math.max(depth, 1));
@@ -370,6 +380,7 @@ function treeSheet(
   // the sheet to roots, then root+groups, and so on.
   const outlineLevels: number[] = [0];
   const rowHeights: (number | undefined)[] = [heightAt(0)];
+  const contours: XlsxContour[] = [];
   const push = (row: XlsxCell[], depth: number, height?: number) => {
     rows.push(row);
     outlineLevels.push(depth);
@@ -396,12 +407,19 @@ function treeSheet(
   const walk = (node: ExportTreeNode, depth: number) => {
     const height = heightAt(depth);
     if (node.kind === "post") {
-      push(
-        line(depth, "post", `${node.code} ${node.label}`, node.amount, node.columns),
-        depth,
-        height
-      );
+      const label = options.hideCodes ? node.label : `${node.code} ${node.label}`;
+      push(line(depth, "post", label, node.amount, node.columns), depth, height);
       return;
+    }
+    if (depth === 0 && options.rootContour) {
+      const rowIndex = rows.length; // zero-based index of the row about to be pushed
+      contours.push({
+        fromCol: 0,
+        fromRow: rowIndex,
+        toCol: width,
+        toRow: rowIndex + 1,
+        ...options.rootContour,
+      });
     }
     if (totalsOnHeading) {
       push(line(depth, "heading", node.name, node.total, node.columns), depth, height);
@@ -421,7 +439,7 @@ function treeSheet(
     i === levels - 1 ? 44 : 4
   );
   for (let i = 0; i <= drill; i += 1) widths.push(14);
-  return { name, rows, widths, outlineLevels, rowHeights };
+  return { name, rows, widths, outlineLevels, rowHeights, contours };
 }
 
 /** Resultaat drill-down headers: accounts, spaarrekeningen, then Journaal. */
@@ -451,9 +469,12 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
           levelBackgrounds: BALANS_LEVEL_BACKGROUNDS,
           blankRowAfterTitle: true,
           hideZeroPosts: true,
-          rowHeights: [36, 27, 20],
+          rowHeights: [64, 42, 27],
           trailingBandColumns: 1,
           verticalCenter: true,
+          hideCodes: true,
+          rootContour: { lineColor: "BF9000", lineWidthPt: 1.5, cornerRadius: 0.3 },
+          rootIndent: 1,
         })
       );
     } else {

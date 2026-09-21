@@ -12,16 +12,38 @@ export interface XlsxStyle {
   format?: string;
   /** Vertically centre the cell content. */
   verticalCenter?: boolean;
+  /** Left indent in Excel indent units (about 3 characters each). */
+  indent?: number;
 }
 
 export type XlsxCell =
   | XlsxCellValue
   | { value: XlsxCellValue; style?: XlsxStyle };
 
+/**
+ * A rounded-rectangle outline drawn over a cell range (zero-based; `toCol`
+ * and `toRow` are exclusive). Excel borders cannot be rounded, so this is a
+ * drawing shape anchored to the cells; it follows row/column resizing.
+ */
+export interface XlsxContour {
+  fromCol: number;
+  fromRow: number;
+  toCol: number;
+  toRow: number;
+  /** Hex line colour without "#". */
+  lineColor: string;
+  /** Line width in points; default 1.5. */
+  lineWidthPt?: number;
+  /** Corner radius as a fraction of the shorter side (0–0.5); default 0.25. */
+  cornerRadius?: number;
+}
+
 export interface XlsxSheet {
   name: string;
   rows: XlsxCell[][];
   widths?: number[];
+  /** Rounded outlines drawn over cell ranges. */
+  contours?: XlsxContour[];
   /**
    * Row outline level per row (same index as `rows`; 0/undefined = none).
    * Rows with level k > 0 form a collapsible group whose summary row is the
@@ -69,6 +91,7 @@ interface ResolvedStyle {
   isNumber: boolean;
   formatCode: string;
   verticalCenter: boolean;
+  indent: number;
 }
 
 function hexColor(value: string | undefined, fallback: string): string {
@@ -93,6 +116,7 @@ function resolveStyle(cell: XlsxCell): ResolvedStyle {
     isNumber: typeof value === "number",
     formatCode: style.format ?? (typeof value === "number" ? CURRENCY_FORMAT : ""),
     verticalCenter: style.verticalCenter === true,
+    indent: Math.max(0, Math.floor(style.indent ?? 0)),
   };
 }
 
@@ -102,6 +126,7 @@ interface Xf {
   numFmtId: number;
   borderId: number;
   vCenter: boolean;
+  indent: number;
 }
 
 interface StyleRegistry {
@@ -163,13 +188,14 @@ function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
     fillId: number,
     numFmtId: number,
     borderId: number,
-    vCenter: boolean
+    vCenter: boolean,
+    indent: number
   ): number {
-    const key = `${fontId}|${fillId}|${numFmtId}|${borderId}|${+vCenter}`;
+    const key = `${fontId}|${fillId}|${numFmtId}|${borderId}|${+vCenter}|${indent}`;
     let id = xfIds.get(key);
     if (id === undefined) {
       id = xfs.length;
-      xfs.push({ fontId, fillId, numFmtId, borderId, vCenter });
+      xfs.push({ fontId, fillId, numFmtId, borderId, vCenter, indent });
       xfIds.set(key, id);
     }
     return id;
@@ -180,14 +206,14 @@ function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
     const key =
       `s${style.fontSize}|b${+style.bold}|c${style.fontColor}` +
       `|g${style.background}|n${+style.isNumber}|br${+style.borderBottom}` +
-      `|f${style.formatCode}|v${+style.verticalCenter}`;
+      `|f${style.formatCode}|v${+style.verticalCenter}|i${style.indent}`;
     let id = styleIds.get(key);
     if (id === undefined) {
       const fontId = fontIdOf(style);
       const fillId = fillIdOf(style.background);
       const numFmtId = style.isNumber ? numFmtIdOf(style.formatCode) : 0;
       const borderId = style.borderBottom ? 1 : 0;
-      id = xfIdOf(fontId, fillId, numFmtId, borderId, style.verticalCenter);
+      id = xfIdOf(fontId, fillId, numFmtId, borderId, style.verticalCenter, style.indent);
       styleIds.set(key, id);
     }
     return id;
@@ -215,11 +241,15 @@ function xfXml(x: Xf): string {
   const applyFill = x.fillId !== 0 ? ' applyFill="1"' : "";
   const applyBorder = x.borderId !== 0 ? ' applyBorder="1"' : "";
   const applyNumberFormat = x.numFmtId !== 0 ? ' applyNumberFormat="1"' : "";
-  const applyAlignment = x.vCenter ? ' applyAlignment="1"' : "";
+  const hasAlignment = x.vCenter || x.indent > 0;
+  const applyAlignment = hasAlignment ? ' applyAlignment="1"' : "";
   const open =
     `<xf numFmtId="${x.numFmtId}" fontId="${x.fontId}" fillId="${x.fillId}"` +
     ` borderId="${x.borderId}" xfId="0"${applyFont}${applyFill}${applyBorder}${applyNumberFormat}${applyAlignment}`;
-  return x.vCenter ? `${open}><alignment vertical="center"/></xf>` : `${open}/>`;
+  if (!hasAlignment) return `${open}/>`;
+  const vertical = x.vCenter ? ' vertical="center"' : "";
+  const indent = x.indent > 0 ? ` indent="${x.indent}"` : "";
+  return `${open}><alignment${vertical}${indent}/></xf>`;
 }
 
 function stylesXml(reg: StyleRegistry): string {
@@ -310,8 +340,43 @@ function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): stri
     maxLevel > 0
       ? `<sheetFormatPr defaultRowHeight="15" outlineLevelRow="${maxLevel}"/>`
       : "";
+  const drawing = sheet.contours?.length ? `<drawing r:id="rId1"/>` : "";
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${sheetPr}<dimension ref="A1:${lastCol}${sheet.rows.length}"/>${formatPr}${colsXml}<sheetData>${rowsXml}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${sheetPr}<dimension ref="A1:${lastCol}${sheet.rows.length}"/>${formatPr}${colsXml}<sheetData>${rowsXml}</sheetData>${drawing}</worksheet>`;
+}
+
+const EMU_PER_POINT = 12700;
+
+/** DrawingML part: one rounded rectangle (no fill, coloured outline) per contour. */
+function drawingXml(contours: XlsxContour[]): string {
+  const shapes = contours
+    .map((c, i) => {
+      const anchor = (col: number, row: number) =>
+        `<xdr:col>${col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>0</xdr:rowOff>`;
+      const width = Math.round((c.lineWidthPt ?? 1.5) * EMU_PER_POINT);
+      // roundRect "adj" is the radius as a fraction of the shorter side, in 1/100000.
+      const adj = Math.round(Math.min(0.5, Math.max(0, c.cornerRadius ?? 0.25)) * 100000);
+      const color = c.lineColor.replace(/^#/, "").toUpperCase().slice(-6);
+      return (
+        `<xdr:twoCellAnchor editAs="twoCell">` +
+        `<xdr:from>${anchor(c.fromCol, c.fromRow)}</xdr:from>` +
+        `<xdr:to>${anchor(c.toCol, c.toRow)}</xdr:to>` +
+        `<xdr:sp macro="" textlink="">` +
+        `<xdr:nvSpPr><xdr:cNvPr id="${i + 2}" name="Contour ${i + 1}"/><xdr:cNvSpPr/></xdr:nvSpPr>` +
+        `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm>` +
+        `<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val ${adj}"/></a:avLst></a:prstGeom>` +
+        `<a:noFill/><a:ln w="${width}"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill></a:ln>` +
+        `</xdr:spPr></xdr:sp><xdr:clientData/></xdr:twoCellAnchor>`
+      );
+    })
+    .join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${shapes}</xdr:wsDr>`;
+}
+
+function sheetRelsXml(drawingIndex: number): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${drawingIndex}.xml"/></Relationships>`;
 }
 
 /** Excel sheet names: max 31 chars, none of []:*?/\ , not empty. */
@@ -367,7 +432,7 @@ function workbookRelsXml(sheetCount: number): string {
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join("")}</Relationships>`;
 }
 
-function contentTypesXml(sheetCount: number): string {
+function contentTypesXml(sheetCount: number, drawingCount = 0): string {
   const sheetType =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml";
   const overrides = [
@@ -376,6 +441,11 @@ function contentTypesXml(sheetCount: number): string {
   for (let i = 0; i < sheetCount; i += 1) {
     overrides.push(
       `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="${sheetType}"/>`
+    );
+  }
+  for (let i = 0; i < drawingCount; i += 1) {
+    overrides.push(
+      `<Override PartName="/xl/drawings/drawing${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`
     );
   }
   overrides.push(
@@ -482,8 +552,12 @@ function zipBlob(files: { name: string; data: Uint8Array }[]): Blob {
 
 export function buildXlsx(sheets: XlsxSheet[]): Blob {
   const registry = buildRegistry(sheets);
+  const withDrawing = sheets.filter((sheet) => sheet.contours?.length);
   const files: { name: string; data: Uint8Array }[] = [
-    { name: "[Content_Types].xml", data: encoder.encode(contentTypesXml(sheets.length)) },
+    {
+      name: "[Content_Types].xml",
+      data: encoder.encode(contentTypesXml(sheets.length, withDrawing.length)),
+    },
     { name: "_rels/.rels", data: encoder.encode(rootRelsXml()) },
     { name: "xl/workbook.xml", data: encoder.encode(workbookXml(sheets)) },
     {
@@ -492,11 +566,23 @@ export function buildXlsx(sheets: XlsxSheet[]): Blob {
     },
     { name: "xl/styles.xml", data: encoder.encode(stylesXml(registry)) },
   ];
+  let drawingIndex = 0;
   sheets.forEach((sheet, i) => {
     files.push({
       name: `xl/worksheets/sheet${i + 1}.xml`,
       data: encoder.encode(sheetXml(sheet, registry.styleIdOf)),
     });
+    if (sheet.contours?.length) {
+      drawingIndex += 1;
+      files.push({
+        name: `xl/worksheets/_rels/sheet${i + 1}.xml.rels`,
+        data: encoder.encode(sheetRelsXml(drawingIndex)),
+      });
+      files.push({
+        name: `xl/drawings/drawing${drawingIndex}.xml`,
+        data: encoder.encode(drawingXml(sheet.contours)),
+      });
+    }
   });
   return zipBlob(files);
 }
