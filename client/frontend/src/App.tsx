@@ -267,10 +267,12 @@ interface TreeSheetOptions {
   rowHeights?: number[];
   /** Extra empty columns after the last amount that still get the row band. */
   trailingBandColumns?: number;
+  /** Vertically centre every cell of the sheet. */
+  verticalCenter?: boolean;
 }
 
-/** Balans row bands by depth: light blue, light green, bright yellow, weak yellow. */
-const BALANS_LEVEL_BACKGROUNDS = ["DDEBF7", "E2EFDA", "FFFF00", "FFF2CC"];
+/** Balans row bands by depth: bright light blue, faint light blue, bright yellow, weak yellow. */
+const BALANS_LEVEL_BACKGROUNDS = ["BDD7EE", "EEF5FC", "FFFF00", "FFF2CC"];
 
 function pruneZeroPosts(nodes: ExportTreeNode[]): ExportTreeNode[] {
   const kept: ExportTreeNode[] = [];
@@ -314,6 +316,7 @@ function treeSheet(
   };
   const isBold = (depth: number, kind: RowKind): boolean =>
     options.boldDepth !== undefined ? depth <= options.boldDepth : kind !== "post";
+  const vCenter = options.verticalCenter === true;
   const textStyle = (depth: number, kind: RowKind, sizeDepth = depth): XlsxStyle => {
     const style: XlsxStyle = {};
     if (isBold(depth, kind)) style.bold = true;
@@ -321,6 +324,7 @@ function treeSheet(
     if (size) style.fontSize = size;
     const background = backgroundAt(depth);
     if (background) style.background = background;
+    if (vCenter) style.verticalCenter = true;
     return style;
   };
   const styled = (value: string | number, style: XlsxStyle): XlsxCell =>
@@ -336,26 +340,29 @@ function treeSheet(
   };
   const blank = (depth?: number): XlsxCell[] => {
     const background = depth === undefined ? undefined : backgroundAt(depth);
-    return Array.from({ length: width }, () =>
-      background ? { value: "", style: { background } } : ""
-    );
+    const style: XlsxStyle = {};
+    if (background) style.background = background;
+    if (vCenter) style.verticalCenter = true;
+    const filler: XlsxCell = Object.keys(style).length ? { value: "", style } : "";
+    return Array.from({ length: width }, () => filler);
   };
   // Title, spacer rows and the row above each root wear the depth-0 band.
   const spacer = (): XlsxCell[] => (backgroundAt(0) ? blank(0) : []);
+  const bandStyle = (): XlsxStyle => ({
+    ...(backgroundAt(0) ? { background: backgroundAt(0) } : {}),
+    ...(vCenter ? { verticalCenter: true } : {}),
+  });
   const header = blank(0);
   header[0] = {
     value: title,
     style: {
       bold: true,
       fontSize: options.titleFontSize ?? (sizeAt(0) ?? 12) + 2,
-      ...(backgroundAt(0) ? { background: backgroundAt(0) } : {}),
+      ...bandStyle(),
     },
   };
   headers.forEach((label, i) => {
-    header[amountCol + i] = {
-      value: label,
-      style: { bold: true, ...(backgroundAt(0) ? { background: backgroundAt(0) } : {}) },
-    };
+    header[amountCol + i] = { value: label, style: { bold: true, ...bandStyle() } };
   });
   const heightAt = (depth: number): number | undefined => options.rowHeights?.[depth];
   const rows: XlsxCell[][] = [header];
@@ -444,8 +451,9 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
           levelBackgrounds: BALANS_LEVEL_BACKGROUNDS,
           blankRowAfterTitle: true,
           hideZeroPosts: true,
-          rowHeights: [30, 25, 20],
+          rowHeights: [36, 27, 20],
           trailingBandColumns: 1,
+          verticalCenter: true,
         })
       );
     } else {

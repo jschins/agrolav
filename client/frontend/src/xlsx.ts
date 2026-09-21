@@ -10,6 +10,8 @@ export interface XlsxStyle {
   borderBottom?: boolean;
   /** OOXML number-format code for number cells; default "#,##0.00". */
   format?: string;
+  /** Vertically centre the cell content. */
+  verticalCenter?: boolean;
 }
 
 export type XlsxCell =
@@ -66,6 +68,7 @@ interface ResolvedStyle {
   borderBottom: boolean;
   isNumber: boolean;
   formatCode: string;
+  verticalCenter: boolean;
 }
 
 function hexColor(value: string | undefined, fallback: string): string {
@@ -89,14 +92,23 @@ function resolveStyle(cell: XlsxCell): ResolvedStyle {
     borderBottom: style.borderBottom === true,
     isNumber: typeof value === "number",
     formatCode: style.format ?? (typeof value === "number" ? CURRENCY_FORMAT : ""),
+    verticalCenter: style.verticalCenter === true,
   };
+}
+
+interface Xf {
+  fontId: number;
+  fillId: number;
+  numFmtId: number;
+  borderId: number;
+  vCenter: boolean;
 }
 
 interface StyleRegistry {
   fonts: ResolvedStyle[];
   fills: string[];
   numFmts: { id: number; code: string }[];
-  xfs: { fontId: number; fillId: number; numFmtId: number; borderId: number }[];
+  xfs: Xf[];
   styleIdOf: (cell: XlsxCell) => number;
 }
 
@@ -104,7 +116,7 @@ function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
   const fonts: ResolvedStyle[] = [];
   const fills: string[] = [];
   const numFmts: { id: number; code: string }[] = [];
-  const xfs: { fontId: number; fillId: number; numFmtId: number; borderId: number }[] = [];
+  const xfs: Xf[] = [];
   const fontIds = new Map<string, number>();
   const fillIds = new Map<string, number>();
   const numFmtIds = new Map<string, number>();
@@ -146,12 +158,18 @@ function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
     return idx + 2; // 0 none, 1 gray125
   }
 
-  function xfIdOf(fontId: number, fillId: number, numFmtId: number, borderId: number): number {
-    const key = `${fontId}|${fillId}|${numFmtId}|${borderId}`;
+  function xfIdOf(
+    fontId: number,
+    fillId: number,
+    numFmtId: number,
+    borderId: number,
+    vCenter: boolean
+  ): number {
+    const key = `${fontId}|${fillId}|${numFmtId}|${borderId}|${+vCenter}`;
     let id = xfIds.get(key);
     if (id === undefined) {
       id = xfs.length;
-      xfs.push({ fontId, fillId, numFmtId, borderId });
+      xfs.push({ fontId, fillId, numFmtId, borderId, vCenter });
       xfIds.set(key, id);
     }
     return id;
@@ -162,14 +180,14 @@ function buildRegistry(sheets: XlsxSheet[]): StyleRegistry {
     const key =
       `s${style.fontSize}|b${+style.bold}|c${style.fontColor}` +
       `|g${style.background}|n${+style.isNumber}|br${+style.borderBottom}` +
-      `|f${style.formatCode}`;
+      `|f${style.formatCode}|v${+style.verticalCenter}`;
     let id = styleIds.get(key);
     if (id === undefined) {
       const fontId = fontIdOf(style);
       const fillId = fillIdOf(style.background);
       const numFmtId = style.isNumber ? numFmtIdOf(style.formatCode) : 0;
       const borderId = style.borderBottom ? 1 : 0;
-      id = xfIdOf(fontId, fillId, numFmtId, borderId);
+      id = xfIdOf(fontId, fillId, numFmtId, borderId, style.verticalCenter);
       styleIds.set(key, id);
     }
     return id;
@@ -192,15 +210,16 @@ function fontXml(style: ResolvedStyle): string {
   );
 }
 
-function xfXml(x: { fontId: number; fillId: number; numFmtId: number; borderId: number }): string {
+function xfXml(x: Xf): string {
   const applyFont = x.fontId !== 0 ? ' applyFont="1"' : "";
   const applyFill = x.fillId !== 0 ? ' applyFill="1"' : "";
   const applyBorder = x.borderId !== 0 ? ' applyBorder="1"' : "";
   const applyNumberFormat = x.numFmtId !== 0 ? ' applyNumberFormat="1"' : "";
-  return (
+  const applyAlignment = x.vCenter ? ' applyAlignment="1"' : "";
+  const open =
     `<xf numFmtId="${x.numFmtId}" fontId="${x.fontId}" fillId="${x.fillId}"` +
-    ` borderId="${x.borderId}" xfId="0"${applyFont}${applyFill}${applyBorder}${applyNumberFormat}/>`
-  );
+    ` borderId="${x.borderId}" xfId="0"${applyFont}${applyFill}${applyBorder}${applyNumberFormat}${applyAlignment}`;
+  return x.vCenter ? `${open}><alignment vertical="center"/></xf>` : `${open}/>`;
 }
 
 function stylesXml(reg: StyleRegistry): string {
