@@ -274,11 +274,31 @@ export function safeSheetName(name: string, fallback = "Sheet"): string {
   return (cleaned || fallback).slice(0, 31);
 }
 
+/** Sheet names must be unique (case-insensitive); suffix repeats with " (2)", " (3)", … */
+function uniqueSheetNames(sheets: XlsxSheet[]): string[] {
+  const seen = new Map<string, number>();
+  return sheets.map((sheet, i) => {
+    const base = safeSheetName(sheet.name, `Sheet${i + 1}`);
+    let name = base;
+    let n = seen.get(base.toLowerCase()) ?? 0;
+    while (n > 0) {
+      const suffix = ` (${n + 1})`;
+      name = `${base.slice(0, 31 - suffix.length)}${suffix}`;
+      if (!seen.has(name.toLowerCase())) break;
+      n += 1;
+    }
+    seen.set(base.toLowerCase(), n + 1);
+    seen.set(name.toLowerCase(), 1);
+    return name;
+  });
+}
+
 function workbookXml(sheets: XlsxSheet[]): string {
+  const names = uniqueSheetNames(sheets);
   const sheetsXml = sheets
     .map(
-      (sheet, i) =>
-        `<sheet name="${escXml(safeSheetName(sheet.name, `Sheet${i + 1}`))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`
+      (_sheet, i) =>
+        `<sheet name="${escXml(names[i])}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`
     )
     .join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

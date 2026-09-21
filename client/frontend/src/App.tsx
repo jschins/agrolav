@@ -518,6 +518,12 @@ function resultaatExcelSheets(
   const [perMonth, ...rest] = resultaatSections(data);
   const perAccountTitle = tableHeaderTerm(terms, "Category totals per account");
   const sheets: XlsxSheet[] = [];
+  if (data.result_tree?.length) {
+    const statementTitle = tableHeaderTerm(terms, "Income statement");
+    sheets.push(
+      treeSheet(statementTitle, `${statementTitle} ${data.year}`, data.result_tree)
+    );
+  }
   if (perMonth) {
     sheets.push({
       name: tableHeaderTerm(terms, "Category totals per month"),

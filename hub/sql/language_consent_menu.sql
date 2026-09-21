@@ -8,6 +8,7 @@ FROM (VALUES
     ('Prepare consent', 'Bereid toestemming'),
     ('Invalidate consent', 'Verwijder toestemming'),
     ('Download YTD', 'YTD bankafschriften'),
+    ('Income statement', 'Resultaatrekening'),
     ('Category totals per month', 'Categorietotalen per maand'),
     ('Category totals per account', 'Categorietotalen per rekening'),
     ('Profit-loss', 'Resultaat')

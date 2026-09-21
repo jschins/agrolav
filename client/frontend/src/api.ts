@@ -163,6 +163,8 @@ export interface ExportResultaatData {
   month_count?: number;
   incoming_1053?: ExportExcelLine | null;
   resultaat: ExportExcelLine[];
+  /** Displayed P&L rows with a `parent`, nested by that path; null if none. */
+  result_tree?: ExportTreeGroup[] | null;
   accounts?: ExportResultaatAccount[];
   total_months?: number[];
   total_resultaat: number;

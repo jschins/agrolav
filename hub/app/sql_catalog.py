@@ -1364,6 +1364,8 @@ def export_resultaat_excel_data(
     ``accounts`` lists every bank account in scope with a booking in the
     displayed months; each P&L row carries ``per_account`` year totals in
     that order (bank bookings only, so journal/mirror overlays are absent).
+    ``result_tree`` nests the displayed rows that have a ``dim_category.parent``
+    by that path (``build_parent_tree``); ``None`` when no row has one.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()
@@ -1378,7 +1380,9 @@ def export_resultaat_excel_data(
 
         from shared.balance_values import (
             account_links,
+            build_parent_tree,
             category_local_codes,
+            category_parents,
             is_hit_forbidden_role,
             is_remainder_role,
             is_resultaat,
@@ -1654,6 +1658,19 @@ def export_resultaat_excel_data(
                     ],
                 }
             )
+        # "Resultaatrekening" sheet: the displayed P&L rows that carry a
+        # ``dim_category.parent``, nested by that path (year amounts).
+        parents = category_parents(int(country_id), cursor)
+        parented_rows = [
+            {"code": row["code"], "label": row["label"], "amount": row["amount"]}
+            for row in rows
+            if int(row["code"]) in parents
+        ]
+        result_tree = (
+            build_parent_tree(parented_rows, parents, "Resultaat")
+            if parented_rows
+            else None
+        )
         maaltijden: dict[str, list[float]] | None = None
         if role_listed and login:
             cursor.execute("SELECT OBJECT_ID(N'dbo.maaltijden_aantallen', N'U')")
@@ -1839,6 +1856,7 @@ def export_resultaat_excel_data(
                 "amount": float(sum(incoming_1053_months)),
             },
             "resultaat": rows,
+            "result_tree": result_tree,
             "accounts": accounts,
             "total_months": [float(part) for part in total_months[:month_count]],
             "total_resultaat": float(total),
