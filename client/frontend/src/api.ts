@@ -89,7 +89,16 @@ export interface ExportExcelLine {
   label: string;
   amount: number;
   months?: number[];
+  /** Year totals per bank account, aligned with ExportResultaatData.accounts. */
+  per_account?: number[];
   source?: string;
+}
+
+export interface ExportResultaatAccount {
+  account_id: number;
+  account_name: string;
+  iban?: string | null;
+  person?: string | null;
 }
 
 export interface ExportResultaatCashflow {
@@ -179,6 +188,7 @@ export interface ExportResultaatData {
   month_count?: number;
   incoming_1053?: ExportExcelLine | null;
   resultaat: ExportExcelLine[];
+  accounts?: ExportResultaatAccount[];
   total_months?: number[];
   total_resultaat: number;
   maaltijden?: ExportResultaatMaaltijden | null;

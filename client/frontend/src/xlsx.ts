@@ -265,11 +265,17 @@ function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): stri
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${lastCol}${sheet.rows.length}"/>${colsXml}<sheetData>${rowsXml}</sheetData></worksheet>`;
 }
 
+/** Excel sheet names: max 31 chars, none of []:*?/\ , not empty. */
+export function safeSheetName(name: string, fallback = "Sheet"): string {
+  const cleaned = name.replace(/[\[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim();
+  return (cleaned || fallback).slice(0, 31);
+}
+
 function workbookXml(sheets: XlsxSheet[]): string {
   const sheetsXml = sheets
     .map(
       (sheet, i) =>
-        `<sheet name="${escXml(sheet.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`
+        `<sheet name="${escXml(safeSheetName(sheet.name, `Sheet${i + 1}`))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`
     )
     .join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

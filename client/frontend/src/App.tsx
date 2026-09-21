@@ -14,6 +14,7 @@ import {
   type ExportExcelData,
   type ExportExcelLine,
   type ExportResultaatData,
+  type ExportResultaatAccount,
   getIpAccess,
   addIpAccess,
   deleteIpAccess,
@@ -496,9 +497,11 @@ function resultaatSections(data: ExportResultaatData): {
   return sections;
 }
 
-function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
+function resultaatSectionRows(
+  sections: ReturnType<typeof resultaatSections>
+): (string | number)[][] {
   const rows: (string | number)[][] = [];
-  for (const section of resultaatSections(data)) {
+  for (const section of sections) {
     if (rows.length) rows.push([]);
     rows.push([section.title]);
     rows.push(section.header);
@@ -507,15 +510,76 @@ function resultaatTableRows(data: ExportResultaatData): (string | number)[][] {
   return rows;
 }
 
-function resultaatExcelSheets(data: ExportResultaatData): XlsxSheet[] {
-  const monthCount = resultaatVisibleMonthCount(data.year, data.month_count);
-  return [
-    {
-      name: "Resultaat",
-      rows: resultaatTableRows(data),
-      widths: [10, 40, ...Array.from({ length: monthCount }, () => 12), 14],
-    },
+/** Column headers: account name, suffixed with the person when names repeat. */
+function resultaatAccountHeaders(accounts: ExportResultaatAccount[]): string[] {
+  const nameOf = (a: ExportResultaatAccount): string =>
+    a.account_name.trim() || (a.iban || "").trim() || String(a.account_id);
+  const counts = new Map<string, number>();
+  for (const a of accounts) {
+    const name = nameOf(a);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return accounts.map((a) => {
+    const name = nameOf(a);
+    const person = (a.person || "").trim();
+    return (counts.get(name) ?? 0) > 1 && person ? `${name} (${person})` : name;
+  });
+}
+
+/** Year totals per P&L category × bank account, plus Totaal column and row. */
+function resultaatPerAccountRows(
+  data: ExportResultaatData,
+  title: string
+): (string | number)[][] {
+  const accounts = data.accounts ?? [];
+  const rows: (string | number)[][] = [
+    [title],
+    ["Code", "Post", ...resultaatAccountHeaders(accounts), "Totaal"],
   ];
+  const columnTotals = accounts.map(() => 0);
+  let grandTotal = 0;
+  for (const line of data.resultaat) {
+    const parts = accounts.map((_, i) => line.per_account?.[i] ?? 0);
+    const rowTotal = parts.reduce((sum, n) => sum + n, 0);
+    rows.push([String(line.code), line.label, ...parts.map(euro2), euro2(rowTotal)]);
+    parts.forEach((n, i) => {
+      columnTotals[i] += n;
+    });
+    grandTotal += rowTotal;
+  }
+  rows.push(["", "Totaal", ...columnTotals.map(euro2), euro2(grandTotal)]);
+  return rows;
+}
+
+function resultaatExcelSheets(
+  data: ExportResultaatData,
+  terms: Record<string, string>
+): XlsxSheet[] {
+  const monthCount = resultaatVisibleMonthCount(data.year, data.month_count);
+  const monthWidths = [10, 40, ...Array.from({ length: monthCount }, () => 12), 14];
+  const [perMonth, ...rest] = resultaatSections(data);
+  const perAccountTitle = tableHeaderTerm(terms, "Category totals per account");
+  const sheets: XlsxSheet[] = [];
+  if (perMonth) {
+    sheets.push({
+      name: tableHeaderTerm(terms, "Category totals per month"),
+      rows: resultaatSectionRows([perMonth]),
+      widths: monthWidths,
+    });
+  }
+  sheets.push({
+    name: perAccountTitle,
+    rows: resultaatPerAccountRows(data, perAccountTitle),
+    widths: [10, 40, ...(data.accounts ?? []).map(() => 16), 14],
+  });
+  if (rest.length) {
+    sheets.push({
+      name: tableHeaderTerm(terms, "Profit-loss"),
+      rows: resultaatSectionRows(rest),
+      widths: monthWidths,
+    });
+  }
+  return sheets;
 }
 
 function isMatrixFooter(matrix: MatrixResponse, category: string): boolean {
@@ -1390,7 +1454,7 @@ function SyncNotifyShell({
       .then((data) => {
         downloadBlob(
           `resultaat-${exportScopeSlug(data)}-${data.year}.xlsx`,
-          buildXlsx(resultaatExcelSheets(data))
+          buildXlsx(resultaatExcelSheets(data, menuTerms))
         );
       })
       .catch((e: Error) => setScratchError(e.message));

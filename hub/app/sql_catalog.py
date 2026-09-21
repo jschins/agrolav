@@ -1360,6 +1360,10 @@ def export_resultaat_excel_data(
     the end: Stichting de Oude Gracht (signed amounts to/from IBAN
     NL94INGB0006200605), Overige inkomsten, Uitgaven, their Resultaat, then
     Banksaldo einde maand.
+
+    ``accounts`` lists every bank account in scope with a booking in the
+    displayed months; each P&L row carries ``per_account`` year totals in
+    that order (bank bookings only, so journal/mirror overlays are absent).
     """
     name = (country or "").strip()
     person_name = (person or "").strip()
@@ -1433,6 +1437,22 @@ def export_resultaat_excel_data(
             row = monthly.setdefault(int(cid), [Decimal("0")] * 12)
             row[m - 1] += value
 
+        # Login scope shared by every booking query below (``p`` = dbo.person,
+        # ``n`` = dbo.center aliases).
+        scope_sql = ""
+        scope_params: list[Any] = []
+        if person_id is not None:
+            scope_sql = " AND p.id = ?"
+            scope_params = [person_id]
+        elif center_name:
+            scope_sql = " AND n.username = ? COLLATE Latin1_General_CI_AI"
+            scope_params = [center_name]
+
+        # "Per rekening" sheet: accounts in scope with at least one booking
+        # in the displayed months, and the year total per category × account.
+        accounts: list[dict[str, Any]] = []
+        per_account: dict[int, dict[int, Decimal]] = {}
+
         table = transaction_table(int(country_id), cursor)
         if table and month_count > 0:
             cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
@@ -1457,20 +1477,16 @@ def export_resultaat_excel_data(
                       AND t.booked_on IS NOT NULL
                       AND MONTH(t.booked_on) BETWEEN 1 AND ?
                       {exclude_sql}
+                      {scope_sql}
+                    GROUP BY t.category_id, MONTH(t.booked_on)
                 """
                 params: list[Any] = [
                     int(country_id),
                     int(year),
                     month_count,
                     *exclude_params,
+                    *scope_params,
                 ]
-                if person_id is not None:
-                    sql += " AND t.person_id = ?"
-                    params.append(person_id)
-                elif center_name:
-                    sql += " AND n.username = ? COLLATE Latin1_General_CI_AI"
-                    params.append(center_name)
-                sql += " GROUP BY t.category_id, MONTH(t.booked_on)"
                 cursor.execute(sql, tuple(params))
                 for category_id, month, amount in cursor.fetchall():
                     _add_month(
@@ -1478,6 +1494,71 @@ def export_resultaat_excel_data(
                         int(month),
                         Decimal(str(amount or 0)),
                     )
+
+                cursor.execute(
+                    f"""
+                    SELECT a.account_id, a.account_name, a.iban, p.username
+                    FROM dbo.account a
+                    JOIN dbo.person p ON p.id = a.person_id
+                    JOIN dbo.center n ON n.center_id = p.center_id
+                    WHERE n.country_id = ?
+                      {scope_sql}
+                      AND EXISTS (
+                        SELECT 1 FROM {table} t
+                        WHERE t.account_id = a.account_id
+                          AND t.year = ?
+                          AND t.booked_on IS NOT NULL
+                          AND MONTH(t.booked_on) BETWEEN 1 AND ?
+                          {exclude_sql}
+                      )
+                    ORDER BY p.username, a.account_name, a.account_id
+                    """,
+                    (
+                        int(country_id),
+                        *scope_params,
+                        int(year),
+                        month_count,
+                        *exclude_params,
+                    ),
+                )
+                for account_id, account_name, iban, username in cursor.fetchall():
+                    accounts.append(
+                        {
+                            "account_id": int(account_id),
+                            "account_name": str(account_name or "").strip(),
+                            "iban": str(iban or "").strip() or None,
+                            "person": str(username or "").strip() or None,
+                        }
+                    )
+
+                cursor.execute(
+                    f"""
+                    SELECT t.category_id, t.account_id,
+                           SUM(CAST(t.amount AS decimal(19, 2)))
+                    FROM {table} t
+                    JOIN dbo.person p ON p.id = t.person_id
+                    JOIN dbo.center n ON n.center_id = p.center_id
+                    JOIN dbo.dim_category d
+                      ON d.category_id = t.category_id
+                     AND d.country_id = n.country_id
+                    WHERE n.country_id = ?
+                      AND t.year = ?
+                      AND d.local_code BETWEEN 3000 AND 4999
+                      AND t.booked_on IS NOT NULL
+                      AND MONTH(t.booked_on) BETWEEN 1 AND ?
+                      {exclude_sql}
+                      {scope_sql}
+                    GROUP BY t.category_id, t.account_id
+                    """,
+                    tuple(params),
+                )
+                for category_id, account_id, amount in cursor.fetchall():
+                    if account_id is None:
+                        continue
+                    by_acc = per_account.setdefault(int(category_id), {})
+                    by_acc[int(account_id)] = by_acc.get(
+                        int(account_id), Decimal("0")
+                    ) + Decimal(str(amount or 0))
 
         if not person_name and not center_name:
             codes = category_local_codes(country_id, cursor)
@@ -1560,12 +1641,17 @@ def export_resultaat_excel_data(
             total += amount
             for i, part in enumerate(months):
                 total_months[i] += part
+            by_acc = per_account.get(cid, {})
             rows.append(
                 {
                     "code": int(local_code),
                     "label": str(label or "").strip() or f"cat_{local_code}",
                     "months": [float(part) for part in months],
                     "amount": float(amount),
+                    "per_account": [
+                        float(by_acc.get(int(acc["account_id"]), Decimal("0")))
+                        for acc in accounts
+                    ],
                 }
             )
         maaltijden: dict[str, list[float]] | None = None
@@ -1753,6 +1839,7 @@ def export_resultaat_excel_data(
                 "amount": float(sum(incoming_1053_months)),
             },
             "resultaat": rows,
+            "accounts": accounts,
             "total_months": [float(part) for part in total_months[:month_count]],
             "total_resultaat": float(total),
             "maaltijden": maaltijden,
