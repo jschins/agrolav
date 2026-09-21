@@ -81,7 +81,11 @@ powershell -File scripts/pull-remote-backup.ps1
 ```
 
 You need SSH as `agrolav` on port **4523**, and sudo on the droplet for
-`docker exec` / `chown`. The `sa` password is read on the server from
+`docker exec` / `chown`. The script asks for that password **once**: it hands
+it to `ssh`/`scp` through an `SSH_ASKPASS` helper (kept in the environment,
+not on disk) and to the droplet's `sudo -S` over stdin. Each ssh/scp step
+retries up to five times; after a "Permission denied" you can retype the
+password before the next attempt. The `sa` password is read on the server from
 `/root/sqlserver/.env` or `/opt/agrolav/.env` (never typed into the script).
 
 What the script runs is the same as the two steps below.
