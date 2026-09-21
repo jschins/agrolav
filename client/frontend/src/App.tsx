@@ -67,6 +67,7 @@ import {
   euro2,
   type XlsxCell,
   type XlsxSheet,
+  type XlsxStyle,
 } from "./xlsx";
 import AfschrijvingenEditor from "./AfschrijvingenEditor";
 import JournalEditor from "./JournalEditor";
@@ -236,31 +237,64 @@ function treeDepth(nodes: ExportTreeNode[], depth = 0): number {
  * level, then the amount column, then — when `headers` is given — one
  * drill-down column per entry of a node's `columns` (e.g. per bank account).
  * Row 1 holds the title and, from the amount column on, the `headers`
- * (total first, then one per drill-down column). Group names are bold. By
- * default a group of two or more children closes with a bold `Totaal <name>`
- * row; with `totalsOnHeading` the group's total is written on its heading
- * row instead and no `Totaal` rows are emitted. Roots are separated by a
- * blank row.
+ * (total first, then one per drill-down column). By default group names and
+ * `Totaal` rows are bold and a group of two or more children closes with a
+ * `Totaal <name>` row; with `totalsOnHeading` the group's total is written
+ * on its heading row instead and no `Totaal` rows are emitted. `boldDepth`
+ * makes every row at that depth or shallower bold and all deeper rows plain;
+ * `fontSizes` gives the size per depth (the last entry keeps shrinking by 1
+ * per extra level); `amountFormat` is the Excel number format for amounts
+ * (values keep their cents). Roots are separated by a blank row.
  */
+interface TreeSheetOptions {
+  totalsOnHeading?: boolean;
+  boldDepth?: number;
+  fontSizes?: number[];
+  amountFormat?: string;
+}
+
 function treeSheet(
   name: string,
   title: string,
   roots: ExportTreeGroup[],
   headers: string[] = [],
-  options: { totalsOnHeading?: boolean } = {}
+  options: TreeSheetOptions = {}
 ): XlsxSheet {
   const totalsOnHeading = options.totalsOnHeading === true;
   const levels = treeDepth(roots) + 1;
   const amountCol = levels;
   const drill = Math.max(0, headers.length - 1);
   const width = amountCol + 1 + drill;
-  const bold = (text: string): XlsxCell => ({ value: text, style: { bold: true } });
-  const boldAmount = (value: number): XlsxCell => ({ value: euro2(value), style: { bold: true } });
+  type RowKind = "heading" | "post" | "total";
+  const sizeAt = (depth: number): number | undefined => {
+    const sizes = options.fontSizes;
+    if (!sizes?.length) return undefined;
+    if (depth < sizes.length) return sizes[depth];
+    return Math.max(6, sizes[sizes.length - 1] - (depth - (sizes.length - 1)));
+  };
+  const isBold = (depth: number, kind: RowKind): boolean =>
+    options.boldDepth !== undefined ? depth <= options.boldDepth : kind !== "post";
+  const textStyle = (depth: number, kind: RowKind): XlsxStyle => {
+    const style: XlsxStyle = {};
+    if (isBold(depth, kind)) style.bold = true;
+    const size = sizeAt(depth) ?? (kind === "heading" && depth === 0 ? 12 : undefined);
+    if (size) style.fontSize = size;
+    return style;
+  };
+  const styled = (value: string | number, style: XlsxStyle): XlsxCell =>
+    Object.keys(style).length ? { value, style } : value;
+  const text = (depth: number, kind: RowKind, value: string): XlsxCell =>
+    styled(value, textStyle(depth, kind));
+  const amount = (depth: number, kind: RowKind, value: number): XlsxCell => {
+    const style = textStyle(depth, kind);
+    if (options.amountFormat) style.format = options.amountFormat;
+    return styled(euro2(value), style);
+  };
   const blank = (): XlsxCell[] => Array.from({ length: width }, () => "");
   const header = blank();
-  header[0] = { value: title, style: { bold: true, fontSize: 14 } };
-  headers.forEach((text, i) => {
-    header[amountCol + i] = bold(text);
+  header[0] = { value: title, style: { bold: true, fontSize: (sizeAt(0) ?? 12) + 2 } };
+  headers.forEach((label, i) => {
+    header[amountCol + i] = { value: label, style: { bold: true } };
   });
   const rows: XlsxCell[][] = [header];
   // Excel outline level per row = nesting depth, so the 1…N buttons collapse
@@ -272,37 +306,34 @@ function treeSheet(
   };
   const line = (
     depth: number,
-    text: XlsxCell,
-    amount?: number,
-    columns?: number[],
-    strong = false
+    kind: RowKind,
+    label: string,
+    value?: number,
+    columns?: number[]
   ): XlsxCell[] => {
     const row = blank();
-    row[depth] = text;
-    if (amount !== undefined) {
-      row[amountCol] = strong ? boldAmount(amount) : euro2(amount);
+    row[depth] = text(depth, kind, label);
+    if (value !== undefined) {
+      row[amountCol] = amount(depth, kind, value);
       for (let i = 0; i < drill; i += 1) {
-        const value = columns?.[i] ?? 0;
-        row[amountCol + 1 + i] = strong ? boldAmount(value) : euro2(value);
+        row[amountCol + 1 + i] = amount(depth, kind, columns?.[i] ?? 0);
       }
     }
     return row;
   };
   const walk = (node: ExportTreeNode, depth: number) => {
     if (node.kind === "post") {
-      push(line(depth, `${node.code} ${node.label}`, node.amount, node.columns), depth);
+      push(line(depth, "post", `${node.code} ${node.label}`, node.amount, node.columns), depth);
       return;
     }
-    const heading =
-      depth === 0 ? { value: node.name, style: { bold: true, fontSize: 12 } } : bold(node.name);
     if (totalsOnHeading) {
-      push(line(depth, heading, node.total, node.columns, true), depth);
+      push(line(depth, "heading", node.name, node.total, node.columns), depth);
     } else {
-      push(line(depth, heading), depth);
+      push(line(depth, "heading", node.name), depth);
     }
     for (const child of node.children) walk(child, depth + 1);
     if (!totalsOnHeading && (node.children.length > 1 || depth === 0)) {
-      push(line(depth, bold(`Totaal ${node.name}`), node.total, node.columns, true), depth);
+      push(line(depth, "total", `Totaal ${node.name}`, node.total, node.columns), depth);
     }
   };
   roots.forEach((root, i) => {
@@ -335,6 +366,9 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
       sheets.push(
         treeSheet("Balans", `Balans ${data.year}`, data.balance_tree, [], {
           totalsOnHeading: true,
+          boldDepth: 1,
+          fontSizes: [16, 14, 12],
+          amountFormat: "#,##0",
         })
       );
     } else {
