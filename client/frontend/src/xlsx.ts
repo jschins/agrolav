@@ -27,6 +27,8 @@ export interface XlsxSheet {
    * the 1…N level buttons that expand or collapse the sheet progressively.
    */
   outlineLevels?: number[];
+  /** Explicit row height in points per row (same index as `rows`; undefined = auto). */
+  rowHeights?: (number | undefined)[];
 }
 
 const XML_ESCAPES: Record<string, string> = {
@@ -242,6 +244,8 @@ function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): stri
       const r = ri + 1;
       const level = Math.min(7, Math.max(0, levels[ri] || 0));
       const outline = level > 0 ? ` outlineLevel="${level}"` : "";
+      const ht = sheet.rowHeights?.[ri];
+      const height = ht && ht > 0 ? ` ht="${ht}" customHeight="1"` : "";
       const cellsXml = row
         .map((cell, ci) => {
           // A plain empty string is a blank cell: emit nothing so text in
@@ -266,7 +270,7 @@ function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): stri
           return `<c r="${ref}" s="${styleId}" t="inlineStr"><is><t>${escXml(cell)}</t></is></c>`;
         })
         .join("");
-      return `<row r="${r}"${outline}>${cellsXml}</row>`;
+      return `<row r="${r}"${outline}${height}>${cellsXml}</row>`;
     })
     .join("");
   const colCount = Math.max(1, ...sheet.rows.map((row) => row.length));

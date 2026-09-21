@@ -243,26 +243,34 @@ function treeDepth(nodes: ExportTreeNode[], depth = 0): number {
  * on its heading row instead and no `Totaal` rows are emitted. `boldDepth`
  * makes every row at that depth or shallower bold and all deeper rows plain;
  * `fontSizes` gives the size per depth (the last entry keeps shrinking by 1
- * per extra level; amounts on root rows use the depth-1 size); `titleFontSize`
+ * per extra level; amounts on root rows use the depth-1 size unless
+ * `amountFontSize` fixes one size for every amount); `titleFontSize`
  * overrides the title size; `amountFormat` is the Excel number format for
  * amounts (values keep their cents); `levelBackgrounds` fills every row with
- * the colour for its depth; `blankRowAfterTitle` inserts an empty row 2;
+ * the colour for its depth (title, spacer rows and the row above each root
+ * take the depth-0 colour); `blankRowAfterTitle` inserts an empty row 2;
  * `hideZeroPosts` drops posts whose amount rounds to 0,00 (and groups left
- * empty). Roots are separated by a blank row.
+ * empty); `rowHeights` sets the row height in points per depth (the title
+ * row uses the depth-0 height; depths past the list stay on Excel's auto
+ * height). Roots are separated by a blank row.
  */
 interface TreeSheetOptions {
   totalsOnHeading?: boolean;
   boldDepth?: number;
   fontSizes?: number[];
+  amountFontSize?: number;
   titleFontSize?: number;
   amountFormat?: string;
   levelBackgrounds?: string[];
   blankRowAfterTitle?: boolean;
   hideZeroPosts?: boolean;
+  rowHeights?: number[];
+  /** Extra empty columns after the last amount that still get the row band. */
+  trailingBandColumns?: number;
 }
 
-/** Excel "lighter 80%" theme tints: blue, green, yellow, orange, grey. */
-const LIGHT_LEVEL_BACKGROUNDS = ["DDEBF7", "E2EFDA", "FFF2CC", "FCE4D6", "EDEDED", "F2F2F2"];
+/** Balans row bands by depth: light blue, light green, bright yellow, weak yellow. */
+const BALANS_LEVEL_BACKGROUNDS = ["DDEBF7", "E2EFDA", "FFFF00", "FFF2CC"];
 
 function pruneZeroPosts(nodes: ExportTreeNode[]): ExportTreeNode[] {
   const kept: ExportTreeNode[] = [];
@@ -291,7 +299,7 @@ function treeSheet(
   const levels = treeDepth(roots) + 1;
   const amountCol = levels;
   const drill = Math.max(0, headers.length - 1);
-  const width = amountCol + 1 + drill;
+  const width = amountCol + 1 + drill + Math.max(0, options.trailingBandColumns ?? 0);
   type RowKind = "heading" | "post" | "total";
   const sizeAt = (depth: number): number | undefined => {
     const sizes = options.fontSizes;
@@ -320,8 +328,9 @@ function treeSheet(
   const text = (depth: number, kind: RowKind, value: string): XlsxCell =>
     styled(value, textStyle(depth, kind));
   const amount = (depth: number, kind: RowKind, value: number): XlsxCell => {
-    // Root-row amounts take the next level's size (Activa 16 pt, its amount 14 pt).
+    // Root-row amounts take the next level's size unless one size is fixed.
     const style = textStyle(depth, kind, Math.max(depth, 1));
+    if (options.amountFontSize) style.fontSize = options.amountFontSize;
     if (options.amountFormat) style.format = options.amountFormat;
     return styled(euro2(value), style);
   };
@@ -331,23 +340,35 @@ function treeSheet(
       background ? { value: "", style: { background } } : ""
     );
   };
-  const header = blank();
+  // Title, spacer rows and the row above each root wear the depth-0 band.
+  const spacer = (): XlsxCell[] => (backgroundAt(0) ? blank(0) : []);
+  const header = blank(0);
   header[0] = {
     value: title,
-    style: { bold: true, fontSize: options.titleFontSize ?? (sizeAt(0) ?? 12) + 2 },
+    style: {
+      bold: true,
+      fontSize: options.titleFontSize ?? (sizeAt(0) ?? 12) + 2,
+      ...(backgroundAt(0) ? { background: backgroundAt(0) } : {}),
+    },
   };
   headers.forEach((label, i) => {
-    header[amountCol + i] = { value: label, style: { bold: true } };
+    header[amountCol + i] = {
+      value: label,
+      style: { bold: true, ...(backgroundAt(0) ? { background: backgroundAt(0) } : {}) },
+    };
   });
+  const heightAt = (depth: number): number | undefined => options.rowHeights?.[depth];
   const rows: XlsxCell[][] = [header];
   // Excel outline level per row = nesting depth, so the 1…N buttons collapse
   // the sheet to roots, then root+groups, and so on.
   const outlineLevels: number[] = [0];
-  const push = (row: XlsxCell[], depth: number) => {
+  const rowHeights: (number | undefined)[] = [heightAt(0)];
+  const push = (row: XlsxCell[], depth: number, height?: number) => {
     rows.push(row);
     outlineLevels.push(depth);
+    rowHeights.push(height);
   };
-  if (options.blankRowAfterTitle) push([], 0);
+  if (options.blankRowAfterTitle) push(spacer(), 0);
   const line = (
     depth: number,
     kind: RowKind,
@@ -366,29 +387,34 @@ function treeSheet(
     return row;
   };
   const walk = (node: ExportTreeNode, depth: number) => {
+    const height = heightAt(depth);
     if (node.kind === "post") {
-      push(line(depth, "post", `${node.code} ${node.label}`, node.amount, node.columns), depth);
+      push(
+        line(depth, "post", `${node.code} ${node.label}`, node.amount, node.columns),
+        depth,
+        height
+      );
       return;
     }
     if (totalsOnHeading) {
-      push(line(depth, "heading", node.name, node.total, node.columns), depth);
+      push(line(depth, "heading", node.name, node.total, node.columns), depth, height);
     } else {
-      push(line(depth, "heading", node.name), depth);
+      push(line(depth, "heading", node.name), depth, height);
     }
     for (const child of node.children) walk(child, depth + 1);
     if (!totalsOnHeading && (node.children.length > 1 || depth === 0)) {
-      push(line(depth, "total", `Totaal ${node.name}`, node.total, node.columns), depth);
+      push(line(depth, "total", `Totaal ${node.name}`, node.total, node.columns), depth, height);
     }
   };
   roots.forEach((root, i) => {
-    if (i > 0) push([], 0);
+    if (i > 0) push(spacer(), 0);
     walk(root, 0);
   });
   const widths: number[] = Array.from({ length: levels }, (_, i) =>
     i === levels - 1 ? 44 : 4
   );
   for (let i = 0; i <= drill; i += 1) widths.push(14);
-  return { name, rows, widths, outlineLevels };
+  return { name, rows, widths, outlineLevels, rowHeights };
 }
 
 /** Resultaat drill-down headers: accounts, spaarrekeningen, then Journaal. */
@@ -411,12 +437,15 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
         treeSheet("Balans", `Balans ${data.year}`, data.balance_tree, [], {
           totalsOnHeading: true,
           boldDepth: 1,
-          fontSizes: [16, 14, 12],
+          fontSizes: [16, 14, 13, 12],
+          amountFontSize: 12,
           titleFontSize: 16,
           amountFormat: "#,##0",
-          levelBackgrounds: LIGHT_LEVEL_BACKGROUNDS,
+          levelBackgrounds: BALANS_LEVEL_BACKGROUNDS,
           blankRowAfterTitle: true,
           hideZeroPosts: true,
+          rowHeights: [30, 25, 20],
+          trailingBandColumns: 1,
         })
       );
     } else {
