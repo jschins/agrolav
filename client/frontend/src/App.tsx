@@ -243,14 +243,38 @@ function treeDepth(nodes: ExportTreeNode[], depth = 0): number {
  * on its heading row instead and no `Totaal` rows are emitted. `boldDepth`
  * makes every row at that depth or shallower bold and all deeper rows plain;
  * `fontSizes` gives the size per depth (the last entry keeps shrinking by 1
- * per extra level); `amountFormat` is the Excel number format for amounts
- * (values keep their cents). Roots are separated by a blank row.
+ * per extra level; amounts on root rows use the depth-1 size); `titleFontSize`
+ * overrides the title size; `amountFormat` is the Excel number format for
+ * amounts (values keep their cents); `levelBackgrounds` fills every row with
+ * the colour for its depth; `blankRowAfterTitle` inserts an empty row 2;
+ * `hideZeroPosts` drops posts whose amount rounds to 0,00 (and groups left
+ * empty). Roots are separated by a blank row.
  */
 interface TreeSheetOptions {
   totalsOnHeading?: boolean;
   boldDepth?: number;
   fontSizes?: number[];
+  titleFontSize?: number;
   amountFormat?: string;
+  levelBackgrounds?: string[];
+  blankRowAfterTitle?: boolean;
+  hideZeroPosts?: boolean;
+}
+
+/** Excel "lighter 80%" theme tints: blue, green, yellow, orange, grey. */
+const LIGHT_LEVEL_BACKGROUNDS = ["DDEBF7", "E2EFDA", "FFF2CC", "FCE4D6", "EDEDED", "F2F2F2"];
+
+function pruneZeroPosts(nodes: ExportTreeNode[]): ExportTreeNode[] {
+  const kept: ExportTreeNode[] = [];
+  for (const node of nodes) {
+    if (node.kind === "post") {
+      if (Math.abs(node.amount) >= 0.005) kept.push(node);
+      continue;
+    }
+    const children = pruneZeroPosts(node.children);
+    if (children.length) kept.push({ ...node, children });
+  }
+  return kept;
 }
 
 function treeSheet(
@@ -261,6 +285,9 @@ function treeSheet(
   options: TreeSheetOptions = {}
 ): XlsxSheet {
   const totalsOnHeading = options.totalsOnHeading === true;
+  if (options.hideZeroPosts) {
+    roots = pruneZeroPosts(roots).filter((n): n is ExportTreeGroup => n.kind === "group");
+  }
   const levels = treeDepth(roots) + 1;
   const amountCol = levels;
   const drill = Math.max(0, headers.length - 1);
@@ -272,13 +299,20 @@ function treeSheet(
     if (depth < sizes.length) return sizes[depth];
     return Math.max(6, sizes[sizes.length - 1] - (depth - (sizes.length - 1)));
   };
+  const backgroundAt = (depth: number): string | undefined => {
+    const colors = options.levelBackgrounds;
+    if (!colors?.length) return undefined;
+    return colors[Math.min(depth, colors.length - 1)];
+  };
   const isBold = (depth: number, kind: RowKind): boolean =>
     options.boldDepth !== undefined ? depth <= options.boldDepth : kind !== "post";
-  const textStyle = (depth: number, kind: RowKind): XlsxStyle => {
+  const textStyle = (depth: number, kind: RowKind, sizeDepth = depth): XlsxStyle => {
     const style: XlsxStyle = {};
     if (isBold(depth, kind)) style.bold = true;
-    const size = sizeAt(depth) ?? (kind === "heading" && depth === 0 ? 12 : undefined);
+    const size = sizeAt(sizeDepth) ?? (kind === "heading" && depth === 0 ? 12 : undefined);
     if (size) style.fontSize = size;
+    const background = backgroundAt(depth);
+    if (background) style.background = background;
     return style;
   };
   const styled = (value: string | number, style: XlsxStyle): XlsxCell =>
@@ -286,13 +320,22 @@ function treeSheet(
   const text = (depth: number, kind: RowKind, value: string): XlsxCell =>
     styled(value, textStyle(depth, kind));
   const amount = (depth: number, kind: RowKind, value: number): XlsxCell => {
-    const style = textStyle(depth, kind);
+    // Root-row amounts take the next level's size (Activa 16 pt, its amount 14 pt).
+    const style = textStyle(depth, kind, Math.max(depth, 1));
     if (options.amountFormat) style.format = options.amountFormat;
     return styled(euro2(value), style);
   };
-  const blank = (): XlsxCell[] => Array.from({ length: width }, () => "");
+  const blank = (depth?: number): XlsxCell[] => {
+    const background = depth === undefined ? undefined : backgroundAt(depth);
+    return Array.from({ length: width }, () =>
+      background ? { value: "", style: { background } } : ""
+    );
+  };
   const header = blank();
-  header[0] = { value: title, style: { bold: true, fontSize: (sizeAt(0) ?? 12) + 2 } };
+  header[0] = {
+    value: title,
+    style: { bold: true, fontSize: options.titleFontSize ?? (sizeAt(0) ?? 12) + 2 },
+  };
   headers.forEach((label, i) => {
     header[amountCol + i] = { value: label, style: { bold: true } };
   });
@@ -304,6 +347,7 @@ function treeSheet(
     rows.push(row);
     outlineLevels.push(depth);
   };
+  if (options.blankRowAfterTitle) push([], 0);
   const line = (
     depth: number,
     kind: RowKind,
@@ -311,7 +355,7 @@ function treeSheet(
     value?: number,
     columns?: number[]
   ): XlsxCell[] => {
-    const row = blank();
+    const row = blank(depth);
     row[depth] = text(depth, kind, label);
     if (value !== undefined) {
       row[amountCol] = amount(depth, kind, value);
@@ -368,7 +412,11 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
           totalsOnHeading: true,
           boldDepth: 1,
           fontSizes: [16, 14, 12],
+          titleFontSize: 16,
           amountFormat: "#,##0",
+          levelBackgrounds: LIGHT_LEVEL_BACKGROUNDS,
+          blankRowAfterTitle: true,
+          hideZeroPosts: true,
         })
       );
     } else {

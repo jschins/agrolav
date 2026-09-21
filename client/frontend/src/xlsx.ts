@@ -253,6 +253,11 @@ function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): stri
             if (typeof cell.value === "number") {
               return `<c r="${ref}" s="${styleId}"><v>${cell.value}</v></c>`;
             }
+            if (cell.value === "") {
+              // Styled but blank (e.g. a row background): no value, so a
+              // neighbouring label may still overflow into it.
+              return `<c r="${ref}" s="${styleId}"/>`;
+            }
             return `<c r="${ref}" s="${styleId}" t="inlineStr"><is><t>${escXml(String(cell.value))}</t></is></c>`;
           }
           if (typeof cell === "number") {
