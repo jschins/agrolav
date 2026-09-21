@@ -146,6 +146,30 @@ The table is FROM's sign; TO is `+X` in every cell.
 
 ---
 
+## 6. Journal legs opposite to the booked sign (red category)
+
+In a category's transaction view every transaction-table (booked) row moves the
+selected category with one uniform sign. Journal legs from `dbo.journal` that
+contribute to that category do the same; their displayed amount is the leg delta
+(`journal_leg_amount`, sign per §5, see `balance_values.journal_deltas`).
+
+The sign that decides the red test is the **raw signed amount X** of the journal
+line (`dbo.journal.amount`, in +, out −), not that leg delta.
+
+- reference sign: the uniform sign of the booked rows in the same view (net of
+  journal and mirror rows); only used when non-zero
+- a journal row is red-flagged when its raw sign X opposes that reference
+
+When flagged, the journal row's category code is shown **bold red**: the leg
+moves this category contrary to every actual booking in the view, which
+suggests a sign error in that journal line. Mirror rows (`id` starts with `b`)
+are never flagged and are also excluded from the reference.
+
+Runtime surfaces the raw sign per journal row as `journal_src`; the frontend
+hides that field from the table and colors the category cell on the comparison.
+
+---
+
 ## Why 2000 stays still (sketch)
 
 Bank HIT of X on 1051 still keeps ΔA = ΔP_other (P_other includes 2100):

@@ -864,6 +864,12 @@ tr.modified td:not(.amount) {
   cursor: pointer;
 }
 
+.p-table td.category-pick.journal-opposite-sign,
+.p-table td.category-pick.journal-opposite-sign .editable {
+  color: #d00000;
+  font-weight: 700;
+}
+
 .category-picker-backdrop {
   position: fixed;
   inset: 0;

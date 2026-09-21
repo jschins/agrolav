@@ -3860,6 +3860,18 @@ function transactionCents(value: unknown): number {
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
 }
 
+function amountSignCents(cents: number): number {
+  return cents > 0 ? 1 : cents < 0 ? -1 : 0;
+}
+
+function isJournalRow(t: Transaction): boolean {
+  return typeof t.journal_src === "string" && t.journal_src.trim() !== "";
+}
+
+function isMirrorRow(t: Transaction): boolean {
+  return typeof t.id === "string" && t.id.startsWith("b");
+}
+
 function closeSplitPage() {
   openView("main");
 }
@@ -4229,6 +4241,15 @@ function PTable({
       .map(([name, cents]) => ({ name, cents }));
   }, [transactions]);
 
+  const journalBaselineSign = useMemo(() => {
+    let cents = 0;
+    for (const t of transactions) {
+      if (isJournalRow(t) || isMirrorRow(t)) continue;
+      cents += transactionCents(t.amount);
+    }
+    return amountSignCents(cents);
+  }, [transactions]);
+
   function safeHighlight(text: string): ReactNode {
     try {
       return highlight(text, keywords);
@@ -4302,10 +4323,16 @@ function PTable({
     }
     if (column === "category") {
       const catModified = categoryModified.has(String(t.id));
+      const journalOpposite =
+        isJournalRow(t) &&
+        journalBaselineSign !== 0 &&
+        amountSignCents(transactionCents(t.journal_src)) !== journalBaselineSign;
       return (
         <td
           key={column}
-          className={`num category-pick${catModified ? " category-modified" : ""}`}
+          className={`num category-pick${catModified ? " category-modified" : ""}${
+            journalOpposite ? " journal-opposite-sign" : ""
+          }`}
           onClick={() => setPicker(t)}
         >
           <span className="editable">{formatCell(t.category)}</span>
@@ -5043,6 +5070,7 @@ const HIDDEN_TRANSACTION_COLUMNS = new Set([
   "modification",
   "hit",
   "account_uid",
+  "journal_src",
 ]);
 
 function stripHiddenColumns(columns: string[]): string[] {

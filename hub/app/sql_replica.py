@@ -457,8 +457,8 @@ def _load_nonbank_category_rows(
             (country_id, bound.year, id_a, id_b, id_a, id_b),
         )
         for journal_id, booked_on, cat_from, cat_to, amount, description in bound.cursor.fetchall():
-            delta = _decimal_amount(amount)
-            if delta is None:
+            raw_delta = _decimal_amount(amount)
+            if raw_delta is None:
                 continue
             src = int(cat_from)
             dst = int(cat_to)
@@ -466,12 +466,13 @@ def _load_nonbank_category_rows(
                 codes.get(cat_id, id_a),
                 codes.get(src, src),
                 codes.get(dst, dst),
-                delta,
+                raw_delta,
             )
             rows.append(
                 {
                     "id": f"j{int(journal_id)}",
                     "amount": _json_amount(delta),
+                    "journal_src": _json_amount(raw_delta),
                     "currency": "EUR",
                     "type": "",
                     "name": "",
