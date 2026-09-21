@@ -2263,6 +2263,7 @@ function MainApp({
     transactionId: string;
   } | null>(null);
   const [termMenuSettings, setTermMenuSettings] = useState<SettingsResponse | null>(null);
+  const termSettingsRef = useRef<SettingsResponse | null>(null);
   const [loginName, setLoginName] = useState("");
   const [loginPerson, setLoginPerson] = useState("");
   const [loginAccess, setLoginAccess] = useState("");
@@ -2311,7 +2312,9 @@ function MainApp({
     let cancelled = false;
     getSettings()
       .then((s) => {
-        if (!cancelled) setCategoryRoles(s.category_roles ?? {});
+        if (cancelled) return;
+        termSettingsRef.current = s;
+        setCategoryRoles(s.category_roles ?? {});
       })
       .catch(() => {
         if (!cancelled) setCategoryRoles({});
@@ -2496,10 +2499,19 @@ function MainApp({
     setError(null);
     const word = wordAtClick(e.currentTarget, e.clientX, e.clientY) || cellText.trim();
     if (!word) return;
+    const open = { term: word, x: e.clientX, y: e.clientY, transactionId };
+    const cached = termSettingsRef.current;
+    if (cached) {
+      setTermMenuSettings(cached);
+      setTermMenu(open);
+      return;
+    }
     getSettings()
       .then((settings) => {
+        termSettingsRef.current = settings;
+        setCategoryRoles(settings.category_roles ?? {});
         setTermMenuSettings(settings);
-        setTermMenu({ term: word, x: e.clientX, y: e.clientY, transactionId });
+        setTermMenu(open);
       })
       .catch((err: Error) => setError(err.message));
   }

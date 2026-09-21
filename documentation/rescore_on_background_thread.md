@@ -5,8 +5,9 @@ word and returns at once. The hub rescores bookings on a background thread.
 The screen does not wait for that pass.
 
 What you see: the menu closes immediately. The row you assigned to another
-category leaves the list immediately. You can right-click and add the next
-term while the previous rescore is still running. When the pass finishes, the
+category leaves the list immediately. A further right-click opens the menu
+from the settings already loaded on the page, so it does not call the hub
+again while a rescore is running. You can add the next term during that pass. When the pass finishes, the
 hub publishes its usual change event. The open list and the matrix reload
 themselves from that event, about a second later. Until then, rows other than
 the one you just assigned still show their old category.
