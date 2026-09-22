@@ -193,13 +193,11 @@ spaces). Use `&&` when both phrases must match, for example `albert && heijn`.
 
 Priority, highest first:
 
-1. Bank **typerules** (type → category) beat all keywords.
-2. **Personal** terms beat **general** terms.
-3. `&&` terms beat a single phrase.
-4. Later category, then later term, wins when more than one keyword matches.
+1. **Personal** terms beat **general** terms.
+2. `&&` terms beat a single phrase.
+3. Later category, then later term, wins when more than one keyword matches.
 
-Unclassified bookings sit in the remainder category until a rule or term
-moves them.
+Unclassified bookings sit in the remainder category until a term moves them.
 
 ---
 

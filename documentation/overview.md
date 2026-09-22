@@ -35,8 +35,8 @@ people are login rows (`dbo.country` / `dbo.center` / `dbo.person`). Each
 person has accounts; bookings sit in a per-country table
 (`transaction_nederland`, `transaction_uk`, …). Categories use a stable
 `category_id` (100+ per country) while the UI still shows local codes such
-as "12 Vervoer". Keyword terms, type rules, and matrix footer labels live
-in dimension tables. See `DATABASE.md`.
+as "12 Vervoer". Keyword terms and matrix footer labels live in dimension
+tables. See `DATABASE.md`.
 
 ### Two ways money enters
 

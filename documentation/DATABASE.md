@@ -7,7 +7,7 @@ restore for both instances are in this file, not in `deployment.md`.
 Schema sources in the repo:
 
 - `hub/sql/phase_c.sql` — base schema (do not run against a live database; it drops tables)
-- `hub/sql/json_independence.sql` — `language`, `country.language_id`, `type_rule`, `bank_modality`, `enable_connection`, `enable_redirect`, `visitor_ip`
+- `hub/sql/json_independence.sql` — `language`, `country.language_id`, `bank_modality`, `enable_connection`, `enable_redirect`, `visitor_ip`
 - `hub/sql/visitor_ip.sql` — `egress_ip` columns and `dbo.visitor_ip` (idempotent)
 - `hub/sql/administrator.sql` — `dbo.administrator` (idempotent)
 - Hub startup requires `dbo.consent_pending` (create it in SSMS if missing)
@@ -184,7 +184,7 @@ WHERE name IN (
   'account','administrator','bank','bank_modality','category_term',
   'category_total','center','consent_pending','country','dim_category',
   'enable_connection','enable_redirect','person','table_header_term',
-  'type_abbreviation','type_rule','transaction_nederland','transaction_uk',
+  'type_abbreviation','transaction_nederland','transaction_uk',
   'uploaded_files','visitor_ip'
 )
 ORDER BY name;
@@ -406,10 +406,6 @@ Keyword lists that assign bookings to categories.
 
 Bank-type abbreviations (Betaalautomaat → BA). Per country.
 
-### `type_rule`
-
-Bank `bank_type` → `category_id`. Typerules beat all keywords.
-
 ### `language`
 
 Shared UI terms. One row per English key (`term_lang1`). `term_lang2` is Dutch.
@@ -524,7 +520,7 @@ modifications table.
 | `booked_on` | `DATE` | |
 | `category_id` | `INT` FK | **104** for NL Vervoer, not 12 |
 | `modification` | `SMALLINT` | -1 uncalculated; 0 none; 1 category; 2 description; 3 both |
-| `hit` | `NVARCHAR(64)` NULL | `P:{term}` or `G:{term}`; NULL for typerules / remainder |
+| `hit` | `NVARCHAR(64)` NULL | `P:{term}` or `G:{term}`; NULL for the remainder |
 
 `modification` records what the user touched:
 
@@ -539,8 +535,8 @@ modifications table.
 Recalc writes `category_id` only when `modification` is -1, 0, or 2. After the
 first calculation, -1 becomes 0. Flags 1 and 3 keep the user's category.
 
-`hit` is the keyword that won (`P:` personal or `G:` general). Typerules and
-remainder leave it NULL.
+`hit` is the keyword that won (`P:` personal or `G:` general). The remainder
+leaves it NULL.
 
 Unique `(person_id, year, bank_id, source_id)` with a filtered unique for
 `bank_id IS NULL`, per table.

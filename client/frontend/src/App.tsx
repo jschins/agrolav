@@ -1903,20 +1903,15 @@ function isoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function formatTermMatchHint(typerules: { type: string; category: string }[]): string {
+function formatTermMatchHint(): string {
   const priority =
-    "Priority (highest first): (1) typerules beat all keywords; " +
-    "(2) personal beats all general; " +
-    "(3) && terms beat single-phrase terms; " +
-    "(4) last-stick: later category name, then later term, wins.";
+    "Priority (highest first): (1) personal beats all general; " +
+    "(2) && terms beat single-phrase terms; " +
+    "(3) last-stick: later category name, then later term, wins.";
   const wildcards =
     "# matches zero or more letters or dots within one word (not across spaces). " +
     "Use && when both phrases must match (e.g. albert && heijn).";
-  const rules =
-    typerules.length === 0
-      ? ""
-      : ` Typerules: ${typerules.map((rule) => `${rule.type} → ${displayCategoryName(rule.category)}`).join("; ")}.`;
-  return `${wildcards} ${priority}${rules}`;
+  return `${wildcards} ${priority}`;
 }
 
 function tableHeaderTerm(
@@ -3210,7 +3205,7 @@ function TermsApp() {
           Term Window. Return to overview using <kbd>Ctrl</kbd>+<kbd>Tab</kbd> or{" "}
           <kbd>Alt</kbd>+<kbd>M</kbd>. Edits save immediately; matching bookings
           update in the background.{" "}
-          {settings ? formatTermMatchHint(settings.typerules) : ""}
+          {settings ? formatTermMatchHint() : ""}
         </p>
       </aside>
       <main className="content terms-content">

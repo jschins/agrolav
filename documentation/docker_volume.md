@@ -210,7 +210,7 @@ WHERE name IN (
   'account','administrator','bank','bank_modality','category_term',
   'category_total','center','consent_pending','country','dim_category',
   'enable_connection','enable_redirect','person','table_header_term',
-  'type_abbreviation','type_rule','transaction_nederland','transaction_uk',
+  'type_abbreviation','transaction_nederland','transaction_uk',
   'uploaded_files','visitor_ip'
 )
 ORDER BY name;
