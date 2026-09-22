@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { flushSync } from "react-dom";
 import {
   ackCentralWinsRefusal,
   askHelp,
@@ -73,6 +73,7 @@ import {
   type XlsxStyle,
 } from "./xlsx";
 import AfschrijvingenEditor from "./AfschrijvingenEditor";
+import { PriorityRulesDialog } from "./InfoDialog";
 import JournalEditor from "./JournalEditor";
 
 const CHANNEL = "boekhouding";
@@ -3119,118 +3120,6 @@ function MainApp({
   );
 }
 
-function inlineMarked(text: string): ReactNode[] {
-  return text.split("`").map((part, index) =>
-    index % 2 === 1 ? <code key={index}>{part}</code> : part
-  );
-}
-
-function PriorityBody({ text }: { text: string }) {
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
-  const blocks: ReactNode[] = [];
-  let index = 0;
-  let key = 0;
-  while (index < lines.length) {
-    const line = lines[index];
-    if (!line.trim()) {
-      index += 1;
-      continue;
-    }
-    if (line.startsWith("## ")) {
-      blocks.push(<h3 key={key}>{inlineMarked(line.slice(3))}</h3>);
-      key += 1;
-      index += 1;
-      continue;
-    }
-    if (line.startsWith("- ")) {
-      const items: string[] = [];
-      while (index < lines.length && lines[index].startsWith("- ")) {
-        items.push(lines[index].slice(2));
-        index += 1;
-      }
-      blocks.push(
-        <ul key={key}>
-          {items.map((item, itemKey) => (
-            <li key={itemKey}>{inlineMarked(item)}</li>
-          ))}
-        </ul>
-      );
-      key += 1;
-      continue;
-    }
-    if (/^\d+\. /.test(line)) {
-      const items: string[] = [];
-      while (index < lines.length && /^\d+\. /.test(lines[index])) {
-        items.push(lines[index].replace(/^\d+\. /, ""));
-        index += 1;
-      }
-      blocks.push(
-        <ol key={key}>
-          {items.map((item, itemKey) => (
-            <li key={itemKey}>{inlineMarked(item)}</li>
-          ))}
-        </ol>
-      );
-      key += 1;
-      continue;
-    }
-    const paragraph = [line.trim()];
-    index += 1;
-    while (
-      index < lines.length &&
-      lines[index].trim() &&
-      !lines[index].startsWith("## ") &&
-      !lines[index].startsWith("- ") &&
-      !/^\d+\. /.test(lines[index])
-    ) {
-      paragraph.push(lines[index].trim());
-      index += 1;
-    }
-    blocks.push(<p key={key}>{inlineMarked(paragraph.join(" "))}</p>);
-    key += 1;
-  }
-  return <>{blocks}</>;
-}
-
-function PriorityRulesDialog({
-  title,
-  body,
-  closeLabel,
-  onClose,
-}: {
-  title: string;
-  body: string;
-  closeLabel: string;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return createPortal(
-    <div className="priority-rules-overlay" onClick={onClose}>
-      <div
-        className="priority-rules-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="priority-rules-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 id="priority-rules-title">{title}</h2>
-        {body ? <PriorityBody text={body} /> : null}
-        <button type="button" className="priority-rules-close" onClick={onClose}>
-          {closeLabel}
-        </button>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 function TermsApp() {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [priorityOpen, setPriorityOpen] = useState(false);
@@ -3412,12 +3301,12 @@ function TermsApp() {
           className="sidebar-knob info-knob"
           onClick={() => setPriorityOpen(true)}
         >
-          {tableHeaderTerm(settings?.table_header_terms, "priority rules")}
+          {tableHeaderTerm(settings?.table_header_terms, "Priority rules")}
         </button>
       </aside>
       {priorityOpen ? (
         <PriorityRulesDialog
-          title={tableHeaderTerm(settings?.table_header_terms, "priority rules")}
+          title={tableHeaderTerm(settings?.table_header_terms, "Priority rules")}
           body={settings?.language_long?.["priority rules"] ?? ""}
           closeLabel={tableHeaderTerm(settings?.table_header_terms, "Close")}
           onClose={() => setPriorityOpen(false)}
@@ -4379,18 +4268,6 @@ function transactionCents(value: unknown): number {
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
 }
 
-function amountSignCents(cents: number): number {
-  return cents > 0 ? 1 : cents < 0 ? -1 : 0;
-}
-
-function isJournalRow(t: Transaction): boolean {
-  return typeof t.journal_src === "string" && t.journal_src.trim() !== "";
-}
-
-function isMirrorRow(t: Transaction): boolean {
-  return typeof t.id === "string" && t.id.startsWith("b");
-}
-
 function closeSplitPage() {
   openView("main");
 }
@@ -4763,15 +4640,6 @@ function PTable({
       .map(([name, cents]) => ({ name, cents }));
   }, [transactions]);
 
-  const journalBaselineSign = useMemo(() => {
-    let cents = 0;
-    for (const t of transactions) {
-      if (isJournalRow(t) || isMirrorRow(t)) continue;
-      cents += transactionCents(t.amount);
-    }
-    return amountSignCents(cents);
-  }, [transactions]);
-
   function safeHighlight(text: string): ReactNode {
     try {
       return highlight(text, keywords);
@@ -4845,16 +4713,10 @@ function PTable({
     }
     if (column === "category") {
       const catModified = categoryModified.has(String(t.id));
-      const journalOpposite =
-        isJournalRow(t) &&
-        journalBaselineSign !== 0 &&
-        amountSignCents(transactionCents(t.journal_src)) !== journalBaselineSign;
       return (
         <td
           key={column}
-          className={`num category-pick${catModified ? " category-modified" : ""}${
-            journalOpposite ? " journal-opposite-sign" : ""
-          }`}
+          className={`num category-pick${catModified ? " category-modified" : ""}`}
           onClick={() => setPicker(t)}
         >
           <span className="editable">{formatCell(t.category)}</span>
@@ -4864,10 +4726,7 @@ function PTable({
     return <td key={column}>{formatCell(t[column])}</td>;
   }
 
-  const signFromTerms = detail.table_header_terms?.["sign convention"]?.trim();
-  const signLabel =
-    signFromTerms ||
-    (uiIsDutch(detail.table_header_terms) ? "tekenconventie" : "sign convention");
+  const signLabel = tableHeaderTerm(detail.table_header_terms, "Sign convention transactions");
   return (
     <div className="p-panel">
       <button type="button" className="sidebar-knob info-knob" onClick={() => setSignOpen(true)}>
@@ -4876,7 +4735,11 @@ function PTable({
       {signOpen ? (
         <PriorityRulesDialog
           title={signLabel}
-          body={languageLong?.["sign convention"] ?? ""}
+          body={
+            languageLong?.["sign convention transactions"] ??
+            languageLong?.["sign convention"] ??
+            ""
+          }
           closeLabel={tableHeaderTerm(detail.table_header_terms, "Close")}
           onClose={() => setSignOpen(false)}
         />

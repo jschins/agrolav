@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { getJournalData, saveJournalData } from "./api";
+import { getJournalData, getSettings, saveJournalData } from "./api";
 import type { JournalRow } from "./api";
+import { PriorityRulesDialog } from "./InfoDialog";
 
 type Draft = {
   key: string;
@@ -92,6 +93,8 @@ export default function JournalEditor({
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [signOpen, setSignOpen] = useState(false);
+  const [languageLong, setLanguageLong] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +126,20 @@ export default function JournalEditor({
       cancelled = true;
     };
   }, [year]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSettings()
+      .then((settings) => {
+        if (!cancelled) setLanguageLong(settings.language_long ?? {});
+      })
+      .catch(() => {
+        if (!cancelled) setLanguageLong({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function usedCategoryIds(): number[] {
     const set = new Set<number>(cats.map((c) => c.category_id));
@@ -211,6 +228,7 @@ export default function JournalEditor({
 
   const maxDescLen = rows.reduce((m, r) => Math.max(m, r.description.length), 0);
   const descMinCh = Math.max(12, maxDescLen + 1);
+  const signLabel = term(terms, "Sign convention journal posts");
 
   return (
     <div className="journal">
@@ -221,6 +239,21 @@ export default function JournalEditor({
       </div>
       <div className="journal-main">
         <aside className="journal-panel">
+          <button
+            type="button"
+            className="sidebar-knob info-knob"
+            onClick={() => setSignOpen(true)}
+          >
+            {signLabel}
+          </button>
+          {signOpen ? (
+            <PriorityRulesDialog
+              title={signLabel}
+              body={languageLong["sign convention journal posts"] ?? ""}
+              closeLabel={term(terms, "Close")}
+              onClose={() => setSignOpen(false)}
+            />
+          ) : null}
           <h2>{term(terms, "Manual journal posts")}</h2>
           <div className="journal-filters">
             <label>

@@ -476,7 +476,6 @@ def _load_nonbank_category_rows(
                 {
                     "id": f"j{int(journal_id)}",
                     "amount": _json_amount(delta),
-                    "journal_src": _json_amount(raw_delta),
                     "currency": "EUR",
                     "type": "",
                     "name": "",

@@ -380,14 +380,6 @@ spaarrekening (mirror) can take a term. The remainder category receives a
 booking that no term matches.
 <!-- {en:cannot[5],assign,bank,account,mirror,no,hit,eigen,vermogen} -->
 <!-- {nl:cannot[5],toewijzen,bank,rekening,spaarrekening,geen,treffer,eigen,vermogen} -->
-## A journal line in the wrong direction
-
-In a category’s booking list, a journal line whose sign opposes the bookings
-in that list shows its category code in **bold red**. The line is moving
-this category the other way from the real bookings. Mirror rows are not
-marked.
-<!-- {en:journal[5],bold,red,wrong[5],sign} -->
-<!-- {nl:journaal[5],vet,rood,fout[5],teken} -->
 ## The name in the left panel
 
 The heading is the title stored for the login: the person, the center, or

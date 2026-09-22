@@ -16,19 +16,28 @@ CREATE TABLE dbo.language_long (
 )
 GO
 
+UPDATE dbo.language
+SET term_lang1 = N'Priority rules',
+    term_lang2 = N'Voorrangsregels'
+WHERE term_lang1 = N'priority rules'
+  AND NOT EXISTS (
+      SELECT 1 FROM dbo.language WHERE term_lang1 = N'Priority rules'
+  );
+
+UPDATE dbo.language
+SET term_lang2 = N'Voorrangsregels'
+WHERE term_lang1 = N'Priority rules';
+GO
+
 INSERT INTO dbo.language (term_lang1, term_lang2)
 SELECT v.term_lang1, v.term_lang2
 FROM (VALUES
-    ('priority rules', 'voorrangsregels'),
+    ('Priority rules', 'Voorrangsregels'),
     ('Close', 'Sluiten')
 ) AS v (term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
 );
-
-UPDATE dbo.language
-SET term_lang2 = N'voorrangsregels'
-WHERE term_lang1 = N'priority rules';
 GO
 
 INSERT INTO dbo.language_long (term_key, term_lang1, term_lang2)
@@ -138,21 +147,58 @@ SET term_lang1 = REPLACE(REPLACE(term_lang1, N'albert && heijn', N'heijn && mach
     term_lang2 = REPLACE(REPLACE(term_lang2, N'albert && heijn', N'heijn && machtiging'), N'albert&&heijn', N'heijn&&machtiging');
 GO
 
+UPDATE dbo.language
+SET term_lang1 = 'Sign convention transactions',
+    term_lang2 = 'Tekenconventie transacties'
+WHERE term_lang1 IN ('sign convention', 'sign convention transactions')
+  AND NOT EXISTS (
+      SELECT 1 FROM dbo.language WHERE term_lang1 = 'Sign convention transactions'
+  );
+GO
+
+UPDATE dbo.language
+SET term_lang2 = 'Tekenconventie transacties'
+WHERE term_lang1 = 'Sign convention transactions';
+GO
+
+UPDATE dbo.language
+SET term_lang1 = 'Sign convention journal posts',
+    term_lang2 = 'Tekenconventie journaalposten'
+WHERE term_lang1 = 'sign convention journal posts'
+  AND NOT EXISTS (
+      SELECT 1 FROM dbo.language WHERE term_lang1 = 'Sign convention journal posts'
+  );
+GO
+
 INSERT INTO dbo.language (term_lang1, term_lang2)
 SELECT v.term_lang1, v.term_lang2
 FROM (VALUES
-    ('sign convention', 'tekenconventie')
+    ('Sign convention transactions', 'Tekenconventie transacties'),
+    ('Sign convention journal posts', 'Tekenconventie journaalposten')
 ) AS v (term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
 );
 GO
 
+UPDATE dbo.language
+SET term_lang2 = 'Tekenconventie journaalposten'
+WHERE term_lang1 = 'Sign convention journal posts';
+GO
+
+UPDATE dbo.language_long
+SET term_key = N'sign convention transactions'
+WHERE term_key = N'sign convention'
+  AND NOT EXISTS (
+      SELECT 1 FROM dbo.language_long WHERE term_key = N'sign convention transactions'
+  );
+GO
+
 INSERT INTO dbo.language_long (term_key, term_lang1, term_lang2)
 SELECT v.term_key, v.term_lang1, v.term_lang2
 FROM (VALUES
     (
-        N'sign convention',
+        N'sign convention transactions',
         N'The first IBAN column (account holder) becomes richer when the amount is positive, and poorer when the amount is negative.
 
 The second IBAN column (counterparty) becomes poorer when the amount is positive, and richer when the amount is negative.
@@ -171,6 +217,32 @@ Een andere manier om hetzelfde te zeggen is als volgt:
 Bij een positief bedrag wordt een geldbedrag weggehaald bij de tegenpartij en gestort op de rekeninghouder (geld verschuift van rechts naar links).
 
 Bij een negatief bedrag wordt een geldhoeveelheid weggehaald bij de rekeninghouder en gestort op de tegenpartij (geld verschuift van links naar rechts).'
+    )
+) AS v (term_key, term_lang1, term_lang2)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.language_long l WHERE l.term_key = v.term_key
+);
+GO
+
+INSERT INTO dbo.language_long (term_key, term_lang1, term_lang2)
+SELECT v.term_key, v.term_lang1, v.term_lang2
+FROM (VALUES
+    (
+        N'sign convention journal posts',
+        N'The ''to'' side of the post sees the signed amount added;
+
+The ''from'' side of the post sees the signed amount added or subtracted according to the APR product rule:
+
+Subtracted when an asset is booked to a liability, an expense, or an income;
+
+Added in all other cases.',
+        N'De ''naar''-kant van de post ziet het getekende bedrag opgeteld;
+
+De ''van''-kant van de post ziet het getekende bedrag opgeteld of afgetrokken volgens de APR-produktregel:
+
+Afgetrokken als een Activum wordt geboekt op een Passivum, Last, of Baat;
+
+Opgeteld in alle andere gevallen.'
     )
 ) AS v (term_key, term_lang1, term_lang2)
 WHERE NOT EXISTS (

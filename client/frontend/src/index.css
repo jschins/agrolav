@@ -1051,12 +1051,6 @@ tr.modified td:not(.amount) {
   cursor: pointer;
 }
 
-.p-table td.category-pick.journal-opposite-sign,
-.p-table td.category-pick.journal-opposite-sign .editable {
-  color: #d00000;
-  font-weight: 700;
-}
-
 .category-picker-backdrop {
   position: fixed;
   inset: 0;
@@ -1707,6 +1701,13 @@ textarea.cell-edit {
   overflow-y: auto;
 }
 .journal-panel h2 { margin: 0 0 0.75rem; font-size: 0.95rem; color: #475569; }
+.journal-panel > .info-knob {
+  height: auto;
+  min-height: 2.35rem;
+  margin: 0 0 0.75rem;
+  padding: 0.45rem 0.6rem;
+  white-space: normal;
+}
 
 .journal-filters { display: flex; flex-direction: column; gap: 0.6rem; }
 .journal-filters label {
