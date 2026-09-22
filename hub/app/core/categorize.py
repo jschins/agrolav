@@ -1126,7 +1126,9 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
     return [_public_transaction(_canonical_transaction(item)) for item in rows if isinstance(item, dict)]
 
 
-_HIDDEN_TABLE_COLUMNS = frozenset({"id", "currency", "modification", "hit"})
+_HIDDEN_TABLE_COLUMNS = frozenset(
+    {"id", "currency", "modification", "hit", "account_iban"}
+)
 _DESCRIPTION_COLUMN = "description"
 _CATEGORY_COLUMN = "category"
 _CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}

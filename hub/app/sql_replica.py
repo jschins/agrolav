@@ -269,7 +269,8 @@ def load_bound_transactions(*, category_code: int | None = None) -> list[dict[st
                 t.hit,
                 d.local_code,
                 c.currency_default,
-                a.uid
+                a.uid,
+                a.iban
             FROM {bound.table} t
             JOIN dbo.person p ON p.id = t.person_id
             JOIN dbo.country c ON c.country_id = p.country_id
@@ -302,6 +303,7 @@ def _booked_row_shape(item: Any) -> dict[str, Any]:
         local_code,
         currency,
         account_uid,
+        account_iban,
     ) = item
     try:
         flag = int(modification)
@@ -320,6 +322,7 @@ def _booked_row_shape(item: Any) -> dict[str, Any]:
         "modification": flag,
         "hit": None if hit in (None, "") else str(hit),
         "account_uid": _json_text(account_uid),
+        "account_iban": _json_text(account_iban),
     }
 
 
@@ -401,7 +404,8 @@ def _load_mapped_account_rows(bound: _BoundScope, account_id: int) -> list[dict[
                 t.hit,
                 d.local_code,
                 c.currency_default,
-                a.uid
+                a.uid,
+                a.iban
             FROM {bound.table} t
             JOIN dbo.person p ON p.id = t.person_id
             JOIN dbo.country c ON c.country_id = p.country_id
@@ -483,6 +487,7 @@ def _load_nonbank_category_rows(
                     "modification": -1,
                     "hit": None,
                     "account_uid": "",
+                    "account_iban": "",
                 }
             )
     except Exception as exc:  # noqa: BLE001
@@ -514,6 +519,7 @@ def _load_nonbank_category_rows(
                     "modification": -1,
                     "hit": None,
                     "account_uid": "",
+                    "account_iban": "",
                 }
             )
     except Exception as exc:  # noqa: BLE001
@@ -542,7 +548,8 @@ def _load_nonbank_category_rows(
                 t.hit,
                 d.local_code,
                 c.currency_default,
-                a.uid
+                a.uid,
+                a.iban
             FROM {bound.table} t
             JOIN dbo.person p ON p.id = t.person_id
             JOIN dbo.country c ON c.country_id = p.country_id

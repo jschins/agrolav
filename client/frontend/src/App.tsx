@@ -4894,34 +4894,53 @@ function PTable({
               </table>
             </div>
           )}
-          <div className="p-details">
-            <strong>Details</strong>
-            <table className="p-table">
-              <colgroup>
-                {columns.map((c) => (
-                  <col key={c} className={columnColClass(c)} />
-                ))}
-              </colgroup>
-              <thead>
-                <tr>
-                  {columns.map((c) => (
-                    <th key={c} className={columnCellClass(c)}>
-                      {columnHeaderLabel(c, detail.table_header_terms)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((t) => {
-                  const descModified = descriptionModified.has(String(t.id));
-                  return (
-                    <tr key={String(t.id)} className={descModified ? "modified" : undefined}>
-                      {columns.map((c) => renderCell(t, c))}
+          <div className="p-details-row">
+            <div className="p-account-iban">
+              <strong>Rekeninghouder</strong>
+              <table className="p-table">
+                <thead>
+                  <tr>
+                    <th>IBAN</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map((t) => (
+                    <tr key={String(t.id)}>
+                      <td>{formatCell(t.account_iban)}</td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-details">
+              <strong>Details</strong>
+              <table className="p-table">
+                <colgroup>
+                  {columns.map((c) => (
+                    <col key={c} className={columnColClass(c)} />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    {columns.map((c) => (
+                      <th key={c} className={columnCellClass(c)}>
+                        {columnHeaderLabel(c, detail.table_header_terms)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map((t) => {
+                    const descModified = descriptionModified.has(String(t.id));
+                    return (
+                      <tr key={String(t.id)} className={descModified ? "modified" : undefined}>
+                        {columns.map((c) => renderCell(t, c))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}
@@ -5586,6 +5605,7 @@ const HIDDEN_TRANSACTION_COLUMNS = new Set([
   "modification",
   "hit",
   "account_uid",
+  "account_iban",
   "journal_src",
 ]);
 
