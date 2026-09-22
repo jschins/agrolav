@@ -28,7 +28,6 @@ IF OBJECT_ID(N'dbo.type_abbreviation', N'U') IS NOT NULL DROP TABLE dbo.type_abb
 IF OBJECT_ID(N'dbo.account', N'U') IS NOT NULL DROP TABLE dbo.account;
 IF OBJECT_ID(N'dbo.person', N'U') IS NOT NULL DROP TABLE dbo.person;
 IF OBJECT_ID(N'dbo.center', N'U') IS NOT NULL DROP TABLE dbo.center;
-IF OBJECT_ID(N'dbo.type_rule', N'U') IS NOT NULL DROP TABLE dbo.type_rule;
 IF OBJECT_ID(N'dbo.language', N'U') IS NOT NULL DROP TABLE dbo.language;
 IF OBJECT_ID(N'dbo.bank_modality', N'U') IS NOT NULL DROP TABLE dbo.bank_modality;
 IF OBJECT_ID(N'dbo.visitor_ip', N'U') IS NOT NULL DROP TABLE dbo.visitor_ip;

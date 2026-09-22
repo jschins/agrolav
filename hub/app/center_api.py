@@ -340,7 +340,6 @@ def settings(center: str) -> dict[str, Any]:
             _personal_category_map,
             category_code_set,
             remainder_category_name,
-            type_rules_payload,
         )
         from app.matrix import category_names, load_general_file, table_header_terms
         from app.runtime import bind_scope
@@ -355,7 +354,6 @@ def settings(center: str) -> dict[str, Any]:
         general = _category_map(general_file)
         personal: dict[str, dict[str, list[str]]] = {}
         account_groups: list[dict[str, Any]] = []
-        typerules: list[dict[str, str]] = []
         codes: list[int] = []
         remainder = ""
         raw_roles = general_file.get("category_roles")
@@ -378,8 +376,6 @@ def settings(center: str) -> dict[str, Any]:
                                 "categories": bucket,
                             }
                         )
-                if not typerules:
-                    typerules = type_rules_payload()
                 if not codes:
                     codes = sorted(category_code_set())
                     remainder = remainder_category_name()
@@ -392,7 +388,6 @@ def settings(center: str) -> dict[str, Any]:
             "account_groups": account_groups,
             "valid_category_codes": codes,
             "remainder_category": remainder,
-            "typerules": typerules,
             "category_roles": category_roles,
             "table_header_terms": table_header_terms(people_list),
         }

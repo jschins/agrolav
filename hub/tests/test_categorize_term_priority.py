@@ -1,4 +1,4 @@
-"""Unlocked rows: all terms first; A/P beats R; type rules only as fallback."""
+"""Unlocked rows: keywords decide the category; A/P beats R."""
 from __future__ import annotations
 
 import unittest
@@ -17,9 +17,6 @@ _CATALOG = {
         "18 Unclassified expenses": "remainder",
         "1052 Spaarrekening": "mirror",
     },
-    "typerules": [
-        {"type": "Online bankieren", "category": "3110 Kosten"},
-    ],
 }
 
 
@@ -41,7 +38,7 @@ def _row(*, source_id: str, description: str, name: str = "", tx_type: str = "On
 
 
 class TermPriorityTests(unittest.TestCase):
-    def test_terms_beat_type_rule_and_ap_beats_r(self):
+    def test_ap_beats_r(self):
         store = {
             "transactions": [
                 _row(

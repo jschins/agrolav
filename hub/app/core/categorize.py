@@ -397,50 +397,6 @@ def _categories_file() -> dict[str, Any]:
     return _sql_categories()
 
 
-def type_rules_payload() -> list[dict[str, str]]:
-    """Validated ``typerules`` from ``categories.json`` (for API / UI legend)."""
-    raw = _categories_file().get("typerules")
-    if not isinstance(raw, list):
-        return []
-    rules: list[dict[str, str]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        rule_type = str(item.get("type") or "").strip()
-        category_name = str(item.get("category") or "").strip()
-        if not rule_type or not category_name:
-            continue
-        if _category_code(category_name) is None:
-            continue
-        rules.append({"type": rule_type, "category": category_name})
-    return rules
-
-
-def _type_rule_category_map() -> dict[str, int]:
-    """Map lowercased bank ``type`` strings to category codes."""
-    roles = _category_roles()
-    mapping: dict[str, int] = {}
-    for rule in type_rules_payload():
-        name = rule["category"]
-        code = _category_code(name)
-        if code is not None and _is_hit_category_name(name, roles):
-            mapping[rule["type"].lower()] = code
-    return mapping
-
-
-def _category_from_type_rules(record: dict[str, Any]) -> int | None:
-    tx_type = _transaction_type_for_categorization(record).lower()
-    if not tx_type:
-        return None
-    return _type_rule_category_map().get(tx_type)
-
-
-def _transaction_type_for_categorization(record: dict[str, Any]) -> str:
-    if _remittance_lines(record):
-        return _structured_remittance_fields(record)["type"]
-    return str(record.get("type") or "")
-
-
 HIT_PERSONAL_PREFIX = "P:"
 HIT_GENERAL_PREFIX = "G:"
 
@@ -506,9 +462,6 @@ def categorize_with_hit(
     keyword_match = _best_keyword_hit(haystack, general, personal)
     if keyword_match is not None:
         return keyword_match
-    type_match = _category_from_type_rules(record)
-    if type_match is not None:
-        return type_match, None
     code = remainder_category_code()
     return (code if code is not None else 0), None
 

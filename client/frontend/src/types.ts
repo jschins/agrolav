@@ -32,11 +32,6 @@ export interface RefreshResponse {
   warnings: string[];
 }
 
-export interface TypeRule {
-  type: string;
-  category: string;
-}
-
 export interface AccountGroup {
   account_key: string;
   account_name: string;
@@ -53,7 +48,6 @@ export interface SettingsResponse {
   account_groups?: AccountGroup[];
   valid_category_codes: number[];
   remainder_category: string;
-  typerules: TypeRule[];
   category_roles?: Record<string, string>;
   table_header_terms: Record<string, string>;
 }

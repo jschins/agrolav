@@ -11,7 +11,6 @@ uids go on ``dbo.enable_connection`` / ``dbo.account``.
 from __future__ import annotations
 
 import json
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,9 +43,7 @@ IGNORE_DIRS = frozenset(
         ".git",
     }
 )
-_LOCAL_CODE = re.compile(r"^(\d{2})\b")
 TABLES = (
-    "type_rule",
     "bank_modality",
     "hub_ip",
     "enable_connection",
@@ -87,16 +84,6 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError) as exc:
         raise LoadError(f"Invalid JSON: {path}: {exc}") from exc
     return data if isinstance(data, dict) else {}
-
-
-def _local_code(label: str) -> int | None:
-    match = _LOCAL_CODE.match(str(label).strip())
-    if match:
-        return int(match.group(1))
-    try:
-        return int(str(label)[:2])
-    except ValueError:
-        return None
 
 
 def _require_tables(cursor) -> None:
@@ -163,57 +150,6 @@ def _insert_many(cursor, sql: str, rows: list[tuple[Any, ...]]) -> int:
     cursor.executemany(sql, rows)
     cursor.fast_executemany = False
     return len(rows)
-
-
-def load_type_rules(cursor) -> int:
-    cursor.execute(
-        """
-        SELECT d.country_id, d.category_id, d.label, d.local_code
-        FROM dbo.dim_category d
-        """
-    )
-    by_label: dict[tuple[int, str], int] = {}
-    by_code: dict[tuple[int, int], int] = {}
-    for country_id, category_id, label, local_code in cursor.fetchall():
-        by_label[(int(country_id), str(label))] = int(category_id)
-        by_code[(int(country_id), int(local_code))] = int(category_id)
-
-    cursor.execute("DELETE FROM dbo.type_rule")
-    rows: list[tuple[int, str, int]] = []
-    skipped: list[str] = []
-    for country_id, _name, country_dir in _countries(cursor):
-        payload = _read_json_object(country_dir / "categories.json")
-        raw = payload.get("typerules")
-        if not isinstance(raw, list):
-            continue
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            bank_type = str(item.get("type") or "").strip()
-            category_name = str(item.get("category") or "").strip()
-            if not bank_type or not category_name:
-                continue
-            category_id = by_label.get((country_id, category_name))
-            if category_id is None:
-                code = _local_code(category_name)
-                if code is not None:
-                    category_id = by_code.get((country_id, code))
-            if category_id is None:
-                skipped.append(f"{country_dir.name}: {bank_type} -> {category_name}")
-                continue
-            rows.append((country_id, bank_type[:64], category_id))
-    if skipped:
-        print(f"skipped type_rule (unknown category): {len(skipped)}")
-        for item in skipped:
-            print(f"  {item}")
-    return _insert_many(
-        cursor,
-        """
-        INSERT INTO dbo.type_rule (country_id, bank_type, category_id)
-        VALUES (?, ?, ?)
-        """,
-        rows,
-    )
 
 
 def load_bank_modalities(cursor) -> int:
@@ -414,7 +350,6 @@ def main() -> None:
     cursor = conn.cursor()
     try:
         _require_tables(cursor)
-        type_n = load_type_rules(cursor)
         modality_n = load_bank_modalities(cursor)
         ip_n = load_hub_ips(cursor)
         conn_n, acc_n, redirect_n = load_enable(cursor)
@@ -422,7 +357,6 @@ def main() -> None:
     except Exception:
         conn.rollback()
         raise
-    print(f"type_rule: {type_n}")
     print(f"bank_modality: {modality_n}")
     print(f"hub_ip: {ip_n}")
     print(f"enable_connection: {conn_n}")

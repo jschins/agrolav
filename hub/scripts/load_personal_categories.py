@@ -58,7 +58,7 @@ def _category_map(data: dict[str, Any]) -> dict[str, list[str]]:
     raw = nested if isinstance(nested, dict) else data
     out: dict[str, list[str]] = {}
     for label, terms in raw.items():
-        if label in ("table_header_terms", "abbreviations", "typerules"):
+        if label in ("table_header_terms", "abbreviations"):
             continue
         if isinstance(terms, list):
             out[str(label)] = [str(term) for term in terms]

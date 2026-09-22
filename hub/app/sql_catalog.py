@@ -772,7 +772,6 @@ def categories_payload(country: str) -> dict[str, Any]:
     empty: dict[str, Any] = {
         "categories": {},
         "table_header_terms": {},
-        "typerules": [],
         "category_roles": {},
     }
     if not name or not _sql_ready():
@@ -803,7 +802,6 @@ def categories_payload(country: str) -> dict[str, Any]:
         from shared.balance_values import (
             category_display_name,
             ensure_category_role_booking_rules,
-            is_hit_forbidden_code,
         )
 
         ensure_category_role_booking_rules(cursor)
@@ -844,27 +842,9 @@ def categories_payload(country: str) -> dict[str, Any]:
 
         headers = _language_header_terms(cursor, language_id)
 
-        cursor.execute(
-            """
-            SELECT r.bank_type, d.local_code, d.label, d.category_role
-            FROM dbo.type_rule r
-            JOIN dbo.dim_category d ON d.category_id = r.category_id
-            WHERE r.country_id = ?
-            """,
-            (country_id,),
-        )
-        typerules = []
-        for bank_type, local_code, label, role in cursor.fetchall():
-            t = str(bank_type or "").strip()
-            plain = str(label or "").strip()
-            if t and plain and not is_hit_forbidden_code(int(local_code), role):
-                rule_cat = f"{int(local_code):04d} {plain}"
-                typerules.append({"type": t, "category": rule_cat})
-
         return {
             "categories": categories,
             "table_header_terms": headers,
-            "typerules": typerules,
             "category_roles": category_roles,
         }
 
@@ -2600,15 +2580,6 @@ def _remap_category_fks(
         f"UPDATE {table} SET category_id = ? WHERE category_id IN ({placeholders})",
         params,
     )
-    cursor.execute("SELECT OBJECT_ID(N'dbo.type_rule', N'U')")
-    if cursor.fetchone()[0]:
-        cursor.execute(
-            f"""
-            UPDATE dbo.type_rule SET category_id = ?
-            WHERE category_id IN ({placeholders})
-            """,
-            params,
-        )
     cursor.execute(
         f"DELETE FROM dbo.category_term WHERE category_id IN ({placeholders})",
         values,

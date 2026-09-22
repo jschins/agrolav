@@ -10,7 +10,6 @@
 -- JSON / files these tables replace:
 --   categories.json table_header_terms  -> dbo.country.language_id
 --                                         dbo.language (term_lang1, term_lang2, …)
---   categories.json typerules           -> dbo.type_rule
 --   upload_acl.json bank modalities     -> dbo.bank_modality
 --   upload_acl.json hub_ips             -> (removed; country/center.egress_ip + dbo.visitor_ip)
 --   secret/profile.json + consent.json  -> dbo.enable_connection
@@ -33,19 +32,6 @@ CREATE TABLE dbo.language (
     term_lang2 VARCHAR(32) NOT NULL,
     CONSTRAINT uq_language_term_lang1 UNIQUE (term_lang1),
     CONSTRAINT uq_language_term_lang2 UNIQUE (term_lang2)
-)
-GO
-
-IF OBJECT_ID(N'dbo.type_rule', N'U') IS NULL
-CREATE TABLE dbo.type_rule (
-    country_id INT NOT NULL,
-    bank_type NVARCHAR(64) NOT NULL,
-    category_id INT NOT NULL,
-    CONSTRAINT pk_type_rule PRIMARY KEY (country_id, bank_type),
-    CONSTRAINT fk_type_rule_country FOREIGN KEY (country_id)
-        REFERENCES dbo.country (country_id),
-    CONSTRAINT fk_type_rule_category FOREIGN KEY (category_id)
-        REFERENCES dbo.dim_category (category_id)
 )
 GO
 
