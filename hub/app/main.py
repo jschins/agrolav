@@ -1193,6 +1193,18 @@ def api_update_settings(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.post("/api/local/{center}/settings/flush-rescore")
+def api_flush_rescore(
+    center: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Apply term edits queued by right-clicks. The caller waits for the pass."""
+    from app import store
+
+    del center
+    return {"ok": True, "ran": store.flush_scheduled_rescore()}
+
+
 @app.post("/api/local/{center}/settings/add-term")
 def api_add_term(
     center: str,

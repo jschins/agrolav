@@ -452,6 +452,20 @@ def health() -> dict[str, Any]:
     }
 
 
+class HelpQuestion(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+@app.post("/api/help")
+def api_help(body: HelpQuestion) -> dict[str, Any]:
+    from app.help_agent import answer_question
+
+    try:
+        return answer_question(body.question)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/centers")
 def api_centers() -> dict[str, Any]:
     from app.centrale_sync import list_hub_centers, load_config
@@ -1218,6 +1232,16 @@ def api_update_settings(
         return _hub_update_settings(group, category, body)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.post("/api/settings/flush-rescore")
+def api_flush_rescore() -> dict[str, Any]:
+    from app.centrale_sync import hub_post
+
+    try:
+        return hub_post("/settings/flush-rescore", {}, timeout=300.0)
     except Exception as exc:
         raise _hub_error(exc) from exc
 

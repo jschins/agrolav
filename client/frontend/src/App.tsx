@@ -2,7 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { flushSync } from "react-dom";
 import {
   ackCentralWinsRefusal,
+  askHelp,
   addCategoryTerm,
+  flushPendingRescore,
   getAuthMe,
   getCentralWinsRefusals,
   getCentraleNotifications,
@@ -1251,7 +1253,11 @@ function ActionsMenu({ items }: { items: HeaderAction[] }) {
                 onClick={() => {
                   if (item.disabled) return;
                   setOpen(false);
-                  item.onClick?.();
+                  // Right-clicks only queue a rescore. This click applies it,
+                  // and may wait until that pass has finished.
+                  void flushPendingRescore()
+                    .catch(() => undefined)
+                    .finally(() => item.onClick?.());
                 }}
               >
                 {item.label}
@@ -1260,6 +1266,79 @@ function ActionsMenu({ items }: { items: HeaderAction[] }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function HelpQuestion() {
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [sources, setSources] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (ev: globalThis.MouseEvent) => {
+      if (!boxRef.current?.contains(ev.target as Node)) setOpen(false);
+    };
+    const onKey = (ev: globalThis.KeyboardEvent) => {
+      if (ev.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const submit = () => {
+    const q = question.trim();
+    if (!q || busy) return;
+    setBusy(true);
+    setError("");
+    setOpen(true);
+    void askHelp(q)
+      .then((res) => {
+        setAnswer(res.answer);
+        setSources(res.sources ?? []);
+      })
+      .catch(() => {
+        setAnswer("");
+        setSources([]);
+        setError("Could not answer that just now.");
+      })
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="help-question" ref={boxRef}>
+      <input
+        className="help-question-input"
+        type="text"
+        value={question}
+        placeholder="Question about this program"
+        aria-label="Question about this program"
+        disabled={busy}
+        onChange={(ev) => setQuestion(ev.target.value)}
+        onKeyDown={(ev) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            submit();
+          }
+        }}
+      />
+      {open ? (
+        <div className="help-question-answer" role="status">
+          {busy ? "…" : error || answer}
+          {!busy && sources.length > 0 ? (
+            <div className="help-question-sources">{sources.join(", ")}</div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1726,6 +1805,7 @@ function SyncNotifyShell({
               />
             ) : null}
             {!passwordView ? <ActionsMenu items={menuItems} /> : null}
+            {!passwordView ? <HelpQuestion /> : null}
             {switching ? <span className="center-switcher-busy">switching…</span> : null}
             {scratchError ? <span> · {scratchError}</span> : null}
             {wipeError ? <span> · {wipeError}</span> : null}
@@ -2460,6 +2540,7 @@ function MainApp({
     setSelection(null);
     setDetail(null);
     setError(null);
+    void flushPendingRescore().catch(() => undefined);
   }
 
   function modifyTransaction(modified: Transaction) {

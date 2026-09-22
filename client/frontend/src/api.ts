@@ -12,6 +12,13 @@ import type {
   TransactionsResponse,
 } from "./types";
 
+export async function askHelp(question: string): Promise<{
+  answer: string;
+  sources: string[];
+}> {
+  return sendJson("/api/help", "POST", { question });
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const resp = await fetch(url, { credentials: "include", cache: "no-store" });
   if (!resp.ok) {
@@ -290,6 +297,10 @@ export function updateCenterAccountTerms(body: {
   accounts: number;
 }> {
   return sendJson("/api/settings-center-accounts", "PUT", body);
+}
+
+export function flushPendingRescore(): Promise<{ ok: boolean; ran: boolean }> {
+  return sendJson("/api/settings/flush-rescore", "POST", {});
 }
 
 export function addCategoryTerm(body: {

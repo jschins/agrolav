@@ -60,8 +60,22 @@ class BackgroundScheduleTests(unittest.TestCase):
         store._rescore_again = False
         store._rescore_job = None
 
+    def test_queueing_a_term_does_not_start_a_pass(self):
+        with patch.object(store, "_run_scheduled_rescore") as run:
+            store.schedule_background_ircft(
+                "dkg",
+                ["categories.json"],
+                added=["one"],
+                removed=[],
+                personal=False,
+                category_name="3110 Kosten",
+                recalc_all_centers=True,
+            )
+            time.sleep(0.05)
+        run.assert_not_called()
+        self.assertFalse(store._rescore_running)
+
     def test_a_term_saved_during_the_pass_schedules_one_follow_up(self):
-        self.release = threading.Event()
         started = threading.Event()
         calls: list[list[str]] = []
 
@@ -81,6 +95,8 @@ class BackgroundScheduleTests(unittest.TestCase):
                 category_name="3110 Kosten",
                 recalc_all_centers=True,
             )
+            flushed = threading.Thread(target=store.flush_scheduled_rescore)
+            flushed.start()
             self.assertTrue(started.wait(2))
             store.schedule_background_ircft(
                 "dkg",
@@ -92,10 +108,7 @@ class BackgroundScheduleTests(unittest.TestCase):
                 recalc_all_centers=True,
             )
             self.release.set()
-            for _ in range(50):
-                if not store._rescore_running:
-                    break
-                time.sleep(0.02)
+            flushed.join(2)
 
         self.assertEqual(calls, [["one"], ["two"]])
         self.assertFalse(store._rescore_running)

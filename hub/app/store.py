@@ -798,12 +798,12 @@ def schedule_background_ircft(
     category_name: str,
     account: str | None = None,
 ) -> None:
-    """Queue an iRCfT pass and return. A burst becomes one pass, then one follow-up.
+    """Remember a term edit. Do not rescore yet.
 
-    The follow-up runs when another term is saved while a pass is already
-    walking bookings, so that pass's term lists are read again afterwards.
+    Right-clicks stay on this path. The pass runs when ``flush_scheduled_rescore``
+    is called (a menu item), so a burst never overlaps the booking walk.
     """
-    global _rescore_running, _rescore_again, _rescore_job
+    global _rescore_again, _rescore_job
     job = {
         "center": _clean_center(center),
         "input_paths": list(input_paths),
@@ -815,17 +815,39 @@ def schedule_background_ircft(
         "category_name": category_name,
         "account": account,
     }
-    start = False
     with _rescore_guard:
         _rescore_job = _merge_rescore_job(_rescore_job, job)
         _rescore_again = True
-        if not _rescore_running:
+
+
+def flush_scheduled_rescore() -> bool:
+    """Run the queued iRCfT now, including terms saved while a pass is walking.
+
+    Returns True when a pass ran. A second caller waits for the one in progress
+    and then runs anything that arrived after it finished.
+    """
+    global _rescore_running
+    with _rescore_guard:
+        if _rescore_running:
+            waiting = True
+        elif _rescore_job is None:
+            return False
+        else:
             _rescore_running = True
-            start = True
-    if start:
-        threading.Thread(
-            target=_rescore_loop, name="ircft-rescore", daemon=True
-        ).start()
+            waiting = False
+    if waiting:
+        while True:
+            with _rescore_guard:
+                if not _rescore_running:
+                    break
+            time.sleep(0.05)
+        return flush_scheduled_rescore()
+    try:
+        _rescore_loop()
+    finally:
+        with _rescore_guard:
+            _rescore_running = False
+    return True
 
 
 def _meta_key(center: str, rel_path: str) -> str:

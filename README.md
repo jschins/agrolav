@@ -39,6 +39,19 @@ On the overview these controls sit in the strip above the matrix:
 - **Bank** — `consolidated` (all banks together) or one bank, when more than
   one bank exists.
 - **menu** — actions for this login (see below).
+- **Question** — the box to the right of menu. Type a question about using
+  the program and press Enter.
+
+  `answer_question` (`client/app/help_agent.py`) calculates the answer. The
+  client calls it from `POST /api/help`. It reads this README, every other
+  `README.md`, and the files in `documentation/`, and matches the question’s
+  words to each heading and section. This README is used when it contains a
+  match; the other files are used only when it does not. The reply is that
+  section (the paragraphs that match, shortened), together with the file
+  name. A question with no match is answered with “I don't find an answer to
+  that in the README or the other documentation.” A few Dutch phrases
+  (inloggen, uitloggen, wachtwoord, categorie, and similar) are matched as
+  the English words used in these files.
 
 The left sidebar shows the title of whoever logged in. After you open a
 category, it also shows that person’s column and a **← Matrix** knob to go
