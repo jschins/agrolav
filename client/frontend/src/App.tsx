@@ -1279,6 +1279,106 @@ function ActionsMenu({
   );
 }
 
+function helpInline(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+  let last = 0;
+  let key = 0;
+  for (const match of text.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    if (index > last) nodes.push(text.slice(last, index));
+    const token = match[0];
+    if (token.startsWith("`")) {
+      nodes.push(<code key={key}>{token.slice(1, -1)}</code>);
+    } else {
+      nodes.push(<strong key={key}>{token.slice(2, -2)}</strong>);
+    }
+    key += 1;
+    last = index + token.length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+function helpTable(block: string, key: number) {
+  const lines = block
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("|"));
+  const parsed = lines
+    .filter((line) => {
+      const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|");
+      return !cells.every((cell) => /^\s*:?-{3,}:?\s*$/.test(cell));
+    })
+    .map((line) =>
+      line
+        .replace(/^\|/, "")
+        .replace(/\|$/, "")
+        .split("|")
+        .map((cell) => cell.trim())
+    );
+  if (parsed.length === 0) return <p key={key}>{helpInline(block)}</p>;
+  const [head, ...body] = parsed;
+  return (
+    <table key={key}>
+      <thead>
+        <tr>
+          {head.map((cell, index) => (
+            <th key={index}>{helpInline(cell)}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {body.map((row, rowIndex) => (
+          <tr key={rowIndex}>
+            {row.map((cell, index) => (
+              <td key={index}>{helpInline(cell)}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function HelpMarkdown({ text }: { text: string }) {
+  const blocks = text.replace(/\r\n/g, "\n").split(/\n\s*\n/);
+  return (
+    <>
+      {blocks.map((block, key) => {
+        const trimmed = block.trim();
+        if (!trimmed) return null;
+        if (trimmed.startsWith("|")) return helpTable(trimmed, key);
+        const heading = /^(#{1,6})\s+(\S.*)$/.exec(trimmed);
+        if (heading && !trimmed.includes("\n")) {
+          const Tag = heading[1].length <= 2 ? "h2" : "h3";
+          return <Tag key={key}>{helpInline(heading[2])}</Tag>;
+        }
+        const lines = trimmed.split("\n");
+        if (lines.every((line) => /^\s*[-*]\s+/.test(line))) {
+          return (
+            <ul key={key}>
+              {lines.map((line, index) => (
+                <li key={index}>{helpInline(line.replace(/^\s*[-*]\s+/, ""))}</li>
+              ))}
+            </ul>
+          );
+        }
+        if (lines.every((line) => /^\s*\d+\.\s+/.test(line))) {
+          return (
+            <ol key={key}>
+              {lines.map((line, index) => (
+                <li key={index}>{helpInline(line.replace(/^\s*\d+\.\s+/, ""))}</li>
+              ))}
+            </ol>
+          );
+        }
+        return <p key={key}>{helpInline(trimmed.replace(/\n/g, " "))}</p>;
+      })}
+    </>
+  );
+}
+
 function HelpQuestion() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -1342,7 +1442,7 @@ function HelpQuestion() {
       />
       {open ? (
         <div className="help-question-answer" role="status">
-          {busy ? "…" : error || answer}
+          {busy ? "…" : error ? error : <HelpMarkdown text={answer} />}
           {!busy && sources.length > 0 ? (
             <div className="help-question-sources">{sources.join(", ")}</div>
           ) : null}

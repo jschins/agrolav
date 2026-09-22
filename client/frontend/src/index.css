@@ -107,17 +107,51 @@ html.refresh-busy body::before {
   top: calc(100% + 4px);
   left: 0;
   z-index: 50;
-  width: min(28rem, 70vw);
-  max-height: 16rem;
+  width: min(40rem, 85vw);
+  max-height: 70vh;
   overflow: auto;
   padding: 0.65rem 0.75rem;
   background: #fff;
   border: 1px solid #c5c5c8;
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  white-space: pre-wrap;
   line-height: 1.4;
   color: #1a1a1a;
+}
+
+.help-question-answer h2,
+.help-question-answer h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.help-question-answer p {
+  margin: 0.35rem 0;
+}
+
+.help-question-answer ul,
+.help-question-answer ol {
+  margin: 0.3rem 0;
+  padding-left: 1.15rem;
+}
+
+.help-question-answer table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.78rem;
+}
+
+.help-question-answer th,
+.help-question-answer td {
+  border: 1px solid #e3e3e6;
+  padding: 0.2rem 0.4rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-question-answer code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85em;
 }
 
 .help-question-sources {

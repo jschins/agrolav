@@ -35,6 +35,54 @@ class HelpAgentTests(unittest.TestCase):
             self.assertEqual(out["sources"], [])
             self.assertIn("don't find", str(out["answer"]))
 
+    def test_hit_returns_the_whole_section_not_one_paragraph(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text(
+                "# Guide\n\n"
+                "## Edit Terms\n\n"
+                "Open the term window.\n\n"
+                "The window has four columns.\n"
+                "{en: edit terms, column}\n\n"
+                "### How terms match\n\n"
+                "A term matches a whole word.\n\n"
+                "Priority comes last.\n"
+                "{en: word, priority}\n",
+                encoding="utf-8",
+            )
+            edit = answer_question("edit terms", root)
+            self.assertIn("four columns", str(edit["answer"]))
+            self.assertNotIn("whole word", str(edit["answer"]))
+            match = answer_question("what is the priority of a word", root)
+            self.assertIn("whole word", str(match["answer"]))
+            self.assertIn("Priority comes last", str(match["answer"]))
+            self.assertNotIn("four columns", str(match["answer"]))
+
+    def test_two_hits_outweigh_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text(
+                "## Phrase\n\nOne phrase.\n{en: four columns}\n\n"
+                "## Words\n\nTwo words.\n{en: four,columns}\n\n"
+                "## Single\n\nOnly columns.\n{en: columns}\n",
+                encoding="utf-8",
+            )
+            answer = str(answer_question("four columns", root)["answer"])
+            self.assertLess(answer.index("Two words"), answer.index("One phrase"))
+            self.assertLess(answer.index("Two words"), answer.index("Only columns"))
+
+    def test_lower_scoring_sections_follow_the_highest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text(
+                "## Alpha\n\nAlpha body.\n{en: shared}\n\n"
+                "## Beta\n\nBeta body.\n{en: shared, extra}\n",
+                encoding="utf-8",
+            )
+            out = answer_question("shared extra", root)
+            answer = str(out["answer"])
+            self.assertLess(answer.index("Beta body"), answer.index("Alpha body"))
+
     def test_bracket_term_returns_its_paragraph(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -54,6 +102,27 @@ class HelpAgentTests(unittest.TestCase):
         kept = answer_question("how do I log in?")
         self.assertEqual(kept["sources"], ["README.md"])
         self.assertIn("password", str(kept["answer"]).lower())
+
+    def test_hidden_preamble_discards_and_brackets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text(
+                "<!-- {discard-en:how,do,i} -->\n\n"
+                "# Guide\n\n"
+                "## Log in\n\n"
+                "Enter the password.\n"
+                "<!-- {en:password,log in} -->\n"
+                "\n---\n\n"
+                "## Later\n\n"
+                "After login the matrix is shown.\n"
+                "<!-- {en:matrix} -->\n",
+                encoding="utf-8",
+            )
+            out = answer_question("how do I log in?", root)
+            answer = str(out["answer"])
+            self.assertIn("password", answer.lower())
+            self.assertNotIn("{", answer)
+            self.assertNotIn("matrix", answer.lower())
 
     def test_unknown_question_says_so(self) -> None:
         out = answer_question("quantum flux capacitor calibration")

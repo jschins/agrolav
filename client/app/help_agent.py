@@ -6,7 +6,6 @@ from pathlib import Path
 
 # Dutch and everyday phrases, rewritten onto the English words the hit terms use.
 _PHRASES = (
-    ("log in", "login"),
     ("inloggen", "login"),
     ("uitloggen", "logout"),
     ("log ik uit", "logout"),
@@ -15,7 +14,6 @@ _PHRASES = (
     ("right click", "rightclick"),
     ("right-click", "rightclick"),
     ("rechtsklik", "rightclick"),
-    ("edit terms", "terms"),
     ("termen", "terms"),
     ("wachtwoord", "password"),
     ("categorieën", "categories"),
@@ -36,8 +34,13 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-_HIT_LINE = re.compile(r"^\{(?:(?:en|nl):\s*)?([^{}]*)\}\s*$")
-_DISCARD_LINE = re.compile(r"^\{discard(?:-(?:en|nl))?:\s*(.*)\}\s*$")
+# Brace lines may be HTML comments so the markdown preview does not show them.
+_HIDDEN = r"(?:<!--\s*)?"
+_HIDDEN_END = r"(?:\s*-->)?"
+_HIT_LINE = re.compile(rf"^{_HIDDEN}\{{(?:(?:en|nl):\s*)?([^{{}}]*)\}}{_HIDDEN_END}\s*$")
+_DISCARD_LINE = re.compile(
+    rf"^{_HIDDEN}\{{discard(?:-(?:en|nl))?:\s*(.*)\}}{_HIDDEN_END}\s*$"
+)
 
 
 def answer_question(question: str, root: Path | None = None) -> dict[str, object]:
@@ -49,7 +52,7 @@ def answer_question(question: str, root: Path | None = None) -> dict[str, object
 
 
 def _answer_from_brackets(question: str, root: Path) -> dict[str, object] | None:
-    """Score only `{hit, terms}` lines in the root README. Show their paragraphs."""
+    """Score only `{hit, terms}` lines in the root README. Show the whole section."""
     path = root / "README.md"
     if not path.is_file():
         return None
@@ -57,59 +60,58 @@ def _answer_from_brackets(question: str, root: Path) -> dict[str, object] | None
         raw = path.read_text(encoding="utf-8")
     except OSError:
         return None
-    best = 0
-    winners: list[str] = []
     question = _strip_discards(question, _discard_phrases(raw))
+    scored: list[tuple[int, str]] = []
     for body, terms in _bracket_entries(raw):
         score = _bracket_score(question, terms)
-        if score <= 0:
-            continue
-        if score > best:
-            best = score
-            winners = [body]
-        elif score == best:
-            winners.append(body)
-    if not winners:
+        if score > 0:
+            scored.append((score, body))
+    if not scored:
         return None
-    return {"answer": "\n\n".join(winners), "sources": ["README.md"]}
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return {"answer": "\n\n".join(body for _, body in scored), "sources": ["README.md"]}
 
 
 def _bracket_entries(text: str) -> list[tuple[str, list[str]]]:
-    heading = ""
-    buf: list[str] = []
-    entries: list[list] = []
+    """One entry per heading. `{en:}` / `{nl:}` lines in it share that body.
 
-    def take(raw_terms: str) -> None:
-        nonlocal buf
-        terms = [part.strip() for part in raw_terms.split(",") if part.strip()]
-        lines = [line for line in buf if line.strip() != "---"]
+    `{discard-en:}` and `{discard-nl:}` are the preamble at the top of the
+    file, before the title. They are not part of any section.
+    """
+    heading_line = ""
+    body_lines: list[str] = []
+    terms: list[str] = []
+    entries: list[tuple[str, list[str]]] = []
+
+    def flush() -> None:
+        nonlocal body_lines, terms
+        lines = [line for line in body_lines if line.strip() != "---"]
         body = "\n".join(lines).strip()
-        buf = []
-        if terms and not body and entries:
-            entries[-1][1].extend(terms)
-            return
-        if not body or not terms:
-            return
-        if heading and not body.lower().startswith(heading.lower()):
-            body = f"{heading}\n\n{body}"
-        entries.append([body, terms])
+        if heading_line:
+            body = f"{heading_line}\n\n{body}".strip()
+        if body and terms:
+            entries.append((body, list(terms)))
+        body_lines = []
+        terms = []
 
     for line in text.splitlines():
         if _DISCARD_LINE.match(line.strip()):
             continue
         match = _HIT_LINE.match(line.strip())
         if match:
-            take(match.group(1))
+            terms.extend(part.strip() for part in match.group(1).split(",") if part.strip())
             continue
         if line.startswith("#"):
-            buf = []
-            heading = line.lstrip("#").strip()
+            flush()
+            heading_line = line.strip()
             continue
-        buf.append(line)
-    return [(body, terms) for body, terms in entries]
+        body_lines.append(line)
+    flush()
+    return entries
 
 
 def _discard_phrases(text: str) -> list[str]:
+    """Words in the discard lines at the top of the README, before the title."""
     phrases: list[str] = []
     for line in text.splitlines():
         match = _DISCARD_LINE.match(line.strip())
@@ -130,15 +132,35 @@ def _strip_discards(question: str, phrases: list[str]) -> str:
     return haystack
 
 
+_WEIGHT = re.compile(r"^(.*)\[(\d+)\]\s*$")
+
+
+def _term_weight(term: str) -> tuple[str, int]:
+    """`category[3]` counts as 3. A term with no number counts as 1."""
+    raw = term.strip()
+    match = _WEIGHT.match(raw)
+    if not match:
+        return raw, 1
+    weight = int(match.group(2))
+    if weight < 1:
+        return match.group(1).strip(), 1
+    return match.group(1).strip(), weight
+
+
 def _bracket_score(question: str, terms: list[str]) -> int:
     haystack = _norm(question)
-    score = 0
+    best: dict[str, int] = {}
     for term in terms:
-        needle = _norm(term).strip()
+        raw, weight = _term_weight(term)
+        needle = _norm(raw).strip()
         if not needle:
             continue
+        if weight > best.get(needle, 0):
+            best[needle] = weight
+    score = 0
+    for needle, weight in best.items():
         if re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack):
-            score += 1 + needle.count(" ")
+            score += weight
     return score
 
 
