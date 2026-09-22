@@ -38,9 +38,34 @@ The hub starts authorization with `get_authorization_url` /
 (production: `https://expenses.apsurt.nl/api/consent/callback`). That URL
 must match the application registered for this `app_id`.
 
-The pending callback is a row in `dbo.consent_pending`, keyed by the
-OAuth `state` token and tied to center + person so the bank’s return can
-be matched.
+The pending callback is a row in `dbo.consent_pending`. `state` is not a
+status. It is the OAuth `state` token Enable Banking puts on the
+authorization link and sends back on the redirect. The row is:
+
+| column | meaning |
+|--------|---------|
+| `state` | primary key; the token from the authorize link |
+| `center` | center of the person who started consent |
+| `person_name` | who must receive the session |
+| `created_at` | the row is dropped after 30 minutes |
+
+The bank’s browser opens `/api/consent/callback` with `code` and `state`
+only. There is no login cookie and no API key. The hub looks the token up,
+reads center and person, deletes the row, then exchanges `code` for the
+session. A second click, or a new link after expiry, is a new `state` and
+a new row. An older link stays valid until its own row expires.
+
+A `state` column on `dbo.enable_connection` does not replace this table.
+That table is one row per person and already holds the lasting credential
+(`pem`, `app_id`, and later `session_id`). One extra column holds one
+token. Each authorization link is its own token, so a second click
+overwrites the first. The earlier bank tab then no longer matches.
+`consent_pending` keeps one row per token, and deletes that row when the
+callback is used or when it is older than 30 minutes. The connection row
+has to stay. Clearing a column still leaves the used token’s lookup on the
+row that holds the private key. The pending table holds neither the key
+nor the session. The session is written to `enable_connection` only after
+the token has been matched.
 
 `/api/consent/callback` receives the redirect code;
 `complete_authorization` exchanges it for a session. The hub writes
