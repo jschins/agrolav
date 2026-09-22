@@ -390,6 +390,7 @@ def settings(center: str) -> dict[str, Any]:
             "remainder_category": remainder,
             "category_roles": category_roles,
             "table_header_terms": table_header_terms(people_list),
+            "language_long": general_file.get("language_long") or {},
         }
 
 

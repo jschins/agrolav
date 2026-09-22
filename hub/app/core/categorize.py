@@ -416,7 +416,7 @@ def parse_hit(hit: Any) -> tuple[bool, str] | None:
 
 
 def _priority_key(term: str, *, personal: bool, category_name: str) -> tuple:
-    """Higher wins: personal, then ``&&``, then A/P over R, then last-stick."""
+    """Higher wins: personal, then ``&&``, then activa/passiva over lasten/baten, then last-stick."""
     code = _category_code(category_name) or 0
     return (
         1 if personal else 0,

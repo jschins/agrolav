@@ -443,6 +443,68 @@ a.sidebar-knob:hover {
   line-height: 1.5;
 }
 
+.priority-rules-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.priority-rules-dialog {
+  width: min(92vw, 40rem);
+  margin-bottom: 1.5rem;
+  padding: 1.25rem 1.4rem 1.1rem;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.2);
+  color: #0f172a;
+  line-height: 1.45;
+}
+
+.priority-rules-dialog h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.priority-rules-dialog h3 {
+  margin: 1rem 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.priority-rules-dialog p {
+  margin: 0.35rem 0;
+}
+
+.priority-rules-dialog ul,
+.priority-rules-dialog ol {
+  margin: 0.25rem 0 0.45rem;
+  padding-left: 1.25rem;
+}
+
+.priority-rules-dialog li {
+  margin: 0.3rem 0;
+}
+
+.priority-rules-dialog code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.86em;
+}
+
+.priority-rules-close {
+  font: inherit;
+  cursor: pointer;
+  margin-top: 0.85rem;
+  padding: 0.4rem 1.1rem;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #fff;
+}
+
 .win-hint kbd {
   background: #f1f5f9;
   border: 1px solid #cbd5e1;

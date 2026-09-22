@@ -17,24 +17,27 @@ _term_write_lock = threading.Lock()
 _TERM_LANG_COL = re.compile(r"^term_lang([1-9]\d*)$")
 
 
-def _language_header_terms(cursor: Any, language_id: object) -> dict[str, str]:
-    """English ``term_lang1`` → label for ``dbo.country.language_id``.
-
-    Only fallback: a ``language_id`` with no ``term_lang{id}`` column uses
-    ``term_lang1``. Does not read ``table_header_term`` or JSON.
-    """
+def _language_id(language_id: object) -> int:
     try:
         lid = int(language_id)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         lid = 1
-    if lid < 1:
-        lid = 1
+    return lid if lid >= 1 else 1
+
+
+def _language_target_column(cursor: Any, table: str, language_id: object) -> str | None:
+    """``term_lang{id}`` on ``dbo.language`` or ``dbo.language_long``.
+
+    A ``language_id`` with no matching column uses ``term_lang1``.
+    """
+    lid = _language_id(language_id)
     cursor.execute(
         """
         SELECT COLUMN_NAME
         FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'language'
-        """
+        WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = ?
+        """,
+        (table,),
     )
     by_id: dict[int, str] = {}
     for (name,) in cursor.fetchall():
@@ -42,8 +45,19 @@ def _language_header_terms(cursor: Any, language_id: object) -> dict[str, str]:
         if match:
             by_id[int(match.group(1))] = match.group(0)
     if 1 not in by_id:
+        return None
+    return by_id.get(lid, by_id[1])
+
+
+def _language_header_terms(cursor: Any, language_id: object) -> dict[str, str]:
+    """English ``term_lang1`` → label for ``dbo.country.language_id``.
+
+    Only fallback: a ``language_id`` with no ``term_lang{id}`` column uses
+    ``term_lang1``. Does not read ``table_header_term`` or JSON.
+    """
+    target = _language_target_column(cursor, "language", language_id)
+    if target is None:
         raise RuntimeError("dbo.language.term_lang1 is required")
-    target = by_id.get(lid, by_id[1])
     cursor.execute(f"SELECT term_lang1, {target} FROM dbo.language")
     headers: dict[str, str] = {}
     for key, label in cursor.fetchall():
@@ -52,6 +66,28 @@ def _language_header_terms(cursor: Any, language_id: object) -> dict[str, str]:
         if k and v:
             headers[k] = v
     return headers
+
+
+def _language_long_terms(cursor: Any, language_id: object) -> dict[str, str]:
+    """English ``term_key`` → long label from ``dbo.language_long``.
+
+    Missing table yields an empty map so settings still load.
+    """
+    cursor.execute("SELECT OBJECT_ID(N'dbo.language_long', N'U')")
+    row = cursor.fetchone()
+    if row is None or not row[0]:
+        return {}
+    target = _language_target_column(cursor, "language_long", language_id)
+    if target is None:
+        return {}
+    cursor.execute(f"SELECT term_key, {target} FROM dbo.language_long")
+    texts: dict[str, str] = {}
+    for key, label in cursor.fetchall():
+        k = str(key or "").strip()
+        v = str(label or "").strip()
+        if k and v:
+            texts[k] = v
+    return texts
 
 
 def _sql_ready() -> bool:
@@ -772,6 +808,7 @@ def categories_payload(country: str) -> dict[str, Any]:
     empty: dict[str, Any] = {
         "categories": {},
         "table_header_terms": {},
+        "language_long": {},
         "category_roles": {},
     }
     if not name or not _sql_ready():
@@ -841,10 +878,12 @@ def categories_payload(country: str) -> dict[str, Any]:
                 categories[label].append(text)
 
         headers = _language_header_terms(cursor, language_id)
+        long_texts = _language_long_terms(cursor, language_id)
 
         return {
             "categories": categories,
             "table_header_terms": headers,
+            "language_long": long_texts,
             "category_roles": category_roles,
         }
 

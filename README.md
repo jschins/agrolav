@@ -189,7 +189,7 @@ There is a **General** panel, then one panel per person.
 ### How terms match
 
 `#` matches zero or more letters or dots **inside one word** (not across
-spaces). Use `&&` when both phrases must match, for example `albert && heijn`.
+spaces). Use `&&` when both phrases must match, for example `heijn && machtiging`.
 
 Priority, highest first:
 

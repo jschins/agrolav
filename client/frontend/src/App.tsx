@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import {
   ackCentralWinsRefusal,
   askHelp,
@@ -1903,17 +1903,6 @@ function isoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function formatTermMatchHint(): string {
-  const priority =
-    "Priority (highest first): (1) personal beats all general; " +
-    "(2) && terms beat single-phrase terms; " +
-    "(3) last-stick: later category name, then later term, wins.";
-  const wildcards =
-    "# matches zero or more letters or dots within one word (not across spaces). " +
-    "Use && when both phrases must match (e.g. albert && heijn).";
-  return `${wildcards} ${priority}`;
-}
-
 function tableHeaderTerm(
   terms: Record<string, string> | undefined,
   key: string
@@ -3027,8 +3016,121 @@ function MainApp({
   );
 }
 
+function inlineMarked(text: string): ReactNode[] {
+  return text.split("`").map((part, index) =>
+    index % 2 === 1 ? <code key={index}>{part}</code> : part
+  );
+}
+
+function PriorityBody({ text }: { text: string }) {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const blocks: ReactNode[] = [];
+  let index = 0;
+  let key = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      blocks.push(<h3 key={key}>{inlineMarked(line.slice(3))}</h3>);
+      key += 1;
+      index += 1;
+      continue;
+    }
+    if (line.startsWith("- ")) {
+      const items: string[] = [];
+      while (index < lines.length && lines[index].startsWith("- ")) {
+        items.push(lines[index].slice(2));
+        index += 1;
+      }
+      blocks.push(
+        <ul key={key}>
+          {items.map((item, itemKey) => (
+            <li key={itemKey}>{inlineMarked(item)}</li>
+          ))}
+        </ul>
+      );
+      key += 1;
+      continue;
+    }
+    if (/^\d+\. /.test(line)) {
+      const items: string[] = [];
+      while (index < lines.length && /^\d+\. /.test(lines[index])) {
+        items.push(lines[index].replace(/^\d+\. /, ""));
+        index += 1;
+      }
+      blocks.push(
+        <ol key={key}>
+          {items.map((item, itemKey) => (
+            <li key={itemKey}>{inlineMarked(item)}</li>
+          ))}
+        </ol>
+      );
+      key += 1;
+      continue;
+    }
+    const paragraph = [line.trim()];
+    index += 1;
+    while (
+      index < lines.length &&
+      lines[index].trim() &&
+      !lines[index].startsWith("## ") &&
+      !lines[index].startsWith("- ") &&
+      !/^\d+\. /.test(lines[index])
+    ) {
+      paragraph.push(lines[index].trim());
+      index += 1;
+    }
+    blocks.push(<p key={key}>{inlineMarked(paragraph.join(" "))}</p>);
+    key += 1;
+  }
+  return <>{blocks}</>;
+}
+
+function PriorityRulesDialog({
+  title,
+  body,
+  closeLabel,
+  onClose,
+}: {
+  title: string;
+  body: string;
+  closeLabel: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="priority-rules-overlay" onClick={onClose}>
+      <div
+        className="priority-rules-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="priority-rules-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="priority-rules-title">{title}</h2>
+        {body ? <PriorityBody text={body} /> : null}
+        <button type="button" className="priority-rules-close" onClick={onClose}>
+          {closeLabel}
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function TermsApp() {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
+  const [priorityOpen, setPriorityOpen] = useState(false);
   const [loginName, setLoginName] = useState("");
   const [personScope, setPersonScope] = useState("");
   const [centerName, setCenterName] = useState("");
@@ -3201,13 +3303,23 @@ function TermsApp() {
             </button>
           </div>
         </div>
-        <p className="win-hint">
-          Term Window. Return to overview using <kbd>Ctrl</kbd>+<kbd>Tab</kbd> or{" "}
-          <kbd>Alt</kbd>+<kbd>M</kbd>. Edits save immediately; matching bookings
-          update in the background.{" "}
-          {settings ? formatTermMatchHint() : ""}
-        </p>
+        <p className="win-hint">{settings?.language_long?.["term window hint"] ?? ""}</p>
+        <button
+          type="button"
+          className="sidebar-knob"
+          onClick={() => setPriorityOpen(true)}
+        >
+          {tableHeaderTerm(settings?.table_header_terms, "priority rules")}
+        </button>
       </aside>
+      {priorityOpen ? (
+        <PriorityRulesDialog
+          title={tableHeaderTerm(settings?.table_header_terms, "priority rules")}
+          body={settings?.language_long?.["priority rules"] ?? ""}
+          closeLabel={tableHeaderTerm(settings?.table_header_terms, "Close")}
+          onClose={() => setPriorityOpen(false)}
+        />
+      ) : null}
       <main className="content terms-content">
         {error && <p className="error">{error}</p>}
         {settings ? (

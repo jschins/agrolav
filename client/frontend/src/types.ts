@@ -50,6 +50,7 @@ export interface SettingsResponse {
   remainder_category: string;
   category_roles?: Record<string, string>;
   table_header_terms: Record<string, string>;
+  language_long?: Record<string, string>;
 }
 
 export type Transaction = Record<string, unknown>;

@@ -64,16 +64,30 @@ it has no hit. Other unlocked rows are left on remove.
 
 ## How one row is scored
 
-The haystack is the booking’s name and description, lowercased. `#` matches
-zero or more letters or dots inside one word. `&&` means both phrases must
+The haystack is the booking’s name and description, lowercased. A term matches
+a whole word. A word ends at a space, a dot, a dash, or other punctuation
+(slash, comma, colon, apostrophe, asterisk, plus, brackets). A digit or an
+underscore stays inside the word. `#` stands for zero or more letters, dots,
+or asterisks inside one space-separated piece. It does not cross a space. A
+dash or similar mark in that piece is skipped. `&&` means both phrases must
 match.
 
 The winning keyword is chosen in this order, highest first:
 
 1. A personal term beats a general term.
 2. An `&&` term beats a single phrase.
-3. A category code below 3000 beats a code of 3000 or above.
+3. Activa/passiva beats lasten/baten. Activa and passiva are category codes
+   below 3000. Lasten and baten are codes of 3000 or above.
 4. The later category name, then the later term, wins.
+
+Rule 4 is the last tie-break. It runs only when two matching terms are equal
+on the three rules above. “Later” is dictionary order of the text, not the
+time the term was saved. The category name is the label as stored, code
+included (`1052 Spaarrekening`). The name that sorts later wins, so
+`1110 Kruisposten` beats `1052 Spaarrekening`. When both matches sit in the
+same category, the term text is compared the same way, after it has been
+lowercased. `spaarrekening` beats `oranje`. The match that sorts last is
+the one that sticks.
 
 The row’s `hit` is `P:` plus the term, or `G:` plus the term.
 

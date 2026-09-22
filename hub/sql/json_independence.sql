@@ -28,8 +28,8 @@ GO
 IF OBJECT_ID(N'dbo.language', N'U') IS NULL
 CREATE TABLE dbo.language (
     id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    term_lang1 VARCHAR(32) NOT NULL,
-    term_lang2 VARCHAR(32) NOT NULL,
+    term_lang1 VARCHAR(64) NOT NULL,
+    term_lang2 VARCHAR(64) NOT NULL,
     CONSTRAINT uq_language_term_lang1 UNIQUE (term_lang1),
     CONSTRAINT uq_language_term_lang2 UNIQUE (term_lang2)
 )

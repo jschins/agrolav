@@ -409,8 +409,16 @@ Bank-type abbreviations (Betaalautomaat → BA). Per country.
 ### `language`
 
 Shared UI terms. One row per English key (`term_lang1`). `term_lang2` is Dutch.
-Further languages are extra `term_lang{N}` columns. Country picks a column via
+Each of those columns holds at most 64 characters. Further languages are extra
+`term_lang{N}` columns, same limit. Country picks a column via
 `country.language_id`. A `language_id` with no matching column uses `term_lang1`.
+
+### `language_long`
+
+Long UI texts, such as the priority-rules popup. `term_key` is the English
+lookup (`NVARCHAR(64)`). `term_lang1` is the English body and `term_lang2` the
+Dutch body, both `NVARCHAR(MAX)`. The country `language_id` picks the column
+the same way as `dbo.language`. Created by `hub/sql/language_long.sql`.
 
 ### `center`
 
