@@ -780,6 +780,13 @@ def _rescore_loop() -> None:
             import traceback
 
             traceback.print_exc()
+            with _rescore_guard:
+                pending = _rescore_job
+                _rescore_job = (
+                    _merge_rescore_job(job, pending) if pending is not None else job
+                )
+                _rescore_again = True
+            raise
         with _rescore_guard:
             if _rescore_job is None and not _rescore_again:
                 _rescore_running = False

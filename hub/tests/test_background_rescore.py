@@ -113,6 +113,23 @@ class BackgroundScheduleTests(unittest.TestCase):
         self.assertEqual(calls, [["one"], ["two"]])
         self.assertFalse(store._rescore_running)
 
+    def test_a_failed_pass_stays_queued_and_is_reported(self):
+        with patch.object(store, "_run_scheduled_rescore", side_effect=RuntimeError("boom")):
+            store.schedule_background_ircft(
+                "dkg",
+                ["categories.json"],
+                added=["one"],
+                removed=[],
+                personal=False,
+                category_name="3110 Kosten",
+                recalc_all_centers=True,
+            )
+            with self.assertRaises(RuntimeError):
+                store.flush_scheduled_rescore()
+        self.assertIsNotNone(store._rescore_job)
+        self.assertEqual(store._rescore_job["added"], ["one"])
+        self.assertFalse(store._rescore_running)
+
 
 class ApplyIrcftOnceTests(unittest.TestCase):
     def test_several_added_terms_walk_the_rows_once(self):

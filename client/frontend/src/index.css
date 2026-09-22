@@ -130,6 +130,11 @@ html.refresh-busy body::before {
   position: relative;
 }
 
+.center-switcher-trigger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .center-switcher-trigger {
   display: inline-flex;
   align-items: center;

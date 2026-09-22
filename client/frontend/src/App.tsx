@@ -858,6 +858,7 @@ type AppView = "main" | "terms" | "categories" | "ip" | "split" | "password" | "
 const VIEW_CHANGE_EVENT = "boekhouding-view";
 
 const HeaderActionsContext = createContext<(items: HeaderAction[]) => void>(() => {});
+const NoteRescoreQueuedContext = createContext<() => void>(() => {});
 
 type BanksFlags = {
   person?: string;
@@ -1213,7 +1214,15 @@ function YearSwitcher({
   );
 }
 
-function ActionsMenu({ items }: { items: HeaderAction[] }) {
+function ActionsMenu({
+  items,
+  busy = false,
+  onPick,
+}: {
+  items: HeaderAction[];
+  busy?: boolean;
+  onPick: (item: HeaderAction) => void;
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -1235,7 +1244,11 @@ function ActionsMenu({ items }: { items: HeaderAction[] }) {
         className="center-switcher-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        disabled={busy}
+        onClick={() => {
+          if (busy) return;
+          setOpen((v) => !v);
+        }}
       >
         <span className="center-switcher-chevron" aria-hidden>
           ▾
@@ -1251,13 +1264,9 @@ function ActionsMenu({ items }: { items: HeaderAction[] }) {
                 role="menuitem"
                 disabled={item.disabled}
                 onClick={() => {
-                  if (item.disabled) return;
+                  if (item.disabled || busy) return;
                   setOpen(false);
-                  // Right-clicks only queue a rescore. This click applies it,
-                  // and may wait until that pass has finished.
-                  void flushPendingRescore()
-                    .catch(() => undefined)
-                    .finally(() => item.onClick?.());
+                  onPick(item);
                 }}
               >
                 {item.label}
@@ -1391,6 +1400,14 @@ function SyncNotifyShell({
   const [scratchError, setScratchError] = useState<string | null>(null);
   const [wipeBusy, setWipeBusy] = useState(false);
   const [wipeError, setWipeError] = useState<string | null>(null);
+  const [rescoreQueued, setRescoreQueued] = useState(false);
+  const [rescoreWaiting, setRescoreWaiting] = useState(false);
+  const [rescoreError, setRescoreError] = useState<string | null>(null);
+  const rescoreWaitRef = useRef(false);
+  const noteRescoreQueued = useCallback(() => {
+    setRescoreQueued(true);
+    setRescoreError(null);
+  }, []);
   const [dataRev, setDataRev] = useState(0);
   const dataEpochRef = useRef<number | null>(null);
   const [menuTerms, setMenuTerms] = useState<Record<string, string>>({});
@@ -1770,8 +1787,34 @@ function SyncNotifyShell({
     return items;
   }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, menuTerms]);
 
+  function runMenuItem(item: HeaderAction) {
+    if (rescoreWaitRef.current) return;
+    if (!rescoreQueued) {
+      void flushPendingRescore()
+        .catch(() => undefined)
+        .finally(() => item.onClick?.());
+      return;
+    }
+    rescoreWaitRef.current = true;
+    setRescoreWaiting(true);
+    setRescoreError(null);
+    void flushPendingRescore()
+      .then(() => {
+        setRescoreQueued(false);
+        setRescoreWaiting(false);
+        rescoreWaitRef.current = false;
+        item.onClick?.();
+      })
+      .catch((e: Error) => {
+        setRescoreWaiting(false);
+        rescoreWaitRef.current = false;
+        setRescoreError(e.message);
+      });
+  }
+
   return (
     <HeaderActionsContext.Provider value={setHeaderActions}>
+    <NoteRescoreQueuedContext.Provider value={noteRescoreQueued}>
     <div className="lock-shell">
       {showBar && (
         <div className="centrale-status-bar">
@@ -1804,8 +1847,16 @@ function SyncNotifyShell({
                 }}
               />
             ) : null}
-            {!passwordView ? <ActionsMenu items={menuItems} /> : null}
+            {!passwordView ? (
+              <ActionsMenu items={menuItems} busy={rescoreWaiting} onPick={runMenuItem} />
+            ) : null}
             {!passwordView ? <HelpQuestion /> : null}
+            {rescoreWaiting ? (
+              <span className="center-switcher-busy" role="status">
+                background procedure running: please wait...
+              </span>
+            ) : null}
+            {rescoreError ? <span> · {rescoreError}</span> : null}
             {switching ? <span className="center-switcher-busy">switching…</span> : null}
             {scratchError ? <span> · {scratchError}</span> : null}
             {wipeError ? <span> · {wipeError}</span> : null}
@@ -1840,6 +1891,7 @@ function SyncNotifyShell({
       )}
       {children(brandName, activeYear, bankView, dataRev, banksState, bankOptions, menuTerms)}
     </div>
+    </NoteRescoreQueuedContext.Provider>
     </HeaderActionsContext.Provider>
   );
 }
@@ -2624,9 +2676,12 @@ function MainApp({
       account: general ? undefined : account,
     })
       .then((res) => {
-        // The hub saves the term and rescores on a background thread. Keep the
-        // optimistic row move; the data-epoch refresh fills in the other rows.
-        if (res.rescore === "background") return;
+        // The hub saves the term and leaves the rescore queued. A later menu
+        // click runs that pass before the menu command.
+        if (res.rescore === "background") {
+          noteRescoreQueued();
+          return;
+        }
         if (res.matrix) setMatrix(res.matrix);
         if (sel) return loadDetail(sel.person_name, sel.category, { quiet: true });
       })
@@ -2819,6 +2874,7 @@ function MainApp({
   }
 
   const setHeaderActions = useContext(HeaderActionsContext);
+  const noteRescoreQueued = useContext(NoteRescoreQueuedContext);
   useEffect(() => {
     const items: HeaderAction[] = [];
     if (hasSecrets) {
