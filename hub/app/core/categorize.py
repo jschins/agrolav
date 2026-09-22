@@ -560,6 +560,20 @@ def _user_set_category(flag: int) -> bool:
     return flag >= 0 and bool(flag & MOD_CATEGORY_BIT)
 
 
+def _scored_modification(flag: int, hit: Any) -> int:
+    """Hit → 0. No hit and no description edit → -1.
+
+    A hand-set or kruisposten category is ``1`` and is not passed here.
+    A description edit keeps its bit (2, or 3 when the category is also hand-set).
+    """
+    desc = flag >= 0 and bool(flag & MOD_DESCRIPTION_BIT)
+    if hit:
+        return MOD_DESCRIPTION if desc else MOD_NONE
+    if desc:
+        return MOD_DESCRIPTION
+    return MOD_UNCALCULATED
+
+
 def _with_mod_bits(current: int, *, category: bool = False, description: bool = False) -> int:
     value = MOD_NONE if current < 0 else current
     if category:
@@ -707,6 +721,7 @@ def _categorize_transactions(
     *,
     match_sources: dict[Any, dict[str, Any]] | None = None,
     personal_maps: dict[str | None, dict[str, list[str]]] | None = None,
+    disregard_positive_modification: bool = False,
 ) -> list[dict[str, Any]]:
     categorized: list[dict[str, Any]] = []
     for record in records:
@@ -716,6 +731,9 @@ def _categorize_transactions(
         if match_sources is not None:
             source = match_sources.get(record.get("id"), record)
         flag = _modification_of(updated)
+        if disregard_positive_modification and flag > 0:
+            categorized.append(updated)
+            continue
         if not _user_set_category(flag) and not _is_excel_row(source):
             effective_personal = personal
             if personal_maps is not None:
@@ -723,8 +741,7 @@ def _categorize_transactions(
             code, hit = categorize_with_hit(source, general, effective_personal)
             updated["category"] = code
             updated["hit"] = hit
-            if flag == MOD_UNCALCULATED:
-                updated["modification"] = MOD_NONE
+            updated["modification"] = _scored_modification(flag, hit)
         categorized.append(updated)
     return categorized
 
@@ -845,14 +862,14 @@ def _raw_simplified_by_id() -> dict[Any, dict[str, Any]]:
 def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
     """Re-categorize rows that the user has not locked with a category edit.
 
-    ``modification`` 1 or 3 keeps ``category``.  -1 becomes 0 after the first
-    calculation. Description stays on the row (already overwritten if M is 2/3).
+    ``modification`` 1 or 3 keeps ``category`` (hand-set or kruisposten).
+    A term hit sets ``modification`` to 0. No hit and no edit leaves it at -1.
+    Description stays on the row (already overwritten if M is 2/3).
 
-    ``from_scratch`` clears ``hit`` and resets ``modification`` to -1, so
-    auto-assigned rows are treated as uncalculated again. User-set locks
-    (``modification`` 1, 2, or 3) are kept and Excel rows stay at
-    ``modification`` 1. The algorithm then fills ``category``, ``hit``, and
-    sets ``modification`` to 0 for the reset rows.
+    ``from_scratch`` is Recalculate. Rows with ``modification`` > 0 are left
+    as they are. The others lose their hit and return to -1, then a new hit
+    sets ``modification`` to 0 and a miss stays at -1. Excel rows stay at
+    ``modification`` 1.
     """
     general = _category_map(_categories_file())
     data = _load_categorized_store()
@@ -867,22 +884,32 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
     if from_scratch:
         for record in records:
             flag = _modification_of(record)
-            record["hit"] = None
-            if _is_excel_row(record):
-                record["modification"] = MOD_CATEGORY
-            elif flag in (MOD_CATEGORY, MOD_DESCRIPTION, MOD_BOTH):
+            if flag > 0:
                 continue
-            else:
-                record["modification"] = MOD_UNCALCULATED
+            if _is_excel_row(record):
+                record["hit"] = None
+                record["modification"] = MOD_CATEGORY
+                continue
+            record["hit"] = None
+            record["modification"] = MOD_UNCALCULATED
 
     if _account_modality():
         personal_maps = _personal_category_maps()
         categorized = _categorize_transactions(
-            records, general, {}, personal_maps=personal_maps
+            records,
+            general,
+            {},
+            personal_maps=personal_maps,
+            disregard_positive_modification=from_scratch,
         )
     else:
         personal = _personal_category_map()
-        categorized = _categorize_transactions(records, general, personal)
+        categorized = _categorize_transactions(
+            records,
+            general,
+            personal,
+            disregard_positive_modification=from_scratch,
+        )
 
     result = dict(data) if data else {}
     result["transactions"] = sorted(categorized, key=_tx_sort_key, reverse=True)
@@ -949,8 +976,9 @@ def ircft_add_term(
             canonical["category"] = code
             canonical["hit"] = hit
             changed = True
-        if flag == MOD_UNCALCULATED:
-            canonical["modification"] = MOD_NONE
+        scored = _scored_modification(flag, hit)
+        if canonical.get("modification") != scored:
+            canonical["modification"] = scored
             changed = True
         next_rows.append(canonical)
 
@@ -1028,8 +1056,9 @@ def ircft_remove_term(
             canonical["category"] = code
             canonical["hit"] = hit
             changed = True
-        if flag == MOD_UNCALCULATED:
-            canonical["modification"] = MOD_NONE
+        scored = _scored_modification(flag, hit)
+        if canonical.get("modification") != scored:
+            canonical["modification"] = scored
             changed = True
         next_rows.append(canonical)
 
@@ -1107,8 +1136,9 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
         return []
 
     from app.sql_replica import load_bound_balance_transactions, load_bound_transactions
+    from shared.balance_values import is_balance_sheet_code
 
-    if 1000 <= code <= 2999:
+    if is_balance_sheet_code(code):
         # Balance-plan category (activa and passiva): bank-linked categories
         # list every row on the mapped account; non-bank categories list their
         # journal, mirror, and booked rows.

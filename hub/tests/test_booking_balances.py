@@ -262,6 +262,9 @@ class SpaarMirrorTests(unittest.TestCase):
 class BookingSignedAmountTests(unittest.TestCase):
     def test_ranges(self):
         x = Decimal("100")
+        self.assertEqual(booking_signed_amount(1099, x), Decimal("100"))
+        self.assertEqual(booking_signed_amount(1100, x), Decimal("100"))
+        self.assertEqual(booking_signed_amount(1099, Decimal("-100")), Decimal("-100"))
         self.assertEqual(booking_signed_amount(1110, x), Decimal("-100"))
         self.assertEqual(booking_signed_amount(2500, x), Decimal("100"))
         self.assertEqual(booking_signed_amount(2000, x), Decimal("100"))
@@ -280,17 +283,20 @@ class BookingSignedAmountTests(unittest.TestCase):
 
 class InvarianceClassTests(unittest.TestCase):
     def test_activa_vs_rest(self):
+        self.assertTrue(is_activa(1099))
         self.assertTrue(is_activa(1110))
         self.assertFalse(is_activa(2500))
         self.assertFalse(is_activa(3110))
         self.assertFalse(is_activa(4110))
 
     def test_sheet_excludes_resultaat(self):
+        self.assertTrue(is_balance_sheet_code(1099))
         self.assertTrue(is_balance_sheet_code(1110))
         self.assertTrue(is_balance_sheet_code(2000))
         self.assertTrue(is_balance_sheet_code(2500))
         self.assertFalse(is_balance_sheet_code(3110))
         self.assertFalse(is_balance_sheet_code(4110))
+        self.assertFalse(is_balance_sheet_code(11099))
 
 
 class JournalDeltaTests(unittest.TestCase):

@@ -59,18 +59,23 @@ class RecalculateFromScratchLocksTests(unittest.TestCase):
         self.assertEqual(by_id["lock-cat"]["category"], 1005)
         self.assertEqual(by_id["lock-cat"]["modification"], categorize.MOD_CATEGORY)
 
+        self.assertEqual(by_id["lock-desc"]["category"], 1800)
         self.assertEqual(by_id["lock-desc"]["modification"], categorize.MOD_DESCRIPTION)
+        self.assertEqual(by_id["lock-desc"]["hit"], "some-rule")
 
         self.assertEqual(by_id["lock-both"]["category"], 1005)
         self.assertEqual(by_id["lock-both"]["modification"], categorize.MOD_BOTH)
+        self.assertEqual(by_id["lock-cat"]["hit"], "some-rule")
+        self.assertEqual(by_id["lock-both"]["hit"], "some-rule")
 
         self.assertEqual(by_id["excel"]["category"], 1005)
         self.assertEqual(by_id["excel"]["modification"], categorize.MOD_CATEGORY)
 
-        self.assertEqual(by_id["auto"]["modification"], categorize.MOD_NONE)
-        self.assertEqual(by_id["uncalc"]["modification"], categorize.MOD_NONE)
-        for row in persisted[-1]["transactions"]:
-            self.assertIsNone(row["hit"])
+        self.assertEqual(by_id["auto"]["modification"], categorize.MOD_UNCALCULATED)
+        self.assertEqual(by_id["uncalc"]["modification"], categorize.MOD_UNCALCULATED)
+        self.assertIsNone(by_id["auto"]["hit"])
+        self.assertIsNone(by_id["uncalc"]["hit"])
+        self.assertIsNone(by_id["excel"]["hit"])
 
     def test_non_scratch_still_preserves_locks(self):
         store = {
@@ -92,6 +97,37 @@ class RecalculateFromScratchLocksTests(unittest.TestCase):
         by_id = {t["id"]: t for t in persisted[-1]["transactions"]}
         self.assertEqual(by_id["lock-cat"]["category"], 1005)
         self.assertEqual(by_id["lock-cat"]["modification"], categorize.MOD_CATEGORY)
+
+    def test_hit_is_zero_and_miss_stays_uncalculated(self):
+        store = {
+            "transactions": [
+                _row("hit", modification=categorize.MOD_UNCALCULATED),
+                _row("miss", modification=categorize.MOD_UNCALCULATED),
+            ]
+        }
+
+        def fake_hit(record, general, personal):
+            del general, personal
+            if record.get("id") == "hit":
+                return 1005, "G:zorg"
+            return 1800, None
+
+        persisted: list[dict] = []
+        with (
+            patch.object(categorize, "_load_categorized_store", return_value=store),
+            patch.object(categorize, "_persist_categorized_store", side_effect=persisted.append),
+            patch.object(categorize, "_categories_file", return_value=_GENERAL),
+            patch.object(categorize, "_personal_category_map", return_value={}),
+            patch.object(categorize, "_write_category_totals", return_value={}),
+            patch.object(categorize, "categorize_with_hit", side_effect=fake_hit),
+        ):
+            categorize.recategorize_transactions()
+
+        by_id = {t["id"]: t for t in persisted[-1]["transactions"]}
+        self.assertEqual(by_id["hit"]["modification"], categorize.MOD_NONE)
+        self.assertEqual(by_id["hit"]["hit"], "G:zorg")
+        self.assertEqual(by_id["miss"]["modification"], categorize.MOD_UNCALCULATED)
+        self.assertIsNone(by_id["miss"]["hit"])
 
 
 if __name__ == "__main__":

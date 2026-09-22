@@ -787,6 +787,20 @@ def api_recalculate_from_scratch(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/local/{center}/cross-postings")
+def api_cross_postings(
+    center: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.cross_postings import apply_cross_postings
+
+    del center
+    try:
+        return apply_cross_postings()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/local/{center}/wipe-year")
 def api_wipe_year(
     center: str,

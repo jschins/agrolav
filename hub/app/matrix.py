@@ -319,12 +319,15 @@ def build_matrix(
         if y_int is not None and country:
             balance_country = _balance_matrix_country_id(country)
             if balance_country is not None:
-                from shared.balance_values import category_local_codes as _local_codes
+                from shared.balance_values import (
+                    category_local_codes as _local_codes,
+                    is_balance_sheet_code,
+                )
 
                 balance_names = {
                     code: name
                     for name in booking
-                    if (code := _category_code(name)) is not None and 1000 <= code <= 2999
+                    if (code := _category_code(name)) is not None and is_balance_sheet_code(code)
                 }
                 try:
                     from shared.balance_values import present_balance_cents, spaar_mirrors
@@ -483,8 +486,8 @@ def recalculate_all(person_folders: list[str] | None = None) -> dict[str, Any]:
 def recalculate_pack_from_scratch(pack: PersonScope) -> None:
     """Re-categorize from scratch every SQL year for ``pack``.
 
-    User-set locks (``modification`` 1-3) and Excel rows survive; only
-    auto-assigned rows are reset and re-derived.
+    Rows with ``modification`` > 0 are left untouched. Hits (0) and
+    uncalculated rows (-1) are reset and re-derived. Excel rows stay.
     """
     from dataclasses import replace
 

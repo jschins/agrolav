@@ -36,6 +36,7 @@ import {
   type OtpChallenge,
   recalculate,
   recalculateFromScratch,
+  crossPostings,
   wipeYear,
   recordModification,
   refreshAll,
@@ -1500,6 +1501,7 @@ function SyncNotifyShell({
   const [scratchBusy, setScratchBusy] = useState(false);
   const [scratchError, setScratchError] = useState<string | null>(null);
   const [wipeBusy, setWipeBusy] = useState(false);
+  const [crossBusy, setCrossBusy] = useState(false);
   const [wipeError, setWipeError] = useState<string | null>(null);
   const [rescoreQueued, setRescoreQueued] = useState(false);
   const [rescoreWaiting, setRescoreWaiting] = useState(false);
@@ -1713,7 +1715,7 @@ function SyncNotifyShell({
   }
 
   function doRecalculateFromScratch() {
-    if (scratchBusy || wipeBusy) return;
+    if (scratchBusy || wipeBusy || crossBusy) return;
     beginRefreshBusy("please wait... recalculating categories");
     flushSync(() => {
       setScratchBusy(true);
@@ -1745,8 +1747,25 @@ function SyncNotifyShell({
       .catch((e: Error) => setScratchError(e.message));
   }
 
+  function doCrossPostings() {
+    if (scratchBusy || wipeBusy || crossBusy) return;
+    beginRefreshBusy("please wait... cross-postings");
+    flushSync(() => setCrossBusy(true));
+    afterPaint(() => {
+      crossPostings()
+        .then(() => {
+          onCenterChanged?.();
+        })
+        .catch((e: Error) => setScratchError(e.message))
+        .finally(() => {
+          setCrossBusy(false);
+          endRefreshBusy();
+        });
+    });
+  }
+
   function doWipeYear() {
-    if (scratchBusy || wipeBusy) return;
+    if (scratchBusy || wipeBusy || crossBusy) return;
     const dutch = uiIsDutch(menuTerms);
     const suggested = activeYear || String(new Date().getFullYear());
     const raw = window.prompt(dutch ? "Jaar (JJJJ)" : "Year to wipe (YYYY)", suggested);
@@ -1810,8 +1829,14 @@ function SyncNotifyShell({
       label: scratchBusy
         ? "Recalculating…"
         : tableHeaderTerm(menuTerms, "Recalculate"),
-      disabled: scratchBusy || wipeBusy,
+      disabled: scratchBusy || wipeBusy || crossBusy,
       onClick: doRecalculateFromScratch,
+    });
+    items.push({
+      id: "cross-postings",
+      label: crossBusy ? "…" : tableHeaderTerm(menuTerms, "Calculate cross-postings"),
+      disabled: scratchBusy || wipeBusy || crossBusy,
+      onClick: doCrossPostings,
     });
     if (status?.balance_url) {
       items.push({
@@ -1848,7 +1873,7 @@ function SyncNotifyShell({
       items.push({
         id: "wipe-year",
         label: wipeBusy ? "Wiping…" : tableHeaderTerm(menuTerms, "Wipe Year"),
-        disabled: scratchBusy || wipeBusy,
+        disabled: scratchBusy || wipeBusy || crossBusy,
         onClick: doWipeYear,
       });
     }
@@ -1886,7 +1911,7 @@ function SyncNotifyShell({
       });
     }
     return items;
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, menuTerms]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
     if (rescoreWaitRef.current) return;

@@ -508,8 +508,8 @@ def recalculate_from_scratch_all(
 ) -> dict[str, Any]:
     """Re-categorize the logged-in scope from scratch, keeping user-set locks.
 
-    Auto-assigned rows are reset and re-derived; explicitly edited categories
-    and descriptions (``modification`` 1-3) and Excel rows are kept.
+    Rows with ``modification`` > 0 are left untouched. Hits (0) and
+    uncalculated rows (-1) are reset and re-derived. Excel rows stay.
 
     ``person`` set → that person only. Otherwise every person in ``center``.
     Does not walk other centers or countries.

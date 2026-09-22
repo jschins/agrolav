@@ -274,7 +274,7 @@ def _dim_category_ids(country_id: int) -> set[int]:
         cur = conn.cursor()
         cur.execute(
             "SELECT DISTINCT category_id FROM dbo.dim_category "
-            "WHERE country_id = ? AND local_code BETWEEN 1000 AND 4999",
+            "WHERE country_id = ? AND (local_code = 1099 OR local_code BETWEEN 1000 AND 4999)",
             country_id,
         )
         return {int(r[0]) for r in cur.fetchall()}
@@ -303,20 +303,6 @@ def _result_overlay(country_id: int, year: int, as_of: str | None = None) -> Dec
         cur = conn.cursor()
         overlay = result_overlay_cents(country_id, year, cur, as_of=as_of)
     return Decimal(sum(overlay.values())) / 100
-
-
-def _recorded_result(country_id: int, year: int) -> Decimal:
-    """Resultaat R: sum of the P&L category totals (local_code 3000-4999).
-
-    Reads consolidated ``dbo.category_total`` (``bank_id IS NULL``) for every
-    person in every center of the country, plus the journal overlay so R
-    matches the client matrix "Saldo". Passiva 2200 / ``profit`` uses this R.
-    """
-    with connect() as conn:
-        cur = conn.cursor()
-        recorded = recorded_resultaat_totals(country_id, year, cur)
-    base = sum(recorded.values(), Decimal("0"))
-    return base + _result_overlay(country_id, year)
 
 
 def list_result_rows(country_id: int, year: int) -> list[dict[str, Any]]:
@@ -445,8 +431,14 @@ def _asof_cutoff(country_id: int, year: int, as_of: str | None) -> date | None:
         return None
 
 
-def _result_amount(country_id: int, year: int, cutoff: date) -> Decimal:
-    """Verlies recomputed from the transaction rows booked on or before cutoff."""
+def _result_amount(country_id: int, year: int, cutoff: date | None) -> Decimal:
+    """Verlies from the transaction rows.
+
+    ``cutoff`` keeps bookings and journals on or before that day. ``None`` is
+    the whole year (Actueel). Source-account spaarrekening rows are left out,
+    same as on a chosen date. ``dbo.category_total`` is not read: that snapshot
+    still holds those rows from before the source/mirror pair existed.
+    """
     table = _transaction_table(country_id)
     total = Decimal("0")
     if table is not None:
@@ -455,24 +447,26 @@ def _result_amount(country_id: int, year: int, cutoff: date) -> Decimal:
             exclude_sql, exclude_params = spaar_source_exclude_clause(
                 country_id, cursor=cur
             )
-            cur.execute(
+            sql = (
                 f"SELECT t.amount FROM {table} t "
                 "JOIN dbo.dim_category d ON d.category_id = t.category_id "
                 "AND d.country_id = ? "
-                f"WHERE t.year = ? AND t.booked_on <= ? "
+                "WHERE t.year = ? "
                 "AND d.local_code BETWEEN 3000 AND 4999"
-                f"{exclude_sql}",
-                country_id,
-                year,
-                cutoff.isoformat(),
-                *exclude_params,
+                f"{exclude_sql}"
             )
+            params: list[object] = [country_id, year, *exclude_params]
+            if cutoff is not None:
+                sql += " AND t.booked_on <= ?"
+                params.append(cutoff.isoformat())
+            cur.execute(sql, *params)
             for (amt,) in cur.fetchall():
                 try:
                     total += Decimal(str(amt))
                 except (TypeError, ValueError):
                     continue
-    return total + _result_overlay(country_id, year, cutoff.isoformat())
+    overlay_as_of = cutoff.isoformat() if cutoff is not None else None
+    return total + _result_overlay(country_id, year, overlay_as_of)
 
 
 def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[str, Any]:
@@ -487,12 +481,8 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
         apply_afschrijvingen(country_id, cur)
         conn.commit()
     cutoff = _asof_cutoff(country_id, year, as_of)
-    if cutoff is None:
-        result_amount = _recorded_result(country_id, year)
-        result_source = "category_total"
-    else:
-        result_amount = _result_amount(country_id, year, cutoff)
-        result_source = "as_of"
+    result_amount = _result_amount(country_id, year, cutoff)
+    result_source = "as_of" if cutoff is not None else "transactions"
     with connect() as conn:
         cur = conn.cursor()
         breakdown = balance_category_breakdown(country_id, year, cur, as_of=cutoff)

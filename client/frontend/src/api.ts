@@ -197,6 +197,10 @@ export function recalculateFromScratch(): Promise<MatrixResponse> {
   return sendJson("/api/recalculate-from-scratch", "POST", {});
 }
 
+export function crossPostings(): Promise<{ updated: number }> {
+  return sendJson("/api/cross-postings", "POST", {});
+}
+
 export function wipeYear(
   year: string,
   body: { person?: string; account?: string } = {}

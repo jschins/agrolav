@@ -43,7 +43,9 @@ def sql_ident(text: str) -> str | None:
 
 
 def infer_side(cat_id: int) -> str:
-    if 1000 <= cat_id <= 1999:
+    code = int(cat_id)
+    # 1099 is the country-5 NL46→NL84 cross-posting (category_id 11099).
+    if code == 1099 or 1000 <= code <= 1999:
         return "activa"
     if 2000 <= cat_id <= 2999:
         return "passiva"
@@ -180,8 +182,14 @@ def ensure_category_role_booking_rules(cursor: object) -> None:
 
 
 def is_activa(cat_id: int) -> bool:
-    """True for 1000-1999. Passiva and resultaat (3000-4999) share the other class."""
-    return 1000 <= int(cat_id) <= 1999
+    """True for 1000-1999, and for local code 1099.
+
+    1099 is the country-5 NL46→NL84 cross-posting. Its category id is 11099
+    (local code + 10000); the sheet classifies the local code.
+    Passiva and resultaat (3000-4999) share the other class.
+    """
+    code = int(cat_id)
+    return code == 1099 or 1000 <= code <= 1999
 
 
 def apr_class_sign(cat_id: int) -> int:
@@ -190,8 +198,13 @@ def apr_class_sign(cat_id: int) -> int:
 
 
 def is_balance_sheet_code(cat_id: int) -> bool:
-    """A/P local codes (1000-2999). Resultaat 3000-4999 stays off the sheet."""
-    return 1000 <= int(cat_id) <= 2999
+    """A/P local codes (1000-2999), plus local code 1099.
+
+    Resultaat 3000-4999 stays off the sheet. 1099 is activa: country 5
+    stores it as category_id 11099.
+    """
+    code = int(cat_id)
+    return code == 1099 or 1000 <= code <= 2999
 
 
 def is_resultaat(cat_id: int) -> bool:
@@ -720,13 +733,18 @@ def booking_signed_amount(
 
     Transfer from stored category totals (bank sign X) onto the balance
     sheet follows the APR table: A 1000-1999 (except live-bank / spaar)
-    ``+= -X``; P 2000-2999 ``+= +X``. The equity post
+    ``+= -X``; P 2000-2999 ``+= +X``. Local 1099 and 1100 keep ``+X``.
+    The equity post
     (``category_role = equity``) is skipped via its role, not via local_code
     2000. Bank/spaar and computed posts: ``None``.
     """
     code = int(local_code)
     if is_hit_forbidden_role(role):
         return None
+    # 1099 (SIa) and 1100 (SIb) keep the statement sign, so the sheet
+    # shows the same total as the category: +1000 and −1000 for one wire.
+    if code in (1099, 1100):
+        return amount
     if 1000 <= code <= 1999:
         return -amount
     if 2000 <= code <= 2999:
@@ -847,7 +865,7 @@ def account_links(country_id: int, cursor: object) -> dict[int, int]:
 def _dim_category_ids(country_id: int, cursor: object) -> set[int]:
     cursor.execute(
         "SELECT DISTINCT category_id FROM dbo.dim_category "
-        "WHERE country_id = ? AND local_code BETWEEN 1000 AND 4999",
+        "WHERE country_id = ? AND (local_code = 1099 OR local_code BETWEEN 1000 AND 4999)",
         (int(country_id),),
     )
     return {int(r[0]) for r in cursor.fetchall()}
@@ -857,7 +875,7 @@ def category_labels(country_id: int, cursor: object) -> dict[int, str]:
     """category_id → label from dbo.dim_category (balance categories)."""
     cursor.execute(
         "SELECT category_id, label FROM dbo.dim_category "
-        "WHERE country_id = ? AND local_code BETWEEN 1000 AND 4999",
+        "WHERE country_id = ? AND (local_code = 1099 OR local_code BETWEEN 1000 AND 4999)",
         (int(country_id),),
     )
     return {int(r[0]): str(r[1]) for r in cursor.fetchall()}
@@ -895,7 +913,7 @@ def category_roles(country_id: int, cursor: object) -> dict[int, str]:
     """category_id → ``category_role`` text (empty string when NULL)."""
     cursor.execute(
         "SELECT category_id, category_role FROM dbo.dim_category "
-        "WHERE country_id = ? AND local_code BETWEEN 1000 AND 4999",
+        "WHERE country_id = ? AND (local_code = 1099 OR local_code BETWEEN 1000 AND 4999)",
         (int(country_id),),
     )
     return {
@@ -1108,7 +1126,7 @@ def _booking_balances(
         "JOIN dbo.center n ON n.center_id = p.center_id "
         "JOIN dbo.dim_category d ON d.category_id = t.category_id "
         "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
-        "AND d.local_code BETWEEN 1000 AND 2999 "
+        "AND (d.local_code = 1099 OR d.local_code BETWEEN 1000 AND 2999) "
         "AND (d.category_role IS NULL OR d.category_role IN "
         "(N'remainder', N'mirror'))"
     )
