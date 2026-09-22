@@ -119,16 +119,35 @@ fi
 
 # --- Password, asked once -----------------------------------------------------
 
+# Read-Host -AsSecureString turns a paste into one star and keeps one character.
+# A normal Read-Host takes the whole paste. The password is visible until Enter,
+# then that line is wiped.
 function Read-Password([string]$prompt) {
-    $secure = Read-Host -AsSecureString $prompt
-    return [System.Net.NetworkCredential]::new("", $secure).Password
+    $line = Read-Host $prompt
+    if ($null -eq $line) { $line = "" }
+    try {
+        $top = [Console]::CursorTop
+        if ($top -gt 0) {
+            [Console]::SetCursorPosition(0, $top - 1)
+            [Console]::Write(" " * ([Console]::WindowWidth - 1))
+            [Console]::SetCursorPosition(0, $top)
+        }
+    } catch { }
+    Write-Host "Captured $($line.Length) characters."
+    return $line
 }
 
 # ssh/scp get the password from this helper; the helper prints the AGRLV_PW
 # environment variable (inherited from this process), so the password itself
 # is never written to a file. `cmd` echo would choke on & | < > characters, so
 # the helper prints through PowerShell.
-$askpass = Join-Path $env:TEMP ("agrolav-askpass-" + [guid]::NewGuid().ToString("N") + ".cmd")
+# $env:TEMP is the 8.3 form (C:\Users\PCUSER~1\...), which has no spaces.
+# OpenSSH launches SSH_ASKPASS as a raw path, so a space in
+# "C:\Users\PC User\..." makes it run "C:\Users\PC" and the password never
+# arrives. Keep the short path. Delete the file with .NET: Remove-Item
+# treats the "~" as special and throws.
+$scratch = $env:TEMP
+$askpass = Join-Path $scratch ("agrolav-askpass-" + [guid]::NewGuid().ToString("N") + ".cmd")
 Set-Content -LiteralPath $askpass -Encoding ASCII -Value @'
 @echo off
 powershell -NoProfile -NonInteractive -Command "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); [Console]::Out.WriteLine($env:AGRLV_PW)"
@@ -177,11 +196,16 @@ function Invoke-SshScript {
     $cmd = "echo $b64 | base64 -d > $remoteFile && bash $remoteFile; status=`$?; rm -f $remoteFile; exit `$status"
     Invoke-Remote $step {
         $prev = $OutputEncoding
+        $prevEap = $ErrorActionPreference
         try {
             $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+            # ssh writes "Permission denied" to stderr. With ErrorAction Stop
+            # that becomes a terminating error before the retry below can run.
+            $ErrorActionPreference = "Continue"
             $out = $env:AGRLV_PW | & ssh @SshOpts $Target -- $cmd 2>&1 | ForEach-Object { "$_" }
         } finally {
             $OutputEncoding = $prev
+            $ErrorActionPreference = $prevEap
         }
         $out | ForEach-Object { Write-Host $_ }
         $script:LastRemoteOutput = ($out -join "`n")
@@ -196,7 +220,13 @@ function Copy-RemoteBak {
     $tmp = "$LocalDir/agrolav.bak.partial"
     Invoke-Remote "scp" {
         if (Test-Path $tmp) { Remove-Item -Force $tmp }
-        $out = & scp @ScpOpts "${Target}:${RemoteWorking}" $tmp 2>&1 | ForEach-Object { "$_" }
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            $out = & scp @ScpOpts "${Target}:${RemoteWorking}" $tmp 2>&1 | ForEach-Object { "$_" }
+        } finally {
+            $ErrorActionPreference = $prevEap
+        }
         $out | ForEach-Object { Write-Host $_ }
         $script:LastRemoteOutput = ($out -join "`n")
         return ($LASTEXITCODE -eq 0 -and (Test-Path $tmp))
@@ -232,8 +262,8 @@ try {
         Finish-Pull
     } else {
         # Windows OpenSSH cannot multiplex (ControlMaster -> "Not a socket").
-        $staleMux = Join-Path $env:TEMP "agrlv-ssh"
-        if (Test-Path $staleMux) { Remove-Item -Force $staleMux }
+        $staleMux = Join-Path $scratch "agrlv-ssh"
+        if (Test-Path -LiteralPath $staleMux) { Remove-Item -LiteralPath $staleMux -Force }
 
         Write-Host "Backing up on ${RemoteHost} as agrolav.bak ..."
         Invoke-SshScript "remote backup" $remoteBackup "/tmp/pull-remote-backup.sh"
@@ -246,5 +276,7 @@ try {
     Remove-Item Env:AGRLV_PW -ErrorAction SilentlyContinue
     Remove-Item Env:SSH_ASKPASS, Env:SSH_ASKPASS_REQUIRE -ErrorAction SilentlyContinue
     if ($setDisplay) { Remove-Item Env:DISPLAY -ErrorAction SilentlyContinue }
-    Remove-Item -LiteralPath $askpass -Force -ErrorAction SilentlyContinue
+    if ($askpass -and [System.IO.File]::Exists($askpass)) {
+        try { [System.IO.File]::Delete($askpass) } catch { }
+    }
 }
