@@ -2484,6 +2484,7 @@ function MainApp({
   const [loginPerson, setLoginPerson] = useState("");
   const [loginAccess, setLoginAccess] = useState("");
   const [categoryRoles, setCategoryRoles] = useState<Record<string, string>>({});
+  const [languageLong, setLanguageLong] = useState<Record<string, string>>({});
   const selectionRef = useRef<CellSelection | null>(null);
   const dirtyRef = useRef(false);
   const viewInitRef = useRef(false);
@@ -2531,6 +2532,7 @@ function MainApp({
         if (cancelled) return;
         termSettingsRef.current = s;
         setCategoryRoles(s.category_roles ?? {});
+        setLanguageLong(s.language_long ?? {});
       })
       .catch(() => {
         if (!cancelled) setCategoryRoles({});
@@ -3093,6 +3095,7 @@ function MainApp({
             detail={detail}
             year={year}
             bank={bankQuery}
+            languageLong={languageLong}
             onModify={modifyTransaction}
             onCategoryError={setError}
             onTermContextMenu={openTermMenu}
@@ -3406,7 +3409,7 @@ function TermsApp() {
         <p className="win-hint">{settings?.language_long?.["term window hint"] ?? ""}</p>
         <button
           type="button"
-          className="sidebar-knob"
+          className="sidebar-knob info-knob"
           onClick={() => setPriorityOpen(true)}
         >
           {tableHeaderTerm(settings?.table_header_terms, "priority rules")}
@@ -4719,6 +4722,7 @@ function PTable({
   detail,
   year,
   bank,
+  languageLong,
   onModify,
   onCategoryError,
   onTermContextMenu,
@@ -4727,11 +4731,13 @@ function PTable({
   detail: TransactionsResponse;
   year?: string;
   bank?: string;
+  languageLong?: Record<string, string>;
   onModify: (transaction: Transaction) => void;
   onCategoryError?: (message: string | null) => void;
   onTermContextMenu?: (e: MouseEvent, cellText: string, transactionId: string) => void;
 }) {
   const [picker, setPicker] = useState<Transaction | null>(null);
+  const [signOpen, setSignOpen] = useState(false);
   const transactions = Array.isArray(detail.transactions) ? detail.transactions : [];
   const keywords = Array.isArray(detail.keywords) ? detail.keywords : [];
   const validCategoryCodes = new Set(detail.valid_category_codes ?? []);
@@ -4858,8 +4864,23 @@ function PTable({
     return <td key={column}>{formatCell(t[column])}</td>;
   }
 
+  const signFromTerms = detail.table_header_terms?.["sign convention"]?.trim();
+  const signLabel =
+    signFromTerms ||
+    (uiIsDutch(detail.table_header_terms) ? "tekenconventie" : "sign convention");
   return (
     <div className="p-panel">
+      <button type="button" className="sidebar-knob info-knob" onClick={() => setSignOpen(true)}>
+        {signLabel}
+      </button>
+      {signOpen ? (
+        <PriorityRulesDialog
+          title={signLabel}
+          body={languageLong?.["sign convention"] ?? ""}
+          closeLabel={tableHeaderTerm(detail.table_header_terms, "Close")}
+          onClose={() => setSignOpen(false)}
+        />
+      ) : null}
       <div className="p-heading">
         <strong>
           {detail.person} / {displayCategoryName(categoryName)}
@@ -4871,7 +4892,7 @@ function PTable({
         <>
           {consolidated.length > 0 && (
             <div className="p-consolidated">
-              <strong>Totale bijdrage per rekeninghouder</strong>
+              <strong>Totale bijdrage per tegenpartij</strong>
               <table className="p-table">
                 <thead>
                   <tr>
@@ -4924,7 +4945,9 @@ function PTable({
                   <tr>
                     {columns.map((c) => (
                       <th key={c} className={columnCellClass(c)}>
-                        {columnHeaderLabel(c, detail.table_header_terms)}
+                        {c === "iban"
+                          ? "IBAN tegenpartij"
+                          : columnHeaderLabel(c, detail.table_header_terms)}
                       </th>
                     ))}
                   </tr>

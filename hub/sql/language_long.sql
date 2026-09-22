@@ -137,3 +137,43 @@ UPDATE dbo.language_long
 SET term_lang1 = REPLACE(REPLACE(term_lang1, N'albert && heijn', N'heijn && machtiging'), N'albert&&heijn', N'heijn&&machtiging'),
     term_lang2 = REPLACE(REPLACE(term_lang2, N'albert && heijn', N'heijn && machtiging'), N'albert&&heijn', N'heijn&&machtiging');
 GO
+
+INSERT INTO dbo.language (term_lang1, term_lang2)
+SELECT v.term_lang1, v.term_lang2
+FROM (VALUES
+    ('sign convention', 'tekenconventie')
+) AS v (term_lang1, term_lang2)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
+);
+GO
+
+INSERT INTO dbo.language_long (term_key, term_lang1, term_lang2)
+SELECT v.term_key, v.term_lang1, v.term_lang2
+FROM (VALUES
+    (
+        N'sign convention',
+        N'The first IBAN column (account holder) becomes richer when the amount is positive, and poorer when the amount is negative.
+
+The second IBAN column (counterparty) becomes poorer when the amount is positive, and richer when the amount is negative.
+
+Another way to say the same thing:
+
+A positive amount is taken from the counterparty and deposited on the account holder (money moves from right to left).
+
+A negative amount is taken from the account holder and deposited on the counterparty (money moves from left to right).',
+        N'De eerste IBAN kolom (rekeninghouder) wordt rijker als het bedrag positief is, armer als het bedrag negatief is.
+
+De tweede IBAN kolom (tegenpartij) wordt armer als het bedrag positief is, rijker als het bedrag negatief is.
+
+Een andere manier om hetzelfde te zeggen is als volgt:
+
+Bij een positief bedrag wordt een geldbedrag weggehaald bij de tegenpartij en gestort op de rekeninghouder (geld verschuift van rechts naar links).
+
+Bij een negatief bedrag wordt een geldhoeveelheid weggehaald bij de rekeninghouder en gestort op de tegenpartij (geld verschuift van links naar rechts).'
+    )
+) AS v (term_key, term_lang1, term_lang2)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.language_long l WHERE l.term_key = v.term_key
+);
+GO

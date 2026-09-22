@@ -422,8 +422,7 @@ The meal sheet is a separate page, not part of this matrix:
 login. A week runs Sunday to Saturday. **Dag** shows today, **Week** shows
 the seven days, **Reserveren** shows only your own row.
 
-Each day has five meals, **O M A L P** (Ontbijt, Middag, Avond, Laat, Pakket). A click switches a cell between
-`x` and `v`. You can change only your own row. The login `admin` is not a
+Each day has five meals, **O M A L P** (standing for `Ontbijt`, `Middag`, `Avond`, `Laat`, and `Pakket`, respectively). A click switches a cell between an empty circle and a full one. You can change only your own row. The login `admin` is not a
 row; it edits the extra counts for the current week.
 <!-- {en:meals[5],meal,sheet,eat,reserve,view,O,M,A,L,P} -->
 <!-- {nl:maaltijden[5],maaltijd,blad,eten,reserveren,weergave,O,M,A,L,P} -->
