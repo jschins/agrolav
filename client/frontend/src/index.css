@@ -447,21 +447,19 @@ a.sidebar-knob:hover {
   position: fixed;
   inset: 0;
   z-index: 2000;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 1.5rem 1rem;
-  overflow-y: auto;
-  background: rgba(15, 23, 42, 0.45);
+  overflow: auto;
+  background: #fbfdef;
 }
 
 .priority-rules-dialog {
-  width: min(92vw, 40rem);
-  margin-bottom: 1.5rem;
-  padding: 1.25rem 1.4rem 1.1rem;
-  background: #fff;
-  border: 1px solid #cbd5e1;
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.2);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 1.5rem 2rem 1.25rem;
+  background: #fbfdef;
+  border: 0;
+  box-shadow: none;
   color: #0f172a;
   line-height: 1.45;
 }
