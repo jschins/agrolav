@@ -1,6 +1,7 @@
 """Mark internal transfers between registered accounts as cross-postings.
 
-Country 5 is fixed for now. Only statements on a country bank are read.
+Any country with ``dbo.country.has_balance`` can run it. Only statements
+on a country bank are read.
 A booking is kept when that bank's counterparty is another of those banks
 and the other bank books the negated amount on the same day.
 
@@ -16,20 +17,24 @@ The outgoing leg decides the category, and only these pairs are written:
   (category 11021), or ``NL84INGB0002801129`` (category 11010) against its
   spaarrekening (category 11019), is local 1200 (category 11200)
 
-The value stored on the booking is the category id. For country 5 that is
-the local code plus 10000. A ``dim_category`` row for the local code
-supplies the id when one exists. Every other pair is left uncategorized,
-and a previous cross-posting category on such a row is released.
+The value stored on the booking is the category id. Balance countries are
+taken in ``country_id`` order. The first stores the local code. Each later
+country with ``has_balance`` adds another 10000, so country 5 is
+``local_code + 10000`` and the next balance country is
+``local_code + 20000``. A ``dim_category`` row for the local code supplies
+the id when one exists. Every other pair is left uncategorized, and a
+previous cross-posting category on such a row is released.
 """
 from __future__ import annotations
 
 import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Sequence
 
 CROSS_POSTING_COUNTRY_ID = 5
-# Country 5: category_id = local_code + 10000. Local 1200 is category 11200.
+# Country 5 (the second balance country): local_code + 10000. Local 1200 is 11200.
+# The next country with has_balance adds another 10000. See category_id_offset.
 _CATEGORY_BASE = 10000
 _LOCAL_SIB_TO_SIA = 1099
 _LOCAL_SIA_TO_SIB = 1100
@@ -196,32 +201,56 @@ def user_digits(role: object) -> int | None:
     return int(match.group(1))
 
 
-def category_id_for_local_code(local_code: int, country_id: int = CROSS_POSTING_COUNTRY_ID) -> int:
-    """Stored ``category_id`` for a local code.
+def category_id_offset(
+    country_id: int,
+    balance_country_ids: Sequence[int] | None = None,
+) -> int:
+    """Block added to a local code when it is stored as ``category_id``.
 
-    Country 5 uses ``category_id = local_code + 10000``. Any other country
-    stores the local code itself.
+    ``balance_country_ids`` is every ``dbo.country.country_id`` with
+    ``has_balance`` set, in ``country_id`` order. The earliest stores the
+    local code. Each later balance country adds 10000. Beheer (4) is 0
+    and Instudo (5) is 10000. A country that is not in the list stores
+    the local code. When the list is omitted, only country 5 is treated
+    as the second balance country.
     """
-    code = int(local_code)
-    if int(country_id) == CROSS_POSTING_COUNTRY_ID:
-        return _CATEGORY_BASE + code
-    return code
+    cid = int(country_id)
+    if balance_country_ids is None:
+        if cid == CROSS_POSTING_COUNTRY_ID:
+            return _CATEGORY_BASE
+        return 0
+    ordered = sorted({int(item) for item in balance_country_ids})
+    try:
+        rank = ordered.index(cid)
+    except ValueError:
+        return 0
+    return rank * _CATEGORY_BASE
+
+
+def category_id_for_local_code(
+    local_code: int,
+    country_id: int = CROSS_POSTING_COUNTRY_ID,
+    balance_country_ids: Sequence[int] | None = None,
+) -> int:
+    """Stored ``category_id`` for a local code when no ``dim_category`` row wins."""
+    return category_id_offset(country_id, balance_country_ids) + int(local_code)
 
 
 def stored_category_id(
     local_code: int,
     by_local: dict[int, int] | None = None,
     country_id: int = CROSS_POSTING_COUNTRY_ID,
+    balance_country_ids: Sequence[int] | None = None,
 ) -> int:
     """Category id written on the booking.
 
-    A ``dim_category`` row for this local code wins. Otherwise country 5
-    uses ``local_code + 10000``.
+    A ``dim_category`` row for this local code wins. Otherwise the id is
+    the local code plus ``category_id_offset`` for this country.
     """
     code = int(local_code)
     if by_local is not None and code in by_local:
         return int(by_local[code])
-    return category_id_for_local_code(code, country_id)
+    return category_id_for_local_code(code, country_id, balance_country_ids)
 
 
 def transfer_local_code(
@@ -252,7 +281,16 @@ def transfer_local_code(
     digits = _same_center_user_digits(source, dest, from_center, to_center, from_role, to_role)
     if digits is not None:
         return digits
-    if _spaar_pair(source, dest, from_category_id, to_category_id):
+    if _spaar_pair(
+        source,
+        dest,
+        from_category_id,
+        to_category_id,
+        from_role,
+        to_role,
+        from_center,
+        to_center,
+    ):
         return _LOCAL_CROSS_POSTING
     return None
 
@@ -266,19 +304,34 @@ def _same_center_user_digits(
     to_role: object,
 ) -> int | None:
     """Four digits when one side is NL46 or NL84 and the other shares its center."""
-    if source in _SOURCE_IBANS and dest not in _SOURCE_IBANS:
+    source_hit = _is_source_account(source, from_role)
+    dest_hit = _is_source_account(dest, to_role)
+    if source_hit and not dest_hit:
         source_center, other_center, other_role = from_center, to_center, to_role
-    elif dest in _SOURCE_IBANS and source not in _SOURCE_IBANS:
+    elif dest_hit and not source_hit:
         source_center, other_center, other_role = to_center, from_center, from_role
     else:
         return None
     digits = user_digits(other_role)
     if digits is None:
         return None
-    side = center_side(source_center)
-    if side is None or side != center_side(other_center):
+    if not _centers_match(source_center, other_center):
         return None
     return digits
+
+
+def _is_source_account(iban: str, role: object) -> bool:
+    """The two Instudo source IBANs, or any account whose role starts with ``source``."""
+    if iban in _SOURCE_IBANS:
+        return True
+    return _role_text(role).startswith("source")
+
+
+def _centers_match(left: str | None, right: str | None) -> bool:
+    """Same center: ``sia``/``sib`` when the name encodes that, otherwise the username."""
+    a = center_side(left) or str(left or "").strip().lower()
+    b = center_side(right) or str(right or "").strip().lower()
+    return bool(a) and a == b
 
 
 def _spaar_pair(
@@ -286,13 +339,25 @@ def _spaar_pair(
     dest: str,
     from_category_id: int | None,
     to_category_id: int | None,
+    from_role: object = "",
+    to_role: object = "",
+    from_center: str | None = None,
+    to_center: str | None = None,
 ) -> bool:
-    """NL46 against 11021, or NL84 against 11019, in either direction."""
+    """A source account against its spaarrekening, in either direction.
+
+    Instudo names these as NL46 against category 11021 and NL84 against
+    category 11019. Any other balance country pairs a ``source`` role with
+    a ``mirror`` role in the same center.
+    """
     for iban, spaar_id in _SPAAR_CATEGORY_BY_IBAN.items():
         if source == iban and to_category_id is not None and int(to_category_id) == spaar_id:
             return True
         if dest == iban and from_category_id is not None and int(from_category_id) == spaar_id:
             return True
+    roles = (_role_text(from_role), _role_text(to_role))
+    if "mirror" in roles and any(role.startswith("source") for role in roles):
+        return _centers_match(from_center, to_center)
     return False
 
 
@@ -340,6 +405,8 @@ def managed_category_ids(
     by_local: dict[int, int] | None,
     digit_codes: set[int],
     bank_category_ids: set[int] | None = None,
+    country_id: int = CROSS_POSTING_COUNTRY_ID,
+    balance_country_ids: Sequence[int] | None = None,
 ) -> set[int]:
     """Category ids this routine writes, so a later run can release the rest.
 
@@ -349,7 +416,7 @@ def managed_category_ids(
     codes = {_LOCAL_SIB_TO_SIA, _LOCAL_SIA_TO_SIB, _LOCAL_CROSS_POSTING, *digit_codes}
     found: set[int] = set()
     for code in codes:
-        stored = stored_category_id(code, by_local)
+        stored = stored_category_id(code, by_local, country_id, balance_country_ids)
         if code not in (_LOCAL_SIB_TO_SIA, _LOCAL_SIA_TO_SIB, _LOCAL_CROSS_POSTING) and stored in banks:
             continue
         found.add(stored)
@@ -358,40 +425,67 @@ def managed_category_ids(
     return found
 
 
-def apply_cross_postings() -> dict[str, int]:
-    """Write country-5 category ids and ``modification`` 1 on matched pairs."""
+def apply_cross_postings(center: str) -> dict[str, int]:
+    """Write category ids and ``modification`` 1 on matched pairs.
+
+    The country is the one that owns ``center``. Countries without
+    ``has_balance`` are left unchanged.
+    """
     from app import user_store
-    from shared.balance_values import require_remainder_row, transaction_table
+    from app.sql_catalog import coerce_center, country_for_center
+    from shared.balance_values import country_has_balance, require_remainder_row, transaction_table
 
     if not user_store.database_url():
         raise RuntimeError("SQL Server is not configured")
     user_store.init_user_store()
     conn = user_store._sql_connect()
     cursor = conn.cursor()
-    table = transaction_table(CROSS_POSTING_COUNTRY_ID, cursor)
+    country_name = country_for_center(coerce_center(center))
+    if not country_name:
+        raise RuntimeError(f"Unknown country for center {center!r}")
+    cursor.execute(
+        """
+        SELECT country_id FROM dbo.country
+        WHERE username = ? COLLATE Latin1_General_CI_AI
+        """,
+        (country_name,),
+    )
+    found = cursor.fetchone()
+    if found is None or found[0] is None:
+        raise RuntimeError(f"Unknown country {country_name!r}")
+    country_id = int(found[0])
+    if not country_has_balance(country_id, cursor):
+        return {"updated": 0, "released": 0}
+    cursor.execute(
+        "SELECT country_id FROM dbo.country WHERE has_balance = 1 ORDER BY country_id"
+    )
+    balance_ids = [int(row[0]) for row in cursor.fetchall() if row[0] is not None]
+    table = transaction_table(country_id, cursor)
     if not table:
-        raise RuntimeError("country 5 has no transaction table")
+        raise RuntimeError(f"country {country_id} has no transaction table")
     cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
     if cursor.fetchone()[0] is None:
         raise RuntimeError(f"{table} does not exist")
 
-    by_local = _category_ids_by_local_code(cursor)
-    bank_ids = _country_bank_accounts(cursor)
+    by_local = _category_ids_by_local_code(cursor, country_id)
+    bank_ids = _country_bank_accounts(cursor, country_id)
     iban_to_accounts = _registered_accounts(cursor, bank_ids)
     iban_of = {
         account_id: iban
         for iban, account_ids in iban_to_accounts.items()
         for account_id in account_ids
     }
-    center_of = _account_centers(cursor)
-    role_of = _user_roles(cursor)
-    account_category = _account_categories(cursor)
+    center_of = _account_centers(cursor, country_id)
+    role_of = _user_roles(cursor, country_id)
+    account_category = _account_categories(cursor, country_id)
     digit_codes = {
         digits
         for role in role_of.values()
         if (digits := user_digits(role)) is not None
     }
-    managed = managed_category_ids(by_local, digit_codes, set(account_category.values()))
+    managed = managed_category_ids(
+        by_local, digit_codes, set(account_category.values()), country_id, balance_ids
+    )
     fetched = _load_candidates(cursor, table, bank_ids, managed)
     pair_rows = [
         (
@@ -431,12 +525,12 @@ def apply_cross_postings() -> dict[str, int]:
                 leg = leg_local_code(iban_of.get(account, ""))
                 if leg is None:
                     continue
-                category_of[tid] = stored_category_id(leg, by_local)
+                category_of[tid] = stored_category_id(leg, by_local, country_id, balance_ids)
             continue
-        category = stored_category_id(local, by_local)
+        category = stored_category_id(local, by_local, country_id, balance_ids)
         category_of[to_id] = category
         category_of[from_id] = category
-    remainder_id, _remainder_code = require_remainder_row(CROSS_POSTING_COUNTRY_ID, cursor)
+    remainder_id, _remainder_code = require_remainder_row(country_id, cursor)
     by_category: dict[int, list[int]] = {}
     to_release: list[int] = []
     changed_persons: set[tuple[int, int]] = set()
@@ -461,7 +555,7 @@ def apply_cross_postings() -> dict[str, int]:
     _update_ids(cursor, table, to_release, remainder_id, -1)
     conn.commit()
     try:
-        _refresh_category_totals(cursor, table, changed_persons)
+        _refresh_category_totals(cursor, table, changed_persons, country_id)
         conn.commit()
     except Exception as exc:  # noqa: BLE001
         print(f"cross-postings: category totals were not refreshed: {exc}")
@@ -469,8 +563,8 @@ def apply_cross_postings() -> dict[str, int]:
     return {"updated": updated, "released": len(to_release)}
 
 
-def _account_centers(cursor: Any) -> dict[int, str]:
-    """account_id → ``sia`` or ``sib``, from the account holder's center."""
+def _account_centers(cursor: Any, country_id: int) -> dict[int, str]:
+    """account_id → center username (``sia``/``sib`` when the name encodes that)."""
     cursor.execute(
         """
         SELECT a.account_id, n.username
@@ -479,19 +573,19 @@ def _account_centers(cursor: Any) -> dict[int, str]:
         JOIN dbo.center n ON n.center_id = p.center_id
         WHERE n.country_id = ?
         """,
-        (CROSS_POSTING_COUNTRY_ID,),
+        (int(country_id),),
     )
     out: dict[int, str] = {}
     for account_id, username in cursor.fetchall():
         if account_id is None:
             continue
-        side = center_side(username)
-        if side is not None:
+        side = center_side(username) or str(username or "").strip().lower()
+        if side:
             out[int(account_id)] = side
     return out
 
 
-def _country_bank_accounts(cursor: Any) -> set[int]:
+def _country_bank_accounts(cursor: Any, country_id: int) -> set[int]:
     """Country banks, the two source IBANs, and their spaarrekening categories."""
     cursor.execute(
         """
@@ -505,13 +599,16 @@ def _country_bank_accounts(cursor: Any) -> set[int]:
             OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'source%'
             OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'funds%'
             OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'user[0-9][0-9][0-9][0-9]'
+            OR LOWER(LTRIM(RTRIM(d.category_role))) = N'mirror'
           )
         """,
-        (CROSS_POSTING_COUNTRY_ID,),
+        (int(country_id),),
     )
     out: set[int] = set()
     for account_id, role in cursor.fetchall():
-        if account_id is None or not is_country_bank_role(role):
+        if account_id is None:
+            continue
+        if not is_country_bank_role(role) and _role_text(role) != "mirror":
             continue
         out.add(int(account_id))
     marks = ",".join("?" * len(_ANCHOR_CATEGORY_IDS))
@@ -521,7 +618,7 @@ def _country_bank_accounts(cursor: Any) -> set[int]:
         FROM dbo.mapping_banks
         WHERE country_id = ? AND category_id IN ({marks})
         """,
-        (CROSS_POSTING_COUNTRY_ID, *sorted(_ANCHOR_CATEGORY_IDS)),
+        (int(country_id), *sorted(_ANCHOR_CATEGORY_IDS)),
     )
     for (account_id,) in cursor.fetchall():
         if account_id is not None:
@@ -535,7 +632,7 @@ def _country_bank_accounts(cursor: Any) -> set[int]:
         WHERE n.country_id = ?
           AND REPLACE(UPPER(LTRIM(RTRIM(a.iban))), N' ', N'') IN (?, ?)
         """,
-        (CROSS_POSTING_COUNTRY_ID, _IBAN_NL46, _IBAN_NL84),
+        (int(country_id), _IBAN_NL46, _IBAN_NL84),
     )
     for (account_id,) in cursor.fetchall():
         if account_id is not None:
@@ -543,7 +640,7 @@ def _country_bank_accounts(cursor: Any) -> set[int]:
     return out
 
 
-def _account_categories(cursor: Any) -> dict[int, int]:
+def _account_categories(cursor: Any, country_id: int) -> dict[int, int]:
     """account_id → category_id from ``dbo.mapping_banks``."""
     cursor.execute(
         """
@@ -551,7 +648,7 @@ def _account_categories(cursor: Any) -> dict[int, int]:
         FROM dbo.mapping_banks
         WHERE country_id = ?
         """,
-        (CROSS_POSTING_COUNTRY_ID,),
+        (int(country_id),),
     )
     out: dict[int, int] = {}
     for account_id, category_id in cursor.fetchall():
@@ -565,7 +662,7 @@ def _account_categories(cursor: Any) -> dict[int, int]:
     return out
 
 
-def _user_roles(cursor: Any) -> dict[int, str]:
+def _user_roles(cursor: Any, country_id: int) -> dict[int, str]:
     """account_id → role text when the role is ``user`` or ``unit`` plus four digits."""
     cursor.execute(
         """
@@ -577,13 +674,15 @@ def _user_roles(cursor: Any) -> dict[int, str]:
           AND (
             LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'user[0-9][0-9][0-9][0-9]'
             OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'unit[0-9][0-9][0-9][0-9]'
+            OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'source%'
+            OR LOWER(LTRIM(RTRIM(d.category_role))) = N'mirror'
           )
         """,
-        (CROSS_POSTING_COUNTRY_ID,),
+        (int(country_id),),
     )
     out: dict[int, str] = {}
     for account_id, role in cursor.fetchall():
-        if account_id is None or user_digits(role) is None:
+        if account_id is None or not str(role or "").strip():
             continue
         out[int(account_id)] = _role_text(role)
     return out
@@ -610,7 +709,7 @@ def _registered_accounts(cursor: Any, bank_ids: set[int]) -> dict[str, list[int]
     return out
 
 
-def _category_ids_by_local_code(cursor: Any) -> dict[int, int]:
+def _category_ids_by_local_code(cursor: Any, country_id: int) -> dict[int, int]:
     """local_code → category_id for country 5."""
     cursor.execute(
         """
@@ -618,7 +717,7 @@ def _category_ids_by_local_code(cursor: Any) -> dict[int, int]:
         FROM dbo.dim_category
         WHERE country_id = ?
         """,
-        (CROSS_POSTING_COUNTRY_ID,),
+        (int(country_id),),
     )
     out: dict[int, int] = {}
     for local_code, category_id in cursor.fetchall():
@@ -666,13 +765,15 @@ def _update_ids(cursor: Any, table: str, ids: list[int], category_id: int, modif
         )
 
 
-def _refresh_category_totals(cursor: Any, table: str, persons: set[tuple[int, int]]) -> None:
+def _refresh_category_totals(
+    cursor: Any, table: str, persons: set[tuple[int, int]], country_id: int
+) -> None:
     if not persons:
         return
     from shared.balance_values import spaar_source_exclude_clause
 
     exclude_sql, exclude_params = spaar_source_exclude_clause(
-        CROSS_POSTING_COUNTRY_ID, cursor=cursor
+        int(country_id), cursor=cursor
     )
     for person_id, year in sorted(persons):
         cursor.execute(

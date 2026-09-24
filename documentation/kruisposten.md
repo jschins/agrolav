@@ -1,12 +1,16 @@
 # Kruisposten
 
-Bereken kruisposten writes categories on internal transfers for country 5.
+Bereken kruisposten writes categories on internal transfers for the logged-in country when ``dbo.country.has_balance`` is set.
 The entry point is `apply_cross_postings` in `hub/app/cross_postings.py`.
 The menu calls `POST /api/cross-postings`.
 
-Country 5 stores `category_id = local_code + 10000`. A `dbo.dim_category`
-row for that local code supplies the id when one exists. Otherwise the
-formula is used. A matched row is written with `modification = 1`.
+Balance countries (`dbo.country.has_balance`) are taken in `country_id`
+order. The first stores the local code. Each later one adds 10000, so
+country 5 stores `category_id = local_code + 10000` and the next balance
+country stores `local_code + 20000`. A country without `has_balance` does
+not take a block. A `dbo.dim_category` row for that local code supplies
+the id when one exists. Otherwise the formula is used. A matched row is
+written with `modification = 1`.
 
 ## Which rows are considered
 
@@ -67,7 +71,8 @@ side’s role must be `user` or `unit` followed by exactly four digits, and
 that account must belong to the same center as that source account. The
 local code is those four digits. Country 5 stores `10000 +` those digits,
 so `unit1108` in SIb’s center, paired with `NL46INGB0001726568`, is
-category 11108.
+category 11108. The next country with `has_balance` stores the same local
+code as 21108.
 
 Both statements of the pair are written to that one category. A `user1108`
 account in the other center is not this rule.

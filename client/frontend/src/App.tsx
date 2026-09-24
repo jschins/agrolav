@@ -1824,13 +1824,13 @@ function SyncNotifyShell({
       disabled: scratchBusy || wipeBusy || crossBusy,
       onClick: doRecalculateFromScratch,
     });
-    items.push({
-      id: "cross-postings",
-      label: crossBusy ? "…" : tableHeaderTerm(menuTerms, "Calculate cross-postings"),
-      disabled: scratchBusy || wipeBusy || crossBusy,
-      onClick: doCrossPostings,
-    });
     if (status?.balance_url) {
+      items.push({
+        id: "cross-postings",
+        label: crossBusy ? "…" : tableHeaderTerm(menuTerms, "Calculate cross-postings"),
+        disabled: scratchBusy || wipeBusy || crossBusy,
+        onClick: doCrossPostings,
+      });
       items.push({
         id: "balance-sheet",
         label: tableHeaderTerm(menuTerms, "Balance sheet"),

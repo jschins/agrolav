@@ -797,9 +797,8 @@ def api_cross_postings(
 ) -> dict[str, Any]:
     from app.cross_postings import apply_cross_postings
 
-    del center
     try:
-        return apply_cross_postings()
+        return apply_cross_postings(center)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

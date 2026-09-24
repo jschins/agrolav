@@ -12,6 +12,7 @@ from app.cross_postings import (
     leg_local_code,
     between_registered_accounts,
     category_id_for_local_code,
+    category_id_offset,
     is_country_bank_role,
     managed_category_ids,
     matching_transaction_ids,
@@ -144,6 +145,17 @@ class CrossPostingMatchTests(unittest.TestCase):
             )
         )
         self.assertIsNone(transfer_category("NL11INGB0006729488", "NL61INGB0002843544", "sib", "sib", "", "unit1108"))
+        self.assertEqual(
+            transfer_category(
+                "NL00INGB0000000001",
+                "NL00INGB0000000002",
+                "north",
+                "north",
+                "source",
+                "unit1108",
+            ),
+            11108,
+        )
 
     def test_spaarrekening_of_each_source_is_11200(self) -> None:
         self.assertEqual(
@@ -199,6 +211,16 @@ class CrossPostingMatchTests(unittest.TestCase):
         self.assertEqual(category_id_for_local_code(1108), 11108)
         self.assertEqual(category_id_for_local_code(1200), 11200)
         self.assertEqual(category_id_for_local_code(1200, country_id=4), 1200)
+        balance = [4, 5, 6]
+        self.assertEqual(category_id_offset(4, balance), 0)
+        self.assertEqual(category_id_offset(5, balance), 10000)
+        self.assertEqual(category_id_offset(6, balance), 20000)
+        self.assertEqual(category_id_for_local_code(1099, 6, balance), 21099)
+        self.assertEqual(category_id_for_local_code(1200, 6, balance), 21200)
+        # Country 7 takes the next block only when it has a balance.
+        # A gap (no balance on 6) does not consume 20000.
+        self.assertEqual(category_id_for_local_code(1100, 7, [4, 5, 7]), 21100)
+        self.assertEqual(category_id_for_local_code(1100, 7, [4, 5, 6, 7]), 31100)
 
     def test_a_live_bank_category_is_not_released(self) -> None:
         found = managed_category_ids({1099: 11099, 1100: 11100, 1200: 11200, 1021: 11021}, {1108, 1021}, {11021})
