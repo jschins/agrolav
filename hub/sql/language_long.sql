@@ -311,7 +311,10 @@ FROM (VALUES
     (
         'Remove all automatic journal entries',
         'Verwijder alle automatische journaalposten'
-    )
+    ),
+    ('Smaller expenses', 'Kleinere uitgaven'),
+    ('Maximum amount', 'Maximaal bedrag'),
+    ('Apply', 'Toepassen')
 ) AS v (term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1

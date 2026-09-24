@@ -201,6 +201,15 @@ export function crossPostings(): Promise<{ updated: number }> {
   return sendJson("/api/cross-postings", "POST", {});
 }
 
+export function smallExpenses(body: {
+  maximum: string;
+  category_id: number;
+  person?: string;
+  account?: string;
+}): Promise<{ ok: boolean; updated: number }> {
+  return sendJson("/api/small-expenses", "POST", body);
+}
+
 export function wipeYear(body: {
   statements: boolean;
   categorizations: boolean;

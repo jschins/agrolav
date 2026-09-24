@@ -38,6 +38,7 @@ import {
   recalculateFromScratch,
   crossPostings,
   wipeYear,
+  smallExpenses,
   recordModification,
   refreshAll,
   refreshPerson,
@@ -1504,6 +1505,7 @@ function SyncNotifyShell({
   const [crossBusy, setCrossBusy] = useState(false);
   const [wipeError, setWipeError] = useState<string | null>(null);
   const [wipeOpen, setWipeOpen] = useState(false);
+  const [smallOpen, setSmallOpen] = useState(false);
   const [wipeScope, setWipeScope] = useState<{ person?: string; account?: string }>({});
   const [rescoreQueued, setRescoreQueued] = useState(false);
   const [rescoreWaiting, setRescoreWaiting] = useState(false);
@@ -1861,6 +1863,18 @@ function SyncNotifyShell({
         onClick: () => openView("main"),
       });
     }
+    if (access === "country" || access === "local" || access === "personal") {
+      items.push({
+        id: "small-expenses",
+        label: tableHeaderTerm(menuTerms, "Smaller expenses"),
+        disabled: scratchBusy || wipeBusy || crossBusy,
+        onClick: () => {
+          if (scratchBusy || wipeBusy || crossBusy) return;
+          setWipeError(null);
+          setSmallOpen(true);
+        },
+      });
+    }
     if (access === "country" || access === "personal") {
       items.push({
         id: "wipe-year",
@@ -1985,6 +1999,35 @@ function SyncNotifyShell({
                 onRun={runWipe}
               />
             ) : null}
+            {smallOpen ? (
+              <SmallExpenses
+                terms={menuTerms}
+                onCancel={() => setSmallOpen(false)}
+                onApply={(maximum, categoryId) => {
+                  setSmallOpen(false);
+                  const extra: { person?: string; account?: string } = {};
+                  if (access === "personal" && bankView && bankView !== "consolidated") {
+                    extra.account = bankView;
+                  }
+                  beginRefreshBusy("please wait... wiping");
+                  flushSync(() => {
+                    setWipeBusy(true);
+                    setWipeError(null);
+                  });
+                  afterPaint(() => {
+                    smallExpenses({ maximum, category_id: categoryId, ...extra })
+                      .then(() => {
+                        onCenterChanged?.();
+                      })
+                      .catch((e: Error) => setWipeError(e.message))
+                      .finally(() => {
+                        setWipeBusy(false);
+                        endRefreshBusy();
+                      });
+                  });
+                }}
+              />
+            ) : null}
             {status?.error ? (
               <span>
                 {" · "}
@@ -2104,6 +2147,83 @@ function WipeChoices({
             onClick={() => onRun({ statements, categorizations, journal, afschrijvingen })}
           >
             OK
+          </button>
+          <button type="button" className="priority-rules-close" onClick={onCancel}>
+            {tableHeaderTerm(terms, "Cancel")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SmallExpenses({
+  terms,
+  onCancel,
+  onApply,
+}: {
+  terms: Record<string, string> | undefined;
+  onCancel: () => void;
+  onApply: (maximum: string, categoryId: number) => void;
+}) {
+  const [maximum, setMaximum] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    let gone = false;
+    getCatalog()
+      .then((res) => {
+        if (gone) return;
+        setCategories(res.categories.filter((row) => !row.is_remainder && row.category_id != null));
+      })
+      .catch((e: Error) => {
+        if (!gone) setLoadError(e.message);
+      });
+    return () => {
+      gone = true;
+    };
+  }, []);
+  const amount = maximum.trim().replace(",", ".");
+  const parsed = Number(amount);
+  const ready = amount !== "" && Number.isFinite(parsed) && parsed > 0 && categoryId !== "";
+  return (
+    <div className="priority-rules-overlay" onClick={onCancel}>
+      <div
+        className="priority-rules-dialog wipe-choices"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <label className="wipe-choice small-expense-field">
+          {tableHeaderTerm(terms, "Maximum amount")}
+          <input
+            type="text"
+            inputMode="decimal"
+            value={maximum}
+            onChange={(e) => setMaximum(e.target.value)}
+          />
+        </label>
+        <label className="wipe-choice small-expense-field">
+          {tableHeaderTerm(terms, "category")}
+          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <option value="" />
+            {categories.map((row) => (
+              <option key={row.category_id} value={String(row.category_id)}>
+                {row.local_code} {row.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {loadError ? <p>{loadError}</p> : null}
+        <div className="wipe-choice-actions">
+          <button
+            type="button"
+            className="priority-rules-close"
+            disabled={!ready}
+            onClick={() => onApply(amount, Number(categoryId))}
+          >
+            {tableHeaderTerm(terms, "Apply")}
           </button>
           <button type="button" className="priority-rules-close" onClick={onCancel}>
             {tableHeaderTerm(terms, "Cancel")}

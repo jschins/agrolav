@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+from decimal import Decimal
 from typing import Any
 
 from app.yearpath import is_year_name
@@ -728,6 +729,93 @@ def clear_bookings(
             "journal": bool(journal),
             "afschrijvingen": bool(afschrijvingen),
         }
+
+    return _sql_retry(_run)
+
+
+def assign_small_expenses(
+    country: str,
+    maximum: Decimal,
+    category_id: int,
+    *,
+    center: str | None = None,
+    person: str | None = None,
+    account: str | None = None,
+    whole_country: bool = False,
+) -> dict[str, Any]:
+    """Set remainder bookings to ``category_id`` when the expense is below ``maximum``.
+
+    An expense is a negative amount. ``ABS(amount) < maximum`` is the test.
+    The new category is manual (``modification`` 1). The remainder row is
+    ``category_role = remainder``, not a fixed id.
+    """
+    from app import user_store
+    from app.sql_replica import _transaction_table
+    from shared.balance_values import require_remainder_row, spaar_source_exclude_clause
+
+    name = (country or "").strip()
+    table = _transaction_table(name)
+    if not name or not table:
+        raise ValueError(f"Unknown country {country!r}")
+    cap = Decimal(str(maximum))
+    if cap <= 0:
+        raise ValueError("Maximum amount must be greater than zero")
+    target = int(category_id)
+    if not _sql_ready():
+        raise RuntimeError("SQL is not configured")
+
+    def _run() -> dict[str, Any]:
+        cursor = _cursor()
+        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+        if cursor.fetchone()[0] is None:
+            raise ValueError(f"Missing transaction table {table}")
+        cursor.execute(
+            """
+            SELECT country_id FROM dbo.country
+            WHERE username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (name,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise ValueError(f"Unknown country {country!r}")
+        country_id = int(row[0])
+        remainder_id, _remainder_code = require_remainder_row(country_id, cursor)
+        if target == int(remainder_id):
+            raise ValueError("Choose a category other than remainder")
+        cursor.execute(
+            """
+            SELECT category_id FROM dbo.dim_category
+            WHERE country_id = ? AND category_id = ?
+            """,
+            (country_id, target),
+        )
+        if cursor.fetchone() is None:
+            raise ValueError(f"Unknown category {target}")
+        where_sql, where_params, person_ids, _account_ids = _wipe_scope(
+            cursor,
+            country_id,
+            center=None if whole_country else center,
+            person=None if whole_country else person,
+            account=None if whole_country else account,
+            whole_country=whole_country,
+        )
+        joiner = " AND " if where_sql else " WHERE "
+        cursor.execute(
+            f"""
+            UPDATE {table}
+            SET category_id = ?, modification = 1
+            {where_sql}{joiner}category_id = ?
+              AND amount < 0
+              AND -amount < ?
+            """,
+            (target, *where_params, int(remainder_id), cap),
+        )
+        updated = int(cursor.rowcount or 0)
+        if updated and person_ids:
+            _rebuild_category_totals(cursor, table, country_id, person_ids, spaar_source_exclude_clause)
+        user_store._sql_connect().commit()
+        return {"country": name, "updated": updated, "category_id": target}
 
     return _sql_retry(_run)
 

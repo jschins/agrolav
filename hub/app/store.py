@@ -618,6 +618,67 @@ def wipe_year(
     }
 
 
+def assign_small_expenses(
+    center: str,
+    maximum: str,
+    category_id: int,
+    *,
+    person: str | None = None,
+    account: str | None = None,
+    whole_country: bool = False,
+) -> dict[str, Any]:
+    """Move small remainder expenses onto one category."""
+    from decimal import Decimal
+    from app.matrix import build_matrix
+    from app.runtime import CALC_LOCK
+    from app.runtime import (
+        active_country,
+        resolve_country_for_center,
+        set_active_center,
+        set_request_country,
+    )
+    from app.settings import init_app
+    from app.sql_catalog import assign_small_expenses as _assign, coerce_center, country_for_center
+
+    primary = _clean_center(center)
+    country = (
+        country_for_center(coerce_center(primary))
+        or resolve_country_for_center(primary)
+        or active_country()
+    )
+    if not country:
+        raise ValueError(f"Unknown country for center {primary!r}")
+    with CALC_LOCK:
+        set_request_country(country)
+        set_active_center(primary, country=country)
+        init_app()
+        stats = _assign(
+            country,
+            Decimal(str(maximum)),
+            int(category_id),
+            center=primary,
+            person=person,
+            account=account,
+            whole_country=whole_country,
+        )
+        announced = announce_mutation(
+            primary,
+            derived_paths_for_center(primary, all_years=True),
+            source="central",
+        )
+        matrix_payload = build_matrix()
+    if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
+        matrix_payload = {**matrix_payload, "center": primary}
+    return {
+        "ok": True,
+        "center": primary,
+        "country": stats.get("country") or country,
+        "updated": int(stats.get("updated") or 0),
+        "affected_files": announced,
+        "matrix": matrix_payload,
+    }
+
+
 def mutate_and_ircft(
     center: str,
     input_paths: list[str],

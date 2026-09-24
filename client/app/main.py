@@ -872,6 +872,52 @@ class WipeYearRequest(BaseModel):
     whole_country: bool = False
 
 
+class SmallExpensesRequest(BaseModel):
+    maximum: str
+    category_id: int
+    person: str | None = None
+    account: str | None = None
+
+
+@app.post("/api/small-expenses")
+def api_small_expenses(body: SmallExpensesRequest) -> dict[str, Any]:
+    from app.centrale_sync import configured_person, hub_post, load_config, require_person, scope_matrix
+    from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON
+
+    cfg = load_config()
+    payload: dict[str, Any] = {
+        "maximum": body.maximum,
+        "category_id": body.category_id,
+    }
+    if cfg.access == ACCESS_COUNTRY:
+        payload["whole_country"] = True
+    elif cfg.access == ACCESS_CENTER:
+        person = (body.person or "").strip()
+        if person:
+            try:
+                require_person(person)
+            except PermissionError as exc:
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
+            payload["person"] = person
+    elif cfg.access == ACCESS_PERSON:
+        account = (body.account or "").strip()
+        person = configured_person()
+        if person:
+            payload["person"] = person
+        if account:
+            payload["account"] = account
+    else:
+        raise HTTPException(status_code=403, detail="Smaller expenses requires a login")
+    try:
+        result = hub_post("/small-expenses", payload, timeout=600.0)
+        matrix = result.get("matrix")
+        if isinstance(matrix, dict):
+            result = {**result, "matrix": scope_matrix(matrix)}
+        return result
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 @app.post("/api/cross-postings")
 def api_cross_postings() -> dict[str, Any]:
     from app.centrale_sync import hub_post

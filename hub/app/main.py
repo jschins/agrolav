@@ -831,6 +831,35 @@ def api_wipe_year(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+class SmallExpensesRequest(BaseModel):
+    maximum: str
+    category_id: int
+    person: str | None = None
+    account: str | None = None
+    whole_country: bool = False
+
+
+@app.post("/api/local/{center}/small-expenses")
+def api_small_expenses(
+    center: str,
+    body: SmallExpensesRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    try:
+        return store.assign_small_expenses(
+            center,
+            body.maximum,
+            body.category_id,
+            person=body.person,
+            account=body.account,
+            whole_country=body.whole_country,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 class SettingsTermsRequest(BaseModel):
     terms: list[str] = Field(default_factory=list)
     source: str = "local"

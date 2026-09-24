@@ -557,6 +557,18 @@ a.sidebar-knob.info-knob:hover {
   gap: 0.6rem;
 }
 
+.small-expense-field {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.small-expense-field input,
+.small-expense-field select {
+  font: inherit;
+  margin-top: 0.25rem;
+  padding: 0.35rem 0.5rem;
+}
+
 .priority-rules-close {
   font: inherit;
   cursor: pointer;
