@@ -110,6 +110,39 @@ upload files.
 Ends the browser session and returns to the login card.
 <!-- {en:item[5],items[5],menu,edit,term,terms,alt+t,window,recalculate[3],person,people,center,centers,download,statement,statements,transaction,transactions,consent,consents,add[3],upload,csv,spreadsheet,spreadsheets,logout[3],log,out} -->
 <!-- {nl:onderdeel[5],onderdelen[5],menu,bewerken,term,termen,alt+t,termvenster,herberekenen[3],persoon,personen,centrum,centra,uitlezen,bankafschrift,bankafschriften,transactie,transacties,toestemming,toestemmingen,toevoegen[3],uploaden,csv,rekenblad,rekenbladen,uitloggen[3],log,uit} -->
+**Prepare consent**  
+Country or center login, when this center has a bank connection. Asks which
+person, then opens the bank so that person can grant consent.
+
+**Invalidate consent**  
+Same logins. Asks which person, asks you to confirm, then removes that
+person’s bank consent.
+
+**Download YTD**  
+Same logins. Asks which person, then fetches that person’s statements from
+1 January of this year through today. If the bank will not give that range,
+you are told to renew consent first.
+<!-- {en:prepare[3],consent[5],consents[5],invalidate[3],remove,download,ytd[5],year,january,renew} -->
+<!-- {nl:bereid[3],toestemming[5],toestemmingen[5],verwijder[3],verwijderen,uitlezen,ytd[5],jaar,januari,vernieuwen} -->
+**Calculate cross-postings**  
+Shown when this login has a balance sheet. Pairs internal transfers and
+writes their categories. A category set this way counts as set by hand.
+
+**Smaller expenses**  
+Country, center, or person login. Asks for a maximum amount and a category.
+Remainder bookings whose expense is smaller than that amount take the chosen
+category, and count as set by hand. **Cancel** does nothing.
+
+**Smaller income**  
+The same, for remainder bookings whose income is smaller than the maximum.
+<!-- {en:cross-postings[5],cross,posting,postings,calculate[3],internal,transfer,transfers,smaller[5],expense,expenses,income,incomes,maximum,amount,category,remainder,cancel,apply} -->
+<!-- {nl:kruisposten[5],kruis,post,posten,bereken[3],intern,overboeking,overboekingen,kleinere[5],uitgave,uitgaven,inkomst,inkomsten,maximaal,bedrag,categorie,restcategorie,annuleren,toepassen} -->
+**Back to summary**  
+Returns to the matrix. Shown while a year is selected and you are on the
+matrix menu (not on Terms, categories, IP, password, split, or a journal
+page).
+<!-- {en:back[5],summary[5],matrix,return,overview} -->
+<!-- {nl:terug[5],overzicht[5],matrix,terugkeren,samenvatting} -->
 ### Country and center logins
 
 **Edit categories**  

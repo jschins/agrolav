@@ -737,6 +737,38 @@ def sync_person_category_totals(bound: _BoundScope) -> None:
         print(f"sql replica: failed to sync category totals: {exc}")
 
 
+def load_bound_latest_statement() -> date | None:
+    """Newest ``booked_on`` stored for the bound person, or ``None``."""
+    from app import user_store
+
+    if not user_store.database_url():
+        return None
+    try:
+        bound = _open_bound_scope()
+        if bound is None:
+            return None
+        bound.cursor.execute(
+            f"SELECT MAX(booked_on) FROM {bound.table} WHERE person_id = ?",
+            (bound.person_id,),
+        )
+        row = bound.cursor.fetchone()
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql replica: failed to load latest statement date: {exc}")
+        return None
+    if not row or row[0] is None:
+        return None
+    value = row[0]
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value)[:10]
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
 def load_bound_last_booked() -> str | None:
     """``dbo.account.last_booked`` as ``DD-MM-YYYY``, or ``None`` if unset."""
     from app import user_store

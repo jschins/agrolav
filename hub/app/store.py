@@ -540,6 +540,9 @@ def recalculate_from_scratch_all(
             source=source,
         )
         matrix_payload = build_matrix()
+        from app.sql_catalog import clear_personal_term_changes
+
+        clear_personal_term_changes(primary, name or None)
     if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
         matrix_payload = {**matrix_payload, "center": primary}
     return {
@@ -547,6 +550,79 @@ def recalculate_from_scratch_all(
         "center": primary,
         "person": name,
         "affected_files": announced,
+        "matrix": matrix_payload,
+    }
+
+
+def recalculate_incremental(center: str) -> dict[str, Any]:
+    """Run iRCfT for the term edits stored in ``dbo.term_change``, then clear them."""
+    from app.runtime import CALC_LOCK
+    from app.runtime import (
+        active_country,
+        resolve_country_for_center,
+        set_active_center,
+        set_request_country,
+    )
+    from app.settings import init_app
+    from app.sql_catalog import clear_term_changes, country_for_center, load_term_changes
+
+    primary = _clean_center(center)
+    country = country_for_center(primary) or resolve_country_for_center(primary) or active_country() or ""
+    rows = load_term_changes(country)
+    general_added: list[str] = []
+    general_removed: list[str] = []
+    personal: dict[tuple[str, str, str | None], dict[str, list[str]]] = {}
+    for row in rows:
+        term = str(row.get("term") or "").strip()
+        if not term:
+            continue
+        bucket = "added" if row.get("added") else "removed"
+        person = row.get("person")
+        if not person:
+            (general_added if row.get("added") else general_removed).append(term)
+            continue
+        key = (str(row.get("center") or primary), str(person), row.get("account"))
+        group = personal.setdefault(key, {"added": [], "removed": []})
+        group[bucket].append(term)
+    with CALC_LOCK:
+        if country:
+            set_request_country(country)
+        set_active_center(primary, country=country or None)
+        init_app()
+        if general_added or general_removed:
+            for ws in list_centers(country) or [primary]:
+                ircft_center(
+                    ws,
+                    added=general_added,
+                    removed=general_removed,
+                    personal=False,
+                    category_name="",
+                    with_matrix=False,
+                    lock=False,
+                )
+        for (ws, person_name, account), group in personal.items():
+            ircft_center(
+                ws,
+                person_folders=[person_name],
+                added=group["added"],
+                removed=group["removed"],
+                personal=True,
+                category_name="",
+                account=account,
+                with_matrix=False,
+                lock=False,
+            )
+        clear_term_changes([int(row["id"]) for row in rows])
+        from app.matrix import build_matrix
+
+        set_active_center(primary, country=country or None)
+        matrix_payload = build_matrix()
+    if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
+        matrix_payload = {**matrix_payload, "center": primary}
+    return {
+        "ok": True,
+        "center": primary,
+        "changes": len(rows),
         "matrix": matrix_payload,
     }
 
@@ -696,61 +772,26 @@ def mutate_and_ircft(
     with_matrix: bool = True,
     lock: bool = True,
 ) -> dict[str, Any]:
-    """iRCfT affected person(s)/center(s) and return the matrix.
+    """iRCfT is switched off. Terms are already saved; bookings are not re-scored.
 
     ``defer_announce`` publishes the change event after the rescore, so a
     client reload does not read the bookings before they are written.
     ``lock`` is false when the caller already holds ``CALC_LOCK``.
     """
-    from contextlib import nullcontext
-
-    from app.runtime import CALC_LOCK
-
-    primary = _clean_center(center)
-    expected, person_folders, multi = _mutation_scope(
-        primary,
-        input_paths,
-        recalc_all_centers=recalc_all_centers,
+    del (
+        center,
+        source,
+        recalc_all_centers,
+        added,
+        removed,
+        personal,
+        category_name,
+        account,
+        defer_announce,
+        with_matrix,
+        lock,
     )
-    targets = list_centers() if multi else [primary]
-    if primary not in targets:
-        targets.insert(0, primary)
-
-    announced = [] if defer_announce else announce_mutation(primary, expected, source=source)
-    matrices: dict[str, Any] = {}
-    holder = CALC_LOCK if lock else nullcontext()
-    with holder:
-        for ws in targets:
-            folders = person_folders if (person_folders and ws == primary) else (
-                None if person_folders is None else []
-            )
-            if folders == []:
-                continue
-            matrices[ws] = ircft_center(
-                ws,
-                skip_events=True,
-                person_folders=folders,
-                added=added,
-                removed=removed,
-                personal=personal,
-                category_name=category_name,
-                account=account,
-                with_matrix=with_matrix,
-                lock=False,
-            )
-    if defer_announce:
-        announced = announce_mutation(primary, expected, source=source)
-    primary_result = matrices.get(primary) or {}
-    matrix_payload = primary_result.get("matrix")
-    if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
-        matrix_payload = {**matrix_payload, "center": primary}
-    return {
-        "ok": True,
-        "center": primary,
-        "affected_files": announced,
-        "matrix": matrix_payload,
-        "recalculated": list(matrices.keys()),
-    }
+    return {"affected_files": list(input_paths), "matrix": None, "ircft": False}
 
 
 _rescore_guard = threading.Lock()
@@ -875,56 +916,23 @@ def schedule_background_ircft(
     category_name: str,
     account: str | None = None,
 ) -> None:
-    """Remember a term edit. Do not rescore yet.
-
-    Right-clicks stay on this path. The pass runs when ``flush_scheduled_rescore``
-    is called (a menu item), so a burst never overlaps the booking walk.
-    """
-    global _rescore_again, _rescore_job
-    job = {
-        "center": _clean_center(center),
-        "input_paths": list(input_paths),
-        "source": source,
-        "recalc_all_centers": recalc_all_centers,
-        "added": list(added),
-        "removed": list(removed),
-        "personal": personal,
-        "category_name": category_name,
-        "account": account,
-    }
-    with _rescore_guard:
-        _rescore_job = _merge_rescore_job(_rescore_job, job)
-        _rescore_again = True
+    """Remember a term edit. iRCfT is switched off, so nothing is queued."""
+    del (
+        center,
+        input_paths,
+        source,
+        recalc_all_centers,
+        added,
+        removed,
+        personal,
+        category_name,
+        account,
+    )
 
 
 def flush_scheduled_rescore() -> bool:
-    """Run the queued iRCfT now, including terms saved while a pass is walking.
-
-    Returns True when a pass ran. A second caller waits for the one in progress
-    and then runs anything that arrived after it finished.
-    """
-    global _rescore_running
-    with _rescore_guard:
-        if _rescore_running:
-            waiting = True
-        elif _rescore_job is None:
-            return False
-        else:
-            _rescore_running = True
-            waiting = False
-    if waiting:
-        while True:
-            with _rescore_guard:
-                if not _rescore_running:
-                    break
-            time.sleep(0.05)
-        return flush_scheduled_rescore()
-    try:
-        _rescore_loop()
-    finally:
-        with _rescore_guard:
-            _rescore_running = False
-    return True
+    """iRCfT is switched off. A queued pass is never run."""
+    return False
 
 
 def _meta_key(center: str, rel_path: str) -> str:

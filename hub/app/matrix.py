@@ -13,6 +13,20 @@ FOOTER_BALANCE = "saldo"
 FOOTER_DATUM = "datum"
 
 
+def refresh_anchor(last_booked: date | None, latest_statement: date | None) -> date | None:
+    """Start date for a download.
+
+    ``account.last_booked`` can sit ahead of the stored statements (a restore
+    replaces bookings and leaves the stamp). Use the earlier of the two so
+    those missing days are fetched again.
+    """
+    if latest_statement is not None and (
+        last_booked is None or latest_statement < last_booked
+    ):
+        return latest_statement
+    return last_booked
+
+
 def monthly_refresh_period(
     updated_at: date | None, *, today: date | None = None
 ) -> tuple[date, date] | None:
@@ -566,6 +580,25 @@ def _txs_for_account(
     return out
 
 
+def _read_account_lines(inserted_by_uid: dict[str, int]) -> list[dict[str, Any]]:
+    """Every enabled account, with how many new statements were stored (0 included)."""
+    from app.core.single_client import enabled_bank_accounts
+
+    lines: list[dict[str, Any]] = []
+    for acc in enabled_bank_accounts():
+        if not isinstance(acc, dict):
+            continue
+        uid = str(acc.get("uid") or "")
+        lines.append(
+            {
+                "iban": str(acc.get("iban") or ""),
+                "name": str(acc.get("name") or ""),
+                "inserted": int(inserted_by_uid.get(uid, 0)),
+            }
+        )
+    return lines
+
+
 def _bank_refresh_one(
     pack: PersonScope,
     *,
@@ -640,15 +673,7 @@ def _bank_refresh_one(
         "date_to": fetched.date_to,
         "warnings": fetched.warnings,
         "account_errors": fetched.account_errors,
-        "accounts": [
-            {
-                "iban": str(acc.get("iban") or ""),
-                "name": str(acc.get("name") or ""),
-                "inserted": int(inserted_by_uid.get(str(acc.get("uid") or ""), 0)),
-            }
-            for acc in accounts
-            if isinstance(acc, dict)
-        ],
+        "accounts": _read_account_lines(inserted_by_uid),
     }
     if new_year:
         result["new_year"] = True
@@ -719,7 +744,15 @@ def _refresh_one_person(
             from app import user_store
 
             updated = user_store.account_last_booked(pack.person_name)
-            period = monthly_refresh_period(updated)
+            from app.sql_replica import load_bound_latest_statement
+
+            latest_statement = load_bound_latest_statement()
+            anchor = refresh_anchor(updated, latest_statement)
+            period = monthly_refresh_period(anchor)
+            enable_debug["last_booked"] = updated.isoformat() if updated else None
+            enable_debug["latest_statement"] = (
+                latest_statement.isoformat() if latest_statement else None
+            )
             if period is None:
                 enable_debug["monthly_skip"] = True
                 return _finish(
@@ -728,6 +761,7 @@ def _refresh_one_person(
                         "skipped": True,
                         "reason": "updated_recently",
                         "updated_at": updated.isoformat() if updated else None,
+                        "accounts": _read_account_lines({}),
                     },
                     [],
                 )

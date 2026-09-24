@@ -4,7 +4,6 @@ import {
   ackCentralWinsRefusal,
   askHelp,
   addCategoryTerm,
-  flushPendingRescore,
   getAuthMe,
   getCentralWinsRefusals,
   getCentraleNotifications,
@@ -36,6 +35,7 @@ import {
   type OtpChallenge,
   recalculate,
   recalculateFromScratch,
+  recalculateIncremental,
   crossPostings,
   wipeYear,
   smallExpenses,
@@ -821,6 +821,29 @@ function visibleMatrixCategories(
   });
 }
 
+function bookingContainsTerm(row: Transaction, term: string): boolean {
+  const haystack = `${String(row.name ?? "")}\n${String(row.description ?? "")}`;
+  const parts = term
+    .trim()
+    .toLowerCase()
+    .split(" && ")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (!parts.length) return false;
+  return parts.every((part) => {
+    if (part.includes("#") && !part.includes(" ")) {
+      return haystack.split(/\s+/).some((word) => matchesHashWord(part, word));
+    }
+    const re = new RegExp(`\\b${escapeRegExp(part)}\\b`, "i");
+    return re.test(haystack);
+  });
+}
+
+function bookingLeavesCategory(row: Transaction, term: string, rowId?: string): boolean {
+  if (rowId && String(row.id ?? "") === rowId) return true;
+  return bookingContainsTerm(row, term);
+}
+
 function patchDetail(
   detail: TransactionsResponse,
   patch: {
@@ -1506,13 +1529,10 @@ function SyncNotifyShell({
   const [wipeError, setWipeError] = useState<string | null>(null);
   const [wipeOpen, setWipeOpen] = useState(false);
   const [smallOpen, setSmallOpen] = useState<"expense" | "income" | null>(null);
+  const [recalcOpen, setRecalcOpen] = useState(false);
   const [wipeScope, setWipeScope] = useState<{ person?: string; account?: string }>({});
-  const [rescoreQueued, setRescoreQueued] = useState(false);
-  const [rescoreWaiting, setRescoreWaiting] = useState(false);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
-  const rescoreWaitRef = useRef(false);
   const noteRescoreQueued = useCallback(() => {
-    setRescoreQueued(true);
     setRescoreError(null);
   }, []);
   const [dataRev, setDataRev] = useState(0);
@@ -1718,15 +1738,17 @@ function SyncNotifyShell({
       });
   }
 
-  function doRecalculateFromScratch() {
+  function doRecalculate(mode: "scratch" | "incremental") {
     if (scratchBusy || wipeBusy || crossBusy) return;
+    setRecalcOpen(false);
     beginRefreshBusy("please wait... recalculating categories");
     flushSync(() => {
       setScratchBusy(true);
       setScratchError(null);
     });
     afterPaint(() => {
-      recalculateFromScratch()
+      const run = mode === "incremental" ? recalculateIncremental() : recalculateFromScratch();
+      run
         .then(() => {
           onCenterChanged?.();
         })
@@ -1824,7 +1846,7 @@ function SyncNotifyShell({
         ? "Recalculating…"
         : tableHeaderTerm(menuTerms, "Recalculate"),
       disabled: scratchBusy || wipeBusy || crossBusy,
-      onClick: doRecalculateFromScratch,
+      onClick: () => setRecalcOpen(true),
     });
     if (status?.balance_url) {
       items.push({
@@ -1930,28 +1952,7 @@ function SyncNotifyShell({
   }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
-    if (rescoreWaitRef.current) return;
-    if (!rescoreQueued) {
-      void flushPendingRescore()
-        .catch(() => undefined)
-        .finally(() => item.onClick?.());
-      return;
-    }
-    rescoreWaitRef.current = true;
-    setRescoreWaiting(true);
-    setRescoreError(null);
-    void flushPendingRescore()
-      .then(() => {
-        setRescoreQueued(false);
-        setRescoreWaiting(false);
-        rescoreWaitRef.current = false;
-        item.onClick?.();
-      })
-      .catch((e: Error) => {
-        setRescoreWaiting(false);
-        rescoreWaitRef.current = false;
-        setRescoreError(e.message);
-      });
+    item.onClick?.();
   }
 
   return (
@@ -1990,18 +1991,21 @@ function SyncNotifyShell({
               />
             ) : null}
             {!passwordView ? (
-              <ActionsMenu items={menuItems} busy={rescoreWaiting} onPick={runMenuItem} />
+              <ActionsMenu items={menuItems} onPick={runMenuItem} />
             ) : null}
             {!passwordView ? <HelpQuestion /> : null}
-            {rescoreWaiting ? (
-              <span className="center-switcher-busy" role="status">
-                background procedure running: please wait...
-              </span>
-            ) : null}
             {rescoreError ? <span> · {rescoreError}</span> : null}
             {switching ? <span className="center-switcher-busy">switching…</span> : null}
             {scratchError ? <span> · {scratchError}</span> : null}
             {wipeError ? <span> · {wipeError}</span> : null}
+            {recalcOpen ? (
+              <RecalcChoices
+                terms={menuTerms}
+                onCancel={() => setRecalcOpen(false)}
+                onScratch={() => doRecalculate("scratch")}
+                onIncremental={() => doRecalculate("incremental")}
+              />
+            ) : null}
             {wipeOpen ? (
               <WipeChoices
                 terms={menuTerms}
@@ -2095,6 +2099,41 @@ type WipeFlags = {
   journal: boolean;
   afschrijvingen: boolean;
 };
+
+function RecalcChoices({
+  terms,
+  onCancel,
+  onScratch,
+  onIncremental,
+}: {
+  terms: Record<string, string> | undefined;
+  onCancel: () => void;
+  onScratch: () => void;
+  onIncremental: () => void;
+}) {
+  return (
+    <div className="priority-rules-overlay" onClick={onCancel}>
+      <div
+        className="priority-rules-dialog wipe-choices"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="wipe-choice-actions">
+          <button type="button" className="priority-rules-close" onClick={onScratch}>
+            {tableHeaderTerm(terms, "From scratch")}
+          </button>
+          <button type="button" className="priority-rules-close" onClick={onIncremental}>
+            {tableHeaderTerm(terms, "Incremental")}
+          </button>
+          <button type="button" className="priority-rules-close" onClick={onCancel}>
+            {tableHeaderTerm(terms, "Cancel")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function WipeChoices({
   terms,
@@ -2688,9 +2727,12 @@ function FitSidebarTitle({ text }: { text: string }) {
 }
 
 function DownloadAccountList({ status }: { status: StoredRefreshStatus | null }) {
-  const groups = (status?.results ?? []).filter((r) => (r.accounts?.length ?? 0) > 0);
-  if (!groups.length) return null;
-  const showPerson = groups.length > 1;
+  const results = status?.results ?? [];
+  const groups = results.filter((r) => (r.accounts?.length ?? 0) > 0);
+  const notes = results.filter((r) => (r.accounts?.length ?? 0) === 0 && (r.skipped || r.reason));
+  const warnings = status?.warnings ?? [];
+  if (!groups.length && !notes.length && !warnings.length) return null;
+  const showPerson = groups.length > 1 || notes.length > 0;
   return (
     <ul className="download-accounts">
       {groups.flatMap((r) =>
@@ -2709,6 +2751,19 @@ function DownloadAccountList({ status }: { status: StoredRefreshStatus | null })
           );
         })
       )}
+      {notes.map((r) => (
+        <li key={`note:${r.person_name}:${r.reason || ""}`}>
+          <span className="download-account-label">
+            <span className="download-account-iban">{r.person_name}</span>
+            {r.reason ? <span className="download-account-name">{r.reason}</span> : null}
+          </span>
+        </li>
+      ))}
+      {warnings.map((warning, index) => (
+        <li key={`warn:${index}`}>
+          <span className="download-account-name">{warning}</span>
+        </li>
+      ))}
     </ul>
   );
 }
@@ -2948,7 +3003,6 @@ function MainApp({
     setSelection(null);
     setDetail(null);
     setError(null);
-    void flushPendingRescore().catch(() => undefined);
   }
 
   function modifyTransaction(modified: Transaction) {
@@ -3021,8 +3075,10 @@ function MainApp({
     const sel = selectionRef.current;
     const rowId = termMenu?.transactionId;
     closeTermMenu();
-    if (sel && rowId && targetCategory !== sel.category) {
-      setDetail((prev) => (prev ? patchDetail(prev, { removeId: rowId }) : prev));
+    if (sel && targetCategory !== sel.category) {
+      setDetail((prev) =>
+        prev ? { ...prev, transactions: prev.transactions.filter((row) => !bookingLeavesCategory(row, term, rowId)) } : prev
+      );
     }
     return addCategoryTerm({
       category_name: targetCategory,
@@ -3032,14 +3088,7 @@ function MainApp({
       account: general ? undefined : account,
     })
       .then((res) => {
-        // The hub saves the term and leaves the rescore queued. A later menu
-        // click runs that pass before the menu command.
-        if (res.rescore === "background") {
-          noteRescoreQueued();
-          return;
-        }
         if (res.matrix) setMatrix(res.matrix);
-        if (sel) return loadDetail(sel.person_name, sel.category, { quiet: true });
       })
       .catch((err: Error) => {
         setError(err.message);
@@ -3224,7 +3273,6 @@ function MainApp({
   }
 
   const setHeaderActions = useContext(HeaderActionsContext);
-  const noteRescoreQueued = useContext(NoteRescoreQueuedContext);
   useEffect(() => {
     const items: HeaderAction[] = [];
     if (hasSecrets) {

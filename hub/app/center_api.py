@@ -499,29 +499,13 @@ def update_settings(
             skip_recalc=True,
             skip_event=True,
         )
-    if added or removed:
-        result = store.mutate_and_ircft(
-            ws,
-            [rel],
-            source=source,
-            recalc_all_centers=recalc_all,
-            added=added,
-            removed=removed,
-            personal=personal,
-            category_name=category_name,
-            account=account,
-        )
-    else:
-        result = {"affected_files": [rel], "matrix": None}
-    with _center_scope(ws):
-        matrix = result.get("matrix") or {**build_matrix(), "center": ws}
     return {
         "center": ws,
         "group": group_name,
         "category": category_name,
         "terms": cleaned,
-        "matrix": matrix,
-        "affected_files": result.get("affected_files") or [],
+        "matrix": None,
+        "affected_files": [rel],
     }
 
 
@@ -548,20 +532,6 @@ def update_center_account_terms(
             remove=removed,
             person=person,
         )
-        result: dict[str, Any] = {"affected_files": [], "matrix": None}
-        if added or removed:
-            result = store.mutate_and_ircft(
-                ws,
-                [],
-                source=source,
-                recalc_all_centers=False,
-                added=added,
-                removed=removed,
-                personal=True,
-                category_name=category_name,
-            )
-        with _center_scope(ws):
-            matrix = result.get("matrix") or {**build_matrix(), "center": ws}
         return {
             "center": ws,
             "group": "center",
@@ -569,8 +539,8 @@ def update_center_account_terms(
             "added": delta.get("added") or added,
             "removed": delta.get("removed") or removed,
             "accounts": int(delta.get("accounts") or 0),
-            "matrix": matrix,
-            "affected_files": result.get("affected_files") or [],
+            "matrix": None,
+            "affected_files": [],
         }
 
 
@@ -604,17 +574,6 @@ def _add_term_background(
 
     if general:
         terms, added = append_category_term_sql(country, category_name, cleaned)
-        if added:
-            store.schedule_background_ircft(
-                ws,
-                [store.SHARED_CATEGORIES],
-                source=source,
-                recalc_all_centers=True,
-                added=[cleaned],
-                removed=[],
-                personal=False,
-                category_name=category_name,
-            )
         return {
             "center": ws,
             "group": "general",
@@ -649,17 +608,6 @@ def _add_term_background(
         person=person_name,
         account=account_key,
     )
-    if added:
-        store.schedule_background_ircft(
-            ws,
-            [store.person_secret_rel(person_name, store.PERSONAL_CATEGORIES)],
-            source=source,
-            added=[cleaned],
-            removed=[],
-            personal=True,
-            category_name=category_name,
-            account=account_key,
-        )
     return {
         "center": ws,
         "group": account_key or person_name,
@@ -729,7 +677,6 @@ def add_term(
                 after_terms = list(
                     _category_map(_categories_file()).get(category_name, []) or []
                 )
-            added, removed = term_list_diff(old_terms, after_terms)
             if not sql:
                 store.put_file(
                     ws,
@@ -739,27 +686,14 @@ def add_term(
                     skip_recalc=True,
                     skip_event=True,
                 )
-            if added or removed:
-                result = store.mutate_and_ircft(
-                    ws,
-                    [store.SHARED_CATEGORIES],
-                    source=source,
-                    recalc_all_centers=True,
-                    added=added,
-                    removed=removed,
-                    personal=False,
-                    category_name=category_name,
-                )
-            else:
-                result = {"affected_files": [store.SHARED_CATEGORIES], "matrix": None}
             return {
                 "center": ws,
                 "group": "general",
                 "category": category_name,
                 "term": term,
                 "terms": terms,
-                "matrix": result.get("matrix") or {**build_matrix(), "center": ws},
-                "affected_files": result.get("affected_files") or [],
+                "matrix": None,
+                "affected_files": [store.SHARED_CATEGORIES],
             }
 
         person_name = (person or "").strip()
@@ -787,7 +721,6 @@ def add_term(
             after_terms = list(
                 _personal_category_map_for(account_key).get(category_name, []) or []
             )
-        added, removed = term_list_diff(old_terms, after_terms)
         rel = store.person_secret_rel(pack.person_name, store.PERSONAL_CATEGORIES)
         if not sql:
             path = store.resolve_file_path(ws, rel)
@@ -800,27 +733,14 @@ def add_term(
                 skip_recalc=True,
                 skip_event=True,
             )
-        if added or removed:
-            result = store.mutate_and_ircft(
-                ws,
-                [rel],
-                source=source,
-                added=added,
-                removed=removed,
-                personal=True,
-                category_name=category_name,
-                account=account_key,
-            )
-        else:
-            result = {"affected_files": [rel], "matrix": None}
         return {
             "center": ws,
             "group": account_key or pack.person_name,
             "category": category_name,
             "term": term,
             "terms": terms,
-            "matrix": result.get("matrix") or {**build_matrix(), "center": ws},
-            "affected_files": result.get("affected_files") or [],
+            "matrix": None,
+            "affected_files": [rel],
         }
 
 

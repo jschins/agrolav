@@ -75,17 +75,8 @@ class BackgroundScheduleTests(unittest.TestCase):
         run.assert_not_called()
         self.assertFalse(store._rescore_running)
 
-    def test_a_term_saved_during_the_pass_schedules_one_follow_up(self):
-        started = threading.Event()
-        calls: list[list[str]] = []
-
-        def run(job):
-            calls.append(list(job["added"]))
-            if len(calls) == 1:
-                started.set()
-                self.release.wait(2)
-
-        with patch.object(store, "_run_scheduled_rescore", side_effect=run):
+    def test_flush_does_not_walk_bookings(self):
+        with patch.object(store, "_run_scheduled_rescore") as run:
             store.schedule_background_ircft(
                 "dkg",
                 ["categories.json"],
@@ -95,40 +86,9 @@ class BackgroundScheduleTests(unittest.TestCase):
                 category_name="3110 Kosten",
                 recalc_all_centers=True,
             )
-            flushed = threading.Thread(target=store.flush_scheduled_rescore)
-            flushed.start()
-            self.assertTrue(started.wait(2))
-            store.schedule_background_ircft(
-                "dkg",
-                ["categories.json"],
-                added=["two"],
-                removed=[],
-                personal=False,
-                category_name="3110 Kosten",
-                recalc_all_centers=True,
-            )
-            self.release.set()
-            flushed.join(2)
-
-        self.assertEqual(calls, [["one"], ["two"]])
-        self.assertFalse(store._rescore_running)
-
-    def test_a_failed_pass_stays_queued_and_is_reported(self):
-        with patch.object(store, "_run_scheduled_rescore", side_effect=RuntimeError("boom")):
-            store.schedule_background_ircft(
-                "dkg",
-                ["categories.json"],
-                added=["one"],
-                removed=[],
-                personal=False,
-                category_name="3110 Kosten",
-                recalc_all_centers=True,
-            )
-            with self.assertRaises(RuntimeError):
-                store.flush_scheduled_rescore()
-        self.assertIsNotNone(store._rescore_job)
-        self.assertEqual(store._rescore_job["added"], ["one"])
-        self.assertFalse(store._rescore_running)
+            self.assertFalse(store.flush_scheduled_rescore())
+        run.assert_not_called()
+        self.assertIsNone(store._rescore_job)
 
 
 class ApplyIrcftOnceTests(unittest.TestCase):

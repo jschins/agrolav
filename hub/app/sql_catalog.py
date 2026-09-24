@@ -1365,6 +1365,184 @@ def clear_catalog_cache() -> None:
     _CAT_CACHE.clear()
 
 
+def term_change_table(cursor) -> bool:
+    cursor.execute("SELECT OBJECT_ID(N'dbo.term_change', N'U')")
+    row = cursor.fetchone()
+    return bool(row and row[0])
+
+
+def note_term_change(
+    cursor,
+    *,
+    category_id: int,
+    person_id: int | None,
+    account_id: int | None,
+    term: str,
+    added: bool,
+) -> None:
+    """Record one net term edit. The opposite pending row cancels it."""
+    if not term_change_table(cursor):
+        return
+    text = str(term or "").strip().lower()
+    if not text:
+        return
+    cursor.execute(
+        """
+        DELETE FROM dbo.term_change
+        WHERE category_id = ? AND term = ? AND added = ?
+          AND ((? IS NULL AND person_id IS NULL) OR person_id = ?)
+          AND ((? IS NULL AND account_id IS NULL) OR account_id = ?)
+        """,
+        (
+            category_id,
+            text,
+            0 if added else 1,
+            person_id,
+            person_id,
+            account_id,
+            account_id,
+        ),
+    )
+    if cursor.rowcount:
+        return
+    cursor.execute(
+        """
+        SELECT 1 FROM dbo.term_change
+        WHERE category_id = ? AND term = ? AND added = ?
+          AND ((? IS NULL AND person_id IS NULL) OR person_id = ?)
+          AND ((? IS NULL AND account_id IS NULL) OR account_id = ?)
+        """,
+        (
+            category_id,
+            text,
+            1 if added else 0,
+            person_id,
+            person_id,
+            account_id,
+            account_id,
+        ),
+    )
+    if cursor.fetchone():
+        return
+    cursor.execute(
+        """
+        INSERT INTO dbo.term_change (category_id, person_id, account_id, term, added)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (category_id, person_id, account_id, text, 1 if added else 0),
+    )
+
+
+def load_term_changes(country: str) -> list[dict[str, Any]]:
+    """Pending term edits for one country. Empty when the log table is absent."""
+    name = (country or "").strip()
+    if not name or not _sql_ready():
+        return []
+
+    def _run() -> list[dict[str, Any]]:
+        cursor = _cursor()
+        if not term_change_table(cursor):
+            return []
+        cursor.execute(
+            """
+            SELECT tc.term_change_id, tc.term, tc.added,
+                   p.username, a.uid, n.username
+            FROM dbo.term_change tc
+            JOIN dbo.dim_category d ON d.category_id = tc.category_id
+            JOIN dbo.country c ON c.country_id = d.country_id
+            LEFT JOIN dbo.person p ON p.id = tc.person_id
+            LEFT JOIN dbo.account a ON a.account_id = tc.account_id
+            LEFT JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE c.username = ? COLLATE Latin1_General_CI_AI
+            ORDER BY tc.term_change_id
+            """,
+            (name,),
+        )
+        out: list[dict[str, Any]] = []
+        for change_id, term, added, person, uid, center in cursor.fetchall():
+            out.append(
+                {
+                    "id": int(change_id),
+                    "term": str(term or ""),
+                    "added": bool(added),
+                    "person": str(person or "").strip() or None,
+                    "account": str(uid or "").strip() or None,
+                    "center": str(center or "").strip() or None,
+                }
+            )
+        return out
+
+    try:
+        return _sql_retry(_run)
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql catalog: failed to load term changes: {exc}")
+        return []
+
+
+def clear_term_changes(change_ids: list[int]) -> None:
+    ids = [int(item) for item in change_ids]
+    if not ids or not _sql_ready():
+        return
+
+    def _run() -> None:
+        from app import user_store
+
+        conn = user_store._sql_connect()
+        cursor = conn.cursor()
+        if not term_change_table(cursor):
+            return
+        marks = ",".join("?" for _ in ids)
+        cursor.execute(f"DELETE FROM dbo.term_change WHERE term_change_id IN ({marks})", ids)
+        conn.commit()
+
+    _sql_retry(_run)
+
+
+def clear_personal_term_changes(center: str, person: str | None = None) -> None:
+    """Drop personal log rows for the people a from-scratch pass just scored."""
+    ws = (center or "").strip()
+    who = (person or "").strip()
+    if not ws or not _sql_ready():
+        return
+
+    def _run() -> None:
+        from app import user_store
+
+        conn = user_store._sql_connect()
+        cursor = conn.cursor()
+        if not term_change_table(cursor):
+            return
+        if who:
+            cursor.execute(
+                """
+                DELETE tc
+                FROM dbo.term_change tc
+                JOIN dbo.person p ON p.id = tc.person_id
+                JOIN dbo.center n ON n.center_id = p.center_id
+                WHERE n.username = ? COLLATE Latin1_General_CI_AI
+                  AND p.username = ? COLLATE Latin1_General_CI_AI
+                """,
+                (ws, who),
+            )
+        else:
+            cursor.execute(
+                """
+                DELETE tc
+                FROM dbo.term_change tc
+                JOIN dbo.person p ON p.id = tc.person_id
+                JOIN dbo.center n ON n.center_id = p.center_id
+                WHERE n.username = ? COLLATE Latin1_General_CI_AI
+                """,
+                (ws,),
+            )
+        conn.commit()
+
+    try:
+        _sql_retry(_run)
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql catalog: failed to clear term changes: {exc}")
+
+
 def save_category_terms(
     category_name: str,
     terms: list[str],
@@ -1443,23 +1621,47 @@ def save_category_terms(
                     if arow is None:
                         raise ValueError(f"Unknown account {account_key!r} for {person_name!r}")
                     account_id = int(arow[0])
-                    cursor.execute(
-                        """
-                        DELETE FROM dbo.category_term
-                        WHERE category_id = ? AND person_id = ? AND account_id = ?
-                        """,
-                        (category_id, person_id, account_id),
-                    )
-                else:
-                    cursor.execute(
-                        "DELETE FROM dbo.category_term WHERE category_id = ? AND person_id = ?",
-                        (category_id, person_id),
-                    )
+            if person_id is None:
+                scope_sql = "category_id = ? AND person_id IS NULL"
+                scope_params: tuple[Any, ...] = (category_id,)
+            elif account_id is not None:
+                scope_sql = "category_id = ? AND person_id = ? AND account_id = ?"
+                scope_params = (category_id, person_id, account_id)
             else:
-                cursor.execute(
-                    "DELETE FROM dbo.category_term WHERE category_id = ? AND person_id IS NULL",
-                    (category_id,),
+                scope_sql = "category_id = ? AND person_id = ?"
+                scope_params = (category_id, person_id)
+            cursor.execute(
+                f"SELECT account_id, term FROM dbo.category_term WHERE {scope_sql}",
+                scope_params,
+            )
+            before = {
+                (None if row_account is None else int(row_account), str(row_term or "").strip().lower())
+                for row_account, row_term in cursor.fetchall()
+                if str(row_term or "").strip()
+            }
+            if person_id is not None and account_id is None:
+                after = {(None, term) for term in cleaned}
+            else:
+                after = {(account_id, term) for term in cleaned}
+            for row_account, row_term in before - after:
+                note_term_change(
+                    cursor,
+                    category_id=category_id,
+                    person_id=person_id,
+                    account_id=row_account,
+                    term=row_term,
+                    added=False,
                 )
+            for row_account, row_term in after - before:
+                note_term_change(
+                    cursor,
+                    category_id=category_id,
+                    person_id=person_id,
+                    account_id=row_account,
+                    term=row_term,
+                    added=True,
+                )
+            cursor.execute(f"DELETE FROM dbo.category_term WHERE {scope_sql}", scope_params)
             if cleaned:
                 try:
                     cursor.executemany(
@@ -1754,6 +1956,15 @@ def apply_center_account_term_delta(
                         """,
                         (category_id, person_id, term),
                     )
+                    if cursor.rowcount:
+                        note_term_change(
+                            cursor,
+                            category_id=category_id,
+                            person_id=person_id,
+                            account_id=None,
+                            term=term,
+                            added=False,
+                        )
             for account_id, person_id in accounts:
                 for term in removed:
                     cursor.execute(
@@ -1764,6 +1975,15 @@ def apply_center_account_term_delta(
                         """,
                         (category_id, person_id, account_id, term),
                     )
+                    if cursor.rowcount:
+                        note_term_change(
+                            cursor,
+                            category_id=category_id,
+                            person_id=person_id,
+                            account_id=account_id,
+                            term=term,
+                            added=False,
+                        )
                 for term in added:
                     cursor.execute(
                         """
@@ -1781,6 +2001,14 @@ def apply_center_account_term_delta(
                             VALUES (?, ?, ?, ?, 0)
                             """,
                             (category_id, person_id, account_id, term),
+                        )
+                        note_term_change(
+                            cursor,
+                            category_id=category_id,
+                            person_id=person_id,
+                            account_id=account_id,
+                            term=term,
+                            added=True,
                         )
             conn.commit()
             _CAT_CACHE.clear()

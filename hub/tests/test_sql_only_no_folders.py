@@ -367,6 +367,17 @@ class MonthlyRefreshPeriodTests(unittest.TestCase):
             (date(2026, 7, 31), date(2026, 9, 2)),
         )
 
+    def test_stamp_ahead_of_statements_fetches_the_gap(self):
+        from datetime import date
+
+        from app.matrix import monthly_refresh_period, refresh_anchor
+
+        anchor = refresh_anchor(date(2026, 9, 24), date(2026, 9, 21))
+        self.assertEqual(
+            monthly_refresh_period(anchor, today=date(2026, 9, 24)),
+            (date(2026, 9, 21), date(2026, 9, 24)),
+        )
+
     def test_next_month_picks_up_from_last_booked(self):
         from datetime import date
 

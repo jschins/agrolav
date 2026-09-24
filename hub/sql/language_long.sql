@@ -315,7 +315,9 @@ FROM (VALUES
     ('Smaller expenses', 'Kleinere uitgaven'),
     ('Smaller income', 'Kleinere inkomsten'),
     ('Maximum amount', 'Maximaal bedrag'),
-    ('Apply', 'Toepassen')
+    ('Apply', 'Toepassen'),
+    ('From scratch', 'Vanaf nul'),
+    ('Incremental', 'Incrementeel')
 ) AS v (term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
