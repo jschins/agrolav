@@ -204,6 +204,7 @@ export function crossPostings(): Promise<{ updated: number }> {
 export function smallExpenses(body: {
   maximum: string;
   category_id: number;
+  income?: boolean;
   person?: string;
   account?: string;
 }): Promise<{ ok: boolean; updated: number }> {

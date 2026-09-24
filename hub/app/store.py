@@ -626,8 +626,9 @@ def assign_small_expenses(
     person: str | None = None,
     account: str | None = None,
     whole_country: bool = False,
+    income: bool = False,
 ) -> dict[str, Any]:
-    """Move small remainder expenses onto one category."""
+    """Move small remainder expenses or income onto one category."""
     from decimal import Decimal
     from app.matrix import build_matrix
     from app.runtime import CALC_LOCK
@@ -660,6 +661,7 @@ def assign_small_expenses(
             person=person,
             account=account,
             whole_country=whole_country,
+            income=income,
         )
         announced = announce_mutation(
             primary,

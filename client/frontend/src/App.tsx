@@ -1505,7 +1505,7 @@ function SyncNotifyShell({
   const [crossBusy, setCrossBusy] = useState(false);
   const [wipeError, setWipeError] = useState<string | null>(null);
   const [wipeOpen, setWipeOpen] = useState(false);
-  const [smallOpen, setSmallOpen] = useState(false);
+  const [smallOpen, setSmallOpen] = useState<"expense" | "income" | null>(null);
   const [wipeScope, setWipeScope] = useState<{ person?: string; account?: string }>({});
   const [rescoreQueued, setRescoreQueued] = useState(false);
   const [rescoreWaiting, setRescoreWaiting] = useState(false);
@@ -1871,7 +1871,17 @@ function SyncNotifyShell({
         onClick: () => {
           if (scratchBusy || wipeBusy || crossBusy) return;
           setWipeError(null);
-          setSmallOpen(true);
+          setSmallOpen("expense");
+        },
+      });
+      items.push({
+        id: "small-income",
+        label: tableHeaderTerm(menuTerms, "Smaller income"),
+        disabled: scratchBusy || wipeBusy || crossBusy,
+        onClick: () => {
+          if (scratchBusy || wipeBusy || crossBusy) return;
+          setWipeError(null);
+          setSmallOpen("income");
         },
       });
     }
@@ -2002,9 +2012,10 @@ function SyncNotifyShell({
             {smallOpen ? (
               <SmallExpenses
                 terms={menuTerms}
-                onCancel={() => setSmallOpen(false)}
+                onCancel={() => setSmallOpen(null)}
                 onApply={(maximum, categoryId) => {
-                  setSmallOpen(false);
+                  const income = smallOpen === "income";
+                  setSmallOpen(null);
                   const extra: { person?: string; account?: string } = {};
                   if (access === "personal" && bankView && bankView !== "consolidated") {
                     extra.account = bankView;
@@ -2015,7 +2026,7 @@ function SyncNotifyShell({
                     setWipeError(null);
                   });
                   afterPaint(() => {
-                    smallExpenses({ maximum, category_id: categoryId, ...extra })
+                    smallExpenses({ maximum, category_id: categoryId, income, ...extra })
                       .then(() => {
                         onCenterChanged?.();
                       })

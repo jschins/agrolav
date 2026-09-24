@@ -742,12 +742,14 @@ def assign_small_expenses(
     person: str | None = None,
     account: str | None = None,
     whole_country: bool = False,
+    income: bool = False,
 ) -> dict[str, Any]:
-    """Set remainder bookings to ``category_id`` when the expense is below ``maximum``.
+    """Set remainder bookings to ``category_id`` when the amount is below ``maximum``.
 
-    An expense is a negative amount. ``ABS(amount) < maximum`` is the test.
-    The new category is manual (``modification`` 1). The remainder row is
-    ``category_role = remainder``, not a fixed id.
+    An expense is a negative amount (``ABS(amount) < maximum``). An income is
+    a positive amount (``amount < maximum``). Either write sets
+    ``modification`` to 1. The remainder row is ``category_role = remainder``,
+    not a fixed id.
     """
     from app import user_store
     from app.sql_replica import _transaction_table
@@ -801,13 +803,16 @@ def assign_small_expenses(
             whole_country=whole_country,
         )
         joiner = " AND " if where_sql else " WHERE "
+        if income:
+            amount_sql = "AND amount > 0 AND amount < ?"
+        else:
+            amount_sql = "AND amount < 0 AND -amount < ?"
         cursor.execute(
             f"""
             UPDATE {table}
             SET category_id = ?, modification = 1
             {where_sql}{joiner}category_id = ?
-              AND amount < 0
-              AND -amount < ?
+              {amount_sql}
             """,
             (target, *where_params, int(remainder_id), cap),
         )

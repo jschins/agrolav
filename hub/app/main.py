@@ -837,6 +837,7 @@ class SmallExpensesRequest(BaseModel):
     person: str | None = None
     account: str | None = None
     whole_country: bool = False
+    income: bool = False
 
 
 @app.post("/api/local/{center}/small-expenses")
@@ -853,6 +854,7 @@ def api_small_expenses(
             person=body.person,
             account=body.account,
             whole_country=body.whole_country,
+            income=body.income,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

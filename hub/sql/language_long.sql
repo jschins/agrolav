@@ -313,6 +313,7 @@ FROM (VALUES
         'Verwijder alle automatische journaalposten'
     ),
     ('Smaller expenses', 'Kleinere uitgaven'),
+    ('Smaller income', 'Kleinere inkomsten'),
     ('Maximum amount', 'Maximaal bedrag'),
     ('Apply', 'Toepassen')
 ) AS v (term_lang1, term_lang2)

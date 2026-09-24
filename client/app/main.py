@@ -877,6 +877,7 @@ class SmallExpensesRequest(BaseModel):
     category_id: int
     person: str | None = None
     account: str | None = None
+    income: bool = False
 
 
 @app.post("/api/small-expenses")
@@ -888,6 +889,7 @@ def api_small_expenses(body: SmallExpensesRequest) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "maximum": body.maximum,
         "category_id": body.category_id,
+        "income": body.income,
     }
     if cfg.access == ACCESS_COUNTRY:
         payload["whole_country"] = True
