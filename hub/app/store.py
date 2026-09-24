@@ -553,12 +553,15 @@ def recalculate_from_scratch_all(
 
 def wipe_year(
     center: str,
-    year: str,
+    year: str | None = None,
     *,
     person: str | None = None,
     account: str | None = None,
+    statements: bool = False,
+    categorizations: bool = False,
+    whole_country: bool = False,
 ) -> dict[str, Any]:
-    """Delete one year's bookings for the selected center, person, or account."""
+    """Remove bank statements and/or reset manual categories."""
     from app.matrix import build_matrix
     from app.runtime import CALC_LOCK
     from app.runtime import (
@@ -568,11 +571,10 @@ def wipe_year(
         set_request_country,
     )
     from app.settings import init_app
-    from app.sql_catalog import coerce_center, country_for_center, wipe_country_year
-    from app.yearpath import parse_year
+    from app.sql_catalog import clear_bookings, coerce_center, country_for_center
 
     primary = _clean_center(center)
-    y = parse_year(year)
+    del year
     country = (
         country_for_center(coerce_center(primary))
         or resolve_country_for_center(primary)
@@ -584,12 +586,14 @@ def wipe_year(
         set_request_country(country)
         set_active_center(primary, country=country)
         init_app()
-        stats = wipe_country_year(
+        stats = clear_bookings(
             country,
-            y,
             center=primary,
             person=person,
             account=account,
+            whole_country=whole_country,
+            statements=statements,
+            categorizations=categorizations,
         )
         announced = announce_mutation(
             primary,
@@ -603,7 +607,6 @@ def wipe_year(
         "ok": True,
         "center": primary,
         "country": stats.get("country") or country,
-        "year": stats.get("year") or y,
         "transactions": int(stats.get("transactions") or 0),
         "files": int(stats.get("files") or 0),
         "affected_files": announced,

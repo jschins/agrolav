@@ -767,9 +767,12 @@ class RecalculateScratchRequest(BaseModel):
 
 
 class WipeYearRequest(BaseModel):
-    year: str
+    year: str | None = None
     person: str | None = None
     account: str | None = None
+    statements: bool = False
+    categorizations: bool = False
+    whole_country: bool = False
 
 
 @app.post("/api/local/{center}/recalculate-from-scratch")
@@ -813,6 +816,9 @@ def api_wipe_year(
             body.year,
             person=body.person,
             account=body.account,
+            statements=body.statements,
+            categorizations=body.categorizations,
+            whole_country=body.whole_country,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

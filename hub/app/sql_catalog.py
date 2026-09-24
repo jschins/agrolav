@@ -619,6 +619,233 @@ def wipe_country_year(
     return _sql_retry(_run)
 
 
+def clear_bookings(
+    country: str,
+    *,
+    center: str | None = None,
+    person: str | None = None,
+    account: str | None = None,
+    whole_country: bool = False,
+    statements: bool = False,
+    categorizations: bool = False,
+) -> dict[str, Any]:
+    """Drop bank statements and/or reset manual categories.
+
+    ``whole_country`` updates every row of ``dbo.transaction_{country}``.
+    Otherwise the rows are limited to ``account``, ``person``, or ``center``.
+    Terms (``dbo.category_term``) are not touched. Category reset sets
+    ``modification = -1`` and ``category_id`` to ``category_role = remainder``,
+    as two updates.
+    """
+    from app import user_store
+    from app.sql_replica import _transaction_table
+    from shared.balance_values import require_remainder_row, spaar_source_exclude_clause
+
+    name = (country or "").strip()
+    table = _transaction_table(name)
+    if not name or not table:
+        raise ValueError(f"Unknown country {country!r}")
+    if not statements and not categorizations:
+        raise ValueError("Choose at least one wipe action")
+    if not _sql_ready():
+        raise RuntimeError("SQL is not configured")
+
+    def _run() -> dict[str, Any]:
+        cursor = _cursor()
+        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+        if cursor.fetchone()[0] is None:
+            raise ValueError(f"Missing transaction table {table}")
+        cursor.execute(
+            """
+            SELECT country_id FROM dbo.country
+            WHERE username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (name,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise ValueError(f"Unknown country {country!r}")
+        country_id = int(row[0])
+        where_sql, where_params, person_ids, account_ids = _wipe_scope(
+            cursor,
+            country_id,
+            center=None if whole_country else center,
+            person=None if whole_country else person,
+            account=None if whole_country else account,
+            whole_country=whole_country,
+        )
+        tx_count = 0
+        if categorizations:
+            remainder_id, _remainder_code = require_remainder_row(country_id, cursor)
+            cursor.execute(
+                f"UPDATE {table} SET modification = -1{where_sql}",
+                where_params,
+            )
+            cursor.execute(
+                f"UPDATE {table} SET category_id = ?{where_sql}",
+                (remainder_id, *where_params),
+            )
+        if statements:
+            cursor.execute(f"SELECT COUNT(*) FROM {table}{where_sql}", where_params)
+            tx_count = int(cursor.fetchone()[0])
+            cursor.execute(f"DELETE FROM {table}{where_sql}", where_params)
+            if account_ids:
+                acc_ph = ",".join("?" * len(account_ids))
+                cursor.execute(
+                    f"DELETE FROM dbo.uploaded_files WHERE account_id IN ({acc_ph})",
+                    tuple(account_ids),
+                )
+                cursor.execute(
+                    f"""
+                    UPDATE a
+                    SET last_booked = x.mx
+                    FROM dbo.account a
+                    LEFT JOIN (
+                        SELECT account_id, MAX(booked_on) AS mx
+                        FROM {table}
+                        GROUP BY account_id
+                    ) x ON x.account_id = a.account_id
+                    WHERE a.account_id IN ({acc_ph})
+                    """,
+                    tuple(account_ids),
+                )
+        if person_ids and (statements or categorizations):
+            _rebuild_category_totals(cursor, table, country_id, person_ids, spaar_source_exclude_clause)
+        user_store._sql_connect().commit()
+        return {
+            "country": name,
+            "transactions": tx_count,
+            "statements": bool(statements),
+            "categorizations": bool(categorizations),
+        }
+
+    return _sql_retry(_run)
+
+
+def _wipe_scope(
+    cursor: Any,
+    country_id: int,
+    *,
+    center: str | None,
+    person: str | None,
+    account: str | None,
+    whole_country: bool,
+) -> tuple[str, tuple[Any, ...], list[int], list[int]]:
+    """``(where_sql, params, person_ids, account_ids)``. ``where_sql`` includes WHERE or is empty."""
+    if whole_country:
+        cursor.execute(
+            """
+            SELECT p.id
+            FROM dbo.person p
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.country_id = ?
+            """,
+            (country_id,),
+        )
+        person_ids = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
+        account_ids: list[int] = []
+        if person_ids:
+            cursor.execute(
+                f"SELECT account_id FROM dbo.account WHERE person_id IN ({','.join('?' * len(person_ids))})",
+                tuple(person_ids),
+            )
+            account_ids = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
+        return "", (), person_ids, account_ids
+    center_name = (center or "").strip() or None
+    person_name = (person or "").strip() or None
+    account_key = (account or "").strip() or None
+    if account_key:
+        iban = account_key.replace(" ", "").upper()
+        cursor.execute(
+            """
+            SELECT a.account_id, a.person_id
+            FROM dbo.account a
+            JOIN dbo.person p ON p.id = a.person_id
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.country_id = ?
+              AND REPLACE(UPPER(ISNULL(a.iban, N'')), N' ', N'') = ?
+            """,
+            (country_id, iban),
+        )
+        found = cursor.fetchall()
+        if not found:
+            raise ValueError(f"Unknown account {account_key!r}")
+        account_ids = [int(r[0]) for r in found if r[0] is not None]
+        person_ids = list({int(r[1]) for r in found if r[1] is not None})
+        marks = ",".join("?" * len(account_ids))
+        return f" WHERE account_id IN ({marks})", tuple(account_ids), person_ids, account_ids
+    if person_name:
+        cursor.execute(
+            """
+            SELECT p.id
+            FROM dbo.person p
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.country_id = ?
+              AND p.username = ? COLLATE Latin1_General_CI_AI
+              AND (? IS NULL OR n.username = ? COLLATE Latin1_General_CI_AI)
+            """,
+            (country_id, person_name, center_name, center_name),
+        )
+        found = cursor.fetchall()
+        if not found:
+            raise ValueError(f"Unknown person {person_name!r}")
+        person_ids = [int(r[0]) for r in found if r[0] is not None]
+        cursor.execute(
+            f"SELECT account_id FROM dbo.account WHERE person_id IN ({','.join('?' * len(person_ids))})",
+            tuple(person_ids),
+        )
+        account_ids = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
+        marks = ",".join("?" * len(person_ids))
+        return f" WHERE person_id IN ({marks})", tuple(person_ids), person_ids, account_ids
+    if center_name:
+        cursor.execute(
+            """
+            SELECT p.id
+            FROM dbo.person p
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.country_id = ? AND n.username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (country_id, center_name),
+        )
+        person_ids = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
+        account_ids = []
+        if person_ids:
+            cursor.execute(
+                f"SELECT account_id FROM dbo.account WHERE person_id IN ({','.join('?' * len(person_ids))})",
+                tuple(person_ids),
+            )
+            account_ids = [int(r[0]) for r in cursor.fetchall() if r[0] is not None]
+            marks = ",".join("?" * len(person_ids))
+            return f" WHERE person_id IN ({marks})", tuple(person_ids), person_ids, account_ids
+        return " WHERE 1 = 0", (), [], []
+    raise ValueError("Wipe scope is missing")
+
+
+def _rebuild_category_totals(cursor: Any, table: str, country_id: int, person_ids: list[int], exclude_clause: Any) -> None:
+    exclude_sql, exclude_params = exclude_clause(country_id, cursor=cursor)
+    marks = ",".join("?" * len(person_ids))
+    cursor.execute(
+        f"SELECT DISTINCT person_id, year FROM {table} WHERE person_id IN ({marks})",
+        tuple(person_ids),
+    )
+    pairs = [(int(p), int(y)) for p, y in cursor.fetchall() if p is not None and y is not None]
+    cursor.execute(
+        f"DELETE FROM dbo.category_total WHERE person_id IN ({marks}) AND bank_id IS NULL",
+        tuple(person_ids),
+    )
+    for person_id, year in pairs:
+        cursor.execute(
+            f"""
+            INSERT INTO dbo.category_total (person_id, year, bank_id, category_id, amount)
+            SELECT t.person_id, ?, NULL, t.category_id, SUM(CAST(t.amount AS decimal(19,2)))
+            FROM {table} t
+            WHERE t.person_id = ? AND t.year = ?{exclude_sql}
+            GROUP BY t.person_id, t.category_id
+            """,
+            (year, person_id, year, *exclude_params),
+        )
+
+
 list_account_balance_files = list_uploaded_files
 record_account_balance_file = record_uploaded_file
 

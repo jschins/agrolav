@@ -277,6 +277,24 @@ INSERT INTO dbo.language (term_lang1, term_lang2)
 SELECT v.term_lang1, v.term_lang2
 FROM (VALUES
     ('Calculate cross-postings', 'Bereken kruisposten')
+) AS v (term_lang1, v.term_lang2)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
+);
+GO
+
+INSERT INTO dbo.language (term_lang1, term_lang2)
+SELECT v.term_lang1, v.term_lang2
+FROM (VALUES
+    (
+        'Remove all bank statements; leave categorizations untouched',
+        'Verwijder alle bankafschriften; laat categorisaties ongemoeid'
+    ),
+    (
+        'Clear categories, cross-postings; keep terms, statements',
+        'Wis categorisatie en kruisposten; behoud termen, afschriften'
+    ),
+    ('Cancel', 'Annuleren')
 ) AS v (term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1

@@ -1503,6 +1503,8 @@ function SyncNotifyShell({
   const [wipeBusy, setWipeBusy] = useState(false);
   const [crossBusy, setCrossBusy] = useState(false);
   const [wipeError, setWipeError] = useState<string | null>(null);
+  const [wipeOpen, setWipeOpen] = useState(false);
+  const [wipeScope, setWipeScope] = useState<{ person?: string; account?: string }>({});
   const [rescoreQueued, setRescoreQueued] = useState(false);
   const [rescoreWaiting, setRescoreWaiting] = useState(false);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
@@ -1767,38 +1769,28 @@ function SyncNotifyShell({
   function doWipeYear() {
     if (scratchBusy || wipeBusy || crossBusy) return;
     const dutch = uiIsDutch(menuTerms);
-    const suggested = activeYear || String(new Date().getFullYear());
-    const raw = window.prompt(dutch ? "Jaar (JJJJ)" : "Year to wipe (YYYY)", suggested);
-    if (raw == null) return;
-    const year = raw.trim();
-    if (!/^\d{4}$/.test(year) || Number(year) < 1990 || Number(year) > 2100) {
-      setWipeError(dutch ? "Voer een jaartal in (1990–2100)" : "Enter a four-digit year between 1990 and 2100");
-      return;
-    }
     const extra: { person?: string; account?: string } = {};
-    let scope = (status?.center || "").trim();
     if (access === "personal") {
       if (!bankView || bankView === "consolidated") {
         setWipeError(dutch ? "Kies eerst een rekening" : "Select an account first");
         return;
       }
       extra.account = bankView;
-      scope =
-        bankOptions.find((a) => a.iban === bankView)?.account_name?.trim() || bankView;
     }
-    const ok = window.confirm(
-      dutch
-        ? `Alle ${year}-bankafschriften van ${scope} verwijderen? Dit kan niet ongedaan worden.`
-        : `Delete every ${year} transaction for ${scope}? This cannot be undone.`
-    );
-    if (!ok) return;
-    beginRefreshBusy(`please wait... wiping ${year}`);
+    setWipeError(null);
+    setWipeScope(extra);
+    setWipeOpen(true);
+  }
+
+  function runWipe(choices: { statements: boolean; categorizations: boolean }) {
+    setWipeOpen(false);
+    beginRefreshBusy("please wait... wiping");
     flushSync(() => {
       setWipeBusy(true);
       setWipeError(null);
     });
     afterPaint(() => {
-      wipeYear(year, extra)
+      wipeYear({ ...choices, ...wipeScope })
         .then(() => {
           onCenterChanged?.();
         })
@@ -1986,6 +1978,13 @@ function SyncNotifyShell({
             {switching ? <span className="center-switcher-busy">switching…</span> : null}
             {scratchError ? <span> · {scratchError}</span> : null}
             {wipeError ? <span> · {wipeError}</span> : null}
+            {wipeOpen ? (
+              <WipeChoices
+                terms={menuTerms}
+                onCancel={() => setWipeOpen(false)}
+                onRun={runWipe}
+              />
+            ) : null}
             {status?.error ? (
               <span>
                 {" · "}
@@ -2027,6 +2026,64 @@ function isoDate(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+const WIPE_STATEMENTS =
+  "Remove all bank statements; leave categorizations untouched";
+const WIPE_CATEGORIES =
+  "Clear categories, cross-postings; keep terms, statements";
+
+function WipeChoices({
+  terms,
+  onCancel,
+  onRun,
+}: {
+  terms: Record<string, string> | undefined;
+  onCancel: () => void;
+  onRun: (choices: { statements: boolean; categorizations: boolean }) => void;
+}) {
+  const [statements, setStatements] = useState(false);
+  const [categorizations, setCategorizations] = useState(false);
+  return (
+    <div className="priority-rules-overlay" onClick={onCancel}>
+      <div
+        className="priority-rules-dialog wipe-choices"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <label className="wipe-choice">
+          <input
+            type="checkbox"
+            checked={statements}
+            onChange={(e) => setStatements(e.target.checked)}
+          />
+          {tableHeaderTerm(terms, WIPE_STATEMENTS)}
+        </label>
+        <label className="wipe-choice">
+          <input
+            type="checkbox"
+            checked={categorizations}
+            onChange={(e) => setCategorizations(e.target.checked)}
+          />
+          {tableHeaderTerm(terms, WIPE_CATEGORIES)}
+        </label>
+        <div className="wipe-choice-actions">
+          <button
+            type="button"
+            className="priority-rules-close"
+            disabled={!statements && !categorizations}
+            onClick={() => onRun({ statements, categorizations })}
+          >
+            OK
+          </button>
+          <button type="button" className="priority-rules-close" onClick={onCancel}>
+            {tableHeaderTerm(terms, "Cancel")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function tableHeaderTerm(
@@ -2491,6 +2548,8 @@ function MainApp({
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const [detail, setDetail] = useState<TransactionsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [wipeOpen, setWipeOpen] = useState(false);
+  const [wipePerson, setWipePerson] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [firstDownloading, setFirstDownloading] = useState(false);
   const [refreshScope, setRefreshScope] = useState<RefreshStatusScope | null>(null);
@@ -2924,28 +2983,22 @@ function MainApp({
     if (refreshing) return;
     const person_name = pickManagedPerson();
     if (!person_name) return;
-    const dutch = uiIsDutch(termsForUi);
-    const suggested = year || String(new Date().getFullYear());
-    const raw = window.prompt(dutch ? "Jaar (JJJJ)" : "Year to wipe (YYYY)", suggested);
-    if (raw == null) return;
-    const wipeY = raw.trim();
-    if (!/^\d{4}$/.test(wipeY) || Number(wipeY) < 1990 || Number(wipeY) > 2100) {
-      setError(dutch ? "Voer een jaartal in (1990–2100)" : "Enter a four-digit year between 1990 and 2100");
-      return;
-    }
-    const ok = window.confirm(
-      dutch
-        ? `Alle ${wipeY}-bankafschriften van ${person_name} verwijderen? Dit kan niet ongedaan worden.`
-        : `Delete every ${wipeY} transaction for ${person_name}? This cannot be undone.`
-    );
-    if (!ok) return;
+    setError(null);
+    setWipePerson(person_name);
+    setWipeOpen(true);
+  }
+
+  function runWipePerson(choices: { statements: boolean; categorizations: boolean }) {
+    const person_name = wipePerson;
+    setWipeOpen(false);
+    if (!person_name) return;
     beginRefreshBusy();
     flushSync(() => {
       setRefreshing(true);
       setError(null);
     });
     afterPaint(() => {
-      wipeYear(wipeY, { person: person_name })
+      wipeYear({ ...choices, person: person_name })
         .then(() => loadMatrixOnly())
         .catch((e: Error) => setError(e.message))
         .finally(() => {
@@ -3107,6 +3160,13 @@ function MainApp({
 
       <main className="content">
         {error && <p className="error">{error}</p>}
+        {wipeOpen ? (
+          <WipeChoices
+            terms={termsForUi}
+            onCancel={() => setWipeOpen(false)}
+            onRun={runWipePerson}
+          />
+        ) : null}
         {!inPView && !matrix && !error && <p>Loading…</p>}
         {!inPView && displayMatrix && (
           <>

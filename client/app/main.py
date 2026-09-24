@@ -862,9 +862,12 @@ def api_recalculate_from_scratch() -> dict[str, Any]:
 
 
 class WipeYearRequest(BaseModel):
-    year: str
+    year: str | None = None
     person: str | None = None
     account: str | None = None
+    statements: bool = False
+    categorizations: bool = False
+    whole_country: bool = False
 
 
 @app.post("/api/cross-postings")
@@ -883,9 +886,12 @@ def api_wipe_year(body: WipeYearRequest) -> dict[str, Any]:
     from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON
 
     cfg = load_config()
-    payload: dict[str, Any] = {"year": body.year}
+    payload: dict[str, Any] = {
+        "statements": body.statements,
+        "categorizations": body.categorizations,
+    }
     if cfg.access == ACCESS_COUNTRY:
-        pass
+        payload["whole_country"] = True
     elif cfg.access == ACCESS_CENTER:
         person = (body.person or "").strip()
         if not person:

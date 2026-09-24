@@ -201,17 +201,18 @@ export function crossPostings(): Promise<{ updated: number }> {
   return sendJson("/api/cross-postings", "POST", {});
 }
 
-export function wipeYear(
-  year: string,
-  body: { person?: string; account?: string } = {}
-): Promise<{
+export function wipeYear(body: {
+  statements: boolean;
+  categorizations: boolean;
+  person?: string;
+  account?: string;
+}): Promise<{
   ok: boolean;
-  year: string;
   country?: string;
   transactions: number;
   files: number;
 }> {
-  return sendJson("/api/wipe-year", "POST", { year, ...body });
+  return sendJson("/api/wipe-year", "POST", body);
 }
 
 export function refreshAll(body: {
