@@ -204,6 +204,8 @@ export function crossPostings(): Promise<{ updated: number }> {
 export function wipeYear(body: {
   statements: boolean;
   categorizations: boolean;
+  journal: boolean;
+  afschrijvingen: boolean;
   person?: string;
   account?: string;
 }): Promise<{

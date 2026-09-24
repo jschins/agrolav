@@ -300,3 +300,20 @@ WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
 );
 GO
+
+INSERT INTO dbo.language (term_lang1, term_lang2)
+SELECT v.term_lang1, v.term_lang2
+FROM (VALUES
+    (
+        'Remove all manual journal entries',
+        'Verwijder alle handmatige journaalposten'
+    ),
+    (
+        'Remove all automatic journal entries',
+        'Verwijder alle automatische journaalposten'
+    )
+) AS v (term_lang1, term_lang2)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
+);
+GO

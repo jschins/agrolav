@@ -772,6 +772,8 @@ class WipeYearRequest(BaseModel):
     account: str | None = None
     statements: bool = False
     categorizations: bool = False
+    journal: bool = False
+    afschrijvingen: bool = False
     whole_country: bool = False
 
 
@@ -817,6 +819,8 @@ def api_wipe_year(
             account=body.account,
             statements=body.statements,
             categorizations=body.categorizations,
+            journal=body.journal,
+            afschrijvingen=body.afschrijvingen,
             whole_country=body.whole_country,
         )
     except ValueError as exc:

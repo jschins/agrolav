@@ -559,9 +559,11 @@ def wipe_year(
     account: str | None = None,
     statements: bool = False,
     categorizations: bool = False,
+    journal: bool = False,
+    afschrijvingen: bool = False,
     whole_country: bool = False,
 ) -> dict[str, Any]:
-    """Remove bank statements and/or reset manual categories."""
+    """Remove bank statements, reset categories, and/or clear journal tables."""
     from app.matrix import build_matrix
     from app.runtime import CALC_LOCK
     from app.runtime import (
@@ -594,6 +596,8 @@ def wipe_year(
             whole_country=whole_country,
             statements=statements,
             categorizations=categorizations,
+            journal=journal,
+            afschrijvingen=afschrijvingen,
         )
         announced = announce_mutation(
             primary,

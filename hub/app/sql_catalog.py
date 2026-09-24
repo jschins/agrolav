@@ -628,14 +628,18 @@ def clear_bookings(
     whole_country: bool = False,
     statements: bool = False,
     categorizations: bool = False,
+    journal: bool = False,
+    afschrijvingen: bool = False,
 ) -> dict[str, Any]:
-    """Drop bank statements and/or reset manual categories.
+    """Drop bank statements, reset categories, and/or clear journal tables.
 
     ``whole_country`` updates every row of ``dbo.transaction_{country}``.
     Otherwise the rows are limited to ``account``, ``person``, or ``center``.
     Terms (``dbo.category_term``) are not touched. Category reset sets
     ``modification = -1`` and ``category_id`` to ``category_role = remainder``,
-    as two updates.
+    as two updates. ``journal`` deletes every ``dbo.journal`` row for this
+    country. ``afschrijvingen`` deletes every ``dbo.afschrijvingen`` row for
+    this country. Those tables are country-wide, not person or account.
     """
     from app import user_store
     from app.sql_replica import _transaction_table
@@ -645,7 +649,7 @@ def clear_bookings(
     table = _transaction_table(name)
     if not name or not table:
         raise ValueError(f"Unknown country {country!r}")
-    if not statements and not categorizations:
+    if not statements and not categorizations and not journal and not afschrijvingen:
         raise ValueError("Choose at least one wipe action")
     if not _sql_ready():
         raise RuntimeError("SQL is not configured")
@@ -709,6 +713,10 @@ def clear_bookings(
                     """,
                     tuple(account_ids),
                 )
+        if journal:
+            _delete_country_rows(cursor, "dbo.journal", country_id)
+        if afschrijvingen:
+            _delete_country_rows(cursor, "dbo.afschrijvingen", country_id)
         if person_ids and (statements or categorizations):
             _rebuild_category_totals(cursor, table, country_id, person_ids, spaar_source_exclude_clause)
         user_store._sql_connect().commit()
@@ -717,9 +725,19 @@ def clear_bookings(
             "transactions": tx_count,
             "statements": bool(statements),
             "categorizations": bool(categorizations),
+            "journal": bool(journal),
+            "afschrijvingen": bool(afschrijvingen),
         }
 
     return _sql_retry(_run)
+
+
+def _delete_country_rows(cursor: Any, table: str, country_id: int) -> None:
+    """Delete every row of a country-scoped table. ``table`` is a fixed name."""
+    cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+    if cursor.fetchone()[0] is None:
+        raise ValueError(f"{table} is missing")
+    cursor.execute(f"DELETE FROM {table} WHERE country_id = ?", (int(country_id),))
 
 
 def _wipe_scope(

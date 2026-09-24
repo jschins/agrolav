@@ -148,6 +148,128 @@ sudo chown 10001:10001 /opt/sql_backups/local_backups/agrolav.bak
 sudo ls -lh /opt/sql_backups/local_backups/agrolav.bak
 ```
 
+The same push works for a file that is already on the PC, such as a dated
+copy under `C:\SQLBackups\remote_backups`. `scp` it into
+`/opt/sql_backups/local_backups/` (keep the dated name), then `chown` it to
+uid **10001** so the container can read it. SQL Server sees that directory
+as `/var/opt/mssql/backup/local_backups/`. When the restore is finished,
+delete the droplet copy; the PC file stays.
+
+```powershell
+scp -P 4523 C:/SQLBackups/remote_backups/agrolav20260922_1309.bak agrolav@209.38.39.105:/opt/sql_backups/local_backups/agrolav20260922_1309.bak
+```
+
+```bash
+sudo chown 10001:10001 /opt/sql_backups/local_backups/agrolav20260922_1309.bak
+sudo ls -lh /opt/sql_backups/local_backups/agrolav20260922_1309.bak
+```
+
+```sql
+RESTORE FILELISTONLY
+FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav20260922_1309.bak';
+```
+
+```bash
+sudo rm -f /opt/sql_backups/local_backups/agrolav20260922_1309.bak
+```
+
+To put one table back from that file without touching the rest of the live
+database, restore the `.bak` beside `agrolav` and copy the rows across.
+Do this instead of the `REPLACE` restore below. The side database keeps
+the old schema; the live table keeps columns added since that backup.
+Leave the `.bak` in place until this `RESTORE DATABASE` has finished, then
+delete it as above.
+
+`MOVE` uses the `LogicalName` values from `RESTORE FILELISTONLY`. The
+paths are inside the container, not on the PC:
+
+```sql
+RESTORE DATABASE agrolav_0922
+FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav20260922_1309.bak'
+WITH MOVE N'agrolav'     TO N'/var/opt/mssql/data/agrolav_0922.mdf',
+     MOVE N'agrolav_log' TO N'/var/opt/mssql/data/agrolav_0922_log.ldf',
+     RECOVERY;
+```
+
+Confirm the side copy has the rows and the live table is empty. A live
+count other than 0 means the insert would add to what is still there, and
+a repeated `transaction_id` would fail. Delete the live rows first if
+this run is meant to replace them.
+
+```sql
+SELECT COUNT(*) AS old_rows
+FROM agrolav_0922.dbo.transaction_beheer_instudo;
+
+SELECT COUNT(*) AS live_rows
+FROM agrolav.dbo.transaction_beheer_instudo;
+```
+
+Columns that exist only on the live table are the ones you keep. Copied
+rows get each such column's default, or `NULL` when the column allows it.
+A `NOT NULL` column with no default has to be given a default, or listed
+in the insert with a value, before the copy will succeed.
+
+```sql
+SELECT c.name
+FROM agrolav.sys.tables t
+JOIN agrolav.sys.columns c ON c.object_id = t.object_id
+WHERE t.name = N'transaction_beheer_instudo'
+  AND SCHEMA_NAME(t.schema_id) = N'dbo'
+  AND c.is_computed = 0
+EXCEPT
+SELECT c.name
+FROM agrolav_0922.sys.tables t
+JOIN agrolav_0922.sys.columns c ON c.object_id = t.object_id
+WHERE t.name = N'transaction_beheer_instudo'
+  AND SCHEMA_NAME(t.schema_id) = N'dbo'
+  AND c.is_computed = 0;
+```
+
+`transaction_id` is an `IDENTITY` column, so it has to be listed and
+identity insert has to be on. This copies only columns that exist in both
+tables:
+
+```sql
+DECLARE @cols nvarchar(max);
+
+SELECT @cols = STRING_AGG(QUOTENAME(live.name), N', ')
+               WITHIN GROUP (ORDER BY live.column_id)
+FROM agrolav.sys.tables t
+JOIN agrolav.sys.columns live ON live.object_id = t.object_id
+WHERE t.name = N'transaction_beheer_instudo'
+  AND SCHEMA_NAME(t.schema_id) = N'dbo'
+  AND live.is_computed = 0
+  AND live.name IN (
+      SELECT old.name
+      FROM agrolav_0922.sys.tables ot
+      JOIN agrolav_0922.sys.columns old ON old.object_id = ot.object_id
+      WHERE ot.name = N'transaction_beheer_instudo'
+        AND SCHEMA_NAME(ot.schema_id) = N'dbo'
+        AND old.is_computed = 0
+  );
+
+DECLARE @sql nvarchar(max) = N'
+SET IDENTITY_INSERT agrolav.dbo.transaction_beheer_instudo ON;
+INSERT INTO agrolav.dbo.transaction_beheer_instudo (' + @cols + N')
+SELECT ' + @cols + N'
+FROM agrolav_0922.dbo.transaction_beheer_instudo;
+SET IDENTITY_INSERT agrolav.dbo.transaction_beheer_instudo OFF;';
+
+PRINT @sql;
+EXEC (@sql);
+```
+
+Read the `PRINT` output before `EXEC`. The live count should then match
+`old_rows`. Drop the side database when it does:
+
+```sql
+SELECT COUNT(*) AS live_rows
+FROM agrolav.dbo.transaction_beheer_instudo;
+
+ALTER DATABASE agrolav_0922 SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+DROP DATABASE agrolav_0922;
+```
+
 SSMS at `209.38.39.105,1433`:
 
 ```sql

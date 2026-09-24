@@ -1782,7 +1782,7 @@ function SyncNotifyShell({
     setWipeOpen(true);
   }
 
-  function runWipe(choices: { statements: boolean; categorizations: boolean }) {
+  function runWipe(choices: WipeFlags) {
     setWipeOpen(false);
     beginRefreshBusy("please wait... wiping");
     flushSync(() => {
@@ -2032,6 +2032,15 @@ const WIPE_STATEMENTS =
   "Remove all bank statements; leave categorizations untouched";
 const WIPE_CATEGORIES =
   "Clear categories, cross-postings; keep terms, statements";
+const WIPE_JOURNAL = "Remove all manual journal entries";
+const WIPE_AFSCHRIJVINGEN = "Remove all automatic journal entries";
+
+type WipeFlags = {
+  statements: boolean;
+  categorizations: boolean;
+  journal: boolean;
+  afschrijvingen: boolean;
+};
 
 function WipeChoices({
   terms,
@@ -2040,10 +2049,13 @@ function WipeChoices({
 }: {
   terms: Record<string, string> | undefined;
   onCancel: () => void;
-  onRun: (choices: { statements: boolean; categorizations: boolean }) => void;
+  onRun: (choices: WipeFlags) => void;
 }) {
   const [statements, setStatements] = useState(false);
   const [categorizations, setCategorizations] = useState(false);
+  const [journal, setJournal] = useState(false);
+  const [afschrijvingen, setAfschrijvingen] = useState(false);
+  const anyChecked = statements || categorizations || journal || afschrijvingen;
   return (
     <div className="priority-rules-overlay" onClick={onCancel}>
       <div
@@ -2068,12 +2080,28 @@ function WipeChoices({
           />
           {tableHeaderTerm(terms, WIPE_CATEGORIES)}
         </label>
+        <label className="wipe-choice">
+          <input
+            type="checkbox"
+            checked={journal}
+            onChange={(e) => setJournal(e.target.checked)}
+          />
+          {tableHeaderTerm(terms, WIPE_JOURNAL)}
+        </label>
+        <label className="wipe-choice">
+          <input
+            type="checkbox"
+            checked={afschrijvingen}
+            onChange={(e) => setAfschrijvingen(e.target.checked)}
+          />
+          {tableHeaderTerm(terms, WIPE_AFSCHRIJVINGEN)}
+        </label>
         <div className="wipe-choice-actions">
           <button
             type="button"
             className="priority-rules-close"
-            disabled={!statements && !categorizations}
-            onClick={() => onRun({ statements, categorizations })}
+            disabled={!anyChecked}
+            onClick={() => onRun({ statements, categorizations, journal, afschrijvingen })}
           >
             OK
           </button>
@@ -2988,7 +3016,7 @@ function MainApp({
     setWipeOpen(true);
   }
 
-  function runWipePerson(choices: { statements: boolean; categorizations: boolean }) {
+  function runWipePerson(choices: WipeFlags) {
     const person_name = wipePerson;
     setWipeOpen(false);
     if (!person_name) return;

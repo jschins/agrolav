@@ -255,7 +255,7 @@ function Finish-Pull {
 }
 
 try {
-    Set-Password (Read-Password "Password for $Target (SSH and sudo, asked once)")
+    Set-Password (Read-Password "Password for $Target (SSH and sudo: enter using SHIFT-Insert)")
 
     if ($CopyOnly) {
         Write-Host "Copying existing ${RemoteHost}:$RemoteWorking (no BACKUP) ..."

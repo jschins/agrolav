@@ -867,6 +867,8 @@ class WipeYearRequest(BaseModel):
     account: str | None = None
     statements: bool = False
     categorizations: bool = False
+    journal: bool = False
+    afschrijvingen: bool = False
     whole_country: bool = False
 
 
@@ -889,6 +891,8 @@ def api_wipe_year(body: WipeYearRequest) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "statements": body.statements,
         "categorizations": body.categorizations,
+        "journal": body.journal,
+        "afschrijvingen": body.afschrijvingen,
     }
     if cfg.access == ACCESS_COUNTRY:
         payload["whole_country"] = True
