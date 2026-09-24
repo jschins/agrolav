@@ -1213,6 +1213,7 @@ def ingest_bound_transactions(
     *,
     account_id: int | None = None,
     locked: bool = False,
+    inserted_by_uid: dict[str, int] | None = None,
 ) -> int:
     """INSERT bookings that are not yet in SQL.
 
@@ -1246,6 +1247,7 @@ def ingest_bound_transactions(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
         params: list[tuple[Any, ...]] = []
+        inserted_uids: list[str] = []
         for item in records:
             if not isinstance(item, dict):
                 continue
@@ -1293,12 +1295,18 @@ def ingest_bound_transactions(
                 )
             )
             existing.add(source_id)
+            inserted_uids.append(str(item.get("account_uid") or "").strip())
         if not params:
             return 0
         bound.cursor.fast_executemany = True
         bound.cursor.executemany(sql, params)
         bound.cursor.fast_executemany = False
         bound.conn.commit()
+        if inserted_by_uid is not None:
+            for uid in inserted_uids:
+                if not uid:
+                    continue
+                inserted_by_uid[uid] = inserted_by_uid.get(uid, 0) + 1
         sync_person_category_totals(bound)
         return len(params)
     except Exception as exc:  # noqa: BLE001

@@ -2687,6 +2687,32 @@ function FitSidebarTitle({ text }: { text: string }) {
   );
 }
 
+function DownloadAccountList({ status }: { status: StoredRefreshStatus | null }) {
+  const groups = (status?.results ?? []).filter((r) => (r.accounts?.length ?? 0) > 0);
+  if (!groups.length) return null;
+  const showPerson = groups.length > 1;
+  return (
+    <ul className="download-accounts">
+      {groups.flatMap((r) =>
+        (r.accounts ?? []).map((account, index) => {
+          const iban = (account.iban || "").trim();
+          const name = (account.name || "").trim();
+          return (
+            <li key={`${r.person_name}:${iban || name}:${index}`}>
+              <span className="download-account-label">
+                {showPerson ? <span className="download-account-name">{r.person_name}</span> : null}
+                <span className="download-account-iban">{iban || name}</span>
+                {iban && name ? <span className="download-account-name">{name}</span> : null}
+              </span>
+              <span className="download-account-count">{account.inserted}</span>
+            </li>
+          );
+        })
+      )}
+    </ul>
+  );
+}
+
 function MainApp({
   brandName,
   year,
@@ -2712,7 +2738,7 @@ function MainApp({
   const [refreshing, setRefreshing] = useState(false);
   const [firstDownloading, setFirstDownloading] = useState(false);
   const [refreshScope, setRefreshScope] = useState<RefreshStatusScope | null>(null);
-  const [, setRefreshStatus] = useState<StoredRefreshStatus | null>(null);
+  const [refreshStatus, setRefreshStatus] = useState<StoredRefreshStatus | null>(null);
   const [hasSecrets, setHasSecrets] = useState(false);
   const [canAddPerson, setCanAddPerson] = useState(false);
   const [addPersonUrl, setAddPersonUrl] = useState<string | null>(null);
@@ -3293,6 +3319,7 @@ function MainApp({
     <div className="app">
       <aside className="sidebar">
         {sidebarTitle ? <FitSidebarTitle text={sidebarTitle} /> : null}
+        <DownloadAccountList status={refreshStatus} />
 
         {inPView && displayMatrix && (
           <>

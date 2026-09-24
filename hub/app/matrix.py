@@ -618,7 +618,12 @@ def _bank_refresh_one(
             [acc for acc in accounts if isinstance(acc, dict)],
         )
 
-    process_transactions(fetched.transactions, new_year=bool(new_year))
+    inserted_by_uid: dict[str, int] = {}
+    process_transactions(
+        fetched.transactions,
+        new_year=bool(new_year),
+        inserted_by_uid=inserted_by_uid,
+    )
 
     if fetched.warnings:
         for w in fetched.warnings:
@@ -635,6 +640,15 @@ def _bank_refresh_one(
         "date_to": fetched.date_to,
         "warnings": fetched.warnings,
         "account_errors": fetched.account_errors,
+        "accounts": [
+            {
+                "iban": str(acc.get("iban") or ""),
+                "name": str(acc.get("name") or ""),
+                "inserted": int(inserted_by_uid.get(str(acc.get("uid") or ""), 0)),
+            }
+            for acc in accounts
+            if isinstance(acc, dict)
+        ],
     }
     if new_year:
         result["new_year"] = True

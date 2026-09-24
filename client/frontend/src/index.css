@@ -343,6 +343,42 @@ html.refresh-busy body::before {
   gap: 0.35rem;
 }
 
+.download-accounts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.download-accounts li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.download-account-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.download-account-iban {
+  font-variant-numeric: tabular-nums;
+}
+
+.download-account-name {
+  color: #475569;
+}
+
+.download-account-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 /* One rhythm for date fields and knobs (knobs use empty legends). */
 .sidebar-stack,
 .winbar {

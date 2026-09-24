@@ -12,6 +12,12 @@ export interface MatrixResponse {
   table_header_terms: Record<string, string>;
 }
 
+export interface RefreshAccountResult {
+  iban: string;
+  name: string;
+  inserted: number;
+}
+
 export interface RefreshPersonResult {
   person_name: string;
   skipped: boolean;
@@ -21,6 +27,7 @@ export interface RefreshPersonResult {
   date_to?: string;
   warnings?: string[];
   account_errors?: string[];
+  accounts?: RefreshAccountResult[];
   authorization_url?: string | null;
   new_year?: boolean;
   enable_debug?: Record<string, unknown>;

@@ -1528,17 +1528,24 @@ def record_category_change(transaction: dict[str, Any], category_name: str) -> d
     return record_modification(modified)
 
 
-def process_transactions(raw_transactions: list[dict[str, Any]], new_year: bool) -> dict[str, str]:
+def process_transactions(
+    raw_transactions: list[dict[str, Any]],
+    new_year: bool,
+    *,
+    inserted_by_uid: dict[str, int] | None = None,
+) -> dict[str, str]:
     """Persist new bank rows uncategorized, then categorize automatically.
 
     New rows are written with ``modification`` -1 and ``hit`` NULL, then
     ``recategorize_transactions`` fills category/hit. Existing rows keep
     their stored category and modification.
+    ``inserted_by_uid`` receives how many rows were newly stored, keyed by
+    the bank account uid. Accounts with no new rows stay absent.
     """
     new_records = _simplify_uncategorized(raw_transactions)
     from app.sql_replica import ingest_bound_transactions
 
-    ingest_bound_transactions(new_records)
+    ingest_bound_transactions(new_records, inserted_by_uid=inserted_by_uid)
     return recategorize_transactions()
 
 
