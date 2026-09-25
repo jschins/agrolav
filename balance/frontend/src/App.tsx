@@ -251,10 +251,15 @@ export default function App() {
     setOpenLabel(label);
     setPopupError(null);
     setPopupLoading(true);
-    const cachedPeople = [
-      ...subadminRows,
-      ...(sheet?.subadministratie?.rows ?? []),
-    ].filter((r) => Number(r.local_code) === code);
+    const seen = new Set<string>();
+    const cachedPeople = subadminRows
+      .filter((r) => Number(r.local_code) === code)
+      .filter((r) => {
+        if (seen.has(r.name)) return false;
+        seen.add(r.name);
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
     const cachedJournals = (sheet?.afschrijvingen?.journals ?? []).filter(
       (r) => Number(r.category_from) === code
     );

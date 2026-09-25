@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import re
+import unicodedata
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -783,6 +784,113 @@ def generate_spaarmirror(country_id: int, year: int) -> dict[str, Any]:
     return {"ok": True, "year": year, "country_id": country_id, "generated": generated}
 
 
+_NAME_PARTICLES = frozenset({"ten", "te", "van", "den", "op", "de"})
+
+
+def subadministratie_name(raw: object) -> str:
+    """Normalize a ``dbo.subadministratie`` name.
+
+    Lower case, no punctuation. One initial, then one surname.
+    A word of two or three letters is initials, split into letters, unless
+    that would leave no surname. Several surnames keep the first.
+    Prefixes ten, te, van, den, op and de are always dropped.
+    Only the first initial is kept.
+    """
+    text = re.sub(r"[^\w\s]", " ", str(raw or "").casefold(), flags=re.UNICODE)
+    text = text.replace("_", " ")
+    tokens = [
+        part
+        for part in text.replace("_", " ").split()
+        if part and part not in _NAME_PARTICLES
+    ]
+    if not tokens:
+        return ""
+    surnames = [part for part in tokens if len(part) >= 4]
+    if surnames:
+        surname = surnames[0]
+        initial_words = [part for part in tokens if len(part) <= 3]
+    else:
+        surname = tokens[-1]
+        initial_words = tokens[:-1]
+    letters: list[str] = []
+    for part in initial_words:
+        letters.extend(part)
+    if not letters:
+        return surname
+    return f"{letters[0]} {surname}"
+
+
+def _fold_letters(text: str) -> str:
+    """ó → o, í → i, and the same for every other accented letter."""
+    stripped = unicodedata.normalize("NFD", text)
+    return "".join(ch for ch in stripped if unicodedata.category(ch) != "Mn")
+
+
+def _person_initial_surname(name: str) -> tuple[str, str]:
+    parts = name.split()
+    if len(parts) == 2 and len(parts[0]) == 1:
+        return parts[0], parts[1]
+    return "", name
+
+
+def _merge_subadministratie_persons(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Same surname with no initial is the first person who has one.
+
+    Different initials stay different persons. A bare surname is added to the
+    first matching person in the given order. Accents are ignored: ó is o,
+    í is i.
+    """
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    codes: list[int] = []
+    for row in rows:
+        code = int(row["local_code"])
+        if code not in grouped:
+            codes.append(code)
+            grouped[code] = []
+        grouped[code].append(row)
+    merged: list[dict[str, Any]] = []
+    for code in codes:
+        by_surname: dict[str, list[tuple[str, float, str]]] = {}
+        surnames: list[str] = []
+        for row in grouped[code]:
+            label = str(row["name"])
+            initial, surname = _person_initial_surname(label)
+            key_surname = _fold_letters(surname)
+            if key_surname not in by_surname:
+                surnames.append(key_surname)
+                by_surname[key_surname] = []
+            by_surname[key_surname].append((initial, float(row["amount"]), label))
+        for surname in surnames:
+            items = by_surname[surname]
+            first = next(
+                (_fold_letters(initial) for initial, _amount, _label in items if initial),
+                "",
+            )
+            totals: dict[str, float] = {}
+            labels: dict[str, str] = {}
+            locked: dict[str, bool] = {}
+            order: list[str] = []
+            for initial, amount, label in items:
+                folded = _fold_letters(initial)
+                key = first if (not folded and first) else folded
+                if key not in totals:
+                    order.append(key)
+                    totals[key] = 0.0
+                if initial and not locked.get(key):
+                    labels[key] = label
+                    locked[key] = True
+                elif key not in labels:
+                    labels[key] = label
+                totals[key] += amount
+            for key in order:
+                merged.append({
+                    "local_code": code,
+                    "name": labels[key],
+                    "amount": totals[key],
+                })
+    return merged
+
+
 def list_subadministratie_sheet(country_id: int) -> dict[str, Any]:
     """Clickable local_codes and rows from ``dbo.subadministratie`` (no hardcoded codes)."""
     rows = list_subadministratie(country_id)
@@ -815,10 +923,10 @@ def list_subadministratie(country_id: int, local_code: int | None = None) -> lis
                 continue
             rows.append({
                 "local_code": found,
-                "name": str(name),
+                "name": subadministratie_name(name),
                 "amount": float(amount),
             })
-    return rows
+    return _merge_subadministratie_persons(rows)
 
 
 def _transaction_person_name(description: str) -> str:
