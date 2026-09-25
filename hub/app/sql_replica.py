@@ -333,9 +333,9 @@ def load_bound_balance_transactions(*, category_code: int) -> list[dict[str, Any
       returns EVERY transaction on that mapped account for the bound person and
       year, whatever their P&L category.
     - A non-bank category (1000-2999 without an account link) returns the
-      hand-edited journal rows, spaar-mirror rows, and booked rows that move
-      money in/out of it, as read-only pseudo-transactions (``modification`` -1).
-      Activa (1000-1999) and passiva (2000-2999) use this same path.
+      spaar-mirror rows and booked transaction rows that move money in/out of
+      it. ``dbo.journal`` is not included. Activa (1000-1999) and passiva
+      (2000-2999) use this same path.
 
     ``[]`` is also returned when SQL is unused or the bound scope fails, so
     callers never fall back to categorized JSON for these categories.
@@ -427,17 +427,14 @@ def _load_mapped_account_rows(bound: _BoundScope, account_id: int) -> list[dict[
 def _load_nonbank_category_rows(
     bound: _BoundScope, country_id: int, category_code: int
 ) -> list[dict[str, Any]]:
-    """Journal + mirror + booked rows that move money in/out of a non-bank category.
+    """Mirror + booked transaction rows for a non-bank category.
 
-    Sources (three, independent): ``dbo.journal`` (hand-edited rows),
-    ``dbo.transaction_mirror`` (spaar-mirror rows) and the bound transaction
-    table (rows posted to this category, e.g. kruisposten). Each source is
-    queried in its own ``try`` so a column mismatch in one table can never wipe
-    out the rows already collected from the other tables.
+    ``dbo.journal`` is not shown here. Sources: ``dbo.transaction_mirror``
+    and the bound transaction table (rows posted to this category, e.g.
+    kruisposten). Each source is queried in its own ``try``.
     """
     from shared.balance_values import (
         category_local_codes,
-        journal_leg_amount,
         spaar_source_exclude_clause,
     )
 
@@ -451,46 +448,6 @@ def _load_nonbank_category_rows(
         int(category_code),
     )
     id_a, id_b = int(category_code), int(cat_id)
-    try:
-        bound.cursor.execute(
-            "SELECT journal_id, date, category_from, category_to, amount, description "
-            "FROM dbo.journal "
-            "WHERE country_id = ? AND year = ? "
-            "AND (category_from IN (?, ?) OR category_to IN (?, ?)) "
-            "ORDER BY date, journal_id",
-            (country_id, bound.year, id_a, id_b, id_a, id_b),
-        )
-        for journal_id, booked_on, cat_from, cat_to, amount, description in bound.cursor.fetchall():
-            raw_delta = _decimal_amount(amount)
-            if raw_delta is None:
-                continue
-            src = int(cat_from)
-            dst = int(cat_to)
-            delta = journal_leg_amount(
-                codes.get(cat_id, id_a),
-                codes.get(src, src),
-                codes.get(dst, dst),
-                raw_delta,
-            )
-            rows.append(
-                {
-                    "id": f"j{int(journal_id)}",
-                    "amount": _json_amount(delta),
-                    "currency": "EUR",
-                    "type": "",
-                    "name": "",
-                    "iban": "",
-                    "description": _json_text(description),
-                    "date": _json_date(booked_on),
-                    "category": category_code,
-                    "modification": -1,
-                    "hit": None,
-                    "account_uid": "",
-                    "account_iban": "",
-                }
-            )
-    except Exception as exc:  # noqa: BLE001
-        print(f"sql replica: journal load failed: {exc}")
     try:
         # Only the columns the balance app actually uses are selected: this table
         # has no bookkeeping columns (no day-book sign, no bank/account link).
@@ -586,13 +543,11 @@ def _balance_overlay_cents(
 
 
 def balance_entry_codes(country_id: int, year: int, cursor: Any) -> set[int]:
-    """Category ids that hold at least one row in the balance-access tables.
+    """Category ids that hold at least one spaar-mirror row for the country/year.
 
-    Union of ``dbo.transaction_mirror.category_id`` (hand-entered balance
-    transactions; the materialized spaar-mirror rows live here too) and
-    ``dbo.journal`` (category_from/category_to) for the country/year.
-    A category counts as "has transactions" even when its rows net to zero, so
-    these are distinct ids, not sums. Returns ``{}`` when a table is missing.
+    ``dbo.journal`` does not count: a category with only journal rows has no
+    transaction statements, so the matrix amount stays grey and inactive.
+    Returns ``{}`` when the mirror table is missing.
     """
     codes: set[int] = set()
     cursor.execute("SELECT OBJECT_ID(N'dbo.transaction_mirror', N'U')")
@@ -605,18 +560,6 @@ def balance_entry_codes(country_id: int, year: int, cursor: Any) -> set[int]:
         for (category_id,) in cursor.fetchall():
             if category_id is not None:
                 codes.add(int(category_id))
-    cursor.execute("SELECT OBJECT_ID(N'dbo.journal', N'U')")
-    if cursor.fetchone()[0] is not None:
-        cursor.execute(
-            "SELECT category_from, category_to FROM dbo.journal "
-            "WHERE country_id = ? AND year = ?",
-            (int(country_id), int(year)),
-        )
-        for cat_from, cat_to in cursor.fetchall():
-            if cat_from is not None:
-                codes.add(int(cat_from))
-            if cat_to is not None:
-                codes.add(int(cat_to))
     return codes
 
 
@@ -1246,6 +1189,7 @@ def ingest_bound_transactions(
     account_id: int | None = None,
     locked: bool = False,
     inserted_by_uid: dict[str, int] | None = None,
+    inserted_source_ids: list[str] | None = None,
 ) -> int:
     """INSERT bookings that are not yet in SQL.
 
@@ -1328,6 +1272,8 @@ def ingest_bound_transactions(
             )
             existing.add(source_id)
             inserted_uids.append(str(item.get("account_uid") or "").strip())
+            if inserted_source_ids is not None:
+                inserted_source_ids.append(source_id)
         if not params:
             return 0
         bound.cursor.fast_executemany = True

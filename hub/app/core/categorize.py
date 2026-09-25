@@ -722,6 +722,7 @@ def _categorize_transactions(
     match_sources: dict[Any, dict[str, Any]] | None = None,
     personal_maps: dict[str | None, dict[str, list[str]]] | None = None,
     disregard_positive_modification: bool = False,
+    only_uncalculated: bool = False,
 ) -> list[dict[str, Any]]:
     categorized: list[dict[str, Any]] = []
     for record in records:
@@ -731,6 +732,9 @@ def _categorize_transactions(
         if match_sources is not None:
             source = match_sources.get(record.get("id"), record)
         flag = _modification_of(updated)
+        if only_uncalculated and flag != MOD_UNCALCULATED:
+            categorized.append(updated)
+            continue
         if disregard_positive_modification and flag > 0:
             categorized.append(updated)
             continue
@@ -859,7 +863,9 @@ def _raw_simplified_by_id() -> dict[Any, dict[str, Any]]:
     return by_id
 
 
-def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
+def recategorize_transactions(
+    *, from_scratch: bool = False, only_uncalculated: bool = False
+) -> dict[str, str]:
     """Re-categorize rows that the user has not locked with a category edit.
 
     ``modification`` 1 or 3 keeps ``category`` (hand-set or kruisposten).
@@ -901,6 +907,7 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
             {},
             personal_maps=personal_maps,
             disregard_positive_modification=from_scratch,
+            only_uncalculated=only_uncalculated,
         )
     else:
         personal = _personal_category_map()
@@ -909,6 +916,7 @@ def recategorize_transactions(*, from_scratch: bool = False) -> dict[str, str]:
             general,
             personal,
             disregard_positive_modification=from_scratch,
+            only_uncalculated=only_uncalculated,
         )
 
     result = dict(data) if data else {}
@@ -1533,6 +1541,8 @@ def process_transactions(
     new_year: bool,
     *,
     inserted_by_uid: dict[str, int] | None = None,
+    inserted_source_ids: list[str] | None = None,
+    categorize: bool = True,
 ) -> dict[str, str]:
     """Persist new bank rows uncategorized, then categorize automatically.
 
@@ -1545,7 +1555,13 @@ def process_transactions(
     new_records = _simplify_uncategorized(raw_transactions)
     from app.sql_replica import ingest_bound_transactions
 
-    ingest_bound_transactions(new_records, inserted_by_uid=inserted_by_uid)
+    ingest_bound_transactions(
+        new_records,
+        inserted_by_uid=inserted_by_uid,
+        inserted_source_ids=inserted_source_ids,
+    )
+    if not categorize:
+        return {}
     return recategorize_transactions()
 
 

@@ -3,6 +3,7 @@
 Bereken kruisposten writes categories on internal transfers for the logged-in country when ``dbo.country.has_balance`` is set.
 The entry point is `apply_cross_postings` in `hub/app/cross_postings.py`.
 The menu calls `POST /api/cross-postings`.
+Uitlezen bankafschriften runs the same pairing after the download, and only on pairs that include a statement just stored. The other leg of that pair is written as well. Statements outside those pairs stay as they are. It then categorizes every remaining statement with `modification` -1. Rows already at 0, 1, 2, or 3 are left as they are.
 
 Balance countries (`dbo.country.has_balance`) are taken in `country_id`
 order. The first stores the local code. Each later one adds 10000, so

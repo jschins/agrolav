@@ -439,11 +439,17 @@ def managed_category_ids(
     return found
 
 
-def apply_cross_postings(center: str) -> dict[str, int]:
+def apply_cross_postings(
+    center: str, *, source_ids: set[str] | None = None
+) -> dict[str, int]:
     """Write category ids and ``modification`` 1 on matched pairs.
 
     The country is the one that owns ``center``. Countries without
     ``has_balance`` are left unchanged.
+
+    When ``source_ids`` is set, only pairs that include one of those newly
+    stored statements are written. The other leg of such a pair is written
+    too. Statements outside those pairs are left as they are.
     """
     from app import user_store
     from app.sql_catalog import coerce_center, country_for_center
@@ -515,6 +521,7 @@ def apply_cross_postings(center: str) -> dict[str, int]:
     amount_of = {transaction_id: _money(amount) for transaction_id, _account, _day, amount, _other in pair_rows}
     pairs = matching_pairs(pair_rows)
     category_of: dict[int, int] = {}
+    pair_ids: list[frozenset[int]] = []
     for left_id, left_account, right_id, right_account in pairs:
         if amount_of[left_id] < 0:
             from_account, to_account = left_account, right_account
@@ -535,15 +542,28 @@ def apply_cross_postings(center: str) -> dict[str, int]:
         if local is None:
             continue
         if local in (_LOCAL_SIB_TO_SIA, _LOCAL_SIA_TO_SIB):
+            written = False
             for tid, account in ((from_id, from_account), (to_id, to_account)):
                 leg = leg_local_code(iban_of.get(account, ""))
                 if leg is None:
                     continue
                 category_of[tid] = stored_category_id(leg, by_local, country_id, balance_ids)
+                written = True
+            if written:
+                pair_ids.append(frozenset((from_id, to_id)))
             continue
         category = stored_category_id(local, by_local, country_id, balance_ids)
         category_of[to_id] = category
         category_of[from_id] = category
+        pair_ids.append(frozenset((from_id, to_id)))
+    scoped = source_ids is not None
+    if scoped:
+        only_ids = _transaction_ids_for_sources(cursor, table, source_ids or set())
+        keep: set[int] = set()
+        for members in pair_ids:
+            if members & only_ids:
+                keep |= set(members)
+        category_of = {tid: cat for tid, cat in category_of.items() if tid in keep}
     remainder_id, _remainder_code = require_remainder_row(country_id, cursor)
     by_category: dict[int, list[int]] = {}
     to_release: list[int] = []
@@ -557,6 +577,8 @@ def apply_cross_postings(center: str) -> dict[str, int]:
             by_category.setdefault(target, []).append(tid)
             if current != target or int(modification or 0) != 1:
                 changed_persons.add(person_year)
+            continue
+        if scoped:
             continue
         if current in managed:
             to_release.append(tid)
@@ -741,6 +763,23 @@ def _category_ids_by_local_code(cursor: Any, country_id: int) -> dict[int, int]:
             continue
         out[int(local_code)] = int(category_id)
     return out
+
+
+def _transaction_ids_for_sources(cursor: Any, table: str, source_ids: set[str]) -> set[int]:
+    """Primary keys of statements just stored by a bank download."""
+    ids = [source_id for source_id in source_ids if str(source_id).strip()]
+    found: set[int] = set()
+    for start in range(0, len(ids), 400):
+        chunk = ids[start : start + 400]
+        marks = ",".join("?" * len(chunk))
+        cursor.execute(
+            f"SELECT transaction_id FROM {table} WHERE source_id IN ({marks})",
+            chunk,
+        )
+        for row in cursor.fetchall():
+            if row[0] is not None:
+                found.add(int(row[0]))
+    return found
 
 
 def _load_candidates(

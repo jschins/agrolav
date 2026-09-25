@@ -417,10 +417,10 @@ def build_matrix(
                     continue
                 cells[name][family] = f"{cents / 100:.2f}"
     # Grey/black and click-through: a person column is live when that person
-    # has booking rows (``used``) *or* the category has a country journal /
-    # spaar-mirror row. ``entries`` is journal+mirror only — not other
-    # people's transactions — so a person login is not un-greyed by someone
-    # else's HIT. Bank-linked categories still follow the mapped account.
+    # has booking rows (``used``) or the category has a spaar-mirror row.
+    # Journal-only categories stay grey. ``entries`` is mirror only — not
+    # other people's transactions — so a person login is not un-greyed by
+    # someone else's HIT. Bank-linked categories still follow the mapped account.
     entries_names: set[str] = set()
     if balance_country is not None and y_int is not None:
         name_by_local = {
@@ -605,6 +605,7 @@ def _bank_refresh_one(
     date_from: str | None,
     date_to: str | None,
     new_year: bool,
+    categorize: bool = True,
 ) -> tuple[dict[str, Any], list[str]]:
     from app.core.categorize import process_transactions
     from app.core.single_client import (
@@ -652,10 +653,13 @@ def _bank_refresh_one(
         )
 
     inserted_by_uid: dict[str, int] = {}
+    inserted_source_ids: list[str] = []
     process_transactions(
         fetched.transactions,
         new_year=bool(new_year),
         inserted_by_uid=inserted_by_uid,
+        inserted_source_ids=inserted_source_ids,
+        categorize=categorize,
     )
 
     if fetched.warnings:
@@ -674,6 +678,7 @@ def _bank_refresh_one(
         "warnings": fetched.warnings,
         "account_errors": fetched.account_errors,
         "accounts": _read_account_lines(inserted_by_uid),
+        "inserted_source_ids": inserted_source_ids,
     }
     if new_year:
         result["new_year"] = True
@@ -704,6 +709,7 @@ def _refresh_one_person(
     date_from: str | None = None,
     date_to: str | None = None,
     new_year: bool = False,
+    categorize: bool = True,
 ) -> tuple[dict[str, Any], list[str]]:
     from app.core.single_client import EnableBankingError, needs_consent_renewal
 
@@ -769,7 +775,11 @@ def _refresh_one_person(
             stamp = date_to
         if pack.has_pem:
             result, extra = _bank_refresh_one(
-                pack, date_from=date_from, date_to=date_to, new_year=new_year
+                pack,
+                date_from=date_from,
+                date_to=date_to,
+                new_year=new_year,
+                categorize=categorize,
             )
         else:
             excel = _excel_refresh_result(pack)
@@ -804,6 +814,24 @@ def _refresh_one_person(
         )
 
 
+def _recategorize_uncalculated(packs: list[PersonScope], source_ids: list[str]) -> None:
+    """Score statements still at modification -1 after this download's cross-postings."""
+    from dataclasses import replace
+
+    from app.core.categorize import recategorize_transactions
+    from app.sql_catalog import years_for_person
+
+    if not source_ids:
+        return
+    for pack in packs:
+        if not pack.has_pem:
+            continue
+        years = years_for_person(pack.person) or ([pack.year] if pack.year else [])
+        for year in years:
+            with bind_scope(replace(pack, year=str(year))):
+                recategorize_transactions(only_uncalculated=True)
+
+
 def refresh_all(
     date_from: str | None = None,
     date_to: str | None = None,
@@ -821,10 +849,35 @@ def refresh_all(
                 continue
             with bind_scope(pack):
                 result, extra = _refresh_one_person(
-                    pack, date_from=date_from, date_to=date_to, new_year=False
+                    pack,
+                    date_from=date_from,
+                    date_to=date_to,
+                    new_year=False,
+                    categorize=False,
                 )
                 results.append(result)
                 warnings.extend(extra)
+
+        inserted = [
+            str(source_id)
+            for result in results
+            for source_id in (result.get("inserted_source_ids") or [])
+            if str(source_id).strip()
+        ]
+        if inserted:
+            from app.cross_postings import apply_cross_postings
+            from app.runtime import active_center
+
+            center = active_center()
+            if center:
+                try:
+                    apply_cross_postings(center, source_ids=set(inserted))
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"cross-postings: {exc}")
+            try:
+                _recategorize_uncalculated(packs, inserted)
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"recategorize: {exc}")
 
         matrix = build_matrix(packs)
         return {"matrix": matrix, "results": results, "warnings": warnings}
