@@ -5943,6 +5943,39 @@ function termToPattern(term: string): string {
   return pattern;
 }
 
+function findLiteralRanges(term: string, candidate: string): Array<[number, number]> | null {
+  const parts = term.toLowerCase().split("#");
+  let pos = 0;
+  const ranges: Array<[number, number]> = [];
+  for (const part of parts) {
+    if (!part) continue;
+    const at = candidate.indexOf(part, pos);
+    if (at < 0) return null;
+    ranges.push([at, at + part.length]);
+    pos = at + part.length;
+  }
+  return ranges;
+}
+
+function strippedIndexMap(word: string): number[] {
+  const map: number[] = [];
+  for (let i = 0; i < word.length; i++) {
+    if (/[a-z.]/i.test(word[i])) map.push(i);
+  }
+  return map;
+}
+
+function hashLiteralRanges(term: string, word: string): Array<[number, number]> {
+  if (new RegExp(`^${termToPattern(term)}$`, "i").test(word)) {
+    return findLiteralRanges(term, word.toLowerCase()) ?? [];
+  }
+  const stripped = lettersOnly(word);
+  const inner = stripped ? findLiteralRanges(term, stripped) : null;
+  if (!inner) return [];
+  const map = strippedIndexMap(word);
+  return inner.map(([start, end]) => [map[start], map[end - 1] + 1]);
+}
+
 function matchesHashWord(term: string, word: string): boolean {
   const pattern = new RegExp(`^${termToPattern(term)}$`, "i");
   const candidates = new Set<string>([word.toLowerCase(), lettersOnly(word)]);
@@ -6013,9 +6046,10 @@ function highlight(text: string, keywords: string[]): ReactNode {
   if (terms.length === 0) return text;
 
   const hashWordTerms = terms.filter((t) => t.includes("#") && !t.includes(" "));
+  const hashPhraseTerms = terms.filter((t) => t.includes("#") && t.includes(" "));
   const plainTerms = terms.filter((t) => !t.includes("#"));
 
-  if (hashWordTerms.length === 0) {
+  if (hashWordTerms.length === 0 && hashPhraseTerms.length === 0) {
     return highlightWithRegex(text, plainTerms);
   }
 
@@ -6038,8 +6072,23 @@ function highlight(text: string, keywords: string[]): ReactNode {
       const word = match[0];
       const start = match.index ?? 0;
       if (hashWordTerms.some((term) => matchesHashWord(term, word))) {
-        ranges.push([start, start + word.length]);
+        for (const term of hashWordTerms) {
+          if (!matchesHashWord(term, word)) continue;
+          for (const [from, to] of hashLiteralRanges(term, word)) {
+            ranges.push([start + from, start + to]);
+          }
+        }
       }
+    }
+  }
+
+  for (const term of hashPhraseTerms) {
+    const re = new RegExp(`\\b${termToPattern(term)}\\b`, "gi");
+    for (const match of text.matchAll(re)) {
+      const start = match.index ?? 0;
+      const inner = findLiteralRanges(term, match[0].toLowerCase());
+      if (!inner) continue;
+      for (const [from, to] of inner) ranges.push([start + from, start + to]);
     }
   }
 

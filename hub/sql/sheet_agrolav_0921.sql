@@ -4,12 +4,12 @@
 DECLARE @country_id int, @year int, @opening decimal(19,2), @user sysname, @sql nvarchar(max);
 
 SELECT TOP (1)
-    @country_id = o.country_id,
+    @country_id = d.country_id,
     @year = o.year,
     @opening = o.amount
 FROM agrolav_0921.dbo.balance_opening o
 JOIN agrolav_0921.dbo.dim_category d
-  ON d.category_id = o.category_id AND d.country_id = o.country_id
+  ON d.category_id = o.category_id
 WHERE o.amount = 11718082.46
   AND LOWER(LTRIM(RTRIM(d.category_role))) IN (N'equity', N'never')
 ORDER BY o.year DESC;
@@ -56,9 +56,10 @@ bank AS (
       AND d.category_id NOT IN (SELECT category_id FROM mirror_cat)
 ),
 opening AS (
-    SELECT category_id, amount
-    FROM agrolav_0921.dbo.balance_opening
-    WHERE country_id = @country_id AND year = @year
+    SELECT o.category_id, o.amount
+    FROM agrolav_0921.dbo.balance_opening o
+    JOIN sign_of d ON d.category_id = o.category_id
+    WHERE o.year = @year
 ),
 mirror_sum AS (
     SELECT category_id, SUM(amount) AS amount
@@ -72,7 +73,7 @@ journal_leg AS (
     FROM agrolav_0921.dbo.journal j
     JOIN sign_of sf ON sf.category_id = j.category_from
     JOIN sign_of st ON st.category_id = j.category_to
-    WHERE j.country_id = @country_id AND j.year = @year
+    WHERE j.year = @year
       AND LOWER(LTRIM(RTRIM(ISNULL(sf.category_role, N'''')))) NOT IN (N''equity'', N''never'', N''profit'')
       AND LOWER(LTRIM(RTRIM(ISNULL(st.category_role, N'''')))) NOT IN (N''equity'', N''never'', N''profit'')
     UNION ALL
@@ -80,7 +81,7 @@ journal_leg AS (
     FROM agrolav_0921.dbo.journal j
     JOIN sign_of sf ON sf.category_id = j.category_from
     JOIN sign_of st ON st.category_id = j.category_to
-    WHERE j.country_id = @country_id AND j.year = @year
+    WHERE j.year = @year
       AND LOWER(LTRIM(RTRIM(ISNULL(sf.category_role, N'''')))) NOT IN (N''equity'', N''never'', N''profit'')
       AND LOWER(LTRIM(RTRIM(ISNULL(st.category_role, N'''')))) NOT IN (N''equity'', N''never'', N''profit'')
 ),

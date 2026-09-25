@@ -9,9 +9,8 @@ amounts (``category_id`` 3000-4999) in ``dbo.category_total``.  Passiva 2100
 Verlies is that same R.  Eigen vermogen is the plug:
 ``total_activa - sum(other passiva)``.
 
-The balance tables carry a ``country_id`` so every country keeps its own
-opening balances, journal and mirror.  The instance serves the country given
-by ``BALANCE_COUNTRY_ID`` (default 4).
+Each country is reached through ``dbo.dim_category``. The instance serves
+the country given by ``BALANCE_COUNTRY_ID`` (default 4).
 """
 from __future__ import annotations
 
@@ -213,9 +212,8 @@ def _opening_plug_amount(
         """
         SELECT TOP (1) o.amount
         FROM dbo.balance_opening o
-        LEFT JOIN dbo.dim_category d
-          ON d.category_id = o.category_id AND d.country_id = o.country_id
-        WHERE o.country_id = ? AND o.year = ?
+        JOIN dbo.dim_category d ON d.category_id = o.category_id
+        WHERE d.country_id = ? AND o.year = ?
           AND (
             o.category_id IN (?, ?)
             OR d.local_code IN (?, ?)
@@ -680,8 +678,9 @@ def list_years(country_id: int) -> list[int]:
     with connect() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT DISTINCT year FROM dbo.balance_opening "
-            "WHERE country_id = ? ORDER BY year",
+            "SELECT DISTINCT o.year FROM dbo.balance_opening o "
+            "JOIN dbo.dim_category d ON d.category_id = o.category_id "
+            "WHERE d.country_id = ? ORDER BY o.year",
             country_id,
         )
         return [int(r[0]) for r in cur.fetchall()]
@@ -753,17 +752,17 @@ def update_opening(country_id: int, year: int, items: list[dict[str, Any]]) -> N
             cur.execute(
                 """
                 IF EXISTS (SELECT 1 FROM dbo.balance_opening
-                           WHERE country_id = ? AND category_id = ? AND year = ?)
+                           WHERE category_id = ? AND year = ?)
                     UPDATE dbo.balance_opening
                     SET amount = ?, note = ?
-                    WHERE country_id = ? AND category_id = ? AND year = ?
+                    WHERE category_id = ? AND year = ?
                 ELSE
-                    INSERT INTO dbo.balance_opening (country_id, category_id, year, amount, note)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO dbo.balance_opening (category_id, year, amount, note)
+                    VALUES (?, ?, ?, ?)
                 """,
-                country_id, cat_id, year,
-                amount, note, country_id, cat_id, year,
-                country_id, cat_id, year, amount, note,
+                cat_id, year,
+                amount, note, cat_id, year,
+                cat_id, year, amount, note,
             )
         conn.commit()
 
@@ -1029,9 +1028,11 @@ def list_afschrijvingen(country_id: int, year: int) -> dict[str, Any]:
             return {"from_codes": [], "journals": []}
         local_codes = shared_category_local_codes(country_id, cur)
         cur.execute(
-            "SELECT journal_id, date, category_from, category_to, amount, description "
-            "FROM dbo.journal WHERE country_id = ? AND year = ? "
-            "ORDER BY date, journal_id",
+            "SELECT j.journal_id, j.date, j.category_from, j.category_to, j.amount, j.description "
+            "FROM dbo.journal j "
+            "JOIN dbo.dim_category d ON d.category_id = j.category_from "
+            "WHERE d.country_id = ? AND j.year = ? "
+            "ORDER BY j.date, j.journal_id",
             country_id,
             year,
         )
@@ -1155,9 +1156,11 @@ def list_journal(country_id: int, year: int) -> list[dict[str, Any]]:
     with connect() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT journal_id, date, category_from, category_to, amount, description "
-            "FROM dbo.journal WHERE country_id = ? AND year = ? "
-            "ORDER BY date, journal_id",
+            "SELECT j.journal_id, j.date, j.category_from, j.category_to, j.amount, j.description "
+            "FROM dbo.journal j "
+            "JOIN dbo.dim_category d ON d.category_id = j.category_from "
+            "WHERE d.country_id = ? AND j.year = ? "
+            "ORDER BY j.date, j.journal_id",
             country_id,
             year,
         )
@@ -1203,8 +1206,10 @@ def save_journal(country_id: int, year: int, items: list[dict[str, Any]]) -> dic
             description = str(item.get("description") or "")[:512]
             parsed.append((date, cat_from, cat_to, amount, description))
         cur.execute(
-            "DELETE FROM dbo.journal WHERE country_id = ? AND year = ? "
-            "AND description NOT LIKE ? ESCAPE '!'",
+            "DELETE j FROM dbo.journal j "
+            "JOIN dbo.dim_category d ON d.category_id = j.category_from "
+            "WHERE d.country_id = ? AND j.year = ? "
+            "AND j.description NOT LIKE ? ESCAPE '!'",
             country_id,
             year,
             afschrijving_like_pattern(),
@@ -1212,9 +1217,9 @@ def save_journal(country_id: int, year: int, items: list[dict[str, Any]]) -> dic
         for date, cat_from, cat_to, amount, description in parsed:
             cur.execute(
                 "INSERT INTO dbo.journal "
-                "(year, country_id, date, category_from, category_to, amount, description, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
-                year, country_id, date, cat_from, cat_to, amount, description,
+                "(year, date, category_from, category_to, amount, description, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
+                year, date, cat_from, cat_to, amount, description,
             )
         apply_afschrijvingen(country_id, cur)
         conn.commit()

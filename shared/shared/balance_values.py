@@ -1014,8 +1014,9 @@ def _account_balances_asof(
 
 def _opening_balances(country_id: int, year: int, cursor: object) -> dict[int, Decimal]:
     cursor.execute(
-        "SELECT category_id, amount FROM dbo.balance_opening "
-        "WHERE country_id = ? AND year = ?",
+        "SELECT o.category_id, o.amount FROM dbo.balance_opening o "
+        "JOIN dbo.dim_category d ON d.category_id = o.category_id "
+        "WHERE d.country_id = ? AND o.year = ?",
         (int(country_id), int(year)),
     )
     return {int(r[0]): _decimal(r[1]) for r in cursor.fetchall()}
@@ -1182,12 +1183,13 @@ def _journal_effect(
     if not _journal_table_exists(cursor):
         return {}
     q = (
-        "SELECT category_from, category_to, amount FROM dbo.journal "
-        "WHERE country_id = ? AND year = ?"
+        "SELECT j.category_from, j.category_to, j.amount FROM dbo.journal j "
+        "JOIN dbo.dim_category d ON d.category_id = j.category_from "
+        "WHERE d.country_id = ? AND j.year = ?"
     )
     p: list[object] = [int(country_id), int(year)]
     if as_of is not None:
-        q += " AND date <= ?"
+        q += " AND j.date <= ?"
         p.append(as_of.isoformat())
     roles = category_roles(country_id, cursor)
     codes = category_local_codes(country_id, cursor)
@@ -1444,12 +1446,16 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
     rules = [r for r in cursor.fetchall() if r is not None]
     years: set[int] = set()
     cursor.execute(
-        "SELECT DISTINCT year FROM dbo.balance_opening WHERE country_id = ?",
+        "SELECT DISTINCT o.year FROM dbo.balance_opening o "
+        "JOIN dbo.dim_category d ON d.category_id = o.category_id "
+        "WHERE d.country_id = ?",
         (cid,),
     )
     years.update(int(r[0]) for r in cursor.fetchall() if r and r[0] is not None)
     cursor.execute(
-        "SELECT DISTINCT year FROM dbo.journal WHERE country_id = ?",
+        "SELECT DISTINCT j.year FROM dbo.journal j "
+        "JOIN dbo.dim_category d ON d.category_id = j.category_from "
+        "WHERE d.country_id = ?",
         (cid,),
     )
     years.update(int(r[0]) for r in cursor.fetchall() if r and r[0] is not None)
@@ -1469,8 +1475,10 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
     written = 0
     for year in sorted(years):
         cursor.execute(
-            "DELETE FROM dbo.journal WHERE country_id = ? AND year = ? "
-            "AND description LIKE ? ESCAPE '!'",
+            "DELETE j FROM dbo.journal j "
+            "JOIN dbo.dim_category d ON d.category_id = j.category_from "
+            "WHERE d.country_id = ? AND j.year = ? "
+            "AND j.description LIKE ? ESCAPE '!'",
             (cid, int(year), like),
         )
         cents = present_balance_cents(cid, int(year), cursor)
@@ -1510,12 +1518,11 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
             )
             cursor.execute(
                 "INSERT INTO dbo.journal "
-                "(year, country_id, date, category_from, category_to, "
+                "(year, date, category_from, category_to, "
                 "amount, description, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
+                "VALUES (?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
                 (
                     int(year),
-                    cid,
                     f"{int(year)}-12-31",
                     van_id,
                     naar_id,
@@ -1546,15 +1553,17 @@ def result_overlay_cents(
         cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
         if cursor.fetchone()[0] is None:
             return {}
-    dateq = " AND date <= ?" if as_of is not None else ""
+    journal_date = " AND j.date <= ?" if as_of is not None else ""
+    mirror_date = " AND date <= ?" if as_of is not None else ""
     params: list[object] = [int(country_id), int(year)]
     if as_of is not None:
         params.append(as_of)
     overlay: dict[int, int] = {}
     codes = category_local_codes(country_id, cursor)
     cursor.execute(
-        "SELECT category_from, category_to, amount FROM dbo.journal "
-        f"WHERE country_id = ? AND year = ?{dateq}",
+        "SELECT j.category_from, j.category_to, j.amount FROM dbo.journal j "
+        "JOIN dbo.dim_category d ON d.category_id = j.category_from "
+        f"WHERE d.country_id = ? AND j.year = ?{journal_date}",
         tuple(params),
     )
     for cat_from, cat_to, amount in cursor.fetchall():
@@ -1571,7 +1580,7 @@ def result_overlay_cents(
             overlay[dst] = overlay.get(dst, 0) + _to_cents(dst_delta)
     cursor.execute(
         "SELECT category_id, amount FROM dbo.transaction_mirror "
-        f"WHERE country_id = ? AND year = ?{dateq}",
+        f"WHERE country_id = ? AND year = ?{mirror_date}",
         tuple(params),
     )
     for category_id, amount in cursor.fetchall():

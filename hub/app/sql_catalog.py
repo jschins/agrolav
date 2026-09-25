@@ -715,7 +715,12 @@ def clear_bookings(
                     tuple(account_ids),
                 )
         if journal:
-            _delete_country_rows(cursor, "dbo.journal", country_id)
+            cursor.execute(
+                "DELETE j FROM dbo.journal j "
+                "JOIN dbo.dim_category d ON d.category_id = j.category_from "
+                "WHERE d.country_id = ?",
+                (int(country_id),),
+            )
         if afschrijvingen:
             _delete_country_rows(cursor, "dbo.afschrijvingen", country_id)
         if person_ids and (statements or categorizations):
@@ -2342,10 +2347,11 @@ def export_resultaat_excel_data(
             if cursor.fetchone()[0] is not None:
                 cursor.execute(
                     """
-                    SELECT category_from, category_to, amount, MONTH(date)
-                    FROM dbo.journal
-                    WHERE country_id = ? AND year = ?
-                      AND MONTH(date) BETWEEN 1 AND ?
+                    SELECT j.category_from, j.category_to, j.amount, MONTH(j.date)
+                    FROM dbo.journal j
+                    JOIN dbo.dim_category d ON d.category_id = j.category_from
+                    WHERE d.country_id = ? AND j.year = ?
+                      AND MONTH(j.date) BETWEEN 1 AND ?
                     """,
                     (int(country_id), int(year), month_count),
                 )
@@ -2722,8 +2728,9 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         journal_exists = cursor.fetchone()[0] is not None
         if mirror_ids and journal_exists:
             cursor.execute(
-                "SELECT category_from, category_to, amount FROM dbo.journal "
-                "WHERE country_id = ? AND year = ?",
+                "SELECT j.category_from, j.category_to, j.amount FROM dbo.journal j "
+                "JOIN dbo.dim_category d ON d.category_id = j.category_from "
+                "WHERE d.country_id = ? AND j.year = ?",
                 (int(country_id), int(year)),
             )
             for cat_from, cat_to, amount in cursor.fetchall():
