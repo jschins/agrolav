@@ -38,6 +38,44 @@ h1 small { font-weight: 400; color: #666; }
 .bal-actions-list button:hover:not(:disabled) { background: #eef2ff; }
 .bal-actions-list button:disabled { opacity: 0.6; cursor: default; }
 .sheet-view .toolbar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
+button.info-knob {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 6px 12px;
+  border: 1px solid #8fce8a;
+  background: #c8f5c4;
+}
+button.info-knob:hover { background: #b6efb0; }
+.note-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  overflow: auto;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+}
+.note-dialog {
+  width: min(96vw, 40rem);
+  background: #fff;
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.note-dialog h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
+.note-dialog p { margin: 0 0 0.75rem; line-height: 1.45; }
+.note-dialog ul { margin: 0 0 0.75rem; padding-left: 1.25rem; }
+.note-close {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 6px 12px;
+  border: 1px solid #c4c9d0;
+  background: #fff;
+}
 .toolbar .balance-badge { font-size: 0.9rem; }
 .balance-badge.ok { color: #1a7f37; font-weight: 600; }
 .balance-badge.bad { color: #b42318; font-weight: 600; }
@@ -63,18 +101,30 @@ td.code { color: #666; width: 3.5em; }
 .ok { color: #1a7f37; background: #e6f4ea; border: 1px solid #b7e0c3; padding: 10px 12px; border-radius: 6px; margin-bottom: 16px; }
 
 /* --- Subadministratie popup --- */
+button.journal-amount,
 button.subadmin-amount {
   font: inherit;
-  color: #2563eb;
   text-decoration: underline;
   background: none;
   border: none;
   padding: 0;
   cursor: pointer;
 }
-button.subadmin-amount:hover { color: #1e40af; }
+button.journal-amount {
+  color: #2563eb;
+}
+button.subadmin-amount {
+  color: #15803d;
+}
+button.journal-amount.subadmin-amount {
+  color: #2563eb;
+  text-decoration-color: #15803d;
+}
+button.journal-amount:hover { color: #1e40af; }
+button.subadmin-amount:hover { color: #166534; }
+button.journal-amount:focus-visible,
 button.subadmin-amount:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid currentColor;
   outline-offset: 2px;
   border-radius: 2px;
 }

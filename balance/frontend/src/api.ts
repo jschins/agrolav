@@ -57,7 +57,14 @@ export function getYears(): Promise<YearsResponse> {
   return getJson("/api/balance/years");
 }
 
-export function getMeta(): Promise<{ country_id: number; slug: string; title: string }> {
+export function getMeta(): Promise<{
+  country_id: number;
+  slug: string;
+  title: string;
+  color_convention_title?: string;
+  color_convention_body?: string;
+  close_label?: string;
+}> {
   return getJson("/api/balance/meta");
 }
 

@@ -317,9 +317,42 @@ FROM (VALUES
     ('Maximum amount', 'Maximaal bedrag'),
     ('Apply', 'Toepassen'),
     ('From scratch', 'Vanaf nul'),
-    ('Incremental', 'Incrementeel')
+    ('Incremental', 'Incrementeel'),
+    ('Color convention', 'Kleurconventie')
 ) AS v (term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
+);
+GO
+
+INSERT INTO dbo.language_long (term_key, term_lang1, term_lang2)
+SELECT v.term_key, v.term_lang1, v.term_lang2
+FROM (VALUES
+    (
+        N'color convention',
+        N'Green underlined amounts are taken from a sub-ledger.
+Blue underlined amounts are taken from journal entries (both manual and automatic).
+
+*Legend*
+Manual journal entries are ledger posts with a fixed amount.
+Automatic journal entries are ledger posts with percentages of
+- either the current value of a ledger category (flag set to 1)
+- or the sum of all transactions booked on that ledger category in this year (flag set to 0)
+
+The distinction between the flags makes it possible to depreciate more in the first year than in later years.',
+        N'Groen onderlijnde bedragen zijn genomen van een subadministratie
+Blauw onderlijnde bedragen van journaalposten (zowel handmatig als automatisch)
+
+*Legenda*
+Handmatige journaalposten betreffen grootboekposten met vaste bedrag
+Automatische journaalposten betreffen grootboekposten met percentages van
+- ofwel de actuele waarde van een grootboekcategorie (vlag op 1)
+- ofwel de som van alle op die grootboekcategorie in dit jaar geboekte transacties (vlag op 0)
+
+Het onderscheid in de vlaggen maakt het mogelijk om het eerste jaar meer af te schrijven dan in latere jaren.'
+    )
+) AS v (term_key, term_lang1, term_lang2)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.language_long l WHERE l.term_key = v.term_key
 );
 GO

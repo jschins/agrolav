@@ -349,6 +349,88 @@ def country_title(country_id: int) -> str:
     return title or str(row[1] or "")
 
 
+_COLOR_CONVENTION_NL = """Groen onderlijnde bedragen zijn genomen van een subadministratie
+Blauw onderlijnde bedragen van journaalposten (zowel handmatig als automatisch)
+
+*Legenda*
+Handmatige journaalposten betreffen grootboekposten met vaste bedrag
+Automatische journaalposten betreffen grootboekposten met percentages van
+- ofwel de actuele waarde van een grootboekcategorie (vlag op 1)
+- ofwel de som van alle op die grootboekcategorie in dit jaar geboekte transacties (vlag op 0)
+
+Het onderscheid in de vlaggen maakt het mogelijk om het eerste jaar meer af te schrijven dan in latere jaren."""
+
+_COLOR_CONVENTION_EN = """Green underlined amounts are taken from a sub-ledger.
+Blue underlined amounts are taken from journal entries (both manual and automatic).
+
+*Legend*
+Manual journal entries are ledger posts with a fixed amount.
+Automatic journal entries are ledger posts with percentages of
+- either the current value of a ledger category (flag set to 1)
+- or the sum of all transactions booked on that ledger category in this year (flag set to 0)
+
+The distinction between the flags makes it possible to depreciate more in the first year than in later years."""
+
+
+def color_convention(country_id: int) -> dict[str, str]:
+    """Title and body for the sheet color-convention note, in the country language."""
+    title = "Kleurconventie"
+    body = _COLOR_CONVENTION_NL
+    close = "Sluiten"
+    try:
+        with connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT language_id FROM dbo.country WHERE country_id = ?",
+                int(country_id),
+            )
+            row = cur.fetchone()
+            lid = int(row[0]) if row and row[0] is not None else 2
+            if lid < 1:
+                lid = 1
+            cur.execute(
+                """
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'language'
+                  AND COLUMN_NAME = ?
+                """,
+                f"term_lang{lid}",
+            )
+            if cur.fetchone() is None:
+                lid = 1
+            col = f"term_lang{lid}"
+            cur.execute(
+                f"SELECT {col} FROM dbo.language WHERE term_lang1 = ?",
+                "Color convention",
+            )
+            found = cur.fetchone()
+            if found and str(found[0] or "").strip():
+                title = str(found[0]).strip()
+            elif lid == 1:
+                title = "Color convention"
+            cur.execute(
+                f"SELECT {col} FROM dbo.language_long WHERE term_key = ?",
+                "color convention",
+            )
+            found = cur.fetchone()
+            if found and str(found[0] or "").strip():
+                body = str(found[0]).strip()
+            elif lid == 1:
+                body = _COLOR_CONVENTION_EN
+            cur.execute(
+                f"SELECT {col} FROM dbo.language WHERE term_lang1 = ?",
+                "Close",
+            )
+            found = cur.fetchone()
+            if found and str(found[0] or "").strip():
+                close = str(found[0]).strip()
+            elif lid == 1:
+                close = "Close"
+    except Exception:  # noqa: BLE001
+        pass
+    return {"title": title, "body": body, "close": close}
+
+
 def balance_country_by_slug(slug: str) -> int | None:
     """Country id for a URL slug (``dbo.country.username``) with balance.
 
@@ -794,14 +876,11 @@ def post_popup(
     local_code: int,
     as_of: str | None = None,
 ) -> dict[str, Any]:
-    """Rows for one sheet amount: subadministratie names, else afschrijving journal."""
+    """Journal rows (blue) and ``dbo.subadministratie`` rows (green) for one code."""
     code = int(local_code)
     names = list_subadministratie(country_id, code)
     by_name: dict[str, float] = {}
     for row in names:
-        key = str(row["name"])
-        by_name[key] = by_name.get(key, 0.0) + float(row["amount"])
-    for row in list_category_transactions(country_id, code, year, as_of):
         key = str(row["name"])
         by_name[key] = by_name.get(key, 0.0) + float(row["amount"])
     people = [
@@ -821,31 +900,26 @@ def post_popup(
 
 
 def list_afschrijvingen(country_id: int, year: int) -> dict[str, Any]:
-    """FROM local_codes from ``dbo.afschrijvingen.local_code_van`` and those journals."""
-    from_codes: list[int] = []
+    """Every ``dbo.journal`` row for the country and year.
+
+    ``from_codes`` are the local codes on ``category_from``. Those amounts
+    are the blue links on the sheet. ``dbo.afschrijvingen`` is not read here.
+    """
     journals: list[dict[str, Any]] = []
     labels = _category_labels(country_id)
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT OBJECT_ID(N'dbo.afschrijvingen', N'U')")
+        cur.execute("SELECT OBJECT_ID(N'dbo.journal', N'U')")
         row = cur.fetchone()
         if row is None or row[0] is None:
             return {"from_codes": [], "journals": []}
-        cur.execute(
-            "SELECT DISTINCT local_code_van FROM dbo.afschrijvingen "
-            "WHERE country_id = ? ORDER BY local_code_van",
-            country_id,
-        )
-        from_codes = [int(r[0]) for r in cur.fetchall() if r and r[0] is not None]
         local_codes = shared_category_local_codes(country_id, cur)
         cur.execute(
             "SELECT journal_id, date, category_from, category_to, amount, description "
             "FROM dbo.journal WHERE country_id = ? AND year = ? "
-            "AND description LIKE ? ESCAPE '!' "
             "ORDER BY date, journal_id",
             country_id,
             year,
-            afschrijving_like_pattern(),
         )
         for journal_id, date, cat_from, cat_to, amount, desc in cur.fetchall():
             src, dst = int(cat_from), int(cat_to)
@@ -859,6 +933,7 @@ def list_afschrijvingen(country_id: int, year: int) -> dict[str, Any]:
                 "amount": float(amount),
                 "description": str(desc or ""),
             })
+    from_codes = sorted({int(row["category_from"]) for row in journals})
     return {"from_codes": from_codes, "journals": journals}
 
 

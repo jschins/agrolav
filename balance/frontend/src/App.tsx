@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   getDates,
   getMeta,
@@ -35,6 +35,89 @@ function fmtDate(iso: string): string {
   return `${d}-${m}-${y}`;
 }
 
+function marked(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const re = /\*([^*]+)\*/g;
+  let last = 0;
+  let key = 0;
+  for (const match of text.matchAll(re)) {
+    const start = match.index ?? 0;
+    if (start > last) nodes.push(text.slice(last, start));
+    nodes.push(<strong key={key}>{match[1]}</strong>);
+    key += 1;
+    last = start + match[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes.length ? nodes : [text];
+}
+
+function ColorNote({
+  title,
+  body,
+  closeLabel,
+  onClose,
+}: {
+  title: string;
+  body: string;
+  closeLabel: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const blocks: ReactNode[] = [];
+  let index = 0;
+  let key = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+    if (line.startsWith("- ")) {
+      const items: string[] = [];
+      while (index < lines.length && lines[index].startsWith("- ")) {
+        items.push(lines[index].slice(2));
+        index += 1;
+      }
+      blocks.push(
+        <ul key={key}>
+          {items.map((item, itemKey) => (
+            <li key={itemKey}>{marked(item)}</li>
+          ))}
+        </ul>
+      );
+      key += 1;
+      continue;
+    }
+    blocks.push(<p key={key}>{marked(line.trim())}</p>);
+    key += 1;
+    index += 1;
+  }
+  return (
+    <div className="note-overlay" onClick={onClose}>
+      <div
+        className="note-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2>{title}</h2>
+        {blocks}
+        <button type="button" className="note-close" onClick={onClose}>
+          {closeLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function isPlug(line: BalanceSheet["activa"][number]): boolean {
   return (
     line.role === "equity" ||
@@ -53,13 +136,15 @@ function SideTable({
   title,
   lines,
   total,
-  clickableCodes,
+  journalCodes,
+  subadminCodes,
   onOpen,
 }: {
   title: string;
   lines: BalanceSheet["activa"];
   total: number;
-  clickableCodes: Set<number>;
+  journalCodes: Set<number>;
+  subadminCodes: Set<number>;
   onOpen: (code: number, label: string) => void;
 }) {
   return (
@@ -81,10 +166,13 @@ function SideTable({
               <td className="code">{line.code}</td>
               <td>{line.label}</td>
               <td className={amountClass(line)}>
-                {clickableCodes.has(code) ? (
+                {journalCodes.has(code) || subadminCodes.has(code) ? (
                   <button
                     type="button"
-                    className="subadmin-amount"
+                    className={[
+                      journalCodes.has(code) ? "journal-amount" : "",
+                      subadminCodes.has(code) ? "subadmin-amount" : "",
+                    ].filter(Boolean).join(" ")}
                     onClick={() => onOpen(code, line.label)}
                   >
                     {EUR.format(line.amount)}
@@ -116,6 +204,10 @@ export default function App() {
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [noteTitle, setNoteTitle] = useState("Kleurconventie");
+  const [noteBody, setNoteBody] = useState("");
+  const [closeLabel, setCloseLabel] = useState("Sluiten");
+  const [noteOpen, setNoteOpen] = useState(false);
   const [subadminRows, setSubadminRows] = useState<SubadministratieRow[]>([]);
   const [openCode, setOpenCode] = useState<number | null>(null);
   const [openLabel, setOpenLabel] = useState("");
@@ -134,7 +226,12 @@ export default function App() {
 
   useEffect(() => {
     getMeta()
-      .then((m) => setTitle(m.title || ""))
+      .then((m) => {
+        setTitle(m.title || "");
+        if (m.color_convention_title) setNoteTitle(m.color_convention_title);
+        if (m.color_convention_body) setNoteBody(m.color_convention_body);
+        if (m.close_label) setCloseLabel(m.close_label);
+      })
       .catch(() => setTitle(""));
     getSubadministratie()
       .then((r) => setSubadminRows(r.rows))
@@ -171,12 +268,17 @@ export default function App() {
     if (year != null) load(year, d);
   };
 
-  const clickableCodes = useMemo(() => {
-    const codes = new Set(subadminRows.map((r) => Number(r.local_code)));
-    for (const code of sheet?.subadministratie?.local_codes ?? []) {
+  const journalCodes = useMemo(() => {
+    const codes = new Set<number>();
+    for (const code of sheet?.afschrijvingen?.from_codes ?? []) {
       codes.add(Number(code));
     }
-    for (const code of sheet?.afschrijvingen?.from_codes ?? []) {
+    return codes;
+  }, [sheet]);
+
+  const subadminCodes = useMemo(() => {
+    const codes = new Set(subadminRows.map((r) => Number(r.local_code)));
+    for (const code of sheet?.subadministratie?.local_codes ?? []) {
       codes.add(Number(code));
     }
     return codes;
@@ -310,9 +412,25 @@ export default function App() {
                 ))}
               </select>
             )}
+            <button
+              type="button"
+              className="info-knob"
+              onClick={() => setNoteOpen(true)}
+            >
+              {noteTitle}
+            </button>
           </div>
         )}
       </header>
+
+      {noteOpen ? (
+        <ColorNote
+          title={noteTitle}
+          body={noteBody}
+          closeLabel={closeLabel}
+          onClose={() => setNoteOpen(false)}
+        />
+      ) : null}
 
       {error && <div className="error">{error}</div>}
 
@@ -324,14 +442,16 @@ export default function App() {
             title="Activa"
             lines={sheet.activa}
             total={sheet.total_activa}
-            clickableCodes={clickableCodes}
+            journalCodes={journalCodes}
+            subadminCodes={subadminCodes}
             onOpen={openPopup}
           />
           <SideTable
             title="Passiva"
             lines={sheet.passiva}
             total={sheet.total_passiva}
-            clickableCodes={clickableCodes}
+            journalCodes={journalCodes}
+            subadminCodes={subadminCodes}
             onOpen={openPopup}
           />
         </div>
@@ -351,7 +471,12 @@ export default function App() {
           >
             <div className="subadmin-head">
               <h2>
-                {popupJournals.length ? "Journaal" : "Subadministratie"} {openCode}
+                {popupJournals.length && popupPeople.length
+                  ? "Journaal en subadministratie"
+                  : popupJournals.length
+                    ? "Journaal"
+                    : "Subadministratie"}{" "}
+                {openCode}
                 {openLabel ? ` · ${openLabel}` : ""}
               </h2>
               <button
@@ -393,7 +518,8 @@ export default function App() {
                     ))}
                   </tbody>
                 </table>
-              ) : popupPeople.length ? (
+              ) : null}
+              {popupPeople.length ? (
                 <table className="subadmin-table">
                   <thead>
                     <tr>
@@ -422,13 +548,16 @@ export default function App() {
                     </tr>
                   </tfoot>
                 </table>
-              ) : popupLoading ? (
-                <p className="subadmin-empty">Laden…</p>
-              ) : popupError ? (
-                <p className="subadmin-empty">{popupError}</p>
-              ) : (
-                <p className="subadmin-empty">Geen regels.</p>
-              )}
+              ) : null}
+              {!popupJournals.length && !popupPeople.length ? (
+                popupLoading ? (
+                  <p className="subadmin-empty">Laden…</p>
+                ) : popupError ? (
+                  <p className="subadmin-empty">{popupError}</p>
+                ) : (
+                  <p className="subadmin-empty">Geen regels.</p>
+                )
+              ) : null}
             </div>
             <div className="subadmin-foot">
               <button type="button" className="subadmin-ok" onClick={closePopup}>

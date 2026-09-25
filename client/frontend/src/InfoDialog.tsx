@@ -2,9 +2,20 @@ import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 function inlineMarked(text: string): ReactNode[] {
-  return text.split("`").map((part, index) =>
-    index % 2 === 1 ? <code key={index}>{part}</code> : part
-  );
+  const nodes: ReactNode[] = [];
+  const re = /`([^`]*)`|\*([^*]+)\*/g;
+  let last = 0;
+  let key = 0;
+  for (const match of text.matchAll(re)) {
+    const start = match.index ?? 0;
+    if (start > last) nodes.push(text.slice(last, start));
+    if (match[1] != null) nodes.push(<code key={key}>{match[1]}</code>);
+    else nodes.push(<strong key={key}>{match[2] ?? ""}</strong>);
+    key += 1;
+    last = start + match[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes.length ? nodes : [text];
 }
 
 function PriorityBody({ text }: { text: string }) {

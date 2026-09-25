@@ -179,10 +179,18 @@ def _present_sheet_errors(what: str):
 @app.get("/balance/{slug}/api/balance/meta")
 @_present_sheet_errors("Balance meta")
 def balance_meta(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]:
-    from app.balance import country_title
+    from app.balance import color_convention, country_title
 
     country_id = resolve_country(slug)
-    return {"country_id": country_id, "slug": slug, "title": country_title(country_id)}
+    note = color_convention(country_id)
+    return {
+        "country_id": country_id,
+        "slug": slug,
+        "title": country_title(country_id),
+        "color_convention_title": note["title"],
+        "color_convention_body": note["body"],
+        "close_label": note["close"],
+    }
 
 
 @app.get("/balance/{slug}/api/balance/years")
