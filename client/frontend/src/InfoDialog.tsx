@@ -1,20 +1,68 @@
 import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+function sizeStyle(points: number): { fontSize: string } | undefined {
+  if (points === 0) return undefined;
+  return { fontSize: `calc(1em + ${points}pt)` };
+}
+
 function inlineMarked(text: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const re = /`([^`]*)`|\*([^*]+)\*/g;
-  let last = 0;
+  let points = 0;
+  let i = 0;
   let key = 0;
-  for (const match of text.matchAll(re)) {
-    const start = match.index ?? 0;
-    if (start > last) nodes.push(text.slice(last, start));
-    if (match[1] != null) nodes.push(<code key={key}>{match[1]}</code>);
-    else nodes.push(<strong key={key}>{match[2] ?? ""}</strong>);
+  let plain = "";
+
+  const flush = (bold: boolean, code: boolean) => {
+    if (!plain) return;
+    const style = sizeStyle(points);
+    const content = plain;
+    plain = "";
+    if (code) nodes.push(<code key={key} style={style}>{content}</code>);
+    else if (bold) nodes.push(<strong key={key} style={style}>{content}</strong>);
+    else if (style) nodes.push(<span key={key} style={style}>{content}</span>);
+    else nodes.push(content);
     key += 1;
-    last = start + match[0].length;
+  };
+
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === ">") {
+      flush(false, false);
+      points += 2;
+      i += 1;
+      continue;
+    }
+    if (ch === "<") {
+      flush(false, false);
+      points -= 2;
+      i += 1;
+      continue;
+    }
+    if (ch === "*") {
+      const end = text.indexOf("*", i + 1);
+      if (end > i + 1) {
+        flush(false, false);
+        plain = text.slice(i + 1, end);
+        flush(true, false);
+        i = end + 1;
+        continue;
+      }
+    }
+    if (ch === "`") {
+      const end = text.indexOf("`", i + 1);
+      if (end >= i + 1) {
+        flush(false, false);
+        plain = text.slice(i + 1, end);
+        flush(false, true);
+        i = end + 1;
+        continue;
+      }
+    }
+    plain += ch;
+    i += 1;
   }
-  if (last < text.length) nodes.push(text.slice(last));
+  flush(false, false);
   return nodes.length ? nodes : [text];
 }
 
