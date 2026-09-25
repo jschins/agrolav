@@ -36,6 +36,8 @@ import {
   recalculate,
   recalculateFromScratch,
   recalculateIncremental,
+  pendingTermChanges,
+  discardTermChanges,
   crossPostings,
   wipeYear,
   smallExpenses,
@@ -1550,12 +1552,19 @@ function SyncNotifyShell({
   const [dataRev, setDataRev] = useState(0);
   const dataEpochRef = useRef<number | null>(null);
   const [menuTerms, setMenuTerms] = useState<Record<string, string>>({});
+  const [languageLong, setLanguageLong] = useState<Record<string, string>>({});
+  const [termLogoutOpen, setTermLogoutOpen] = useState(false);
+  const [termLogoutBusy, setTermLogoutBusy] = useState(false);
+  const [termLogoutError, setTermLogoutError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     getSettings()
       .then((res) => {
-        if (!cancelled) setMenuTerms(res.table_header_terms);
+        if (!cancelled) {
+          setMenuTerms(res.table_header_terms);
+          setLanguageLong(res.language_long ?? {});
+        }
       })
       .catch(() => {
         if (!cancelled) setMenuTerms({});
@@ -1838,6 +1847,45 @@ function SyncNotifyShell({
     });
   }
 
+  function finishLogout() {
+    onLogout?.();
+  }
+
+  function requestLogout() {
+    if (termLogoutBusy) return;
+    setTermLogoutError(null);
+    pendingTermChanges()
+      .then((res) => {
+        if ((res.changes ?? 0) > 0) setTermLogoutOpen(true);
+        else finishLogout();
+      })
+      .catch(() => setTermLogoutOpen(true));
+  }
+
+  function applyTermChangesAndLogout() {
+    setTermLogoutBusy(true);
+    setTermLogoutError(null);
+    recalculateIncremental()
+      .then(() => {
+        setTermLogoutOpen(false);
+        finishLogout();
+      })
+      .catch((e: Error) => setTermLogoutError(e.message))
+      .finally(() => setTermLogoutBusy(false));
+  }
+
+  function discardTermChangesAndLogout() {
+    setTermLogoutBusy(true);
+    setTermLogoutError(null);
+    discardTermChanges()
+      .then(() => {
+        setTermLogoutOpen(false);
+        finishLogout();
+      })
+      .catch((e: Error) => setTermLogoutError(e.message))
+      .finally(() => setTermLogoutBusy(false));
+  }
+
   const showBar =
     Boolean(status?.enabled) ||
     isCountry ||
@@ -1957,12 +2005,12 @@ function SyncNotifyShell({
       items.push({
         id: "logout",
         label: tableHeaderTerm(menuTerms, "Log out"),
-        onClick: onLogout,
+        onClick: requestLogout,
       });
     }
     if (status?.full_menu === true) return items;
     return items.filter((item) => GUEST_MENU_IDS.has(item.id));
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, status?.full_menu, menuTerms]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, status?.full_menu, menuTerms, termLogoutBusy]);
 
   function runMenuItem(item: HeaderAction) {
     item.onClick?.();
@@ -2085,6 +2133,32 @@ function SyncNotifyShell({
           </div>
         </div>
       )}
+      {termLogoutOpen ? (
+        <div className="priority-rules-overlay" role="alertdialog" aria-modal="true">
+          <div className="priority-rules-dialog wipe-choices term-logout-dialog">
+            <RichLabel text={languageLong["logout term changes"] ?? ""} />
+            {termLogoutError ? <p>{termLogoutError}</p> : null}
+            <div className="wipe-choice-actions">
+              <button
+                type="button"
+                className="priority-rules-close"
+                disabled={termLogoutBusy}
+                onClick={applyTermChangesAndLogout}
+              >
+                {tableHeaderTerm(menuTerms, "Apply term changes")}
+              </button>
+              <button
+                type="button"
+                className="priority-rules-close"
+                disabled={termLogoutBusy}
+                onClick={discardTermChangesAndLogout}
+              >
+                {tableHeaderTerm(menuTerms, "Discard term changes")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {children(brandName, activeYear, bankView, dataRev, banksState, bankOptions, menuTerms)}
     </div>
     </NoteRescoreQueuedContext.Provider>

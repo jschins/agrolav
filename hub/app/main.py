@@ -815,6 +815,31 @@ def api_recalculate_incremental(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/api/local/{center}/term-changes")
+def api_term_changes(
+    center: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.sql_catalog import country_username_for_scope, term_change_count
+
+    country = country_username_for_scope(center)
+    return {"changes": term_change_count(country)}
+
+
+@app.post("/api/local/{center}/term-changes/discard")
+def api_discard_term_changes(
+    center: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.sql_catalog import country_username_for_scope, discard_term_changes
+
+    country = country_username_for_scope(center)
+    try:
+        return {"ok": True, "discarded": discard_term_changes(country)}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/local/{center}/cross-postings")
 def api_cross_postings(
     center: str,

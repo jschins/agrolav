@@ -265,6 +265,35 @@ def country_for_center(center: str) -> str | None:
         return None
 
 
+def country_username_for_scope(center: str) -> str:
+    """Country login name for a center path, or the name itself when it is a country."""
+    found = country_for_center(center)
+    if found:
+        return found
+    name = (center or "").strip()
+    if not name or not _sql_ready():
+        return ""
+
+    def _run() -> str:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            SELECT username FROM dbo.country
+            WHERE username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (name,),
+        )
+        row = cursor.fetchone()
+        if row and str(row[0] or "").strip():
+            return str(row[0]).strip()
+        return ""
+
+    try:
+        return _sql_retry(_run)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def center_exists(center: str) -> bool:
     name = (center or "").strip()
     if not name or not _sql_ready():
@@ -1482,6 +1511,92 @@ def load_term_changes(country: str) -> list[dict[str, Any]]:
     except Exception as exc:  # noqa: BLE001
         print(f"sql catalog: failed to load term changes: {exc}")
         return []
+
+
+def term_change_count(country: str) -> int:
+    """Pending term edits for one country. ``0`` when the log table is absent."""
+    return len(load_term_changes(country))
+
+
+def discard_term_changes(country: str) -> int:
+    """Undo pending term edits and clear them. Returns the number of edits undone."""
+    name = (country or "").strip()
+    if not name or not _sql_ready():
+        return 0
+
+    def _run() -> int:
+        from app import user_store
+
+        conn = user_store._sql_connect()
+        cursor = conn.cursor()
+        was = conn.autocommit
+        try:
+            conn.autocommit = False
+            if not term_change_table(cursor):
+                return 0
+            cursor.execute(
+                """
+                SELECT tc.term_change_id, tc.category_id, tc.person_id,
+                       tc.account_id, tc.term, tc.added
+                FROM dbo.term_change tc
+                JOIN dbo.dim_category d ON d.category_id = tc.category_id
+                JOIN dbo.country c ON c.country_id = d.country_id
+                WHERE c.username = ? COLLATE Latin1_General_CI_AI
+                ORDER BY tc.term_change_id DESC
+                """,
+                (name,),
+            )
+            rows = list(cursor.fetchall())
+            for _change_id, category_id, person_id, account_id, term, added in rows:
+                scope = (
+                    int(category_id),
+                    str(term or "").strip().lower(),
+                    person_id,
+                    person_id,
+                    account_id,
+                    account_id,
+                )
+                match = (
+                    "category_id = ? AND term = ? "
+                    "AND ((? IS NULL AND person_id IS NULL) OR person_id = ?) "
+                    "AND ((? IS NULL AND account_id IS NULL) OR account_id = ?)"
+                )
+                if added:
+                    cursor.execute(f"DELETE FROM dbo.category_term WHERE {match}", scope)
+                    continue
+                cursor.execute(f"SELECT 1 FROM dbo.category_term WHERE {match}", scope)
+                if cursor.fetchone():
+                    continue
+                cursor.execute(
+                    """
+                    INSERT INTO dbo.category_term
+                        (category_id, person_id, account_id, term, sort_order)
+                    VALUES (?, ?, ?, ?, 0)
+                    """,
+                    (int(category_id), person_id, account_id, str(term or "").strip().lower()),
+                )
+            if rows:
+                marks = ",".join("?" for _ in rows)
+                cursor.execute(
+                    f"DELETE FROM dbo.term_change WHERE term_change_id IN ({marks})",
+                    [int(row[0]) for row in rows],
+                )
+            conn.commit()
+            _CAT_CACHE.clear()
+            return len(rows)
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                conn.autocommit = was
+            except Exception:
+                pass
+
+    return _sql_retry(_run)
 
 
 def clear_term_changes(change_ids: list[int]) -> None:

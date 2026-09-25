@@ -490,3 +490,28 @@ SET term_lang1 = N'<p><strong style="color:#15803d">Green underlined amounts</st
 <p>Een subadministratie houdt bij op welke wijze een grootboekcategorie is opgebouwd; dit is typisch het geval voor particuliere crediteuren en debiteuren (waarvoor het immers niet zinvol is om eenieder van een eigen grootboekcategorie te voorzien)</p>'
 WHERE term_key = N'color convention';
 GO
+
+INSERT INTO dbo.language (term_lang1, term_lang2)
+SELECT v.term_lang1, v.term_lang2
+FROM (VALUES
+    (N'Apply term changes', N'Pas termwijzigingen toe'),
+    (N'Discard term changes', N'Verwerp termwijzigingen')
+) AS v (term_lang1, term_lang2)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
+);
+GO
+
+INSERT INTO dbo.language_long (term_key, term_lang1, term_lang2)
+SELECT v.term_key, v.term_lang1, v.term_lang2
+FROM (VALUES
+    (
+        N'logout term changes',
+        N'<p>The categories have not been recalculated. Apply the term changes to the bookings, or discard the term changes.</p>',
+        N'<p>De categorieën zijn niet herberekend. Pas de termwijzigingen toe op de boekingen, of verwerp de termwijzigingen.</p>'
+    )
+) AS v (term_key, term_lang1, term_lang2)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.language_long l WHERE l.term_key = v.term_key
+);
+GO

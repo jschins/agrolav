@@ -201,6 +201,14 @@ export function recalculateIncremental(): Promise<MatrixResponse> {
   return sendJson("/api/recalculate-incremental", "POST", {});
 }
 
+export function pendingTermChanges(): Promise<{ changes: number }> {
+  return getJson("/api/term-changes");
+}
+
+export function discardTermChanges(): Promise<{ ok: boolean; discarded: number }> {
+  return sendJson("/api/term-changes/discard", "POST", {});
+}
+
 export function crossPostings(): Promise<{ updated: number }> {
   return sendJson("/api/cross-postings", "POST", {});
 }

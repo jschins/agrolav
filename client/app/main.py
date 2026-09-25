@@ -857,6 +857,26 @@ def api_recalculate() -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+@app.get("/api/term-changes")
+def api_term_changes() -> dict[str, Any]:
+    from app.centrale_sync import hub_get
+
+    try:
+        return hub_get("/term-changes")
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.post("/api/term-changes/discard")
+def api_discard_term_changes() -> dict[str, Any]:
+    from app.centrale_sync import hub_post
+
+    try:
+        return hub_post("/term-changes/discard", {})
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 @app.post("/api/recalculate-incremental")
 def api_recalculate_incremental() -> dict[str, Any]:
     from app.centrale_sync import hub_post, scope_matrix
