@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getDates,
   getMeta,
@@ -35,60 +35,6 @@ function fmtDate(iso: string): string {
   return `${d}-${m}-${y}`;
 }
 
-function sizeStyle(points: number): { fontSize: string } | undefined {
-  if (points === 0) return undefined;
-  return { fontSize: `calc(1em + ${points}pt)` };
-}
-
-function marked(text: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  let points = 0;
-  let i = 0;
-  let key = 0;
-  let plain = "";
-
-  const flush = (bold: boolean) => {
-    if (!plain) return;
-    const style = sizeStyle(points);
-    const content = plain;
-    plain = "";
-    if (bold) nodes.push(<strong key={key} style={style}>{content}</strong>);
-    else if (style) nodes.push(<span key={key} style={style}>{content}</span>);
-    else nodes.push(content);
-    key += 1;
-  };
-
-  while (i < text.length) {
-    const ch = text[i];
-    if (ch === ">") {
-      flush(false);
-      points += 2;
-      i += 1;
-      continue;
-    }
-    if (ch === "<") {
-      flush(false);
-      points -= 2;
-      i += 1;
-      continue;
-    }
-    if (ch === "*") {
-      const end = text.indexOf("*", i + 1);
-      if (end > i + 1) {
-        flush(false);
-        plain = text.slice(i + 1, end);
-        flush(true);
-        i = end + 1;
-        continue;
-      }
-    }
-    plain += ch;
-    i += 1;
-  }
-  flush(false);
-  return nodes.length ? nodes : [text];
-}
-
 function ColorNote({
   title,
   body,
@@ -107,36 +53,6 @@ function ColorNote({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  const lines = body.replace(/\r\n/g, "\n").split("\n");
-  const blocks: ReactNode[] = [];
-  let index = 0;
-  let key = 0;
-  while (index < lines.length) {
-    const line = lines[index];
-    if (!line.trim()) {
-      index += 1;
-      continue;
-    }
-    if (line.startsWith("- ")) {
-      const items: string[] = [];
-      while (index < lines.length && lines[index].startsWith("- ")) {
-        items.push(lines[index].slice(2));
-        index += 1;
-      }
-      blocks.push(
-        <ul key={key}>
-          {items.map((item, itemKey) => (
-            <li key={itemKey}>{marked(item)}</li>
-          ))}
-        </ul>
-      );
-      key += 1;
-      continue;
-    }
-    blocks.push(<p key={key}>{marked(line.trim())}</p>);
-    key += 1;
-    index += 1;
-  }
   return (
     <div className="note-overlay" onClick={onClose}>
       <div
@@ -147,7 +63,7 @@ function ColorNote({
         onClick={(e) => e.stopPropagation()}
       >
         <h2>{title}</h2>
-        {blocks}
+        {body ? <div className="lang-html" dangerouslySetInnerHTML={{ __html: body }} /> : null}
         <button type="button" className="note-close" onClick={onClose}>
           {closeLabel}
         </button>

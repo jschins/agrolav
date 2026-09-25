@@ -349,27 +349,33 @@ def country_title(country_id: int) -> str:
     return title or str(row[1] or "")
 
 
-_COLOR_CONVENTION_NL = """Groen onderlijnde bedragen zijn genomen van een subadministratie
-Blauw onderlijnde bedragen van journaalposten (zowel handmatig als automatisch)
+_COLOR_CONVENTION_NL = """<p><strong style="color:#15803d">Groen onderlijnde bedragen</strong> zijn genomen van een subadministratie</p>
+<p><strong style="color:#2563eb">Blauw onderlijnde bedragen</strong> zijn genomen van zowel handmatige als automatische journaalposten</p>
+<p><strong style="font-size:calc(1em + 2pt)">Legenda</strong></p>
+<p>Handmatige journaalposten betreffen vaste bedragen</p>
+<p>Automatische journaalposten betreffen percentages van</p>
+<ul>
+<li>ofwel de actuele waarde van een grootboekcategorie (vlag op 1)</li>
+<li>ofwel de som van alle op die grootboekcategorie in dit jaar geboekte transacties (vlag op 0)</li>
+</ul>
+<p>Het onderscheid in de vlaggen maakt het mogelijk om het eerste jaar meer af te schrijven dan in latere jaren.</p>
+<p>Handmatige en automatische journaalposten zijn alleen zichtbaar in de balans (blauw onderlijnde bedragen)</p>
+<p>Bankafschriften zijn alleen zichtbaar in de resultaten (zwarte bedragen, in tegenstelling tot grijze)</p>
+<p>Een subadministratie houdt bij op welke wijze een grootboekcategorie is opgebouwd; dit is typisch het geval voor particuliere crediteuren en debiteuren (waarvoor het immers niet zinvol is om eenieder van een eigen grootboekcategorie te voorzien)</p>"""
 
-*Legenda*
-Handmatige journaalposten betreffen grootboekposten met vaste bedrag
-Automatische journaalposten betreffen grootboekposten met percentages van
-- ofwel de actuele waarde van een grootboekcategorie (vlag op 1)
-- ofwel de som van alle op die grootboekcategorie in dit jaar geboekte transacties (vlag op 0)
-
-Het onderscheid in de vlaggen maakt het mogelijk om het eerste jaar meer af te schrijven dan in latere jaren."""
-
-_COLOR_CONVENTION_EN = """Green underlined amounts are taken from a sub-ledger.
-Blue underlined amounts are taken from journal entries (both manual and automatic).
-
-*Legend*
-Manual journal entries are ledger posts with a fixed amount.
-Automatic journal entries are ledger posts with percentages of
-- either the current value of a ledger category (flag set to 1)
-- or the sum of all transactions booked on that ledger category in this year (flag set to 0)
-
-The distinction between the flags makes it possible to depreciate more in the first year than in later years."""
+_COLOR_CONVENTION_EN = """<p><strong style="color:#15803d">Green underlined amounts</strong> are taken from a sub-ledger.</p>
+<p><strong style="color:#2563eb">Blue underlined amounts</strong> are taken from both manual and automatic journal entries.</p>
+<p><strong style="font-size:calc(1em + 2pt)">Legend</strong></p>
+<p>Manual journal entries are fixed amounts.</p>
+<p>Automatic journal entries are percentages of</p>
+<ul>
+<li>either the current value of a ledger category (flag set to 1)</li>
+<li>or the sum of all transactions booked on that ledger category in this year (flag set to 0)</li>
+</ul>
+<p>The distinction between the flags makes it possible to depreciate more in the first year than in later years.</p>
+<p>Manual and automatic journal entries are visible only on the balance sheet (blue underlined amounts).</p>
+<p>Bank statements are visible only in the results (black amounts, as opposed to grey ones).</p>
+<p>A sub-ledger records how a ledger category is built up; this is typically the case for private creditors and debtors (for whom it is not useful to give each one a ledger category of their own).</p>"""
 
 
 def color_convention(country_id: int) -> dict[str, str]:

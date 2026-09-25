@@ -1295,7 +1295,7 @@ function ActionsMenu({
                   onPick(item);
                 }}
               >
-                {item.label}
+                <RichLabel text={item.label} />
               </button>
             </li>
           ))}
@@ -2290,6 +2290,11 @@ function tableHeaderTerm(
 ): string {
   const label = terms?.[key]?.trim();
   return label || key;
+}
+
+function RichLabel({ text }: { text: string }) {
+  if (!text.includes("<")) return text;
+  return <span dangerouslySetInnerHTML={{ __html: text }} />;
 }
 
 function uiIsDutch(terms?: Record<string, string>): boolean {
@@ -3614,7 +3619,10 @@ function TermsApp() {
             </button>
           </div>
         </div>
-        <p className="win-hint">{settings?.language_long?.["term window hint"] ?? ""}</p>
+        <div
+          className="win-hint lang-html"
+          dangerouslySetInnerHTML={{ __html: settings?.language_long?.["term window hint"] ?? "" }}
+        />
         <button
           type="button"
           className="sidebar-knob info-knob"
@@ -5049,7 +5057,7 @@ function PTable({
   return (
     <div className="p-panel">
       <button type="button" className="sidebar-knob info-knob" onClick={() => setSignOpen(true)}>
-        {signLabel}
+        <RichLabel text={signLabel} />
       </button>
       {signOpen ? (
         <PriorityRulesDialog
@@ -5079,9 +5087,9 @@ function PTable({
                 <thead>
                   <tr>
                     <th className="num">
-                      {columnHeaderLabel("amount", detail.table_header_terms)}
+                      <RichLabel text={columnHeaderLabel("amount", detail.table_header_terms)} />
                     </th>
-                    <th>{columnHeaderLabel("name", detail.table_header_terms)}</th>
+                    <th><RichLabel text={columnHeaderLabel("name", detail.table_header_terms)} /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5129,7 +5137,7 @@ function PTable({
                       <th key={c} className={columnCellClass(c)}>
                         {c === "iban"
                           ? "IBAN tegenpartij"
-                          : columnHeaderLabel(c, detail.table_header_terms)}
+                          : <RichLabel text={columnHeaderLabel(c, detail.table_header_terms)} />}
                       </th>
                     ))}
                   </tr>

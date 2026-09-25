@@ -989,7 +989,11 @@ th {
 
 .p-panel > .info-knob {
   width: min(100%, 16rem);
+  height: auto;
+  min-height: 2.35rem;
   margin-bottom: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  white-space: normal;
 }
 
 .p-details-row {
