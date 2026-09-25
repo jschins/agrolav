@@ -14,7 +14,7 @@ written with `modification = 1`.
 
 ## Which rows are considered
 
-A country bank is an account whose `dim_category.category_role` starts with
+A country bank is an account whose `dim_category.category_role` is `hd`, starts with
 `unit`, `source`, or `funds`, or whose role is `user` or `unit` plus four
 digits (`user1108`, `unit1108`). The two source accounts and their
 spaarrekening categories are included as well, even when the role does not
@@ -38,14 +38,10 @@ IBAN comparison strips spaces and ignores case. The center of an account is
 
 ## SIa and SIb
 
-`NL84INGB0002801129` is SIa. `NL46INGB0001726568` is SIb.
+`1010` Bank Centrale SIa (`NL84INGB0002801129`) and `1020` Bank Centrale SIb (`NL46INGB0001726568`) are unchanged.
 
 A transfer between these two accounts is two statements, and both are kept.
-The direction of the wire does not put the whole transfer on one category.
-The statement that sits on SIa is local 1099 (category 11099). The statement
-that sits on SIb is local 1100 (category 11100). Money in stays positive and
-money out stays negative, so each category shows that account’s own movements
-and the two totals are opposites.
+The statement on 1010 is local 1099 (category 11099). The statement on 1020 is local 1100 (category 11100). Money in stays positive and money out stays negative.
 
 SIb paid SIa 6.000 (Salarissen, 25-06-2026) and 2.730 (Heijer Bouw, 21-04-2026):
 
@@ -62,20 +58,13 @@ SIa paid SIb 5.652 and 1.276 (Donatus, 04-02-2026):
 The balance sheet prints those same totals. `booking_signed_amount` returns
 `+X` for 1099 and 1100. Other activa codes in 1000–1999 still return `−X`.
 
-## Four digits
+## Source and unitxxxx
 
-This rule runs only when the pair is not the SIa↔SIb pair above.
+A `source` account and a `unit` account with four digits, both in the same center, are booked on those four digits. Both statements take that one category. Country 5 stores `unit1108` as category 11108. A `unit1108` account in the other center is not this rule.
 
-One side must be `NL46INGB0001726568` or `NL84INGB0002801129`. The other
-side’s role must be `user` or `unit` followed by exactly four digits, and
-that account must belong to the same center as that source account. The
-local code is those four digits. Country 5 stores `10000 +` those digits,
-so `unit1108` in SIb’s center, paired with `NL46INGB0001726568`, is
-category 11108. The next country with `has_balance` stores the same local
-code as 21108.
+## hd and unitxxxx
 
-Both statements of the pair are written to that one category. A `user1108`
-account in the other center is not this rule.
+An `hd` account and a `unit` account with four digits are booked on local 1200, whether or not they share a center. Country 5 stores that as category 11200. Both statements take that one category.
 
 A four-digit local code that is itself a live bank category in
 `dbo.mapping_banks` is not treated as a cross-posting category on a later
@@ -83,7 +72,7 @@ release.
 
 ## Spaarrekening
 
-This rule runs when the pair is neither SIa↔SIb nor a four-digit pair.
+This rule runs when the pair is not SIa↔SIb, not source with `unitxxxx`, and not `hd` with `unitxxxx`.
 
 `NL46INGB0001726568` against the account mapped to category 11021, or
 `NL84INGB0002801129` against the account mapped to category 11019, in

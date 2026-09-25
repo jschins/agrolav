@@ -11,8 +11,10 @@ The outgoing leg decides the category, and only these pairs are written:
   is local 1099. Each statement keeps its own sign. SIa wiring 1000 to
   SIb is +1000 on 1100 and −1000 on 1099. SIb wiring 500 to SIa is −500
   on 1100 and +500 on 1099.
-* either of those accounts against a ``userNNNN`` or ``unitNNNN`` account
-  in its own center is local NNNN, on both statements
+* a ``source`` account against a ``unitNNNN`` account in its own center
+  is local NNNN, on both statements
+* an ``hd`` account against a ``unitNNNN`` account, in any center, is
+  local 1200 (category 11200), on both statements
 * ``NL46INGB0001726568`` (category 11020) against its spaarrekening
   (category 11021), or ``NL84INGB0002801129`` (category 11010) against its
   spaarrekening (category 11019), is local 1200 (category 11200)
@@ -267,8 +269,9 @@ def transfer_local_code(
 
     ``from_*`` is the outgoing booking (negative amount).
     ``NL46INGB0001726568`` → ``NL84INGB0002801129`` is 1099 and the reverse
-    is 1100. Either of those accounts against a ``userNNNN`` or ``unitNNNN``
-    account in its own center is NNNN. ``NL46`` against category 11021, or
+    is 1100. A ``source`` account against ``unitNNNN`` in its own center is
+    NNNN. An ``hd`` account against ``unitNNNN``, in any center, is 1200.
+    ``NL46`` against category 11021, or
     ``NL84`` against category 11019, is 1200. Anything else is left
     uncategorized.
     """
@@ -278,6 +281,8 @@ def transfer_local_code(
         return _LOCAL_SIB_TO_SIA
     if source == _IBAN_NL84 and dest == _IBAN_NL46:
         return _LOCAL_SIA_TO_SIB
+    if _hd_unit(from_role, to_role):
+        return _LOCAL_CROSS_POSTING
     digits = _same_center_user_digits(source, dest, from_center, to_center, from_role, to_role)
     if digits is not None:
         return digits
@@ -303,7 +308,7 @@ def _same_center_user_digits(
     from_role: object,
     to_role: object,
 ) -> int | None:
-    """Four digits when one side is NL46 or NL84 and the other shares its center."""
+    """Four digits when ``source`` meets ``unitNNNN`` or ``userNNNN`` in its center."""
     source_hit = _is_source_account(source, from_role)
     dest_hit = _is_source_account(dest, to_role)
     if source_hit and not dest_hit:
@@ -312,12 +317,21 @@ def _same_center_user_digits(
         source_center, other_center, other_role = to_center, from_center, from_role
     else:
         return None
-    digits = user_digits(other_role)
-    if digits is None:
-        return None
     if not _centers_match(source_center, other_center):
         return None
-    return digits
+    return user_digits(other_role)
+
+
+def _hd_unit(from_role: object, to_role: object) -> bool:
+    """True when ``hd`` meets ``unitNNNN``, whatever the centers."""
+    left, right = _role_text(from_role), _role_text(to_role)
+    if left == "hd":
+        other = right
+    elif right == "hd":
+        other = left
+    else:
+        return False
+    return other.startswith("unit") and user_digits(other) is not None
 
 
 def _is_source_account(iban: str, role: object) -> bool:
@@ -596,6 +610,7 @@ def _country_bank_accounts(cursor: Any, country_id: int) -> set[int]:
         WHERE d.country_id = ?
           AND (
             LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'unit%'
+            OR LOWER(LTRIM(RTRIM(d.category_role))) = N'hd'
             OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'source%'
             OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'funds%'
             OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'user[0-9][0-9][0-9][0-9]'
@@ -608,7 +623,7 @@ def _country_bank_accounts(cursor: Any, country_id: int) -> set[int]:
     for account_id, role in cursor.fetchall():
         if account_id is None:
             continue
-        if not is_country_bank_role(role) and _role_text(role) != "mirror":
+        if not is_country_bank_role(role) and _role_text(role) not in ("mirror", "hd"):
             continue
         out.add(int(account_id))
     marks = ",".join("?" * len(_ANCHOR_CATEGORY_IDS))
@@ -663,7 +678,7 @@ def _account_categories(cursor: Any, country_id: int) -> dict[int, int]:
 
 
 def _user_roles(cursor: Any, country_id: int) -> dict[int, str]:
-    """account_id → role text when the role is ``user`` or ``unit`` plus four digits."""
+    """account_id → role text for ``hd``, ``unitNNNN``, ``userNNNN``, ``source`` and ``mirror``."""
     cursor.execute(
         """
         SELECT m.account_id, d.category_role
@@ -672,7 +687,8 @@ def _user_roles(cursor: Any, country_id: int) -> dict[int, str]:
           ON m.category_id = d.category_id AND m.country_id = d.country_id
         WHERE d.country_id = ?
           AND (
-            LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'user[0-9][0-9][0-9][0-9]'
+            LOWER(LTRIM(RTRIM(d.category_role))) = N'hd'
+            OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'user[0-9][0-9][0-9][0-9]'
             OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'unit[0-9][0-9][0-9][0-9]'
             OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'source%'
             OR LOWER(LTRIM(RTRIM(d.category_role))) = N'mirror'

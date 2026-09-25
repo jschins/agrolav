@@ -157,6 +157,41 @@ class CrossPostingMatchTests(unittest.TestCase):
             11108,
         )
 
+    def test_hd_and_unit_in_the_same_center_is_11200(self) -> None:
+        self.assertEqual(
+            transfer_category(
+                "NL00INGB0000000001",
+                "NL00INGB0000000002",
+                "sib",
+                "sib",
+                "hd",
+                "unit1108",
+            ),
+            11200,
+        )
+        self.assertEqual(
+            transfer_local_code(
+                "NL00INGB0000000001",
+                "NL00INGB0000000002",
+                "sib",
+                "sib",
+                "unit1108",
+                "hd",
+            ),
+            1200,
+        )
+        self.assertEqual(
+            transfer_category(
+                "NL00INGB0000000001",
+                "NL00INGB0000000002",
+                "sib",
+                "sia",
+                "hd",
+                "unit1108",
+            ),
+            11200,
+        )
+
     def test_spaarrekening_of_each_source_is_11200(self) -> None:
         self.assertEqual(
             transfer_category(
