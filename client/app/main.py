@@ -519,6 +519,20 @@ def api_centrale_status(request: Request) -> dict[str, Any]:
 
     poll_central_events()
     status = sync_status()
+    try:
+        from app.centrale_sync import hub_request, remote_client_ip
+        import urllib.parse
+
+        ip = remote_client_ip(request)
+        access = hub_request(
+            "GET",
+            f"/api/menu-access?client_ip={urllib.parse.quote(ip)}",
+            timeout=5.0,
+        )
+        status["full_menu"] = bool(access.get("full_menu"))
+    except Exception as exc:
+        print(f"menu-access: {exc}")
+        status["full_menu"] = False
     cfg = load_config()
     if is_country():
         status["centers"] = list_hub_centers()

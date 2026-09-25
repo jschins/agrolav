@@ -391,6 +391,8 @@ export interface CentraleSyncStatus {
   authenticated?: boolean;
   centrale_url: string;
   balance_url?: string;
+  /** False when this egress address is not in dbo.administrator. */
+  full_menu?: boolean;
   local_session_active: boolean;
   error: string | null;
   last_event_id?: number;

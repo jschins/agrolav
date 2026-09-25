@@ -539,6 +539,16 @@ def health() -> dict[str, Any]:
     }
 
 
+@app.get("/api/menu-access")
+def api_menu_access(
+    client_ip: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import hub_ip
+
+    return {"full_menu": hub_ip.full_menu_for_ip(client_ip)}
+
+
 @app.get("/api/status")
 def api_status(
     country: str | None = Query(default=None),

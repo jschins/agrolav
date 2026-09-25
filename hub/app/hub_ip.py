@@ -87,6 +87,17 @@ def ip_in_allowlist(client_ip: str | None, allow: list[str]) -> bool:
     return bool(ip) and ip in allow
 
 
+def open_logins() -> bool:
+    """Whether country and center logins skip the egress allowlist.
+
+    Set ``HUB_OPEN_LOGINS`` to ``1`` for that period. Unset it to restore the
+    allowlist (``dbo.administrator`` plus each login's own ``egress_ip``).
+    The limited menu for addresses outside ``dbo.administrator`` stays either way.
+    """
+    flag = os.environ.get("HUB_OPEN_LOGINS", "").strip().lower()
+    return flag in ("1", "true", "yes", "on")
+
+
 def development_hub() -> bool:
     """Whether this hub is a developer's own machine, per ``HUB_DEV_LOGIN``.
 
@@ -156,6 +167,19 @@ def administrator_ip_allowed(client_ip: str | None) -> bool:
     return cursor.fetchone() is not None
 
 
+def full_menu_for_ip(client_ip: str | None) -> bool:
+    """Addresses in ``dbo.administrator`` keep every menu item.
+
+    Any other address, including loopback on a development hub, keeps the
+    short menu.
+    """
+    try:
+        return administrator_ip_allowed(client_ip)
+    except Exception as exc:  # noqa: BLE001
+        print(f"administrator: menu check failed for {client_ip!r}: {exc}")
+        return False
+
+
 def hub_b_ips() -> frozenset[str]:
     """Hub :8200 allowlist is no longer stored in SQL. Empty → unrestricted."""
     return frozenset()
@@ -207,6 +231,9 @@ def login_ip_allowed(user: dict[str, Any], client_ip: str | None) -> bool:
     if str(user.get("person") or "").strip():
         return True
     name = str(user.get("username") or "")
+    if open_logins():
+        print(f"login allowed: {name!r} while HUB_OPEN_LOGINS is set")
+        return True
     if development_login(client_ip):
         print(f"login allowed: {name!r} on a development hub (HUB_DEV_LOGIN)")
         return True

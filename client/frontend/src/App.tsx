@@ -879,6 +879,18 @@ type HeaderAction = {
   onClick?: () => void;
 };
 
+const GUEST_MENU_IDS = new Set([
+  "refresh",
+  "terms",
+  "recalculate-categories",
+  "balance-sheet",
+  "journal",
+  "afschrijvingen",
+  "export-excel",
+  "back-to-matrix",
+  "logout",
+]);
+
 type AppView = "main" | "terms" | "categories" | "ip" | "split" | "password" | "journal" | "afschrijvingen";
 
 const VIEW_CHANGE_EVENT = "boekhouding-view";
@@ -1948,8 +1960,9 @@ function SyncNotifyShell({
         onClick: onLogout,
       });
     }
-    return items;
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, menuTerms]);
+    if (status?.full_menu === true) return items;
+    return items.filter((item) => GUEST_MENU_IDS.has(item.id));
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, onLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, status?.full_menu, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
     item.onClick?.();
