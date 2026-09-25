@@ -722,7 +722,15 @@ def clear_bookings(
                 (int(country_id),),
             )
         if afschrijvingen:
-            _delete_country_rows(cursor, "dbo.afschrijvingen", country_id)
+            cursor.execute("SELECT OBJECT_ID(N'dbo.afschrijvingen', N'U')")
+            if cursor.fetchone()[0] is None:
+                raise ValueError("dbo.afschrijvingen is missing")
+            cursor.execute(
+                "DELETE a FROM dbo.afschrijvingen a "
+                "JOIN dbo.dim_category d ON d.category_id = a.category_id_van "
+                "WHERE d.country_id = ?",
+                (int(country_id),),
+            )
         if person_ids and (statements or categorizations):
             _rebuild_category_totals(cursor, table, country_id, person_ids, spaar_source_exclude_clause)
         user_store._sql_connect().commit()
@@ -828,14 +836,6 @@ def assign_small_expenses(
         return {"country": name, "updated": updated, "category_id": target}
 
     return _sql_retry(_run)
-
-
-def _delete_country_rows(cursor: Any, table: str, country_id: int) -> None:
-    """Delete every row of a country-scoped table. ``table`` is a fixed name."""
-    cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
-    if cursor.fetchone()[0] is None:
-        raise ValueError(f"{table} is missing")
-    cursor.execute(f"DELETE FROM {table} WHERE country_id = ?", (int(country_id),))
 
 
 def _wipe_scope(

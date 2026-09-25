@@ -936,18 +936,22 @@ def ircft_add_term(
     personal_map: dict[str, list[str]] | None = None,
     personal_maps: dict[str | None, dict[str, list[str]]] | None = None,
     account: str | None = None,
+    added_terms: list[str] | None = None,
 ) -> bool:
-    """Re-score every unlocked row against all terms after a term is saved.
+    """Re-score unlocked rows that match a newly saved term.
 
-    Unlocked means ``modification`` 0, -1, or 2 (no direct category). ``1`` is a
-    direct category assignment; ``3`` is that plus a description edit. Those
-    stay put. Excel rows stay put. In account modality a P term is then
-    applied only on ``account``; every such row is matched against the full
-    general + personal maps, not only the new term vs a stored ``hit``.
+    A booking that does not contain any added term cannot change category.
+    Unlocked means ``modification`` 0, -1, or 2. ``1`` and ``3`` stay put, as
+    do Excel rows. In account modality a personal term is applied only on
+    ``account``. A matching row is scored against the full term lists.
     """
     del category_name
-    normalized = _normalize_term(term)
-    if not normalized:
+    needles: list[str] = []
+    for item in [term, *(added_terms or [])]:
+        normalized = _normalize_term(item)
+        if normalized and normalized not in needles:
+            needles.append(normalized)
+    if not needles:
         return False
 
     payload = _load_categorized_store()
@@ -955,11 +959,9 @@ def ircft_add_term(
     if not isinstance(transactions, list):
         return False
 
-    changed = False
-    next_rows: list[dict[str, Any]] = []
+    changed_rows: list[dict[str, Any]] = []
     for transaction in transactions:
         if not isinstance(transaction, dict):
-            next_rows.append(transaction)
             continue
         canonical = _canonical_transaction(transaction)
         flag = _modification_of(canonical)
@@ -968,7 +970,6 @@ def ircft_add_term(
         else:
             effective_personal = personal_map or {}
         if _user_set_category(flag) or _is_excel_row(canonical):
-            next_rows.append(canonical)
             continue
         if (
             personal
@@ -976,25 +977,29 @@ def ircft_add_term(
             and (account or "").strip()
             and str(canonical.get("account_uid") or "") != str(account)
         ):
-            next_rows.append(canonical)
+            continue
+        haystack = _haystack_for_categorization(canonical)
+        if not any(_matches_word(needle, haystack) for needle in needles):
             continue
 
         code, hit = categorize_with_hit(canonical, general, effective_personal)
+        row_changed = False
         if canonical.get("category") != code or canonical.get("hit") != hit:
             canonical["category"] = code
             canonical["hit"] = hit
-            changed = True
+            row_changed = True
         scored = _scored_modification(flag, hit)
         if canonical.get("modification") != scored:
             canonical["modification"] = scored
-            changed = True
-        next_rows.append(canonical)
+            row_changed = True
+        if row_changed:
+            changed_rows.append(canonical)
 
-    if not changed:
+    if not changed_rows:
         return False
-    payload["transactions"] = next_rows
-    payload = _persist_categorized_store(payload)
-    _write_category_totals(payload, general)
+    from app.sql_replica import sync_bound_transactions
+
+    sync_bound_transactions(changed_rows)
     return True
 
 
@@ -1025,11 +1030,9 @@ def ircft_remove_term(
     if not isinstance(transactions, list):
         return False
 
-    changed = False
-    next_rows: list[dict[str, Any]] = []
+    changed_rows: list[dict[str, Any]] = []
     for transaction in transactions:
         if not isinstance(transaction, dict):
-            next_rows.append(transaction)
             continue
         canonical = _canonical_transaction(transaction)
         flag = _modification_of(canonical)
@@ -1043,7 +1046,6 @@ def ircft_remove_term(
             and (account or "").strip()
             and str(canonical.get("account_uid") or "") != str(account)
         ):
-            next_rows.append(canonical)
             continue
         parsed = parse_hit(canonical.get("hit"))
         stored = format_hit(parsed[1], personal=parsed[0]) if parsed else None
@@ -1051,30 +1053,30 @@ def ircft_remove_term(
         if _user_set_category(flag):
             if stored == expected:
                 canonical["hit"] = None
-                changed = True
-            next_rows.append(canonical)
+                changed_rows.append(canonical)
             continue
 
         if stored != expected and parsed is not None:
-            next_rows.append(canonical)
             continue
 
         code, hit = categorize_with_hit(canonical, general, effective_personal)
+        row_changed = False
         if canonical.get("category") != code or canonical.get("hit") != hit:
             canonical["category"] = code
             canonical["hit"] = hit
-            changed = True
+            row_changed = True
         scored = _scored_modification(flag, hit)
         if canonical.get("modification") != scored:
             canonical["modification"] = scored
-            changed = True
-        next_rows.append(canonical)
+            row_changed = True
+        if row_changed:
+            changed_rows.append(canonical)
 
-    if not changed:
+    if not changed_rows:
         return False
-    payload["transactions"] = next_rows
-    payload = _persist_categorized_store(payload)
-    _write_category_totals(payload, general)
+    from app.sql_replica import sync_bound_transactions
+
+    sync_bound_transactions(changed_rows)
     return True
 
 
@@ -1111,9 +1113,8 @@ def apply_ircft_terms(
             personal_maps=personal_maps,
             account=account,
         )
-    # Each add walks every unlocked row against the maps just loaded, so one
-    # call covers every term saved before this pass. Removals stay one-by-one:
-    # a locked row only drops its hit in ircft_remove_term.
+    # One add walk covers every term saved before this pass. Only bookings
+    # that contain an added term are scored. Removals stay one-by-one.
     pending = [term for term in added if _normalize_term(term)]
     if pending:
         ircft_add_term(
@@ -1124,6 +1125,7 @@ def apply_ircft_terms(
             personal_map=personal_map,
             personal_maps=personal_maps,
             account=account,
+            added_terms=pending,
         )
 
 

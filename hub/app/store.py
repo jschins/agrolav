@@ -569,6 +569,8 @@ def recalculate_incremental(center: str) -> dict[str, Any]:
     primary = _clean_center(center)
     country = country_for_center(primary) or resolve_country_for_center(primary) or active_country() or ""
     rows = load_term_changes(country)
+    if not rows:
+        return {"ok": True, "center": primary, "changes": 0, "matrix": None}
     general_added: list[str] = []
     general_removed: list[str] = []
     personal: dict[tuple[str, str, str | None], dict[str, list[str]]] = {}
@@ -613,17 +615,11 @@ def recalculate_incremental(center: str) -> dict[str, Any]:
                 lock=False,
             )
         clear_term_changes([int(row["id"]) for row in rows])
-        from app.matrix import build_matrix
-
-        set_active_center(primary, country=country or None)
-        matrix_payload = build_matrix()
-    if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
-        matrix_payload = {**matrix_payload, "center": primary}
     return {
         "ok": True,
         "center": primary,
         "changes": len(rows),
-        "matrix": matrix_payload,
+        "matrix": None,
     }
 
 

@@ -1425,7 +1425,7 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
 
     Existing marker rows are deleted first so the amount is the live sheet
     without last login's depreciation. Then one journal is written per rule
-    and year: FROM ``local_code_van`` TO ``local_code_naar``. ``role = 1``
+    and year: FROM ``category_id_van`` TO ``category_id_naar``. ``role = 1``
     uses ``fraction * present(van)``. ``role = 0`` uses ``fraction`` times
     the SUM of ``transaction_*`` bookings on van (all persons, that year,
     ``bank_id IS NULL``; no journal or mirror). Empty rules still wipe
@@ -1439,9 +1439,14 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
         return 0
     cid = int(country_id)
     cursor.execute(
-        "SELECT role, fraction, local_code_van, local_code_naar "
-        "FROM dbo.afschrijvingen WHERE country_id = ? ORDER BY id",
-        (cid,),
+        "SELECT a.role, a.fraction, "
+        "dv.category_id, dv.local_code, dn.category_id, dn.local_code "
+        "FROM dbo.afschrijvingen a "
+        "JOIN dbo.dim_category dv ON dv.category_id = a.category_id_van "
+        "JOIN dbo.dim_category dn ON dn.category_id = a.category_id_naar "
+        "WHERE dv.country_id = ? AND dn.country_id = ? "
+        "ORDER BY a.id",
+        (cid, cid),
     )
     rules = [r for r in cursor.fetchall() if r is not None]
     years: set[int] = set()
@@ -1469,8 +1474,6 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
             )
     if not years:
         return 0
-    codes = category_local_codes(cid, cursor)
-    local_to_id = {int(local): int(cat) for cat, local in codes.items()}
     like = afschrijving_like_pattern()
     written = 0
     for year in sorted(years):
@@ -1482,19 +1485,13 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
             (cid, int(year), like),
         )
         cents = present_balance_cents(cid, int(year), cursor)
-        for role, fraction, van, naar in rules:
+        for role, fraction, van_id, van_local, naar_id, naar_local in rules:
             try:
-                van_local = int(van)
-                naar_local = int(naar)
+                van_id = int(van_id)
+                naar_id = int(naar_id)
+                van_local = int(van_local)
+                naar_local = int(naar_local)
             except (TypeError, ValueError):
-                continue
-            van_id = local_to_id.get(van_local)
-            naar_id = local_to_id.get(naar_local)
-            if van_id is None and van_local in codes:
-                van_id = van_local
-            if naar_id is None and naar_local in codes:
-                naar_id = naar_local
-            if van_id is None or naar_id is None:
                 continue
             use_present = is_afschrijving_present_role(role)
             if use_present:

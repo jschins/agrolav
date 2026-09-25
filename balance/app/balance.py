@@ -1086,9 +1086,13 @@ def list_afschrijvingen_rules(country_id: int) -> dict[str, Any]:
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT id, role, fraction, local_code_van, "
-                "local_code_naar FROM dbo.afschrijvingen "
-                "WHERE country_id = ? ORDER BY id",
+                "SELECT a.id, a.role, a.fraction, dv.local_code, dn.local_code "
+                "FROM dbo.afschrijvingen a "
+                "JOIN dbo.dim_category dv ON dv.category_id = a.category_id_van "
+                "JOIN dbo.dim_category dn ON dn.category_id = a.category_id_naar "
+                "WHERE dv.country_id = ? AND dn.country_id = ? "
+                "ORDER BY a.id",
+                int(country_id),
                 int(country_id),
             )
         except Exception as exc:
@@ -1125,20 +1129,40 @@ def save_afschrijvingen_rules(
         if found is None or found[0] is None:
             raise ValueError("dbo.afschrijvingen is missing")
         cur.execute(
-            "DELETE FROM dbo.afschrijvingen WHERE country_id = ?",
+            "SELECT local_code, category_id FROM dbo.dim_category WHERE country_id = ?",
+            int(country_id),
+        )
+        local_to_id = {
+            int(local): int(cat)
+            for local, cat in cur.fetchall()
+            if local is not None and cat is not None
+        }
+        missing = [
+            code
+            for _role, _fraction, van, naar in parsed
+            for code in (van, naar)
+            if code not in local_to_id
+        ]
+        if missing:
+            raise ValueError(
+                "unknown local_code for this country: "
+                + ", ".join(str(code) for code in missing)
+            )
+        cur.execute(
+            "DELETE a FROM dbo.afschrijvingen a "
+            "JOIN dbo.dim_category d ON d.category_id = a.category_id_van "
+            "WHERE d.country_id = ?",
             int(country_id),
         )
         for role, fraction, van, naar in parsed:
             cur.execute(
                 "INSERT INTO dbo.afschrijvingen "
-                "(country_id, role, fraction, "
-                "local_code_van, local_code_naar) "
-                "VALUES (?, ?, ?, ?, ?)",
-                int(country_id),
+                "(role, fraction, category_id_van, category_id_naar) "
+                "VALUES (?, ?, ?, ?)",
                 role,
                 fraction,
-                van,
-                naar,
+                local_to_id[van],
+                local_to_id[naar],
             )
         apply_afschrijvingen(int(country_id), cur)
         conn.commit()
