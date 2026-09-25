@@ -16,11 +16,14 @@ No connection ownership is taken here.
 """
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
+
+_log = logging.getLogger("balance.sheet")
 
 SPAAR_MARKER = "[spaar-mirror]"
 AFSCHRIJVING_MARKER = "[afschrijving]"
@@ -830,9 +833,10 @@ def country_has_balance(country_id: int, cursor: object) -> bool:
     return bool(row[0]) if row else False
 
 
-# Instudo posts that have a leftover mapping_banks row but are openings,
-# not live Enable Banking accounts (11019 / 11021).
-_OPENING_NOT_ACCOUNT_IDS = frozenset({11019, 11021})
+# Posts that must use dbo.balance_opening even when mapping_banks still
+# points at an account. 11019 / 11021 are spaar openings. 11099 / 11100 are
+# the SIa/SIb cross-posting posts (local 1099 / 1100); they are not bank accounts.
+_OPENING_NOT_ACCOUNT_IDS = frozenset({11019, 11021, 11099, 11100})
 
 
 def account_links(country_id: int, cursor: object) -> dict[int, int]:
@@ -840,7 +844,7 @@ def account_links(country_id: int, cursor: object) -> dict[int, int]:
 
     The mapping table records which live bank account feeds each balance
     category (the ``source`` post is the spaar checking account).
-    ``11019`` and ``11021`` always use ``dbo.balance_opening``. Mirror-role
+    ``11019``, ``11021``, ``11099`` and ``11100`` always use ``dbo.balance_opening``. Mirror-role
     posts never ride a leftover ``mapping_banks`` row as a live account.
     """
     skip = set(_OPENING_NOT_ACCOUNT_IDS)
@@ -1245,7 +1249,24 @@ def balance_category_breakdown(
     computed.update(i for i in (result_id, balance_id) if i is not None)
     mirror_targets = spaar_mirror_targets(country_id, cursor)
     mapping = category_map(country_id, cursor)
+    local_codes = category_local_codes(country_id, cursor)
     opening = _opening_balances(country_id, year, cursor)
+    _log.warning(
+        "sheet start country=%s year=%s as_of=%s openings=%s mapped=%s",
+        country_id,
+        year,
+        as_of,
+        len(opening),
+        len(mapping),
+    )
+    for cat_id in sorted(opening, key=lambda i: local_codes.get(i, i)):
+        _log.warning(
+            "opening row cat=%s local=%s amount=%s mapped=%s",
+            cat_id,
+            local_codes.get(cat_id),
+            opening[cat_id],
+            cat_id in mapping,
+        )
     journal = _journal_balances(country_id, year, cursor, as_of=as_of)
     effect = _journal_effect(country_id, year, cursor, as_of=as_of)
     bookings = _booking_balances(country_id, year, cursor, as_of=as_of)
@@ -1257,6 +1278,12 @@ def balance_category_breakdown(
     amounts: dict[int, tuple[int, str]] = {}
     for cat_id in sorted(mapping):
         if cat_id in computed:
+            _log.warning(
+                "sheet line cat=%s local=%s skipped computed role=%s",
+                cat_id,
+                local_codes.get(cat_id),
+                roles.get(cat_id),
+            )
             continue
         side, account_id = mapping[cat_id]
         is_mirror = cat_id in mirror_targets
@@ -1282,6 +1309,20 @@ def balance_category_breakdown(
                 amount += booking_amount
                 if "+bookings" not in source:
                     source += "+bookings"
+        _log.warning(
+            "sheet line cat=%s local=%s account=%s mirror=%s opening=%s "
+            "mirror_sum=%s journal=%s bookings=%s final=%s source=%s",
+            cat_id,
+            local_codes.get(cat_id),
+            account_id,
+            is_mirror,
+            opening.get(cat_id),
+            journal.get(cat_id),
+            effect.get(cat_id),
+            bookings.get(cat_id),
+            amount,
+            source,
+        )
         amounts[cat_id] = (_to_cents(amount), source)
     return amounts
 

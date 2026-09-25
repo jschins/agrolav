@@ -308,6 +308,32 @@ matches, the booking stays in the remainder category and the hit is empty.
 <!-- {en:terms[5],word,dash,dot,hash,wildcard,asterisk,&&,heijn,machtiging,both,phrases,priority,hit,P,G,remainder,match[5],rules,activa,passiva,lasten,baten,prioriteit} -->
 <!-- {nl:termen[5],woord,streepje,punt,hekje,jokerteken,sterretje,&&,heijn,machtiging,beide,frasen,voorrang,treffer,P,G,restcategorie,overeenkomen[5],voorrangsregels,activa,passiva,lasten,baten,prioriteit} -->
 
+### Term definition strategy
+
+Define terms in this order.
+
+1. Run **Calculate cross-postings** first. It pairs internal transfers and
+   writes their categories. Those rows count as set by hand, so a later term
+   does not move them.
+2. Define the **general** terms as completely as you can. A general term has
+   the lowest precedence. Inside the general list, an `&&` term beats a
+   single phrase, so use `&&` when one general term should win over another.
+3. Then define the **personal** terms. A personal term beats every general
+   term. If that word also sits in a description next to a general term, the
+   booking leaves the category the general term had given it. Restrict the
+   personal term to one account when you can. It then touches fewer
+   statements than the same term on every account of a center.
+4. When a personal term should apply to every account of a center, write it
+   on the center row. It is copied onto each account of that center. Deleting
+   it from the center row removes it from those accounts.
+5. Last, run **Smaller expenses** and **Smaller income**. Each asks for a
+   maximum and a category. Remainder bookings smaller than that maximum take
+   the chosen category and count as set by hand. The categories you still
+   review then hold the larger amounts. The smaller ones, which move the
+   result less, are already stored, so the balance sheet is faster to prepare.
+<!-- {en:strategy[5],order,first,cross-postings[5],general[5],precedence,&&,personal[5],particular,account,center,restrict,smaller[5],expenses,income,balance,sheet,maximum,remainder} -->
+<!-- {nl:strategie[5],volgorde,eerst,kruisposten[5],bereken,gemeenschappelijk[5],voorrang,&&,persoonlijk[5],bijzonder,rekening,centrum,beperken,kleinere[5],uitgaven,inkomsten,balans,blad,maximaal,restcategorie} -->
+
 ---
 
 ## Edit categories
