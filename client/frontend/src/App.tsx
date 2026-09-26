@@ -736,6 +736,19 @@ function categoryRowGreyed(matrix: MatrixResponse, category: string, person?: st
   return !categoryHasTransactions(matrix, category, person);
 }
 
+/** Center, person, and unit views drop unused categories and the saldo/datum footers. */
+function matrixRowsToShow(
+  matrix: MatrixResponse,
+  person: string | undefined,
+  omitEmpty: boolean
+): string[] {
+  if (!omitEmpty) return matrix.categories;
+  return matrix.categories.filter((cat) => {
+    if (isMatrixFooter(matrix, cat)) return false;
+    return !categoryRowGreyed(matrix, cat, person);
+  });
+}
+
 const SYSTEM_CATEGORY_ROLES = new Set([
   "remainder",
   "balance",
@@ -3456,6 +3469,11 @@ function MainApp({
               matrix={displayMatrix}
               person_name={selection.person_name}
               selectedCategory={selection.category}
+              omitEmpty={
+                loginAccess === "local" ||
+                loginAccess === "personal" ||
+                loginAccess === "unit"
+              }
               onPick={(category) => selectCell(selection.person_name, category)}
               onPersonChange={(person_name) => selectCell(person_name, selection.category)}
             />
@@ -3475,7 +3493,16 @@ function MainApp({
         {!inPView && !matrix && !error && <p>Loading…</p>}
         {!inPView && displayMatrix && (
           <>
-            <MatrixTable matrix={displayMatrix} selection={selection} onPick={selectCell} />
+            <MatrixTable
+              matrix={displayMatrix}
+              selection={selection}
+              omitEmpty={
+                loginAccess === "local" ||
+                loginAccess === "personal" ||
+                loginAccess === "unit"
+              }
+              onPick={selectCell}
+            />
             {roleListed ? <ResultaatPreviewTable year={year} dataRev={dataRev} /> : null}
           </>
         )}
@@ -4494,13 +4521,20 @@ function ResultaatPreviewTable({
 function MatrixTable({
   matrix,
   selection,
+  omitEmpty = false,
   onPick,
 }: {
   matrix: MatrixResponse;
   selection: CellSelection | null;
+  omitEmpty?: boolean;
   onPick: (person_name: string, category: string) => void;
 }) {
-  const { categories, people, cells } = matrix;
+  const { people, cells } = matrix;
+  const categories = matrixRowsToShow(
+    matrix,
+    people.length === 1 ? people[0].person_name : undefined,
+    omitEmpty
+  );
   const terms = matrix.table_header_terms;
   return (
     <table className="totals-table matrix-table">
@@ -4548,16 +4582,19 @@ function PersonColumnTable({
   matrix,
   person_name,
   selectedCategory,
+  omitEmpty = false,
   onPick,
   onPersonChange,
 }: {
   matrix: MatrixResponse;
   person_name: string;
   selectedCategory: string | null;
+  omitEmpty?: boolean;
   onPick: (category: string) => void;
   onPersonChange?: (person_name: string) => void;
 }) {
-  const { categories, people, cells } = matrix;
+  const { people, cells } = matrix;
+  const categories = matrixRowsToShow(matrix, person_name, omitEmpty);
   const terms = matrix.table_header_terms;
   const scopedPeople = people.some((p) => p.person_name === person_name)
     ? people
