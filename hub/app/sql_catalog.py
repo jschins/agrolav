@@ -1515,7 +1515,63 @@ def load_term_changes(country: str) -> list[dict[str, Any]]:
 
 def term_change_count(country: str) -> int:
     """Pending term edits for one country. ``0`` when the log table is absent."""
-    return len(load_term_changes(country))
+    name = (country or "").strip()
+    if not name or not _sql_ready():
+        return 0
+
+    def _run() -> int:
+        cursor = _cursor()
+        if not term_change_table(cursor):
+            return 0
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM dbo.term_change tc
+            JOIN dbo.dim_category d ON d.category_id = tc.category_id
+            JOIN dbo.country c ON c.country_id = d.country_id
+            WHERE c.username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (name,),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    try:
+        return _sql_retry(_run)
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql catalog: failed to count term changes: {exc}")
+        return 0
+
+
+def clear_country_term_changes(country: str) -> None:
+    """Drop every pending term edit for a country after a from-scratch rescore."""
+    name = (country or "").strip()
+    if not name or not _sql_ready():
+        return
+
+    def _run() -> None:
+        from app import user_store
+
+        conn = user_store._sql_connect()
+        cursor = conn.cursor()
+        if not term_change_table(cursor):
+            return
+        cursor.execute(
+            """
+            DELETE tc
+            FROM dbo.term_change tc
+            JOIN dbo.dim_category d ON d.category_id = tc.category_id
+            JOIN dbo.country c ON c.country_id = d.country_id
+            WHERE c.username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (name,),
+        )
+        conn.commit()
+
+    try:
+        _sql_retry(_run)
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql catalog: failed to clear term changes: {exc}")
 
 
 def discard_term_changes(country: str) -> int:

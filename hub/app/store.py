@@ -540,9 +540,11 @@ def recalculate_from_scratch_all(
             source=source,
         )
         matrix_payload = build_matrix()
-        from app.sql_catalog import clear_personal_term_changes
+        from app.sql_catalog import clear_country_term_changes, clear_personal_term_changes
 
         clear_personal_term_changes(primary, name or None)
+        if primary_country and not name:
+            clear_country_term_changes(primary_country)
     if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
         matrix_payload = {**matrix_payload, "center": primary}
     return {

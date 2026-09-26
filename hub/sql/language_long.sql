@@ -494,24 +494,12 @@ GO
 INSERT INTO dbo.language (term_lang1, term_lang2)
 SELECT v.term_lang1, v.term_lang2
 FROM (VALUES
-    (N'Apply term changes', N'Pas termwijzigingen toe'),
-    (N'Discard term changes', N'Verwerp termwijzigingen')
+    (
+        N'recalculating categories before logging out...',
+        N'categorieën herberekenen voor het uitloggen...'
+    )
 ) AS v (term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
-);
-GO
-
-INSERT INTO dbo.language_long (term_key, term_lang1, term_lang2)
-SELECT v.term_key, v.term_lang1, v.term_lang2
-FROM (VALUES
-    (
-        N'logout term changes',
-        N'<p>The categories have not been recalculated. Apply the term changes to the bookings, or discard the term changes.</p>',
-        N'<p>De categorieën zijn niet herberekend. Pas de termwijzigingen toe op de boekingen, of verwerp de termwijzigingen.</p>'
-    )
-) AS v (term_key, term_lang1, term_lang2)
-WHERE NOT EXISTS (
-    SELECT 1 FROM dbo.language_long l WHERE l.term_key = v.term_key
 );
 GO
