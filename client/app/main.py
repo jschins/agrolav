@@ -665,11 +665,11 @@ def _append_enable_debug(tag: str, payload: object) -> None:
 @app.get("/api/banks")
 def api_banks(year: str | None = Query(default=None)) -> dict[str, Any]:
     from app.centrale_sync import configured_person, hub_get, load_config
-    from shared.user_access import ACCESS_PERSON
+    from shared.user_access import ACCESS_PERSON, ACCESS_UNIT
     import urllib.parse
 
     cfg = load_config()
-    if cfg.access != ACCESS_PERSON:
+    if cfg.access not in (ACCESS_PERSON, ACCESS_UNIT):
         out = {
             "folders": [],
             "multi_bank": False,
@@ -704,6 +704,20 @@ def api_banks(year: str | None = Query(default=None)) -> dict[str, Any]:
             debug["bff_person"] = person
             debug["bff_access"] = cfg.access
             result = {**result, "enable_debug": debug}
+            if cfg.access == ACCESS_UNIT:
+                wanted = (cfg.account or "").replace(" ", "").upper()
+                folders = [
+                    folder
+                    for folder in (result.get("folders") or [])
+                    if isinstance(folder, dict)
+                    and str(folder.get("iban") or "").replace(" ", "").upper() == wanted
+                ]
+                result = {
+                    **result,
+                    "folders": folders,
+                    "show_switcher": False,
+                    "multi_bank": False,
+                }
             _append_enable_debug("api_banks", debug)
         return result
     except Exception as exc:
@@ -822,15 +836,17 @@ def api_matrix(
     bank: str | None = Query(default=None),
 ) -> dict[str, Any]:
     from app.centrale_sync import hub_get, load_config, scope_matrix
-    from shared.user_access import ACCESS_PERSON
+    from shared.user_access import ACCESS_PERSON, ACCESS_UNIT
     import urllib.parse
 
     try:
+        cfg = load_config()
         params: list[str] = []
         if year:
             params.append(f"year={urllib.parse.quote(year)}")
-        if bank and load_config().access == ACCESS_PERSON:
-            params.append(f"bank={urllib.parse.quote(bank)}")
+        view = cfg.account if cfg.access == ACCESS_UNIT and cfg.account else bank
+        if view and cfg.access in (ACCESS_PERSON, ACCESS_UNIT):
+            params.append(f"bank={urllib.parse.quote(view)}")
         suffix = "/matrix"
         if params:
             suffix += "?" + "&".join(params)
@@ -932,7 +948,7 @@ class SmallExpensesRequest(BaseModel):
 @app.post("/api/small-expenses")
 def api_small_expenses(body: SmallExpensesRequest) -> dict[str, Any]:
     from app.centrale_sync import configured_person, hub_post, load_config, require_person, scope_matrix
-    from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON
+    from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON, ACCESS_UNIT
 
     cfg = load_config()
     payload: dict[str, Any] = {
@@ -950,8 +966,8 @@ def api_small_expenses(body: SmallExpensesRequest) -> dict[str, Any]:
             except PermissionError as exc:
                 raise HTTPException(status_code=403, detail=str(exc)) from exc
             payload["person"] = person
-    elif cfg.access == ACCESS_PERSON:
-        account = (body.account or "").strip()
+    elif cfg.access in (ACCESS_PERSON, ACCESS_UNIT):
+        account = cfg.account if cfg.access == ACCESS_UNIT else (body.account or "").strip()
         person = configured_person()
         if person:
             payload["person"] = person
@@ -982,7 +998,7 @@ def api_cross_postings() -> dict[str, Any]:
 @app.post("/api/wipe-year")
 def api_wipe_year(body: WipeYearRequest) -> dict[str, Any]:
     from app.centrale_sync import configured_person, hub_post, load_config, require_person, scope_matrix
-    from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON
+    from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON, ACCESS_UNIT
 
     cfg = load_config()
     payload: dict[str, Any] = {
@@ -1002,8 +1018,8 @@ def api_wipe_year(body: WipeYearRequest) -> dict[str, Any]:
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         payload["person"] = person
-    elif cfg.access == ACCESS_PERSON:
-        account = (body.account or "").strip()
+    elif cfg.access in (ACCESS_PERSON, ACCESS_UNIT):
+        account = cfg.account if cfg.access == ACCESS_UNIT else (body.account or "").strip()
         if not account:
             raise HTTPException(status_code=400, detail="account is required")
         person = configured_person()
@@ -1161,17 +1177,17 @@ def _hub_transactions(
     bank: str | None,
 ) -> dict[str, Any]:
     from app.centrale_sync import hub_get, load_config, require_person
-    from shared.user_access import ACCESS_PERSON
+    from shared.user_access import ACCESS_PERSON, ACCESS_UNIT
     import urllib.parse
 
     require_person(person_name)
     cfg = load_config()
-    personal = cfg.access == ACCESS_PERSON
+    view = cfg.account if cfg.access == ACCESS_UNIT and cfg.account else bank
     params = [f"category={urllib.parse.quote(category, safe='')}"]
     if year:
         params.append(f"year={urllib.parse.quote(year)}")
-    if personal and bank:
-        params.append(f"bank={urllib.parse.quote(bank)}")
+    if view and cfg.access in (ACCESS_PERSON, ACCESS_UNIT):
+        params.append(f"bank={urllib.parse.quote(view)}")
     suffix = f"/transactions/{urllib.parse.quote(person_name)}?{'&'.join(params)}"
     return hub_get(suffix)
 
@@ -1378,7 +1394,7 @@ def api_update_center_account_terms(body: CenterAccountTermsRequest) -> dict[str
         scope_matrix,
         scope_settings,
     )
-    from shared.user_access import ACCESS_PERSON
+    from shared.user_access import ACCESS_PERSON, ACCESS_UNIT
 
     try:
         payload: dict[str, Any] = {
@@ -1388,7 +1404,7 @@ def api_update_center_account_terms(body: CenterAccountTermsRequest) -> dict[str
             "source": _source(),
         }
         cfg = load_config()
-        if cfg.access == ACCESS_PERSON:
+        if cfg.access in (ACCESS_PERSON, ACCESS_UNIT):
             person = configured_person()
             if person:
                 payload["person"] = person

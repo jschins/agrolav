@@ -127,13 +127,13 @@ def load_menu_items() -> list[dict[str, Any]]:
         cursor = _cursor()
         cursor.execute(
             """
-            SELECT menu_id, country, center, person
+            SELECT menu_id, country, center, person, unit
             FROM dbo.menu_item
             ORDER BY menu_id
             """
         )
         rows: list[dict[str, Any]] = []
-        for menu_id, country, center, person in cursor.fetchall():
+        for menu_id, country, center, person, unit in cursor.fetchall():
             key = str(menu_id or "").strip()
             if not key:
                 continue
@@ -143,6 +143,7 @@ def load_menu_items() -> list[dict[str, Any]]:
                     "country": bool(country),
                     "center": bool(center),
                     "person": bool(person),
+                    "unit": bool(unit),
                 }
             )
         return rows

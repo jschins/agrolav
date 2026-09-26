@@ -1,0 +1,43 @@
+AGENDA
+
+
+NL46INGB0001726568	Centrale SIb
+NL93INGB0003150749	Den Eker
+NL22INGB0004005627	Jan Luijken
+NL63INGB0000776923	Leidenhoven
+NL61INGB0002843544	Lepelenburg
+NL93INGB0669986755	HD Keizersgracht
+NL71INGB0669986569	HD Lepelenburg
+NL93INGB0669986658	HD Leidenhoven
+NL15INGB0669986704	HD Jan Luijken
+NL46INGB0669986631	HD Den Eker
+NL43INGB0004056562	SVOa
+NL02INGB0003173921	Concertgebouw
+NL11INGB0006729488	De Borcht
+NL91INGB0004485699	Hogeland
+NL55INGB0003107589	De Stade
+NL28INGB0001794016	Aenstal
+NL50INGB0009569625	HD De Borcht
+NL29INGB0113580096	HD De Stade
+NL97INGB0114425876	HD Hogeland
+NL84INGB0002801129	Centrale SIa
+
+BACKUP:  
+C:/SQLBackups/remote_backups/agrolav20260926_1211.bak
+vereist commit "no gear in Bewerk termen menu item"
+
+
+1. elke werkeenheid heeft eigen login en ziet/exporteert zijn eigen winst en verlies rekening
+2. overzicht akten
+3. notificatie van gebruik
+4. in aparte tabel alle directe categorisaties bijhouden ivm reset
+5. 
+
+
+
+
+
+
+
+
+

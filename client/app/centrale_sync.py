@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from shared.user_access import ACCESS_CENTER, ACCESS_PERSON, ACCESS_COUNTRY, parse_centers
+from shared.user_access import ACCESS_CENTER, ACCESS_PERSON, ACCESS_COUNTRY, ACCESS_UNIT, parse_centers
 
 from app.runtime import (
     is_country,
@@ -43,8 +43,8 @@ _cached_has_secrets: bool = False
 class HubConfig:
     url: str
     center: str  # currently selected center (from access / switcher)
-    person: str  # empty unless access=personal
-    access: str  # personal | local | country
+    person: str  # empty unless access=personal or access=unit
+    access: str  # personal | local | country | unit
     api_key: str
     enabled: bool
     port: int
@@ -54,6 +54,7 @@ class HubConfig:
     auth_required: bool = False
     country: str = ""
     public_url: str = ""  # browser-facing hub base (env PUBLIC_HUB_URL, else url)
+    account: str = ""  # unit login: that account's IBAN
 
 
 def public_hub_url() -> str:
@@ -136,10 +137,10 @@ def load_base_settings(*, force_reload: bool = False) -> dict[str, Any]:
 
 def _coerce_access(raw: str | None) -> str:
     mode = str(raw or ACCESS_CENTER).strip().lower()
-    if mode not in (ACCESS_PERSON, ACCESS_CENTER, ACCESS_COUNTRY):
+    if mode not in (ACCESS_PERSON, ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_UNIT):
         raise ValueError(
             f"access must be one of {ACCESS_PERSON!r}, {ACCESS_CENTER!r}, "
-            f"{ACCESS_COUNTRY!r}; got {raw!r}"
+            f"{ACCESS_COUNTRY!r}, {ACCESS_UNIT!r}; got {raw!r}"
         )
     return mode
 
@@ -160,6 +161,7 @@ def _build_hub_config(
     apply_process_runtime: bool = True,
     centers_allowlist: list[str] | None = None,
     country: str = "",
+    account: str = "",
 ) -> HubConfig:
     access = _coerce_access(access)
     title = str(title or "").strip()
@@ -171,7 +173,20 @@ def _build_hub_config(
     )
     public_url = public_hub_url() or url
 
-    if access == ACCESS_PERSON:
+    account = str(account or "").strip()
+    if access == ACCESS_UNIT:
+        if not person_key:
+            raise ValueError("unit login requires a non-empty person")
+        if not account:
+            raise ValueError("unit login requires an account")
+        if not parsed_ws and center_key:
+            parsed_ws = parse_centers(center_key)
+        if not parsed_ws:
+            raise ValueError("unit login requires a center")
+        person = person_key
+        centers = (parsed_ws[0],)
+        center = parsed_ws[0]
+    elif access == ACCESS_PERSON:
         if not person_key:
             raise ValueError("personal login requires a non-empty person")
         if not parsed_ws and center_key:
@@ -226,6 +241,7 @@ def _build_hub_config(
             center_key=center_key,
             person_key=person_key,
             country=country or None,
+            account=account if access == ACCESS_UNIT else "",
         )
 
     return HubConfig(
@@ -242,6 +258,7 @@ def _build_hub_config(
         auth_required=auth_required,
         country=country,
         public_url=public_url,
+        account=account if access == ACCESS_UNIT else "",
     )
 
 
@@ -261,6 +278,7 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
         current_title,
         request_allowed_centers,
         request_person_key,
+        request_account,
         request_center_key,
         request_country,
         selected_center,
@@ -283,6 +301,7 @@ def load_config(*, force_reload: bool = False) -> HubConfig:
             apply_process_runtime=False,
             centers_allowlist=request_allowed_centers(),
             country=request_country() or "",
+            account=request_account() or "",
         )
 
     # Auth on but no session: bootstrap for lifespan / health (no all-countries view).
@@ -394,6 +413,7 @@ def apply_session_profile(session: dict[str, Any]) -> HubConfig:
         apply_process_runtime=False,
         centers_allowlist=centers_allowlist,
         country=country,
+        account=str(session.get("account") or "").strip(),
     )
 
 
@@ -565,6 +585,17 @@ def scope_settings(payload: dict[str, Any]) -> dict[str, Any]:
             if isinstance(group, dict)
             and str(group.get("person") or "").strip().lower() == needle
         ]
+    account = (load_config().account or "").replace(" ", "").upper()
+    groups = out.get("account_groups") if scope else payload.get("account_groups")
+    if account and isinstance(groups, list):
+        if not scope:
+            out = dict(payload)
+        out["account_groups"] = [
+            group
+            for group in groups
+            if isinstance(group, dict)
+            and str(group.get("iban") or "").replace(" ", "").upper() == account
+        ]
     return out
 
 
@@ -684,7 +715,7 @@ def export_resultaat_excel_data(year: int) -> dict[str, Any]:
     """P&L workbook for the current login scope (person / center / country)."""
     cfg = load_config()
     qs = [f"year={int(year)}"]
-    if cfg.access == ACCESS_PERSON and cfg.person:
+    if cfg.access in (ACCESS_PERSON, ACCESS_UNIT) and cfg.person:
         qs.append(f"person={urllib.parse.quote(cfg.person)}")
     elif cfg.access == ACCESS_CENTER and cfg.center:
         qs.append(f"center_name={urllib.parse.quote(cfg.center)}")
@@ -861,6 +892,7 @@ def sync_status() -> dict[str, Any]:
         "center": cfg.center,
         "country": cfg.country,
         "person": cfg.person,
+        "account": cfg.account,
         "access": cfg.access,
         "username": cfg.username,
         "title": sidebar_title_from_config(cfg),
@@ -1010,7 +1042,7 @@ def switch_center(center: str) -> dict[str, Any]:
             access=cfg.access,
             username=cfg.username,
             title=cfg.title,
-            center_key=cfg.center if cfg.access in (ACCESS_CENTER, ACCESS_PERSON) else "",
+            center_key=cfg.center if cfg.access in (ACCESS_CENTER, ACCESS_PERSON, ACCESS_UNIT) else "",
             person_key=cfg.person,
             country=cfg.country,
             request_scoped=True,

@@ -22,6 +22,7 @@ _cv_title: ContextVar[str | None] = ContextVar("title", default=None)
 _cv_center_key: ContextVar[str | None] = ContextVar("center_key", default=None)
 _cv_person_key: ContextVar[str | None] = ContextVar("person_key", default=None)
 _cv_country: ContextVar[str | None] = ContextVar("country", default=None)
+_cv_account: ContextVar[str | None] = ContextVar("account", default=None)
 
 
 def is_frozen() -> bool:
@@ -61,6 +62,7 @@ def set_runtime(
     center_key: str | None = None,
     person_key: str | None = None,
     country: str | None = None,
+    account: str | None = None,
     request_scoped: bool = False,
     **_ignored: object,
 ) -> None:
@@ -95,6 +97,8 @@ def set_runtime(
             _cv_person_key.set(person_key.strip() or None)
         if country is not None:
             _cv_country.set(country.strip() or None)
+        if account is not None:
+            _cv_account.set(account.strip() or None)
         return
 
     if access_n is not None:
@@ -129,6 +133,7 @@ def clear_request_runtime() -> None:
     _cv_center_key.set(None)
     _cv_person_key.set(None)
     _cv_country.set(None)
+    _cv_account.set(None)
 
 
 def bind_request_runtime(
@@ -141,6 +146,7 @@ def bind_request_runtime(
     center_key: str | None = None,
     person_key: str | None = None,
     country: str | None = None,
+    account: str | None = None,
 ) -> None:
     set_runtime(
         access=access,
@@ -151,6 +157,7 @@ def bind_request_runtime(
         center_key=center_key,
         person_key=person_key,
         country=country,
+        account=account,
         request_scoped=True,
     )
 
@@ -165,6 +172,10 @@ def request_person_key() -> str | None:
 
 def request_country() -> str | None:
     return _cv_country.get()
+
+
+def request_account() -> str | None:
+    return _cv_account.get()
 
 
 def access_mode() -> str:

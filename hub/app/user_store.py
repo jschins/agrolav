@@ -63,6 +63,22 @@ SELECT
 FROM dbo.country c
 """
 
+_SQL_UNIT_SELECT = """
+SELECT
+    u.unit_id AS id,
+    u.username COLLATE Latin1_General_CI_AI AS username,
+    u.username COLLATE Latin1_General_CI_AI AS title,
+    c.username COLLATE Latin1_General_CI_AI AS country,
+    n.username COLLATE Latin1_General_CI_AI AS center,
+    p.username COLLATE Latin1_General_CI_AI AS person,
+    a.iban COLLATE Latin1_General_CI_AI AS account
+FROM dbo.unit u
+INNER JOIN dbo.person p ON p.id = u.person_id
+INNER JOIN dbo.center n ON n.center_id = u.center_id
+INNER JOIN dbo.country c ON c.country_id = u.country_id
+INNER JOIN dbo.account a ON a.account_id = u.unit_id
+"""
+
 _SQL_USER_SELECT = f"""
 {_SQL_PERSON_SELECT}
 UNION ALL
@@ -196,6 +212,37 @@ def person_mobile_phone(username: str) -> str | None:
     return text or None
 
 
+def _unit_column(username: str, column: str) -> Any:
+    name = (username or "").strip()
+    if not name:
+        return None
+    init_user_store()
+    cursor = _sql_connect().cursor()
+    try:
+        cursor.execute(
+            f"SELECT {column} FROM dbo.unit WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (name,),
+        )
+    except Exception:
+        return None
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return row[0]
+
+
+def unit_password_hash(username: str) -> str | None:
+    raw = _unit_column(username, "password_hash")
+    text = str(raw or "").strip()
+    return text or None
+
+
+def unit_mobile_phone(username: str) -> str | None:
+    raw = _unit_column(username, "mobile_phone")
+    text = str(raw or "").strip()
+    return text or None
+
+
 def display_title(username: str) -> str:
     """Sidebar heading from a login username when no explicit title is stored."""
     text = str(username or "").strip()
@@ -293,7 +340,8 @@ def _row_to_user(row: Any) -> dict[str, Any]:
         person = str(person_raw).strip()
     else:
         person = ""
-    return {
+    account = str(_cell(row, "account") or "").strip()
+    out = {
         "id": int(ident) if ident is not None else 0,
         "username": username,
         "title": str(title_raw or ""),
@@ -302,6 +350,11 @@ def _row_to_user(row: Any) -> dict[str, Any]:
         "person": person,
         "format": str(format_raw or "").strip(),
     }
+    if account:
+        out["account"] = account
+        out["unit"] = username
+        out["title"] = display_title(username)
+    return out
 
 
 def _public_user(user: dict[str, Any]) -> dict[str, Any]:
@@ -318,7 +371,10 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
     if folder:
         rec["country"] = folder
         rec["access"] = deduce_access(
-            person=rec["person"], center=rec["center"], country=folder
+            person=rec["person"],
+            center=rec["center"],
+            country=folder,
+            unit=str(rec.get("unit") or ""),
         )
     if rec["access"] == ACCESS_COUNTRY and rec["country"]:
         rec["centers"] = list_centers(rec["country"])
@@ -566,12 +622,19 @@ def find_user(username: str) -> dict[str, Any] | None:
         init_user_store()
         cursor = _sql_connect().cursor()
         row = None
-        for sql in (
+        queries = (
             _SQL_PERSON_SELECT + " WHERE p.username = ? COLLATE Latin1_General_CI_AI",
             _SQL_CENTER_SELECT + " WHERE n.username = ? COLLATE Latin1_General_CI_AI",
             _SQL_COUNTRY_SELECT + " WHERE c.username = ? COLLATE Latin1_General_CI_AI",
-        ):
-            cursor.execute(sql, (needle,))
+            _SQL_UNIT_SELECT + " WHERE u.username = ? COLLATE Latin1_General_CI_AI",
+        )
+        for sql in queries:
+            try:
+                cursor.execute(sql, (needle,))
+            except Exception:
+                if sql is queries[-1]:
+                    continue
+                raise
             raw = cursor.fetchone()
             if raw:
                 row = _sql_cursor_row(cursor, raw)
@@ -584,11 +647,19 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
     if user is None:
         return None
     name = str(user.get("username") or "").strip()
-    is_person = _is_person_user(user)
-    stored = person_password_hash(name) if is_person else None
-    if not credentials_match(
-        password, username=name, is_person=is_person, password_hash=stored
-    ):
+    is_unit = bool(str(user.get("account") or "").strip())
+    is_person = _is_person_user(user) and not is_unit
+    if is_unit:
+        stored = unit_password_hash(name)
+        matched = credentials_match(
+            password, username=name, is_person=True, password_hash=stored
+        )
+    else:
+        stored = person_password_hash(name) if is_person else None
+        matched = credentials_match(
+            password, username=name, is_person=is_person, password_hash=stored
+        )
+    if not matched:
         return None
     return user
 

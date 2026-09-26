@@ -188,13 +188,16 @@ def api_auth_login(
         )
     name = str((user.get("username") if user else None) or body.username or "").strip()
     person_row = raw if raw is not None else None
-    if person_row is not None and user_store._is_person_user(person_row):
-        phone = user_store.person_mobile_phone(name)
-        if phone:
-            try:
-                return issue_and_send(name, phone)
-            except OtpError as exc:
-                raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    phone = ""
+    if person_row is not None and str(person_row.get("account") or "").strip():
+        phone = user_store.unit_mobile_phone(name) or ""
+    elif person_row is not None and user_store._is_person_user(person_row):
+        phone = user_store.person_mobile_phone(name) or ""
+    if phone:
+        try:
+            return issue_and_send(name, phone)
+        except OtpError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     hub_ip.record_visit(body.client_ip, name, login_page=True, path="/api/auth/login", status=200)
     _refresh_afschrijvingen(user)
     return {"user": user}
@@ -245,7 +248,7 @@ def api_auth_otp_resend(
     username = username_from_otp_token(body.otp_token)
     if username is None:
         raise HTTPException(status_code=401, detail="invalid or expired code")
-    phone = user_store.person_mobile_phone(username)
+    phone = user_store.unit_mobile_phone(username) or user_store.person_mobile_phone(username)
     if not phone:
         raise HTTPException(status_code=400, detail="no mobile phone on this person")
     try:

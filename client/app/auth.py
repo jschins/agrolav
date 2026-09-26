@@ -14,6 +14,7 @@ from shared.user_access import (
     ACCESS_CENTER,
     ACCESS_COUNTRY,
     ACCESS_PERSON,
+    ACCESS_UNIT,
     deduce_access,
     parse_centers,
 )
@@ -106,11 +107,13 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
     country = str(user.get("country") or "").strip()
     center = str(user.get("center") or "").strip()
     username = str(user.get("username") or "").strip()
+    account = str(user.get("account") or "").strip()
+    unit = str(user.get("unit") or "").strip()
     raw_access = str(user.get("access") or "").strip().lower()
-    if raw_access in (ACCESS_PERSON, ACCESS_CENTER, ACCESS_COUNTRY):
+    if raw_access in (ACCESS_PERSON, ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_UNIT):
         access = raw_access
     else:
-        access = deduce_access(person=person, center=center, country=country)
+        access = deduce_access(person=person, center=center, country=country, unit=unit)
 
     centers_raw = user.get("centers")
     if isinstance(centers_raw, list):
@@ -118,7 +121,7 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
     else:
         centers = parse_centers(center)
 
-    if access == ACCESS_PERSON:
+    if access in (ACCESS_PERSON, ACCESS_UNIT):
         center = centers[0] if centers else (parse_centers(center)[0] if parse_centers(center) else "")
     elif access == ACCESS_CENTER:
         center = centers[0] if centers else center
@@ -133,6 +136,7 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
         "center": center,
         "centers": centers,
         "person": person,
+        "account": account,
     }
 
 

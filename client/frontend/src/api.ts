@@ -388,13 +388,16 @@ export interface MenuItemFlag {
   country: boolean;
   center: boolean;
   person: boolean;
+  unit?: boolean;
 }
 
 export interface CentraleSyncStatus {
   enabled: boolean;
   center: string;
-  /** personal | local | country */
+  /** personal | local | country | unit */
   access?: string;
+  /** Unit login: the one account IBAN this session may see. */
+  account?: string;
   /** Empty / omitted = all people; otherwise only this person is visible. */
   person?: string;
   username?: string;

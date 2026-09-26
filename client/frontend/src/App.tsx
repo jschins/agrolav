@@ -902,6 +902,7 @@ function menuItemAllowed(
   if (access === "country") return menuBitOn(row.country);
   if (access === "local") return menuBitOn(row.center);
   if (access === "personal") return menuBitOn(row.person);
+  if (access === "unit") return menuBitOn(row.unit);
   return false;
 }
 
@@ -1603,7 +1604,8 @@ function SyncNotifyShell({
 
   useEffect(() => {
     const access = (status?.access || "").trim().toLowerCase();
-    if (access !== "personal" || !activeYear) {
+    const unitAccount = (status?.account || "").trim();
+    if ((access !== "personal" && access !== "unit") || !activeYear) {
       setShowBankSwitcher(false);
       setBankOptions([]);
       setBankView("consolidated");
@@ -1632,13 +1634,18 @@ function SyncNotifyShell({
             nextUrl = `${hub}/upload?${qs.toString()}`;
           }
           setUploadUrl(nextUrl);
+          const folders = res.folders || [];
           setShowBankSwitcher(
-            Boolean(res.show_switcher) || (res.folders || []).length > 1
+            access !== "unit" &&
+              (Boolean(res.show_switcher) || folders.length > 1)
           );
-          setBankOptions(res.folders || []);
+          setBankOptions(folders);
           setBankView((prev) => {
+            if (access === "unit") {
+              return unitAccount || folders[0]?.iban || prev;
+            }
             if (prev === "consolidated") return prev;
-            if ((res.folders || []).some((f) => f.iban === prev)) return prev;
+            if (folders.some((f) => f.iban === prev)) return prev;
             return "consolidated";
           });
           setBanksState({
@@ -1666,7 +1673,7 @@ function SyncNotifyShell({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [status?.access, activeYear, status?.center, status?.person, status?.centrale_url]);
+  }, [status?.access, status?.account, activeYear, status?.center, status?.person, status?.centrale_url]);
 
   useEffect(() => {
     if (!brandName) return;
@@ -1820,7 +1827,9 @@ function SyncNotifyShell({
     if (scratchBusy || wipeBusy || crossBusy) return;
     const dutch = uiIsDutch(menuTerms);
     const extra: { person?: string; account?: string } = {};
-    if (access === "personal") {
+    if (access === "unit") {
+      extra.account = (status?.account || bankView || "").trim();
+    } else if (access === "personal") {
       if (!bankView || bankView === "consolidated") {
         setWipeError(dutch ? "Kies eerst een rekening" : "Select an account first");
         return;
@@ -2061,7 +2070,9 @@ function SyncNotifyShell({
                   const income = smallOpen === "income";
                   setSmallOpen(null);
                   const extra: { person?: string; account?: string } = {};
-                  if (access === "personal" && bankView && bankView !== "consolidated") {
+                  if (access === "unit") {
+                    extra.account = (status?.account || bankView || "").trim();
+                  } else if (access === "personal" && bankView && bankView !== "consolidated") {
                     extra.account = bankView;
                   }
                   beginRefreshBusy("please wait... wiping");

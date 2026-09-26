@@ -6,6 +6,7 @@ from typing import Any
 ACCESS_PERSON = "personal"
 ACCESS_CENTER = "local"
 ACCESS_COUNTRY = "country"
+ACCESS_UNIT = "unit"
 
 
 def parse_centers(raw: str | None) -> list[str]:
@@ -18,14 +19,19 @@ def parse_centers(raw: str | None) -> list[str]:
     return [part.strip() for part in str(raw).split(",") if part.strip()]
 
 
-def deduce_access(*, person: str, center: str = "", country: str = "") -> str:
+def deduce_access(
+    *, person: str, center: str = "", country: str = "", unit: str = ""
+) -> str:
     """Access follows the SQL login assignment fields (empty string = NULL).
 
+    - unit set → unit (one account)
     - person set → personal
     - person empty, center set → local (that center)
     - person empty, center empty, country set → country (all folders in that country)
     - person empty, center empty, country empty → local (incomplete row)
     """
+    if str(unit or "").strip():
+        return ACCESS_UNIT
     if str(person or "").strip():
         return ACCESS_PERSON
     if str(center or "").strip():
@@ -44,8 +50,10 @@ def enrich_user_record(user: dict[str, Any]) -> dict[str, Any]:
     person = str(user.get("person") or "").strip()
     center = str(user.get("center") or "").strip()
     country = str(user.get("country") or "").strip()
+    unit = str(user.get("unit") or "").strip()
+    account = str(user.get("account") or "").strip()
     centers = parse_centers(center)
-    access = deduce_access(person=person, center=center, country=country)
+    access = deduce_access(person=person, center=center, country=country, unit=unit)
     return {
         "username": str(user.get("username") or "").strip(),
         "title": str(user.get("title") or "").strip(),
@@ -54,5 +62,7 @@ def enrich_user_record(user: dict[str, Any]) -> dict[str, Any]:
         "center": center,
         "centers": centers,
         "person": person,
+        "unit": unit,
+        "account": account,
         "format": str(user.get("format") or "").strip(),
     }

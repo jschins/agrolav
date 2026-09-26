@@ -13,8 +13,13 @@ CREATE TABLE dbo.menu_item (
     menu_id VARCHAR(64) NOT NULL CONSTRAINT PK_menu_item PRIMARY KEY,
     country BIT NOT NULL,
     center  BIT NOT NULL,
-    person  BIT NOT NULL
+    person  BIT NOT NULL,
+    unit    BIT NOT NULL CONSTRAINT df_menu_item_unit DEFAULT (0)
 );
+GO
+
+IF COL_LENGTH(N'dbo.menu_item', N'unit') IS NULL
+    ALTER TABLE dbo.menu_item ADD unit BIT NOT NULL CONSTRAINT df_menu_item_unit DEFAULT (0);
 GO
 
 INSERT INTO dbo.menu_item (menu_id, country, center, person)
@@ -47,7 +52,7 @@ WHERE NOT EXISTS (
 );
 GO
 
-SELECT menu_id, country, center, person
+SELECT menu_id, country, center, person, unit
 FROM dbo.menu_item
 ORDER BY menu_id;
 GO
