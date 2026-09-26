@@ -52,6 +52,13 @@ WHERE NOT EXISTS (
 );
 GO
 
+INSERT INTO dbo.menu_item (menu_id, country, center, person, unit)
+SELECT N'search-statements', 1, 1, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.menu_item WHERE menu_id = N'search-statements'
+);
+GO
+
 SELECT menu_id, country, center, person, unit
 FROM dbo.menu_item
 ORDER BY menu_id;

@@ -1190,6 +1190,69 @@ def _hub_transactions(
     return hub_get(suffix)
 
 
+def _booking_search_query() -> dict[str, str]:
+    """Login scope for statement search. The browser does not choose it."""
+    from app.centrale_sync import load_config
+    from shared.user_access import ACCESS_COUNTRY, ACCESS_PERSON, ACCESS_UNIT
+
+    cfg = load_config()
+    scope = {
+        "country": cfg.country,
+        "center": "" if cfg.access == ACCESS_COUNTRY else cfg.center,
+        "person": cfg.person if cfg.access in (ACCESS_PERSON, ACCESS_UNIT) else "",
+        "account": cfg.account if cfg.access == ACCESS_UNIT else "",
+    }
+    return {key: value for key, value in scope.items() if str(value or "").strip()}
+
+
+@app.get("/api/bookings/search-options")
+def api_booking_search_options() -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+    import urllib.parse
+
+    try:
+        query = urllib.parse.urlencode(_booking_search_query())
+        return hub_request("GET", f"/api/bookings/search-options?{query}")
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.get("/api/bookings/search")
+def api_booking_search(
+    date_from: str = Query(default=""),
+    date_to: str = Query(default=""),
+    description: str = Query(default=""),
+    name: str = Query(default=""),
+    amount_from: str = Query(default=""),
+    amount_to: str = Query(default=""),
+    bank_type: str = Query(default=""),
+    account_iban: str = Query(default=""),
+    counterparty_iban: str = Query(default=""),
+    local_code: str = Query(default=""),
+) -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+    import urllib.parse
+
+    criteria = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "description": description,
+        "name": name,
+        "amount_from": amount_from,
+        "amount_to": amount_to,
+        "bank_type": bank_type,
+        "account_iban": account_iban,
+        "counterparty_iban": counterparty_iban,
+        "local_code": local_code,
+    }
+    params = _booking_search_query()
+    params.update({key: value for key, value in criteria.items() if str(value or "").strip()})
+    try:
+        return hub_request("GET", f"/api/bookings/search?{urllib.parse.urlencode(params)}")
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 @app.get("/api/transactions/{person_name}")
 def api_transactions(
     person_name: str,

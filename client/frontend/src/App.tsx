@@ -24,6 +24,10 @@ import {
   getMatrix,
   getSettings,
   getTransactions,
+  getBookingSearchOptions,
+  searchBookings,
+  type BookingSearchOptions,
+  type BookingSearchResult,
   getYears,
   login,
   logout,
@@ -919,7 +923,16 @@ function menuItemAllowed(
   return false;
 }
 
-type AppView = "main" | "terms" | "categories" | "ip" | "split" | "password" | "journal" | "afschrijvingen";
+type AppView =
+  | "main"
+  | "terms"
+  | "categories"
+  | "ip"
+  | "split"
+  | "password"
+  | "journal"
+  | "afschrijvingen"
+  | "search";
 
 const VIEW_CHANGE_EVENT = "boekhouding-view";
 
@@ -1528,6 +1541,7 @@ function SyncNotifyShell({
   passwordView = false,
   journalView = false,
   afschrijvingenView = false,
+  searchView = false,
   onLogout,
   initialTitle = "",
 }: {
@@ -1548,6 +1562,7 @@ function SyncNotifyShell({
   passwordView?: boolean;
   journalView?: boolean;
   afschrijvingenView?: boolean;
+  searchView?: boolean;
   onLogout?: () => void;
   initialTitle?: string;
 }) {
@@ -1935,14 +1950,29 @@ function SyncNotifyShell({
         onClick: () => openView("afschrijvingen"),
       });
     }
-    if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
+    items.push({
+      id: "search-statements",
+      label: tableHeaderTerm(menuTerms, "Search statements"),
+      onClick: () => openView("search"),
+    });
+    const onMatrix =
+      activeYear &&
+      !termsView &&
+      !categoriesView &&
+      !ipView &&
+      !splitView &&
+      !passwordView &&
+      !journalView &&
+      !afschrijvingenView &&
+      !searchView;
+    if (onMatrix) {
       items.push({
         id: "export-excel",
         label: tableHeaderTerm(menuTerms, "Export balance sheet"),
         onClick: exportExcel,
       });
     }
-    if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
+    if (onMatrix) {
       items.push({
         id: "back-to-matrix",
         label: tableHeaderTerm(menuTerms, "Back to summary"),
@@ -2011,7 +2041,7 @@ function SyncNotifyShell({
         menuItemAllowed(item.id, access, status?.menu_items)
       )
     );
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, status?.menu_items, menuTerms]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.menu_items, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
     item.onClick?.();
@@ -2031,7 +2061,7 @@ function SyncNotifyShell({
                 onSelect={handleSelect}
               />
             ) : null}
-            {!termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView && activeYear ? (
+            {!termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView && !searchView && activeYear ? (
               <YearSwitcher
                 year={activeYear}
                 years={yearOptions}
@@ -2041,7 +2071,7 @@ function SyncNotifyShell({
                 }}
               />
             ) : null}
-            {showBankSwitcher && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView ? (
+            {showBankSwitcher && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView && !searchView ? (
               <BankSwitcher
                 view={bankView}
                 accounts={bankOptions}
@@ -2411,20 +2441,24 @@ function parseAppView(search = window.location.search): AppView {
     view === "split" ||
     view === "password" ||
     view === "journal" ||
-    view === "afschrijvingen"
+    view === "afschrijvingen" ||
+    view === "search"
   ) {
     return view;
   }
   return "main";
 }
 
-function viewUrl(target: "main" | "terms" | "categories" | "ip" | "password" | "journal" | "afschrijvingen"): string {
+function viewUrl(
+  target: "main" | "terms" | "categories" | "ip" | "password" | "journal" | "afschrijvingen" | "search"
+): string {
   if (target === "terms") return `${window.location.pathname}?view=terms`;
   if (target === "categories") return `${window.location.pathname}?view=categories`;
   if (target === "ip") return `${window.location.pathname}?view=ip`;
   if (target === "password") return `${window.location.pathname}?view=password`;
   if (target === "journal") return `${window.location.pathname}?view=journal`;
   if (target === "afschrijvingen") return `${window.location.pathname}?view=afschrijvingen`;
+  if (target === "search") return `${window.location.pathname}?view=search`;
   return window.location.pathname;
 }
 
@@ -2437,7 +2471,9 @@ function showInThisWindow(url: string) {
   window.dispatchEvent(new Event(VIEW_CHANGE_EVENT));
 }
 
-function openView(target: "main" | "terms" | "categories" | "ip" | "password" | "journal" | "afschrijvingen") {
+function openView(
+  target: "main" | "terms" | "categories" | "ip" | "password" | "journal" | "afschrijvingen" | "search"
+) {
   showInThisWindow(viewUrl(target));
 }
 
@@ -2466,6 +2502,7 @@ export default function App() {
   const isPassword = appView === "password";
   const isJournal = appView === "journal";
   const isAfschrijvingen = appView === "afschrijvingen";
+  const isSearch = appView === "search";
   const [wsEpoch, setWsEpoch] = useState(0);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -2564,6 +2601,7 @@ export default function App() {
       passwordView={isPassword}
       journalView={isJournal}
       afschrijvingenView={isAfschrijvingen}
+      searchView={isSearch}
       onLogout={
         authRequired
           ? () => {
@@ -2606,6 +2644,8 @@ export default function App() {
             terms={menuTerms}
             onBack={() => openView("main")}
           />
+        ) : isSearch ? (
+          <SearchStatementsApp key={wsEpoch} terms={menuTerms} />
         ) : (
           <MainApp
             key={wsEpoch}
@@ -5024,6 +5064,292 @@ function CategoryPickerPopup({
           </table>
         )}
       </div>
+    </div>
+  );
+}
+
+function SearchStatementsApp({ terms }: { terms: Record<string, string> }) {
+  const [options, setOptions] = useState<BookingSearchOptions | null>(null);
+  const [result, setResult] = useState<BookingSearchResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [description, setDescription] = useState("");
+  const [name, setName] = useState("");
+  const [amountFrom, setAmountFrom] = useState("");
+  const [amountTo, setAmountTo] = useState("");
+  const [bankType, setBankType] = useState("");
+  const [accountIban, setAccountIban] = useState("");
+  const [counterpartyIban, setCounterpartyIban] = useState("");
+  const [localCode, setLocalCode] = useState("");
+
+  const labels = options?.table_header_terms ?? terms;
+
+  useEffect(() => {
+    let cancelled = false;
+    getBookingSearchOptions()
+      .then((payload) => {
+        if (!cancelled) setOptions(payload);
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!isPlainAlt(e)) return;
+      if (e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        openView("main");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    searchBookings({
+      date_from: dateFrom,
+      date_to: dateTo,
+      description,
+      name,
+      amount_from: amountFrom,
+      amount_to: amountTo,
+      bank_type: bankType,
+      account_iban: accountIban,
+      counterparty_iban: counterpartyIban,
+      local_code: localCode,
+    })
+      .then((payload) => setResult(payload))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(false));
+  }
+
+  const transactions = result?.transactions ?? [];
+  const headerTerms = result?.table_header_terms ?? labels;
+  const abbreviations = result?.abbreviations ?? options?.abbreviations ?? {};
+  const columns = categoryBeforeDescription(
+    stripHiddenColumns(
+      result?.columns?.length ? result.columns : ptableColumns(transactions)
+    )
+  );
+
+  return (
+    <div className="app search-app">
+      <aside className="sidebar">
+        <div className="winbar">
+          <div className="sidebar-field">
+            <span className="sidebar-field-legend" aria-hidden="true">
+              {"\u00a0"}
+            </span>
+            <button type="button" className="sidebar-knob" onClick={() => openView("main")}>
+              Matrix (Alt+M)
+            </button>
+          </div>
+        </div>
+        <form className="search-criteria" onSubmit={submit}>
+          <label className="login-label">
+            {tableHeaderTerm(labels, "Date from")}
+            <input
+              className="login-input"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </label>
+          <label className="login-label">
+            {tableHeaderTerm(labels, "Date to")}
+            <input
+              className="login-input"
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </label>
+          <label className="login-label">
+            {tableHeaderTerm(labels, "Text in description")}
+            <input
+              className="login-input"
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </label>
+          <label className="login-label">
+            {tableHeaderTerm(labels, "Text in name")}
+            <input
+              className="login-input"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <label className="login-label">
+            {tableHeaderTerm(labels, "Amount from")}
+            <input
+              className="login-input"
+              type="text"
+              inputMode="decimal"
+              value={amountFrom}
+              onChange={(e) => setAmountFrom(e.target.value)}
+            />
+          </label>
+          <label className="login-label">
+            {tableHeaderTerm(labels, "Amount to")}
+            <input
+              className="login-input"
+              type="text"
+              inputMode="decimal"
+              value={amountTo}
+              onChange={(e) => setAmountTo(e.target.value)}
+            />
+          </label>
+          <label className="login-label">
+            {tableHeaderTerm(labels, "Type")}
+            <input
+              className="login-input"
+              type="text"
+              value={bankType}
+              onChange={(e) => setBankType(e.target.value)}
+            />
+          </label>
+          <label className="login-label">
+            {tableHeaderTerm(labels, "Account holder IBAN")}
+            <select
+              className="login-input"
+              value={accountIban}
+              onChange={(e) => setAccountIban(e.target.value)}
+            >
+              <option value="" />
+              {(options?.ibans ?? []).map((iban) => (
+                <option key={iban} value={iban}>
+                  {iban}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="login-label">
+            {tableHeaderTerm(labels, "Counterparty IBAN")}
+            <select
+              className="login-input"
+              value={counterpartyIban}
+              onChange={(e) => setCounterpartyIban(e.target.value)}
+            >
+              <option value="" />
+              {(options?.ibans ?? []).map((iban) => (
+                <option key={`cp-${iban}`} value={iban}>
+                  {iban}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="login-label">
+            {tableHeaderTerm(labels, "Category")}
+            <select
+              className="login-input"
+              value={localCode}
+              onChange={(e) => setLocalCode(e.target.value)}
+            >
+              <option value="" />
+              {(options?.categories ?? []).map((cat) => (
+                <option key={cat.local_code} value={String(cat.local_code)}>
+                  {cat.local_code} {cat.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {error ? <p className="login-error">{error}</p> : null}
+          <button className="sidebar-knob" type="submit" disabled={busy}>
+            {busy ? "…" : tableHeaderTerm(labels, "Search")}
+          </button>
+        </form>
+      </aside>
+      <main className="content">
+        {result ? (
+          transactions.length === 0 ? (
+            <p>{tableHeaderTerm(labels, "No bookings")}</p>
+          ) : (
+            <div className="p-panel">
+              {result.limited ? (
+                <p>{tableHeaderTerm(labels, "Showing the first 500 bookings")}</p>
+              ) : null}
+              <div className="p-details-row">
+                <div className="p-account-iban">
+                  <strong>Rekeninghouder</strong>
+                  <table className="p-table">
+                    <thead>
+                      <tr>
+                        <th>IBAN</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transactions.map((t) => (
+                        <tr key={String(t.id)}>
+                          <td>{formatCell(t.account_iban)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="p-details">
+                  <strong>Details</strong>
+                  <table className="p-table">
+                    <colgroup>
+                      {columns.map((c) => (
+                        <col key={c} className={columnColClass(c)} />
+                      ))}
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        {columns.map((c) => (
+                          <th key={c} className={columnCellClass(c)}>
+                            {c === "iban"
+                              ? "IBAN tegenpartij"
+                              : <RichLabel text={columnHeaderLabel(c, headerTerms)} />}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transactions.map((t) => (
+                        <tr key={String(t.id)}>
+                          {columns.map((c) => {
+                            if (c === "amount") {
+                              const negative =
+                                String(t.amount ?? "").trim().startsWith("-") ||
+                                Number(t.amount) < 0;
+                              return (
+                                <td
+                                  key={c}
+                                  className={negative ? "amount num neg" : "amount num"}
+                                >
+                                  {formatDisplayNumber(t.amount)}
+                                </td>
+                              );
+                            }
+                            if (c === "type") {
+                              return <td key={c}>{abbreviate(abbreviations, t.type)}</td>;
+                            }
+                            return <td key={c}>{formatCell(t[c])}</td>;
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )
+        ) : null}
+      </main>
     </div>
   );
 }

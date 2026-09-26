@@ -283,6 +283,53 @@ export function getTransactions(
   );
 }
 
+export interface BookingSearchCategory {
+  local_code: number;
+  label: string;
+}
+
+export interface BookingSearchOptions {
+  ibans: string[];
+  categories: BookingSearchCategory[];
+  abbreviations: Record<string, string>;
+  table_header_terms: Record<string, string>;
+}
+
+export interface BookingSearchQuery {
+  date_from?: string;
+  date_to?: string;
+  description?: string;
+  name?: string;
+  amount_from?: string;
+  amount_to?: string;
+  bank_type?: string;
+  account_iban?: string;
+  counterparty_iban?: string;
+  local_code?: string;
+}
+
+export interface BookingSearchResult {
+  transactions: Transaction[];
+  columns: string[];
+  abbreviations: Record<string, string>;
+  table_header_terms: Record<string, string>;
+  limited: boolean;
+}
+
+export function getBookingSearchOptions(): Promise<BookingSearchOptions> {
+  return getJson("/api/bookings/search-options");
+}
+
+export function searchBookings(query: BookingSearchQuery): Promise<BookingSearchResult> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    const text = String(value ?? "").trim();
+    if (text) params.set(key, text);
+  }
+  const suffix = params.toString();
+  return getJson(`/api/bookings/search${suffix ? `?${suffix}` : ""}`);
+}
+
 export function getCatalog(): Promise<CatalogResponse> {
   return getJson("/api/categories");
 }

@@ -329,6 +329,23 @@ html.refresh-busy body::before {
   grid-template-columns: 10% 1fr;
 }
 
+.app.search-app {
+  grid-template-columns: minmax(320px, 24rem) 1fr;
+}
+
+.search-criteria {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+  overflow: auto;
+}
+
+.search-criteria .login-input,
+.search-criteria .sidebar-knob {
+  width: 100%;
+}
+
 .app.terms-app .sidebar {
   padding: 0.5rem;
 }

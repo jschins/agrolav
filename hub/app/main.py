@@ -1168,6 +1168,74 @@ def _center_transactions(
     )
 
 
+def _booking_search_scope(
+    country: str,
+    center: str = "",
+    person: str = "",
+    account: str = "",
+) -> dict[str, str]:
+    return {
+        "country": str(country or "").strip(),
+        "center": str(center or "").strip(),
+        "person": str(person or "").strip(),
+        "account": str(account or "").strip(),
+    }
+
+
+@app.get("/api/bookings/search-options")
+def api_booking_search_options(
+    country: str = Query(),
+    center: str = Query(default=""),
+    person: str = Query(default=""),
+    account: str = Query(default=""),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.sql_replica import search_booking_options
+
+    try:
+        return search_booking_options(**_booking_search_scope(country, center, person, account))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/bookings/search")
+def api_booking_search(
+    country: str = Query(),
+    center: str = Query(default=""),
+    person: str = Query(default=""),
+    account: str = Query(default=""),
+    date_from: str = Query(default=""),
+    date_to: str = Query(default=""),
+    description: str = Query(default=""),
+    name: str = Query(default=""),
+    amount_from: str = Query(default=""),
+    amount_to: str = Query(default=""),
+    bank_type: str = Query(default=""),
+    account_iban: str = Query(default=""),
+    counterparty_iban: str = Query(default=""),
+    local_code: str = Query(default=""),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.sql_replica import search_bookings
+
+    try:
+        return search_bookings(
+            **_booking_search_scope(country, center, person, account),
+            date_from=date_from,
+            date_to=date_to,
+            description=description,
+            name=name,
+            amount_from=amount_from,
+            amount_to=amount_to,
+            bank_type=bank_type,
+            account_iban=account_iban,
+            counterparty_iban=counterparty_iban,
+            local_code=local_code,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/local/{center}/transactions/{person_name}")
 def api_transactions(
     center: str,

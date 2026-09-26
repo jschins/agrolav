@@ -1576,3 +1576,283 @@ def save_bound_split(
     bound.conn.commit()
     return load_bound_split(parent_id)
 
+
+_SEARCH_LIMIT = 500
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _iban_key(value: str) -> str:
+    return re.sub(r"\s+", "", str(value or "")).upper()
+
+
+def _like_contains(fragment: str) -> str:
+    escaped = (
+        fragment.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+        .replace("[", "\\[")
+    )
+    return f"%{escaped}%"
+
+
+def _parse_search_date(value: str, label: str) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if not _ISO_DATE.fullmatch(text):
+        raise ValueError(f"{label} must be YYYY-MM-DD")
+    return date.fromisoformat(text)
+
+
+def _parse_search_amount(value: str, label: str) -> Decimal | None:
+    text = str(value or "").strip().replace(" ", "").replace(",", ".")
+    if not text:
+        return None
+    try:
+        return Decimal(text)
+    except InvalidOperation as exc:
+        raise ValueError(f"{label} must be a number") from exc
+
+
+def _search_scope(
+    cursor: Any,
+    *,
+    country: str,
+    center: str,
+    person: str,
+    account: str,
+) -> tuple[str, int, list[str], list[Any]]:
+    country_name = str(country or "").strip()
+    country_id = _country_id_for_username(cursor, country_name)
+    if country_id is None:
+        raise ValueError("unknown country")
+    table = _transaction_table(country_name)
+    if not table:
+        raise ValueError("unknown country")
+    cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+    if cursor.fetchone()[0] is None:
+        raise ValueError("booking table is missing")
+    clauses = ["n.country_id = ?"]
+    params: list[Any] = [int(country_id)]
+    if str(center or "").strip():
+        clauses.append("n.username = ? COLLATE Latin1_General_CI_AI")
+        params.append(str(center).strip())
+    if str(person or "").strip():
+        clauses.append("p.username = ? COLLATE Latin1_General_CI_AI")
+        params.append(str(person).strip())
+    if str(account or "").strip():
+        clauses.append("REPLACE(a.iban, ' ', '') = ?")
+        params.append(_iban_key(account))
+    return table, int(country_id), clauses, params
+
+
+def search_booking_options(
+    *,
+    country: str,
+    center: str = "",
+    person: str = "",
+    account: str = "",
+) -> dict[str, Any]:
+    """Country account IBANs and categories for the statement search form."""
+    from app import user_store
+    from app.sql_catalog import _language_header_terms
+
+    cursor = user_store._sql_connect().cursor()
+    _table, country_id, _clauses, _params = _search_scope(
+        cursor, country=country, center=center, person=person, account=account
+    )
+    cursor.execute(
+        """
+        SELECT DISTINCT a.iban
+        FROM dbo.account a
+        JOIN dbo.person p ON p.id = a.person_id
+        JOIN dbo.center n ON n.center_id = p.center_id
+        WHERE n.country_id = ?
+          AND a.iban IS NOT NULL
+          AND LTRIM(RTRIM(a.iban)) <> N''
+        ORDER BY a.iban
+        """,
+        (country_id,),
+    )
+    ibans: list[str] = []
+    seen: set[str] = set()
+    for (raw,) in cursor.fetchall():
+        key = _iban_key(str(raw or ""))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        ibans.append(key)
+    cursor.execute(
+        """
+        SELECT local_code, label
+        FROM dbo.dim_category
+        WHERE country_id = ?
+        ORDER BY local_code, label
+        """,
+        (country_id,),
+    )
+    categories = [
+        {"local_code": int(code), "label": str(label or "").strip()}
+        for code, label in cursor.fetchall()
+        if code is not None
+    ]
+    language_id = 1
+    cursor.execute("SELECT COL_LENGTH(N'dbo.country', N'language_id')")
+    if cursor.fetchone()[0] is not None:
+        cursor.execute(
+            "SELECT language_id FROM dbo.country WHERE country_id = ?",
+            (country_id,),
+        )
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            language_id = int(row[0])
+    return {
+        "ibans": ibans,
+        "categories": categories,
+        "abbreviations": _type_abbreviations(cursor, country_id),
+        "table_header_terms": _language_header_terms(cursor, language_id),
+    }
+
+
+def _type_abbreviations(cursor: Any, country_id: int) -> dict[str, str]:
+    cursor.execute("SELECT OBJECT_ID(N'dbo.type_abbreviation', N'U')")
+    row = cursor.fetchone()
+    if row is None or not row[0]:
+        return {}
+    cursor.execute(
+        """
+        SELECT bank_type, abbreviation
+        FROM dbo.type_abbreviation
+        WHERE country_id = ?
+        """,
+        (country_id,),
+    )
+    out: dict[str, str] = {}
+    for bank_type, abbreviation in cursor.fetchall():
+        key = str(bank_type or "").strip()
+        label = str(abbreviation or "").strip()
+        if key and label:
+            out[key] = label
+    return out
+
+
+def search_bookings(
+    *,
+    country: str,
+    center: str = "",
+    person: str = "",
+    account: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    description: str = "",
+    name: str = "",
+    amount_from: str = "",
+    amount_to: str = "",
+    bank_type: str = "",
+    account_iban: str = "",
+    counterparty_iban: str = "",
+    local_code: str = "",
+) -> dict[str, Any]:
+    """Bookings in the login scope. An empty criterion is not applied."""
+    from app import user_store
+    from app.core.categorize import transaction_display_column_keys
+    from app.sql_catalog import _language_header_terms
+
+    cursor = user_store._sql_connect().cursor()
+    table, country_id, clauses, params = _search_scope(
+        cursor, country=country, center=center, person=person, account=account
+    )
+    start = _parse_search_date(date_from, "Date from")
+    end = _parse_search_date(date_to, "Date to")
+    if start is not None:
+        clauses.append("t.booked_on >= ?")
+        params.append(start)
+    if end is not None:
+        clauses.append("t.booked_on <= ?")
+        params.append(end)
+    fragment = str(description or "").strip()
+    if fragment:
+        clauses.append("t.description LIKE ? ESCAPE '\\'")
+        params.append(_like_contains(fragment))
+    name_fragment = str(name or "").strip()
+    if name_fragment:
+        clauses.append("t.counterparty_name LIKE ? ESCAPE '\\'")
+        params.append(_like_contains(name_fragment))
+    low = _parse_search_amount(amount_from, "Amount from")
+    high = _parse_search_amount(amount_to, "Amount to")
+    if low is not None:
+        clauses.append("t.amount >= ?")
+        params.append(low)
+    if high is not None:
+        clauses.append("t.amount <= ?")
+        params.append(high)
+    kind = str(bank_type or "").strip()
+    if kind:
+        clauses.append("t.bank_type LIKE ? ESCAPE '\\'")
+        params.append(_like_contains(kind))
+    holder = _iban_key(account_iban)
+    if holder:
+        clauses.append("REPLACE(ISNULL(a.iban, N''), ' ', '') = ?")
+        params.append(holder)
+    counterpart = _iban_key(counterparty_iban)
+    if counterpart:
+        clauses.append("REPLACE(ISNULL(t.counterparty_iban, N''), ' ', '') = ?")
+        params.append(counterpart)
+    code_text = str(local_code or "").strip()
+    if code_text:
+        try:
+            code = int(code_text)
+        except ValueError as exc:
+            raise ValueError("Category must be a local code") from exc
+        clauses.append("d.local_code = ?")
+        params.append(code)
+    where = " AND ".join(clauses)
+    cursor.execute(
+        f"""
+        SELECT TOP ({_SEARCH_LIMIT + 1})
+            t.source_id,
+            t.amount,
+            t.bank_type,
+            t.counterparty_name,
+            t.counterparty_iban,
+            t.description,
+            t.booked_on,
+            t.modification,
+            t.hit,
+            d.local_code,
+            c.currency_default,
+            a.uid,
+            a.iban
+        FROM {table} t
+        JOIN dbo.person p ON p.id = t.person_id
+        JOIN dbo.center n ON n.center_id = p.center_id
+        JOIN dbo.country c ON c.country_id = n.country_id
+        LEFT JOIN dbo.dim_category d
+          ON d.category_id = t.category_id AND d.country_id = c.country_id
+        LEFT JOIN dbo.account a ON a.account_id = t.account_id
+        WHERE {where}
+        ORDER BY t.booked_on DESC, t.source_id DESC
+        """,
+        tuple(params),
+    )
+    fetched = cursor.fetchall()
+    limited = len(fetched) > _SEARCH_LIMIT
+    rows = [_booked_row_shape(item) for item in fetched[:_SEARCH_LIMIT]]
+    language_id = 1
+    cursor.execute("SELECT COL_LENGTH(N'dbo.country', N'language_id')")
+    if cursor.fetchone()[0] is not None:
+        cursor.execute(
+            "SELECT language_id FROM dbo.country WHERE country_id = ?",
+            (country_id,),
+        )
+        lang_row = cursor.fetchone()
+        if lang_row and lang_row[0] is not None:
+            language_id = int(lang_row[0])
+    return {
+        "transactions": rows,
+        "columns": transaction_display_column_keys(rows),
+        "abbreviations": _type_abbreviations(cursor, country_id),
+        "table_header_terms": _language_header_terms(cursor, language_id),
+        "limited": limited,
+    }
+
