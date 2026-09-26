@@ -531,9 +531,12 @@ def api_centrale_status(request: Request) -> dict[str, Any]:
             timeout=5.0,
         )
         status["full_menu"] = bool(access.get("full_menu"))
+        items = access.get("menu_items")
+        status["menu_items"] = items if isinstance(items, list) else []
     except Exception as exc:
         print(f"menu-access: {exc}")
         status["full_menu"] = False
+        status["menu_items"] = []
     cfg = load_config()
     if is_country():
         status["centers"] = list_hub_centers()
@@ -716,12 +719,7 @@ def api_export_excel(year: int | None = Query(default=None)) -> dict[str, Any]:
     import datetime
 
     from app.centrale_sync import export_excel_data
-    from app.runtime import is_country
 
-    if not is_country():
-        raise HTTPException(
-            status_code=403, detail="Export balance sheet requires country login"
-        )
     try:
         return export_excel_data(int(year) if year else int(datetime.date.today().year))
     except Exception as exc:

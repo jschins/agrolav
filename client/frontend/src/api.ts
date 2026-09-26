@@ -383,6 +383,13 @@ export interface ConsentReadyPerson {
   person_name: string;
 }
 
+export interface MenuItemFlag {
+  menu_id: string;
+  country: boolean;
+  center: boolean;
+  person: boolean;
+}
+
 export interface CentraleSyncStatus {
   enabled: boolean;
   center: string;
@@ -398,6 +405,8 @@ export interface CentraleSyncStatus {
   balance_url?: string;
   /** False when this egress address is not in dbo.administrator. */
   full_menu?: boolean;
+  /** Visibility bits from dbo.menu_item. Administrators ignore this list. */
+  menu_items?: MenuItemFlag[];
   local_session_active: boolean;
   error: string | null;
   last_event_id?: number;

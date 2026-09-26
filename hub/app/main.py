@@ -546,7 +546,12 @@ def api_menu_access(
 ) -> dict[str, Any]:
     from app import hub_ip
 
-    return {"full_menu": hub_ip.full_menu_for_ip(client_ip)}
+    from app.sql_catalog import load_menu_items
+
+    return {
+        "full_menu": hub_ip.full_menu_for_ip(client_ip),
+        "menu_items": load_menu_items(),
+    }
 
 
 @app.get("/api/status")

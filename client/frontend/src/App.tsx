@@ -880,27 +880,30 @@ type HeaderAction = {
   onClick?: () => void;
 };
 
-function menuLabelKey(label: string): string {
-  return label.replace(/^\u2699\s*/, "").trim();
-}
-
 function sortMenuItems(items: HeaderAction[]): HeaderAction[] {
   return [...items].sort((a, b) =>
-    menuLabelKey(a.label).localeCompare(menuLabelKey(b.label), undefined, { sensitivity: "base" })
+    a.label.trim().localeCompare(b.label.trim(), undefined, { sensitivity: "base" })
   );
 }
 
-const GUEST_MENU_IDS = new Set([
-  "refresh",
-  "terms",
-  "recalculate-categories",
-  "balance-sheet",
-  "journal",
-  "afschrijvingen",
-  "export-excel",
-  "back-to-matrix",
-  "logout",
-]);
+function menuBitOn(value: boolean | number | string | null | undefined): boolean {
+  if (value === true || value === 1) return true;
+  const text = String(value ?? "").trim().toLowerCase();
+  return text === "1" || text === "true";
+}
+
+function menuItemAllowed(
+  id: string,
+  access: string,
+  rows: CentraleSyncStatus["menu_items"]
+): boolean {
+  const row = (rows ?? []).find((item) => item.menu_id === id);
+  if (!row) return false;
+  if (access === "country") return menuBitOn(row.country);
+  if (access === "local") return menuBitOn(row.center);
+  if (access === "personal") return menuBitOn(row.person);
+  return false;
+}
 
 type AppView = "main" | "terms" | "categories" | "ip" | "split" | "password" | "journal" | "afschrijvingen";
 
@@ -1876,7 +1879,7 @@ function SyncNotifyShell({
     const items = [...headerActions];
     items.push({
       id: "terms",
-      label: `⚙ ${tableHeaderTerm(menuTerms, "Edit Terms")} (Alt+T)`,
+      label: `${tableHeaderTerm(menuTerms, "Edit Terms")} (Alt+T)`,
       onClick: () => openView("terms"),
     });
     items.push({
@@ -1910,7 +1913,7 @@ function SyncNotifyShell({
         onClick: () => openView("afschrijvingen"),
       });
     }
-    if (access === "country" && activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
+    if (activeYear && !termsView && !categoriesView && !ipView && !splitView && !passwordView && !journalView && !afschrijvingenView) {
       items.push({
         id: "export-excel",
         label: tableHeaderTerm(menuTerms, "Export balance sheet"),
@@ -1924,8 +1927,7 @@ function SyncNotifyShell({
         onClick: () => openView("main"),
       });
     }
-    if (access === "country" || access === "local" || access === "personal") {
-      items.push({
+    items.push({
         id: "small-expenses",
         label: tableHeaderTerm(menuTerms, "Smaller expenses"),
         disabled: scratchBusy || wipeBusy || crossBusy,
@@ -1945,8 +1947,7 @@ function SyncNotifyShell({
           setSmallOpen("income");
         },
       });
-    }
-    if (access === "country" || access === "personal") {
+    if (access !== "local") {
       items.push({
         id: "wipe-year",
         label: wipeBusy ? "Wiping…" : tableHeaderTerm(menuTerms, "Wipe Year"),
@@ -1954,25 +1955,21 @@ function SyncNotifyShell({
         onClick: doWipeYear,
       });
     }
-    if (access === "country" || access === "local") {
-      items.push({
-        id: "categories",
-        label: tableHeaderTerm(menuTerms, "Edit categories"),
-        onClick: () => openView("categories"),
-      });
-      items.push({
-        id: "ip-access",
-        label: tableHeaderTerm(menuTerms, "Restrict IP access"),
-        onClick: () => openView("ip"),
-      });
-    }
-    if (access === "personal") {
-      items.push({
-        id: "set-password",
-        label: tableHeaderTerm(menuTerms, "Set password"),
-        onClick: () => openView("password"),
-      });
-    }
+    items.push({
+      id: "categories",
+      label: tableHeaderTerm(menuTerms, "Edit categories"),
+      onClick: () => openView("categories"),
+    });
+    items.push({
+      id: "ip-access",
+      label: tableHeaderTerm(menuTerms, "Restrict IP access"),
+      onClick: () => openView("ip"),
+    });
+    items.push({
+      id: "set-password",
+      label: tableHeaderTerm(menuTerms, "Set password"),
+      onClick: () => openView("password"),
+    });
     if (uploadUrl) {
       items.push({
         id: "upload",
@@ -1987,9 +1984,12 @@ function SyncNotifyShell({
         onClick: requestLogout,
       });
     }
-    if (status?.full_menu === true) return sortMenuItems(items);
-    return sortMenuItems(items.filter((item) => GUEST_MENU_IDS.has(item.id)));
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, status?.full_menu, menuTerms]);
+    return sortMenuItems(
+      items.filter((item) =>
+        menuItemAllowed(item.id, access, status?.menu_items)
+      )
+    );
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, status?.menu_items, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
     item.onClick?.();
@@ -2840,7 +2840,6 @@ function MainApp({
   const [refreshScope, setRefreshScope] = useState<RefreshStatusScope | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<StoredRefreshStatus | null>(null);
   const [hasSecrets, setHasSecrets] = useState(false);
-  const [canAddPerson, setCanAddPerson] = useState(false);
   const [addPersonUrl, setAddPersonUrl] = useState<string | null>(null);
   const [termMenu, setTermMenu] = useState<{
     term: string;
@@ -2864,7 +2863,6 @@ function MainApp({
       .then((s) => {
         setHasSecrets(Boolean(s.has_secrets));
         const scoped = Boolean((s.person || "").trim());
-        setCanAddPerson(!scoped);
         const hub = (s.centrale_url || "").replace(/\/$/, "");
         const ws = (s.center || "").trim();
         if (hub && ws) {
@@ -2889,7 +2887,6 @@ function MainApp({
       })
       .catch(() => {
         setHasSecrets(false);
-        setCanAddPerson(false);
         setAddPersonUrl(null);
         setLoginName("");
       });
@@ -3213,7 +3210,6 @@ function MainApp({
     });
   }
 
-  const manageConsent = loginAccess === "local" || loginAccess === "country";
   const termsForUi = matrix?.table_header_terms ?? menuTerms;
 
   function pickManagedPerson(): string | null {
@@ -3352,8 +3348,6 @@ function MainApp({
         disabled: refreshing || firstDownloading,
         onClick: doRefresh,
       });
-    }
-    if (manageConsent) {
       items.push({
         id: "prepare-consent",
         label: tableHeaderTerm(termsForUi, "Prepare consent"),
@@ -3383,7 +3377,7 @@ function MainApp({
         onClick: doWipePersonYear,
       });
     }
-    if (canAddPerson && addPersonUrl) {
+    if (addPersonUrl) {
       items.push({
         id: "add-person",
         label: tableHeaderTerm(matrix?.table_header_terms, "Add person"),
@@ -3396,9 +3390,7 @@ function MainApp({
     hasSecrets,
     refreshing,
     firstDownloading,
-    canAddPerson,
     addPersonUrl,
-    manageConsent,
     loginAccess,
     setHeaderActions,
     matrix,

@@ -118,6 +118,41 @@ def _sql_retry(fn):
         return fn()
 
 
+def load_menu_items() -> list[dict[str, Any]]:
+    """Header-menu visibility bits. One row per ``dbo.menu_item``."""
+    if not _sql_ready():
+        return []
+
+    def _run() -> list[dict[str, Any]]:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            SELECT menu_id, country, center, person
+            FROM dbo.menu_item
+            ORDER BY menu_id
+            """
+        )
+        rows: list[dict[str, Any]] = []
+        for menu_id, country, center, person in cursor.fetchall():
+            key = str(menu_id or "").strip()
+            if not key:
+                continue
+            rows.append(
+                {
+                    "menu_id": key,
+                    "country": bool(country),
+                    "center": bool(center),
+                    "person": bool(person),
+                }
+            )
+        return rows
+
+    try:
+        return _sql_retry(_run)
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def list_country_usernames() -> list[str]:
     if not _sql_ready():
         return []
