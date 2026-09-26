@@ -754,6 +754,24 @@ th {
   font-weight: 600;
 }
 
+.terms-list-item.term-center {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.terms-list-item.term-center .terms-list-sub {
+  color: #b91c1c;
+}
+
+.terms-list-item.term-center.selected {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.terms-list-item.term-center.selected .terms-list-sub {
+  color: #b91c1c;
+}
+
 .terms-list-sub {
   display: block;
   font-size: 0.68rem;
@@ -1380,8 +1398,13 @@ textarea.cell-edit {
   color: #334155;
 }
 
+.term-context-account-select.center-picked {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
 .term-context-account-select {
-  max-width: 11rem;
+  max-width: 14rem;
   font-size: 0.72rem;
   font-weight: 400;
   color: #334155;

@@ -116,6 +116,7 @@ class CenterAccountTermsRequest(BaseModel):
     category: str
     add: list[str] = Field(default_factory=list)
     remove: list[str] = Field(default_factory=list)
+    center: str | None = None
 
 
 class AddTermRequest(BaseModel):
@@ -1264,28 +1265,64 @@ def api_transaction_split_save(person_name: str, body: TransactionSplitSave) -> 
         raise _hub_error(exc) from exc
 
 
+def _settings_with_country_accounts() -> dict[str, Any]:
+    """Settings for the active center, plus every center's accounts on a country login."""
+    import urllib.parse
+
+    from app.centrale_sync import hub_get, hub_request, load_config, scope_settings
+    from shared.user_access import ACCESS_COUNTRY
+
+    payload = hub_get("/settings")
+    if not isinstance(payload, dict):
+        return {}
+    cfg = load_config()
+    if cfg.access == ACCESS_COUNTRY:
+        groups = [
+            group
+            for group in (payload.get("account_groups") or [])
+            if isinstance(group, dict)
+        ]
+        seen = {str(group.get("account_key") or "") for group in groups}
+        active = (cfg.center or "").strip().lower()
+        for center in cfg.centers or ():
+            name = str(center or "").strip()
+            if not name or name.lower() == active:
+                continue
+            try:
+                extra = hub_request(
+                    "GET",
+                    f"/api/local/{urllib.parse.quote(name)}/settings",
+                )
+            except Exception:
+                continue
+            if not isinstance(extra, dict):
+                continue
+            for group in extra.get("account_groups") or []:
+                if not isinstance(group, dict):
+                    continue
+                key = str(group.get("account_key") or "")
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                groups.append(group)
+        payload = {**payload, "account_groups": groups}
+    return scope_settings(payload)
+
+
 @app.get("/api/settings")
 def api_settings() -> dict[str, Any]:
-    from app.centrale_sync import hub_get, scope_settings
-
     try:
-        payload = hub_get("/settings")
-        return scope_settings(payload) if isinstance(payload, dict) else payload
+        return _settings_with_country_accounts()
     except Exception as exc:
         raise _hub_error(exc) from exc
 
 
 def _is_account_group(group: str) -> bool:
     """True when ``group`` is an account-modality account key (a ``dbo.account.uid``)."""
-    from app.centrale_sync import hub_get, scope_settings
-
     try:
-        payload = hub_get("/settings")
+        payload = _settings_with_country_accounts()
     except Exception:
         return False
-    if not isinstance(payload, dict):
-        return False
-    payload = scope_settings(payload)
     for entry in payload.get("account_groups") or []:
         if isinstance(entry, dict) and str(entry.get("account_key") or "") == str(group).strip():
             return True
@@ -1293,17 +1330,37 @@ def _is_account_group(group: str) -> bool:
 
 
 def _hub_update_settings(group: str, category: str, body: SettingsTermsRequest) -> dict[str, Any]:
-    from app.centrale_sync import hub_get, hub_put, person_allowed, require_person, scope_matrix, scope_settings
+    from app.centrale_sync import hub_put, hub_request, load_config, person_allowed, require_person, scope_matrix, scope_settings
     import urllib.parse
 
     if group not in ("general", "shared", "categories"):
         if not person_allowed(group) and not _is_account_group(group):
             require_person(group)
-    result = hub_put(
-        f"/settings/{urllib.parse.quote(group)}"
-        f"?category={urllib.parse.quote(category, safe='')}",
-        {"terms": body.terms, "source": _source()},
-    )
+    owner = ""
+    try:
+        for entry in _settings_with_country_accounts().get("account_groups") or []:
+            if isinstance(entry, dict) and str(entry.get("account_key") or "") == str(group).strip():
+                owner = str(entry.get("center") or "").strip()
+                break
+    except Exception:
+        owner = ""
+    cfg = load_config()
+    active = (cfg.center or "").strip()
+    payload = {"terms": body.terms, "source": _source()}
+    quoted_group = urllib.parse.quote(group)
+    quoted_category = urllib.parse.quote(category, safe="")
+    if owner and owner.lower() != active.lower():
+        result = hub_request(
+            "PUT",
+            f"/api/local/{urllib.parse.quote(owner)}/settings/{quoted_group}"
+            f"?category={quoted_category}",
+            body=payload,
+        )
+    else:
+        result = hub_put(
+            f"/settings/{quoted_group}?category={quoted_category}",
+            payload,
+        )
     if isinstance(result, dict):
         if isinstance(result.get("matrix"), dict):
             result = {**result, "matrix": scope_matrix(result["matrix"])}
@@ -1313,7 +1370,16 @@ def _hub_update_settings(group: str, category: str, body: SettingsTermsRequest) 
 
 @app.put("/api/settings-center-accounts")
 def api_update_center_account_terms(body: CenterAccountTermsRequest) -> dict[str, Any]:
-    from app.centrale_sync import configured_person, hub_put, load_config, scope_matrix, scope_settings
+    import urllib.parse
+
+    from app.centrale_sync import (
+        configured_person,
+        hub_put,
+        hub_request,
+        load_config,
+        scope_matrix,
+        scope_settings,
+    )
     from shared.user_access import ACCESS_PERSON
 
     try:
@@ -1328,7 +1394,20 @@ def api_update_center_account_terms(body: CenterAccountTermsRequest) -> dict[str
             person = configured_person()
             if person:
                 payload["person"] = person
-        result = hub_put("/settings-center-accounts", payload)
+        target = (body.center or "").strip()
+        active = (cfg.center or "").strip()
+        if target and target.lower() != active.lower():
+            known = {str(name).strip().lower() for name in (cfg.centers or ())}
+            known.add(active.lower())
+            if target.lower() not in known:
+                raise HTTPException(status_code=403, detail="center not in this login")
+            result = hub_request(
+                "PUT",
+                f"/api/local/{urllib.parse.quote(target)}/settings-center-accounts",
+                body=payload,
+            )
+        else:
+            result = hub_put("/settings-center-accounts", payload)
         if isinstance(result, dict):
             if isinstance(result.get("matrix"), dict):
                 result = {**result, "matrix": scope_matrix(result["matrix"])}

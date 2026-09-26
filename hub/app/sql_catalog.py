@@ -1365,18 +1365,19 @@ def account_groups(country: str, username: str) -> list[dict[str, str]]:
         cursor = _cursor()
         cursor.execute(
             """
-            SELECT a.uid, a.account_name, a.iban
+            SELECT a.uid, a.account_name, a.iban, n.username
             FROM dbo.account a
             JOIN dbo.person p ON p.id = a.person_id
             JOIN dbo.country c ON c.country_id = p.country_id
+            JOIN dbo.center n ON n.center_id = p.center_id
             WHERE c.username = ? COLLATE Latin1_General_CI_AI
               AND p.username = ? COLLATE Latin1_General_CI_AI
-            ORDER BY a.iban, a.account_id
+            ORDER BY n.username, a.account_name, a.account_id
             """,
             (cname, name),
         )
         groups: list[dict[str, str]] = []
-        for uid, account_name, iban in cursor.fetchall():
+        for uid, account_name, iban, center_name in cursor.fetchall():
             key = str(uid or "").strip()
             if not key:
                 continue
@@ -1385,6 +1386,7 @@ def account_groups(country: str, username: str) -> list[dict[str, str]]:
                     "account_key": key,
                     "account_name": str(account_name or "").strip(),
                     "iban": str(iban or "").strip(),
+                    "center": str(center_name or "").strip(),
                 }
             )
         return groups

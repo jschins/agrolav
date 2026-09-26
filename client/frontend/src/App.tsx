@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { Fragment, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import {
   ackCentralWinsRefusal,
@@ -3105,6 +3105,29 @@ function MainApp({
     general: boolean,
     account?: string
   ) {
+    const centerTarget = centerNameFromKey(account || "");
+    if (centerTarget) {
+      const sel = selectionRef.current;
+      const rowId = termMenu?.transactionId;
+      closeTermMenu();
+      if (sel && targetCategory !== sel.category) {
+        setDetail((prev) =>
+          prev ? { ...prev, transactions: prev.transactions.filter((row) => !bookingLeavesCategory(row, term, rowId)) } : prev
+        );
+      }
+      termSettingsRef.current = null;
+      return updateCenterAccountTerms({
+        category: targetCategory,
+        add: [term],
+        remove: [],
+        center: centerTarget,
+      })
+        .catch((err: Error) => {
+          setError(err.message);
+          if (sel) return loadDetail(sel.person_name, sel.category, { quiet: true });
+        })
+        .then(() => undefined);
+    }
     const person_name = selectionRef.current?.person_name;
     if (!general && !person_name) return Promise.resolve();
     const sel = selectionRef.current;
@@ -3462,6 +3485,7 @@ function MainApp({
             initialTerm={termMenu.term}
             personName={detail?.person || selection?.person_name || loginName}
             personScope={loginPerson}
+            showCenters={!loginPerson && (loginAccess === "local" || loginAccess === "country")}
             bankIban={bankView !== "consolidated" ? bankView : undefined}
             x={termMenu.x}
             y={termMenu.y}
@@ -3605,13 +3629,19 @@ function TermsApp() {
   function applyCenterAccountTerms(
     category: string,
     add: string[],
-    remove: string[]
+    remove: string[],
+    center?: string
   ) {
+    const target = (center || "").trim();
+    const targetKey = target.toLowerCase();
     setSettings((prev) => {
       if (!prev) return prev;
+      const tagged = (prev.account_groups || []).some((group) => (group.center || "").trim());
       return {
         ...prev,
         account_groups: (prev.account_groups || []).map((group) => {
+          const groupCenter = (group.center || "").trim().toLowerCase();
+          if (targetKey && tagged && groupCenter !== targetKey) return group;
           const current = group.categories[category] ?? [];
           const next = [
             ...current.filter((term) => !remove.includes(term)),
@@ -3627,7 +3657,7 @@ function TermsApp() {
         }),
       };
     });
-    updateCenterAccountTerms({ category, add, remove })
+    updateCenterAccountTerms({ category, add, remove, center: target || undefined })
       .then(() => {
         channelRef.current?.postMessage("recalculated");
         return getSettings();
@@ -5210,6 +5240,7 @@ function TermContextMenu({
   initialTerm,
   personName,
   personScope,
+  showCenters,
   bankIban,
   x,
   y,
@@ -5220,6 +5251,7 @@ function TermContextMenu({
   initialTerm: string;
   personName?: string;
   personScope?: string;
+  showCenters?: boolean;
   bankIban?: string;
   x: number;
   y: number;
@@ -5238,6 +5270,8 @@ function TermContextMenu({
 
   const accountGroups = scopedAccountGroups(settings.account_groups, personScope);
   const accountModality = accountGroups.length > 0;
+  const menuBlocks = accountBlocks(accountGroups, "");
+  const listCenters = Boolean(showCenters && menuBlocks.some((block) => block.center));
   const [accountKey, setAccountKey] = useState(() => {
     const preset = bankIban
       ? accountGroups.find(
@@ -5248,6 +5282,7 @@ function TermContextMenu({
       : undefined;
     return preset?.account_key ?? accountGroups[0]?.account_key ?? "";
   });
+  const centerPicked = Boolean(centerNameFromKey(accountKey));
 
   const categories =
     firstResultaatRestrict(settings, personName) ??
@@ -5343,18 +5378,37 @@ function TermContextMenu({
                 >
                   {accountModality ? (
                     <select
-                      className="term-context-account-select"
+                      className={
+                        centerPicked
+                          ? "term-context-account-select center-picked"
+                          : "term-context-account-select"
+                      }
                       value={accountKey}
                       title={tableHeaderTerm(settings.table_header_terms, "Personal")}
                       disabled={saving}
                       onChange={(e) => setAccountKey(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {accountGroups.map((group) => (
-                        <option key={group.account_key} value={group.account_key}>
-                          {group.account_name || group.account_key}
-                        </option>
-                      ))}
+                      {(listCenters ? menuBlocks : [{ center: "", key: "", accounts: accountGroups }]).flatMap(
+                        (block) => [
+                          listCenters && block.center ? (
+                            <option
+                              key={block.key}
+                              value={block.key}
+                              style={{ color: "#b91c1c", fontWeight: 600 }}
+                            >
+                              {block.center}
+                            </option>
+                          ) : null,
+                          ...block.accounts.map((group) => (
+                            <option key={group.account_key} value={group.account_key}>
+                              {listCenters
+                                ? `\u00a0\u00a0${group.account_name || group.account_key}`
+                                : group.account_name || group.account_key}
+                            </option>
+                          )),
+                        ]
+                      )}
                     </select>
                   ) : (
                     tableHeaderTerm(settings.table_header_terms, "P")
@@ -5497,6 +5551,41 @@ function centerAccountKey(centerName: string): string {
   return `${CENTER_ACCOUNT_PREFIX}${centerName}`;
 }
 
+function centerNameFromKey(key: string): string {
+  return key.startsWith(CENTER_ACCOUNT_PREFIX)
+    ? key.slice(CENTER_ACCOUNT_PREFIX.length)
+    : "";
+}
+
+type AccountBlock = {
+  center: string;
+  key: string;
+  accounts: AccountGroup[];
+};
+
+function accountBlocks(groups: AccountGroup[], fallbackCenter: string): AccountBlock[] {
+  const buckets = new Map<string, AccountGroup[]>();
+  for (const group of groups) {
+    const center = (group.center || fallbackCenter || "").trim();
+    const list = buckets.get(center) ?? [];
+    list.push(group);
+    buckets.set(center, list);
+  }
+  return [...buckets.keys()]
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+    .map((center) => ({
+      center,
+      key: center ? centerAccountKey(center) : "",
+      accounts: [...(buckets.get(center) ?? [])].sort((a, b) =>
+        (a.account_name || a.account_key).localeCompare(
+          b.account_name || b.account_key,
+          undefined,
+          { sensitivity: "base" }
+        )
+      ),
+    }));
+}
+
 function unionAccountTerms(
   groups: AccountGroup[],
   category: string
@@ -5531,13 +5620,16 @@ function TermsTables({
   onUpdateMany?: (
     items: { group: string; category: string; terms: string[] }[]
   ) => void;
-  onUpdateCenter?: (category: string, add: string[], remove: string[]) => void;
+  onUpdateCenter?: (
+    category: string,
+    add: string[],
+    remove: string[],
+    center?: string
+  ) => void;
 }) {
   const { people, general, personal } = settings;
   const account_groups = scopedAccountGroups(settings.account_groups, personScope);
-  const centerKey = (centerName || "").trim()
-    ? centerAccountKey((centerName || "").trim())
-    : "";
+  const blocks = accountBlocks(account_groups, personScope ? "" : (centerName || "").trim());
   const [selectedPerson, setSelectedPerson] = useState(people[0]?.person_name ?? "");
   const [selectedAccount, setSelectedAccount] = useState(account_groups[0]?.account_key ?? "");
   const selectedAccountGroup = account_groups.find((g) => g.account_key === selectedAccount);
@@ -5546,7 +5638,7 @@ function TermsTables({
     ...(personScope ? [personScope, loginName] : [])
   );
   const accountModality = Boolean(account_groups && account_groups.length > 0);
-  const centerIntegrated = Boolean(accountModality && centerKey);
+  const showCenters = Boolean(!personScope && accountModality && blocks.some((block) => block.center));
 
   const [selectedCategory, setSelectedCategory] = useState(columns[0] ?? "");
 
@@ -5557,23 +5649,28 @@ function TermsTables({
   }, [columns, selectedCategory]);
 
   useEffect(() => {
-    if (centerKey && selectedAccount === centerKey) return;
+    const pickedCenter = centerNameFromKey(selectedAccount);
+    if (pickedCenter && blocks.some((block) => block.center === pickedCenter)) return;
     if (
       account_groups.length > 0 &&
       !account_groups.some((group) => group.account_key === selectedAccount)
     ) {
       setSelectedAccount(account_groups[0].account_key);
     }
-  }, [account_groups, selectedAccount, centerKey]);
+  }, [account_groups, selectedAccount, blocks]);
 
   const selectedGroupKey = accountModality ? selectedAccount : selectedPerson;
-  const centerSelected = Boolean(centerKey && selectedAccount === centerKey);
+  const selectedCenter = showCenters ? centerNameFromKey(selectedAccount) : "";
+  const centerSelected = Boolean(selectedCenter);
+  const centerGroups = centerSelected
+    ? (blocks.find((block) => block.center === selectedCenter)?.accounts ?? [])
+    : [];
 
   const gTerms = selectedCategory ? (general[selectedCategory] ?? EMPTY_TERMS) : EMPTY_TERMS;
   const pTerms = selectedCategory
     ? accountModality
       ? centerSelected
-        ? unionAccountTerms(account_groups, selectedCategory)
+        ? unionAccountTerms(centerGroups, selectedCategory)
         : (selectedAccountGroup?.categories[selectedCategory] ?? EMPTY_TERMS)
       : (personal[selectedPerson]?.[selectedCategory] ?? EMPTY_TERMS)
     : EMPTY_TERMS;
@@ -5581,7 +5678,7 @@ function TermsTables({
     selectedCategory &&
       (accountModality
         ? centerSelected
-          ? account_groups.length > 0
+          ? centerGroups.length > 0
           : selectedAccount
         : selectedPerson)
   );
@@ -5594,10 +5691,10 @@ function TermsTables({
       const added = next.filter((term) => !previous.has(term));
       const removed = pTerms.filter((term) => !incoming.has(term));
       if (onUpdateCenter) {
-        onUpdateCenter(selectedCategory, added, removed);
+        onUpdateCenter(selectedCategory, added, removed, selectedCenter);
         return;
       }
-      const items = account_groups.map((group) => {
+      const items = centerGroups.map((group) => {
         const current = group.categories[selectedCategory] ?? [];
         const merged = [
           ...current.filter((term) => !removed.includes(term)),
@@ -5664,22 +5761,42 @@ function TermsTables({
           </h2>
           <div className="terms-list">
             {accountModality ? (
-              <>
-                {centerIntegrated ? (
-                  <button
-                    type="button"
-                    className={
-                      centerSelected
-                        ? "terms-list-item selected"
-                        : "terms-list-item"
-                    }
-                    onClick={() => setSelectedAccount(centerKey)}
-                  >
-                    {centerName}
-                    <span className="terms-list-sub">center</span>
-                  </button>
-                ) : null}
-                {(account_groups ?? []).map((g) => (
+              showCenters ? (
+                blocks.map((block) => (
+                  <Fragment key={block.key || block.center}>
+                    {block.center ? (
+                      <button
+                        type="button"
+                        className={
+                          selectedAccount === block.key
+                            ? "terms-list-item term-center selected"
+                            : "terms-list-item term-center"
+                        }
+                        onClick={() => setSelectedAccount(block.key)}
+                      >
+                        {block.center}
+                        <span className="terms-list-sub">center</span>
+                      </button>
+                    ) : null}
+                    {block.accounts.map((g) => (
+                      <button
+                        key={g.account_key}
+                        type="button"
+                        className={
+                          g.account_key === selectedAccount
+                            ? "terms-list-item selected"
+                            : "terms-list-item"
+                        }
+                        onClick={() => setSelectedAccount(g.account_key)}
+                      >
+                        {g.account_name || g.account_key}
+                        {g.person ? <span className="terms-list-sub">{g.person}</span> : null}
+                      </button>
+                    ))}
+                  </Fragment>
+                ))
+              ) : (
+                (account_groups ?? []).map((g) => (
                   <button
                     key={g.account_key}
                     type="button"
@@ -5693,8 +5810,8 @@ function TermsTables({
                     {g.account_name || g.account_key}
                     {g.person ? <span className="terms-list-sub">{g.person}</span> : null}
                   </button>
-                ))}
-              </>
+                ))
+              )
             ) : (
               people.map((p) => (
                 <button

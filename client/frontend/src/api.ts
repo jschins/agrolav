@@ -315,6 +315,7 @@ export function updateCenterAccountTerms(body: {
   category: string;
   add: string[];
   remove: string[];
+  center?: string;
 }): Promise<{
   category: string;
   added: string[];

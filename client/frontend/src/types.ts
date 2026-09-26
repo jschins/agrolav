@@ -44,6 +44,7 @@ export interface AccountGroup {
   account_name: string;
   iban: string;
   person: string;
+  center?: string;
   categories: Record<string, string[]>;
 }
 

@@ -373,6 +373,7 @@ def settings(center: str) -> dict[str, Any]:
                             {
                                 **group,
                                 "person": pack.person_name,
+                                "center": str(group.get("center") or ws).strip(),
                                 "categories": bucket,
                             }
                         )
