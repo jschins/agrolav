@@ -880,6 +880,16 @@ type HeaderAction = {
   onClick?: () => void;
 };
 
+function menuLabelKey(label: string): string {
+  return label.replace(/^\u2699\s*/, "").trim();
+}
+
+function sortMenuItems(items: HeaderAction[]): HeaderAction[] {
+  return [...items].sort((a, b) =>
+    menuLabelKey(a.label).localeCompare(menuLabelKey(b.label), undefined, { sensitivity: "base" })
+  );
+}
+
 const GUEST_MENU_IDS = new Set([
   "refresh",
   "terms",
@@ -1977,8 +1987,8 @@ function SyncNotifyShell({
         onClick: requestLogout,
       });
     }
-    if (status?.full_menu === true) return items;
-    return items.filter((item) => GUEST_MENU_IDS.has(item.id));
+    if (status?.full_menu === true) return sortMenuItems(items);
+    return sortMenuItems(items.filter((item) => GUEST_MENU_IDS.has(item.id)));
   }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, status?.balance_url, status?.full_menu, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
