@@ -161,17 +161,20 @@ def credentials_match(
     password: str,
     *,
     username: str,
-    is_person: bool,
+    is_person: bool = True,
     password_hash: str | None,
 ) -> bool:
-    """Person: stored scrypt hash, or formula if hash is still NULL. Others: formula only."""
+    """Stored scrypt hash when set; otherwise the formula password.
+
+    ``is_person`` is accepted for existing callers. Person, center, country, and
+    unit logins all use this same rule.
+    """
+    del is_person
     plain = str(password or "")
     name = str(username or "").strip()
     if not name:
         return False
     formula = password_for_username(name)
-    if not is_person:
-        return plain == formula
     stored = str(password_hash or "").strip()
     if stored:
         return verify_password(plain, stored)
@@ -241,6 +244,73 @@ def unit_mobile_phone(username: str) -> str | None:
     raw = _unit_column(username, "mobile_phone")
     text = str(raw or "").strip()
     return text or None
+
+
+_LOGIN_TABLES = {
+    "unit": "dbo.unit",
+    "person": "dbo.person",
+    "center": "dbo.center",
+    "country": "dbo.country",
+}
+
+
+def login_kind(user: dict[str, Any] | None) -> str:
+    """Which login table owns this user's password."""
+    if not user:
+        return "country"
+    if str(user.get("account") or "").strip():
+        return "unit"
+    if str(user.get("person") or "").strip():
+        return "person"
+    if str(user.get("center") or "").strip():
+        return "center"
+    return "country"
+
+
+def _login_column(kind: str, username: str, column: str) -> Any:
+    table = _LOGIN_TABLES.get(kind)
+    name = (username or "").strip()
+    if table is None or column not in ("password_hash", "mobile_phone") or not name:
+        return None
+    init_user_store()
+    cursor = _sql_connect().cursor()
+    try:
+        cursor.execute(
+            f"SELECT {column} FROM {table} WHERE username = ? COLLATE Latin1_General_CI_AI",
+            (name,),
+        )
+    except Exception:
+        return None
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return row[0]
+
+
+def login_password_hash(user: dict[str, Any] | None) -> str | None:
+    if not user:
+        return None
+    raw = _login_column(login_kind(user), str(user.get("username") or ""), "password_hash")
+    text = str(raw or "").strip()
+    return text or None
+
+
+def login_mobile_phone(user: dict[str, Any] | None) -> str | None:
+    """Person and unit only. Center and country have no mobile phone."""
+    if not user or login_kind(user) not in ("person", "unit"):
+        return None
+    raw = _login_column(login_kind(user), str(user.get("username") or ""), "mobile_phone")
+    text = str(raw or "").strip()
+    return text or None
+
+
+def _require_password_column(cursor: Any, table: str) -> None:
+    cursor.execute("SELECT COL_LENGTH(?, ?)", (table, "password_hash"))
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        raise ValueError(
+            f"Add password_hash to {table} before saving a password for this login"
+        )
 
 
 def display_title(username: str) -> str:
@@ -647,18 +717,10 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
     if user is None:
         return None
     name = str(user.get("username") or "").strip()
-    is_unit = bool(str(user.get("account") or "").strip())
-    is_person = _is_person_user(user) and not is_unit
-    if is_unit:
-        stored = unit_password_hash(name)
-        matched = credentials_match(
-            password, username=name, is_person=True, password_hash=stored
-        )
-    else:
-        stored = person_password_hash(name) if is_person else None
-        matched = credentials_match(
-            password, username=name, is_person=is_person, password_hash=stored
-        )
+    stored = login_password_hash(user)
+    matched = credentials_match(
+        password, username=name, is_person=True, password_hash=stored
+    )
     if not matched:
         return None
     return user
@@ -879,51 +941,57 @@ def set_person_password(
     new: str,
     confirm: str,
 ) -> dict[str, Any]:
-    """Replace ``dbo.person.password_hash``. Person logins only."""
+    """Replace the login's ``password_hash`` on person, center, country, or unit."""
     name = (username or "").strip()
     user = find_user(name)
-    if user is None or not _is_person_user(user):
-        raise ValueError("Only a person login can set a password")
+    if user is None:
+        raise ValueError("Unknown login")
     if str(new or "") != str(confirm or ""):
         raise ValueError("New password and confirmation do not match")
     if not str(new or "").strip():
         raise ValueError("New password is required")
+    table = _LOGIN_TABLES[login_kind(user)]
     hashed = hash_password(str(new))
     with _LOCK:
         init_user_store()
         cursor = _sql_connect().cursor()
+        _require_password_column(cursor, table)
         cursor.execute(
-            """
-            UPDATE dbo.person SET password_hash = ?
+            f"""
+            UPDATE {table} SET password_hash = ?
             WHERE username = ? COLLATE Latin1_General_CI_AI
             """,
             (hashed, name),
         )
         if cursor.rowcount == 0:
-            raise ValueError("Unknown person")
+            raise ValueError("Unknown login")
         _sql_connect().commit()
     return {"ok": True}
 
 
 def set_person_mobile(*, username: str, mobile_phone: str | None) -> dict[str, Any]:
-    """Store or clear ``dbo.person.mobile_phone``. Person logins only."""
+    """Store or clear ``mobile_phone`` on a person or unit login."""
     name = (username or "").strip()
     user = find_user(name)
-    if user is None or not _is_person_user(user):
-        raise ValueError("Only a person login can set a mobile phone")
+    if user is None:
+        raise ValueError("Unknown login")
+    kind = login_kind(user)
+    if kind not in ("person", "unit"):
+        return {"ok": True, "mobile_phone": ""}
     mobile = normalize_mobile_phone(mobile_phone)
+    table = _LOGIN_TABLES[kind]
     with _LOCK:
         init_user_store()
         cursor = _sql_connect().cursor()
         cursor.execute(
-            """
-            UPDATE dbo.person SET mobile_phone = ?
+            f"""
+            UPDATE {table} SET mobile_phone = ?
             WHERE username = ? COLLATE Latin1_General_CI_AI
             """,
             (mobile, name),
         )
         if cursor.rowcount == 0:
-            raise ValueError("Unknown person")
+            raise ValueError("Unknown login")
         _sql_connect().commit()
     return {"ok": True, "mobile_phone": mobile or ""}
 

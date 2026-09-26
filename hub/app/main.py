@@ -277,11 +277,16 @@ def api_auth_password(
             new=body.new_password,
             confirm=body.confirm,
         )
-        if body.mobile_phone is not None:
+        user = user_store.find_user(body.username)
+        if (
+            body.mobile_phone is not None
+            and user is not None
+            and user_store.login_kind(user) in ("person", "unit")
+        ):
             user_store.set_person_mobile(
                 username=body.username, mobile_phone=body.mobile_phone
             )
-            result["mobile_phone"] = user_store.person_mobile_phone(body.username) or ""
+            result["mobile_phone"] = user_store.login_mobile_phone(user) or ""
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -295,11 +300,16 @@ def api_auth_person_security(
     from app import user_store
 
     user = user_store.find_user(username)
-    if user is None or not str(user.get("person") or "").strip():
-        raise HTTPException(status_code=403, detail="person login required")
+    if user is None:
+        raise HTTPException(status_code=404, detail="unknown user")
+    phone: str | None
+    if user_store.login_kind(user) in ("person", "unit"):
+        phone = user_store.login_mobile_phone(user) or ""
+    else:
+        phone = None
     return {
         "username": str(user.get("username") or ""),
-        "mobile_phone": user_store.person_mobile_phone(username) or "",
+        "mobile_phone": phone,
     }
 
 

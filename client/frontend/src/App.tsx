@@ -606,6 +606,27 @@ function resultaatSections(data: ExportResultaatData): {
   ]);
   sections.push({ title: "Totalen per categorie", header, body: categoryBody });
 
+  if (data.cashflow_1053) {
+    const cashBody: (string | number)[][] = [];
+    const cashLine = (line: ExportExcelLine, cumulMode: "sum" | "none") => {
+      const parts = padMonths(line.months);
+      const monthSum = parts.reduce((sum, n) => sum + n, 0);
+      const cumul =
+        cumulMode === "none"
+          ? ""
+          : parts.some((n) => n !== 0)
+            ? euro2(monthSum)
+            : euro2(line.amount);
+      cashBody.push(["", line.label, ...parts.map((n) => euro2(n)), cumul]);
+    };
+    cashLine(data.cashflow_1053.stichting, "sum");
+    cashLine(data.cashflow_1053.inkomsten, "sum");
+    cashLine(data.cashflow_1053.uitgaven, "sum");
+    cashLine(data.cashflow_1053.resultaat, "sum");
+    cashBody.push([]);
+    cashLine(data.cashflow_1053.banksaldo, "none");
+    sections.push({ title: "Resultaat", header, body: cashBody });
+  }
   if (data.maaltijden) {
     const ont = padMonths(data.maaltijden.ontbijten);
     const koude = padMonths(data.maaltijden.koude);
@@ -648,27 +669,6 @@ function resultaatSections(data: ExportResultaatData): {
       costCell(foodCumul, equivCumul),
     ]);
     sections.push({ title: "Maaltijden", header, body: mealBody });
-  }
-  if (data.cashflow_1053) {
-    const cashBody: (string | number)[][] = [];
-    const cashLine = (line: ExportExcelLine, cumulMode: "sum" | "none") => {
-      const parts = padMonths(line.months);
-      const monthSum = parts.reduce((sum, n) => sum + n, 0);
-      const cumul =
-        cumulMode === "none"
-          ? ""
-          : parts.some((n) => n !== 0)
-            ? euro2(monthSum)
-            : euro2(line.amount);
-      cashBody.push(["", line.label, ...parts.map((n) => euro2(n)), cumul]);
-    };
-    cashLine(data.cashflow_1053.stichting, "sum");
-    cashLine(data.cashflow_1053.inkomsten, "sum");
-    cashLine(data.cashflow_1053.uitgaven, "sum");
-    cashLine(data.cashflow_1053.resultaat, "sum");
-    cashBody.push([]);
-    cashLine(data.cashflow_1053.banksaldo, "none");
-    sections.push({ title: "Resultaat", header, body: cashBody });
   }
   return sections;
 }
@@ -4054,6 +4054,7 @@ function SetPasswordApp() {
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [mobile, setMobile] = useState("");
+  const [showMobile, setShowMobile] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -4062,7 +4063,14 @@ function SetPasswordApp() {
     let cancelled = false;
     getPersonSecurity()
       .then((row) => {
-        if (!cancelled) setMobile(row.mobile_phone || "");
+        if (cancelled) return;
+        if (row.mobile_phone == null) {
+          setShowMobile(false);
+          setMobile("");
+          return;
+        }
+        setShowMobile(true);
+        setMobile(row.mobile_phone || "");
       })
       .catch((e: Error) => {
         if (!cancelled) setError(reviewSubmissionMessage(e.message));
@@ -4092,7 +4100,7 @@ function SetPasswordApp() {
     setPersonPassword({
       new_password: next,
       confirm,
-      mobile_phone: mobile.trim(),
+      ...(showMobile ? { mobile_phone: mobile.trim() } : {}),
     })
       .then(() => {
         setOk("Password saved.");
@@ -4116,9 +4124,11 @@ function SetPasswordApp() {
             </button>
           </div>
         </div>
-        <p className="win-hint">
-          Mobile phone number activates two-step login by sending a 6-digit code via SMS
-        </p>
+        {showMobile ? (
+          <p className="win-hint">
+            Mobile phone number activates two-step login by sending a 6-digit code via SMS
+          </p>
+        ) : null}
       </aside>
       <main className="terms-main password-main">
         <form onSubmit={submit} className="login-card password-card">
@@ -4147,17 +4157,19 @@ function SetPasswordApp() {
               required
             />
           </label>
-          <label className="login-label">
-            Mobile phone (optional)
-            <input
-              className="login-input"
-              type="tel"
-              placeholder="+31612345678"
-              value={mobile}
-              onChange={(e) => setMobile(e.target.value)}
-              disabled={busy}
-            />
-          </label>
+          {showMobile ? (
+            <label className="login-label">
+              Mobile phone (optional)
+              <input
+                className="login-input"
+                type="tel"
+                placeholder="+31612345678"
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value)}
+                disabled={busy}
+              />
+            </label>
+          ) : null}
           {error ? <p className="login-error">{error}</p> : null}
           {ok ? <p className="ok">{ok}</p> : null}
           <div className="password-actions">

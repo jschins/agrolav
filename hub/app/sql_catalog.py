@@ -2415,13 +2415,13 @@ def export_resultaat_excel_data(
     ``category_role`` can hold a login username. If that username appears on
     any P&L row, only those tagged rows plus ``remainder`` are listed; otherwise every P&L
     category is listed. That same case also sends monthly meal counts from
-    ``dbo.maaltijden_aantallen`` (ontbijt / koud / warm / warm_hd) for the Excel
-    footer; equivalent tafelgenoten and food cost per tafelgenoot are
-    calculated in the client. Month columns run from January through the
-    current month of this year (all twelve when the export year is already
-    over). Cumulatief is their sum. Totaal is the sum of the displayed P&L
-    rows. Incoming on category 1053 is used only in the cash-flow block at
-    the end: Stichting de Oude Gracht (signed amounts to/from IBAN
+    ``dbo.maaltijden_aantallen`` (ontbijt / koud / warm / warm_hd). Equivalent
+    tafelgenoten and food cost per tafelgenoot are calculated in the client,
+    and that Maaltijden table is rendered last. Month columns run from January
+    through the current month of this year (all twelve when the export year is
+    already over). Cumulatief is their sum. Totaal is the sum of the displayed
+    P&L rows. Incoming on category 1053 is used only in the cash-flow block:
+    Stichting de Oude Gracht (signed amounts to/from IBAN
     NL94INGB0006200605), Overige inkomsten, Uitgaven, their Resultaat, then
     Banksaldo einde maand.
     """

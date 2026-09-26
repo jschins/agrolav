@@ -42,6 +42,7 @@ CREATE TABLE dbo.country (
     title NVARCHAR(256) NOT NULL,
     currency_default CHAR(3) NOT NULL,
     egress_ip VARCHAR(256) NULL,
+    password_hash NVARCHAR(256) NULL,
     CONSTRAINT ux_country_username UNIQUE (username)
 );
 
@@ -69,6 +70,7 @@ CREATE TABLE dbo.center (
     username NVARCHAR(64) NOT NULL,
     title NVARCHAR(256) NOT NULL,
     egress_ip VARCHAR(256) NULL,
+    password_hash NVARCHAR(256) NULL,
     CONSTRAINT fk_center_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
     CONSTRAINT ux_center_username UNIQUE (username)
 );

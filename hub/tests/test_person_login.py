@@ -6,6 +6,7 @@ from app.user_store import (
     PASSWORD_PREFIX,
     credentials_match,
     default_password_hash,
+    login_kind,
     normalize_mobile_phone,
     password_for_username,
 )
@@ -13,20 +14,35 @@ from shared.passwords import hash_password, verify_password
 
 
 class CredentialsMatchTests(unittest.TestCase):
-    def test_country_uses_formula_only(self):
+    def test_stored_hash_wins_for_center_and_country(self):
+        name = "nederland"
+        stored = hash_password("other")
+        self.assertTrue(
+            credentials_match(
+                "other", username=name, is_person=False, password_hash=stored
+            )
+        )
+        self.assertFalse(
+            credentials_match(
+                password_for_username(name),
+                username=name,
+                is_person=False,
+                password_hash=stored,
+            )
+        )
+
+    def test_null_hash_uses_formula_for_center_and_country(self):
         name = "nederland"
         self.assertTrue(
             credentials_match(
                 password_for_username(name),
                 username=name,
                 is_person=False,
-                password_hash=hash_password("other"),
+                password_hash=None,
             )
         )
         self.assertFalse(
-            credentials_match(
-                "other", username=name, is_person=False, password_hash=None
-            )
+            credentials_match("other", username=name, is_person=False, password_hash=None)
         )
 
     def test_person_hash_wins_over_formula(self):
@@ -64,6 +80,19 @@ class CredentialsMatchTests(unittest.TestCase):
         name = "someone"
         encoded = default_password_hash(name)
         self.assertTrue(verify_password(PASSWORD_PREFIX + name, encoded))
+
+
+class LoginKindTests(unittest.TestCase):
+    def test_unit_before_person(self):
+        self.assertEqual(
+            login_kind({"account": "NL00", "person": "hd", "center": "sib"}),
+            "unit",
+        )
+
+    def test_person_center_country(self):
+        self.assertEqual(login_kind({"person": "hd", "center": "sib"}), "person")
+        self.assertEqual(login_kind({"person": "", "center": "sib"}), "center")
+        self.assertEqual(login_kind({"person": "", "center": ""}), "country")
 
 
 class MobilePhoneTests(unittest.TestCase):

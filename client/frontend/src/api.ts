@@ -456,7 +456,8 @@ export function resendLoginOtp(otp_token: string): Promise<OtpChallenge> {
 
 export interface PersonSecurity {
   username: string;
-  mobile_phone: string;
+  /** ``null`` on center and country logins, which have no mobile phone. */
+  mobile_phone: string | null;
 }
 
 export function getPersonSecurity(): Promise<PersonSecurity> {
