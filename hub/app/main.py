@@ -259,7 +259,6 @@ def api_auth_otp_resend(
 
 class AuthPasswordRequest(BaseModel):
     username: str
-    current: str
     new_password: str
     confirm: str
     mobile_phone: str | None = None
@@ -275,7 +274,6 @@ def api_auth_password(
     try:
         result = user_store.set_person_password(
             username=body.username,
-            current=body.current,
             new=body.new_password,
             confirm=body.confirm,
         )

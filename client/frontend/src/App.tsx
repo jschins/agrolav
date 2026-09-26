@@ -4051,7 +4051,6 @@ function kindCaption(kind: string): string {
 }
 
 function SetPasswordApp() {
-  const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [mobile, setMobile] = useState("");
@@ -4091,14 +4090,12 @@ function SetPasswordApp() {
     setOk(null);
     setBusy(true);
     setPersonPassword({
-      current,
       new_password: next,
       confirm,
       mobile_phone: mobile.trim(),
     })
       .then(() => {
         setOk("Password saved.");
-        setCurrent("");
         setNext("");
         setConfirm("");
       })
@@ -4126,18 +4123,6 @@ function SetPasswordApp() {
       <main className="terms-main password-main">
         <form onSubmit={submit} className="login-card password-card">
           <h1 className="password-title">Set password</h1>
-          <label className="login-label">
-            Current password
-            <input
-              className="login-input"
-              type="password"
-              autoComplete="current-password"
-              value={current}
-              onChange={(e) => setCurrent(e.target.value)}
-              disabled={busy}
-              required
-            />
-          </label>
           <label className="login-label">
             New password
             <input

@@ -876,7 +876,6 @@ def create_manual_person(
 def set_person_password(
     *,
     username: str,
-    current: str,
     new: str,
     confirm: str,
 ) -> dict[str, Any]:
@@ -889,11 +888,6 @@ def set_person_password(
         raise ValueError("New password and confirmation do not match")
     if not str(new or "").strip():
         raise ValueError("New password is required")
-    stored = person_password_hash(name)
-    if not credentials_match(
-        current, username=name, is_person=True, password_hash=stored
-    ):
-        raise ValueError("Current password is incorrect")
     hashed = hash_password(str(new))
     with _LOCK:
         init_user_store()

@@ -464,7 +464,6 @@ export function getPersonSecurity(): Promise<PersonSecurity> {
 }
 
 export function setPersonPassword(body: {
-  current: string;
   new_password: string;
   confirm: string;
   mobile_phone?: string;

@@ -356,7 +356,6 @@ def api_login_otp_resend(body: OtpVerifyRequest) -> dict[str, Any]:
 
 
 class PasswordChangeRequest(BaseModel):
-    current: str
     new_password: str
     confirm: str
     mobile_phone: str | None = None
@@ -384,7 +383,6 @@ def api_person_password(body: PasswordChangeRequest, request: Request) -> dict[s
     username = _session_username(request)
     payload: dict[str, Any] = {
         "username": username,
-        "current": body.current,
         "new_password": body.new_password,
         "confirm": body.confirm,
     }
