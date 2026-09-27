@@ -7,8 +7,10 @@ from decimal import Decimal
 from app.sql_catalog import (
     add_afschrijving_to_centrale,
     afschrijving_column,
+    afschrijving_placement,
     afschrijving_side,
     ensure_centrale_columns,
+    local_code_side,
     merge_sibling_balance,
     merge_sibling_pnl,
     order_export_columns,
@@ -162,11 +164,42 @@ class AfschrijvingColumnTests(unittest.TestCase):
 
 
 class PercentageAfschrijvingTests(unittest.TestCase):
-    def test_percentage_rule_goes_fully_to_sib(self) -> None:
-        text = "[afschrijving] FALSE: afgeboekte bedragen [1050] × -0.03"
-        self.assertIsNone(afschrijving_side(text))
-        self.assertEqual(afschrijving_column(text), "sib")
-        self.assertEqual(afschrijving_column("vaste afschrijving SIa"), "sia")
+    def side_of(self, code: int) -> str | None:
+        parents = {
+            1051: "Activa/Vaste activa/SIa",
+            1061: "Activa/Vaste activa/SIa",
+            1071: "Activa/Vaste activa/SIa",
+            1081: "Activa/Vaste activa/SIa",
+            1050: "Activa/Vaste activa/SIb",
+            1060: "Activa/Vaste activa/SIb",
+            1070: "Activa/Vaste activa/SIb",
+            1080: "Activa/Vaste activa/SIb",
+        }
+        local = int(code) % 10000 if int(code) >= 10000 else int(code)
+        return local_code_side(parents.get(local))
+
+    def test_parent_field_sends_sia_codes_to_sia(self) -> None:
+        self.assertEqual(local_code_side("Activa/Vaste activa/SIa"), "sia")
+        self.assertEqual(local_code_side("Activa/Vaste activa/SIb"), "sib")
+        for code in (1051, 1061, 1071, 1081):
+            text = f"[afschrijving] TRUE: huidige balanswaarde [{code}] × -0.05"
+            self.assertIsNone(afschrijving_side(text))
+            self.assertEqual(afschrijving_column(text, self.side_of), "sia")
+        self.assertEqual(
+            afschrijving_column(
+                "[afschrijving] FALSE: afgeboekte bedragen [1060] × 0.10",
+                self.side_of,
+                11060,
+            ),
+            "sib",
+        )
+        self.assertEqual(
+            afschrijving_column("vaste afschrijving SIa", self.side_of, 1060),
+            "sia",
+        )
+        self.assertIsNone(local_code_side("Activa/Vaste activa"))
+        mixed = "[afschrijving] FALSE: afgeboekte bedragen [1099] × 0.10"
+        self.assertEqual(afschrijving_column(mixed, self.side_of), "sib")
 
 
 if __name__ == "__main__":

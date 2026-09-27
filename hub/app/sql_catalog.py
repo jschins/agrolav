@@ -2435,25 +2435,84 @@ def merge_sibling_balance(
 
 
 def afschrijving_side(description: object) -> str | None:
-    """``sib`` or ``sia`` when the text is an afschrijving for that side."""
+    """``sib`` or ``sia`` when the text itself names that side."""
     text = str(description or "").lower()
     if "afschrijving" not in text:
         return None
-    if "sib" in text:
+    if re.search(r"(?<![a-z])sib(?![a-z])", text):
         return "sib"
-    if "sia" in text:
+    if re.search(r"(?<![a-z])sia(?![a-z])", text):
         return "sia"
     return None
 
 
-def afschrijving_column(description: object) -> str | None:
-    """Column for an afschrijving. A percentage rule goes entirely to SIb."""
+def afschrijving_local_codes(description: object) -> list[int]:
+    """Four-digit local codes in the text, as in ``[1061]``."""
+    return [int(code) for code in re.findall(r"(?<!\d)(\d{4})(?!\d)", str(description or ""))]
+
+
+def local_code_side(parent: object = None, label: object = None) -> str | None:
+    """``sia`` or ``sib`` when ``dim_category.parent`` contains that name.
+
+    ``1051``, ``1061``, ``1071`` and ``1081`` are the SIa rows. A parent
+    with neither name is mixed and returns ``None``. ``label`` is unused.
+    """
+    del label
+    text = str(parent or "").lower()
+    if re.search(r"(?<![a-z])sib(?![a-z])", text):
+        return "sib"
+    if re.search(r"(?<![a-z])sia(?![a-z])", text):
+        return "sia"
+    return None
+
+
+def afschrijving_column(
+    description: object,
+    side_of_code: Any = None,
+    source_code: int | None = None,
+) -> str | None:
+    """Column for an afschrijving.
+
+    First the words SIa or SIb in the journal text. Then the local code's
+    ``dim_category.parent``: SIa when that field contains SIa (``1051``,
+    ``1061``, ``1071``, ``1081``), SIb when it contains SIb. A mixed parent,
+    with neither name, stays on SIb.
+    """
     side = afschrijving_side(description)
     if side:
         return side
-    if "afschrijving" in str(description or "").lower():
-        return "sib"
-    return None
+    text = str(description or "").lower()
+    if "afschrijving" not in text and source_code is None:
+        return None
+    codes = afschrijving_local_codes(description)
+    if source_code is not None:
+        try:
+            codes.append(int(source_code))
+        except (TypeError, ValueError):
+            pass
+    for code in codes:
+        if side_of_code is None:
+            break
+        local = code % 10000 if code >= 10000 else code
+        found = side_of_code(local)
+        if found in ("sia", "sib"):
+            return found
+    return "sib"
+
+
+def afschrijving_placement(
+    description: object,
+    side_of_code: Any = None,
+    source_code: int | None = None,
+) -> tuple[str, object] | None:
+    """``(side, label)`` for an afschrijving that belongs on a Centrale column."""
+    column = afschrijving_column(description, side_of_code, source_code)
+    if column not in ("sia", "sib"):
+        return None
+    if afschrijving_side(description):
+        return column, description
+    title = "SIa" if column == "sia" else "SIb"
+    return column, f"afschrijving {title}"
 
 
 def centrale_side(name: object) -> str | None:
@@ -3200,8 +3259,10 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     its year sum per bank account (``result_accounts`` order). There is no
     Journaal column. Spaarrekening amounts stay inside Totaal. An afschrijving
     whose text names SIa or SIb is added to that Centrale column. A
-    percentage afschrijving, which names neither side, is added in full
-    to SIb. A ``unitXX0X`` account and its ``hd``
+    percentage afschrijving is read from the journal. The words SIa or SIb
+    win; otherwise ``dim_category.parent`` of the local code does. A parent
+    containing SIa (``1051``, ``1061``, ``1071``, ``1081``) goes to SIa, one
+    containing SIb goes to SIb, and a mixed parent stays on SIb. A ``unitXX0X`` account and its ``hd``
     sibling (Den Eker and HD Den Eker) share one column and, on the balance
     sheet, one bank post: the sibling's amounts are added to the unit.
     ``code`` is always the ``local_code``, never the ``category_id``.
@@ -3263,8 +3324,12 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         )
         account_ids = [int(a["account_id"]) for a in result_accounts]
 
-        # Named SIa/SIb afschrijvingen go to that column. Percentage rules
-        # go entirely to SIb.
+        # Named SIa/SIb afschrijvingen go to that column. A percentage rule
+        # follows dim_category.parent of the local code in the journal.
+        # SIa in the parent goes to SIa, SIb to SIb, mixed stays on SIb.
+        def side_of_code(code: int) -> str | None:
+            local = int(code) % 10000 if int(code) >= 10000 else int(code)
+            return local_code_side(parents.get(local))
         afschrijving_journals: list[tuple[int, int, Any, object]] = []
         cursor.execute("SELECT OBJECT_ID(N'dbo.journal', N'U')")
         journal_exists = cursor.fetchone()[0] is not None
@@ -3281,12 +3346,11 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                     src, dst = int(cat_from), int(cat_to)
                 except (TypeError, ValueError):
                     continue
-                column = afschrijving_column(description)
-                if column == "sia":
-                    afschrijving_journals.append((src, dst, amount, description))
-                elif column == "sib":
-                    label = description if afschrijving_side(description) else "afschrijving SIb"
-                    afschrijving_journals.append((src, dst, amount, label))
+                placed = afschrijving_placement(description, side_of_code, _local(src))
+                if placed is None:
+                    continue
+                _column, label = placed
+                afschrijving_journals.append((src, dst, amount, label))
         result_accounts = ensure_centrale_columns(result_accounts, sibling_accounts)
         add_afschrijving_to_centrale(
             result_accounts, pnl_sums, afschrijving_journals, _local
