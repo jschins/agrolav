@@ -2303,6 +2303,185 @@ def country_has_balance(country: str) -> bool:
         return False
 
 
+_UNIT_XX0X = re.compile(r"unit(\d{4})\Z")
+
+
+def _is_unit_xx0x(role: object) -> bool:
+    match = _UNIT_XX0X.fullmatch(str(role or "").strip().lower())
+    if not match:
+        return False
+    return (int(match.group(1)) // 10) % 10 == 0
+
+
+def _sibling_stem(name: object) -> str:
+    """``Bank HD Den Eker`` and ``Den Eker`` share ``den_eker``."""
+    text = " ".join(str(name or "").split()).lower()
+    if text.startswith("bank "):
+        text = text[5:].strip()
+    if text.startswith("hd "):
+        text = text[3:].strip()
+    return "_".join(text.split())
+
+
+def sibling_pairs(
+    accounts: list[dict[str, Any]],
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """``(unit, hd)`` for each ``unitXX0X`` and the ``hd`` in the same center.
+
+    The unit name wins when several HD accounts share the center. A center
+    with one HD account pairs with that account.
+    """
+    units = [item for item in accounts if _is_unit_xx0x(item.get("role"))]
+    hds = [
+        item
+        for item in accounts
+        if str(item.get("role") or "").strip().lower() == "hd"
+    ]
+    used: set[int] = set()
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for unit in sorted(units, key=lambda item: int(item["account_id"])):
+        center = unit.get("center_id")
+        candidates = [
+            item
+            for item in hds
+            if item.get("center_id") == center and int(item["account_id"]) not in used
+        ]
+        stem = _sibling_stem(unit.get("account_name"))
+        named = [
+            item
+            for item in candidates
+            if stem and _sibling_stem(item.get("account_name")) == stem
+        ]
+        pool = named or (candidates if len(candidates) == 1 else [])
+        if not pool:
+            continue
+        hd = sorted(pool, key=lambda item: int(item["account_id"]))[0]
+        used.add(int(hd["account_id"]))
+        pairs.append((unit, hd))
+    return pairs
+
+
+def merge_sibling_pnl(
+    accounts: list[dict[str, Any]],
+    sums: dict[int, dict[int, Any]],
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> tuple[list[dict[str, Any]], dict[int, dict[int, Any]]]:
+    """One column per sibling pair: the HD account's P&L is added to the unit."""
+    if not pairs:
+        return accounts, sums
+    hd_to_unit = {
+        int(hd["account_id"]): int(unit["account_id"]) for unit, hd in pairs
+    }
+    present = {int(item["account_id"]) for item in accounts}
+    merged: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for item in accounts:
+        aid = int(item["account_id"])
+        if aid in hd_to_unit:
+            uid = hd_to_unit[aid]
+            if uid not in present and uid not in seen:
+                unit = next(
+                    unit for unit, hd in pairs if int(hd["account_id"]) == aid
+                )
+                merged.append(
+                    {
+                        "account_id": uid,
+                        "account_name": str(unit.get("account_name") or "").strip(),
+                        "iban": unit.get("iban"),
+                        "person": unit.get("person"),
+                    }
+                )
+                seen.add(uid)
+            continue
+        if aid in seen:
+            continue
+        seen.add(aid)
+        merged.append(item)
+    for by_account in sums.values():
+        for hid, uid in hd_to_unit.items():
+            if hid not in by_account:
+                continue
+            amount = by_account.pop(hid)
+            by_account[uid] = by_account.get(uid, Decimal("0")) + amount
+    return merged, sums
+
+
+def merge_sibling_balance(
+    rows: list[dict[str, Any]],
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Add each HD bank post into its unit bank post and drop the HD post."""
+    if not pairs:
+        return rows
+    by_code = {int(row["code"]): row for row in rows}
+    drop: set[int] = set()
+    for unit, hd in pairs:
+        unit_code = unit.get("local_code")
+        hd_code = hd.get("local_code")
+        if unit_code is None or hd_code is None:
+            continue
+        unit_row = by_code.get(int(unit_code))
+        hd_row = by_code.get(int(hd_code))
+        if unit_row is None or hd_row is None or unit_row is hd_row:
+            continue
+        unit_row["amount"] = float(
+            Decimal(str(unit_row.get("amount") or 0))
+            + Decimal(str(hd_row.get("amount") or 0))
+        )
+        drop.add(int(hd_code))
+    if not drop:
+        return rows
+    return [row for row in rows if int(row["code"]) not in drop]
+
+
+def _load_sibling_accounts(cursor: Any, country_id: int) -> list[dict[str, Any]]:
+    """Accounts with the bank-post role and local code used to pair siblings."""
+    cursor.execute(
+        """
+        SELECT a.account_id, a.account_name, a.iban, p.username, n.center_id,
+               d.category_role, d.local_code
+        FROM dbo.account a
+        JOIN dbo.person p ON p.id = a.person_id
+        JOIN dbo.center n ON n.center_id = p.center_id
+        LEFT JOIN dbo.mapping_banks m
+          ON m.account_id = a.account_id AND m.country_id = n.country_id
+        LEFT JOIN dbo.dim_category d
+          ON d.category_id = m.category_id AND d.country_id = m.country_id
+        WHERE n.country_id = ?
+        """,
+        (int(country_id),),
+    )
+    found: dict[int, dict[str, Any]] = {}
+    for account_id, name, iban, person, center_id, role, local_code in cursor.fetchall():
+        if account_id is None or center_id is None:
+            continue
+        aid = int(account_id)
+        text = str(role or "").strip().lower()
+        code = int(local_code) if local_code is not None else None
+        slot = found.get(aid)
+        rank = 3 if text == "hd" else 2 if _is_unit_xx0x(text) else 1 if text else 0
+        if slot is None:
+            found[aid] = {
+                "account_id": aid,
+                "account_name": str(name or "").strip(),
+                "iban": str(iban or "").strip() or None,
+                "person": str(person or "").strip() or None,
+                "center_id": int(center_id),
+                "role": text,
+                "local_code": code,
+                "_rank": rank,
+            }
+            continue
+        if rank > int(slot["_rank"]):
+            slot["role"] = text
+            slot["local_code"] = code
+            slot["_rank"] = rank
+    rows = list(found.values())
+    for row in rows:
+        row.pop("_rank", None)
+    return rows
+
+
 def _pnl_per_account(
     cursor,
     country_id: int,
@@ -2866,7 +3045,9 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     its year sum per bank account (``result_accounts`` order), then per spaar
     ``mirror`` post (``result_mirrors``: the P&L leg of journals against that
     post), then one Journaal value holding the rest of the overlay, so the
-    columns always sum to ``amount``.
+    columns always sum to ``amount``. A ``unitXX0X`` account and its ``hd``
+    sibling (Den Eker and HD Den Eker) share one column and, on the balance
+    sheet, one bank post: the sibling's amounts are added to the unit.
     ``code`` is always the ``local_code``, never the ``category_id``.
     The Resultaat rows come from the recorded ``dbo.category_total`` plus the
     beheer journal/mirror overlay (R). Passiva 2100 Verlies uses that same R.
@@ -2922,6 +3103,12 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                 result_accounts, pnl_sums = _pnl_per_account(
                     cursor, int(country_id), int(year), table
                 )
+        sibling_pairs_for_year = sibling_pairs(
+            _load_sibling_accounts(cursor, int(country_id))
+        )
+        result_accounts, pnl_sums = merge_sibling_pnl(
+            result_accounts, pnl_sums, sibling_pairs_for_year
+        )
         account_ids = [int(a["account_id"]) for a in result_accounts]
 
         # Spaarrekening (mirror) columns: the P&L leg of every journal whose
@@ -3026,6 +3213,8 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                 "amount": float(Decimal(cents) / Decimal(100)),
             }
             (passiva if side == "passiva" else activa).append(row)
+        activa = merge_sibling_balance(activa, sibling_pairs_for_year)
+        passiva = merge_sibling_balance(passiva, sibling_pairs_for_year)
 
         total_activa = sum(Decimal(str(row["amount"])) for row in activa) or Decimal("0")
         if result_id is not None:
