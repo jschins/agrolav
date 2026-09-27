@@ -146,12 +146,16 @@ def _bound_where(bound: _BoundScope, alias: str = "t") -> tuple[str, list[Any]]:
 
     Bookings exist as a ``bank_id IS NULL`` (consolidated) copy and optional
     per-bank copies with the same ``source_id``. A view must not return both.
+    A selected account is the whole account: rows stay in view when their
+    ``person_id`` is not the account holder.
     """
-    sql = f"{alias}.person_id = ? AND {alias}.year = ?"
-    params: list[Any] = [bound.person_id, bound.year]
     if bound.account_id is not None:
-        sql += f" AND {alias}.account_id = ?"
-        params.append(bound.account_id)
+        sql = f"{alias}.account_id = ? AND {alias}.year = ?"
+        params: list[Any] = [bound.account_id, bound.year]
+    else:
+        sql = f"{alias}.person_id = ? AND {alias}.year = ?"
+        params = [bound.person_id, bound.year]
+    if bound.account_id is not None:
         if bound.bank_key is not None:
             sql += f" AND {alias}.bank_id = ?"
             params.append(bound.bank_key)
@@ -411,11 +415,10 @@ def _load_mapped_account_rows(bound: _BoundScope, account_id: int) -> list[dict[
             JOIN dbo.country c ON c.country_id = p.country_id
             LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
             LEFT JOIN dbo.account a ON a.account_id = t.account_id
-            WHERE t.person_id = ? AND t.year = ? AND t.bank_id IS NULL
-              AND t.account_id = ?
+            WHERE t.account_id = ? AND t.year = ? AND t.bank_id IS NULL
             ORDER BY t.booked_on DESC, t.source_id DESC
             """,
-            (bound.person_id, bound.year, int(account_id)),
+            (int(account_id), bound.year),
         )
         fetched = bound.cursor.fetchall()
     except Exception as exc:  # noqa: BLE001
@@ -481,12 +484,14 @@ def _load_nonbank_category_rows(
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: transaction_mirror load failed: {exc}")
     try:
-        # Booked rows posted to this category (e.g. kruisposten): scoped to the
-        # selected account when one is bound, otherwise every row for the person.
-        account_sql = " AND t.account_id = ?" if bound.account_id is not None else ""
-        account_param: tuple[Any, ...] = (
-            (bound.account_id,) if bound.account_id is not None else ()
-        )
+        # Booked rows posted to this category. A selected account is every
+        # row on that account; otherwise every row for the person.
+        if bound.account_id is not None:
+            who_sql = "t.account_id = ?"
+            who_param: tuple[Any, ...] = (bound.account_id,)
+        else:
+            who_sql = "t.person_id = ?"
+            who_param = (bound.person_id,)
         exclude_sql, exclude_params = spaar_source_exclude_clause(
             country_id, cursor=bound.cursor
         )
@@ -511,11 +516,11 @@ def _load_nonbank_category_rows(
             JOIN dbo.country c ON c.country_id = p.country_id
             LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
             LEFT JOIN dbo.account a ON a.account_id = t.account_id
-            WHERE t.person_id = ? AND t.year = ? AND t.bank_id IS NULL
-              AND d.local_code = ?{account_sql}{exclude_sql}
+            WHERE {who_sql} AND t.year = ? AND t.bank_id IS NULL
+              AND d.local_code = ?{exclude_sql}
             ORDER BY t.booked_on DESC, t.source_id DESC
             """,
-            (bound.person_id, bound.year, category_code, *account_param, *exclude_params),
+            (*who_param, bound.year, category_code, *exclude_params),
         )
         for item in bound.cursor.fetchall():
             row = _booked_row_shape(item)

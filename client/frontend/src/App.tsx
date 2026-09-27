@@ -3007,8 +3007,11 @@ function MainApp({
         }
         // Personal login: restore this person's refresh status only (no auto-fetch).
         const person = (s.person || "").trim();
+        const accessName = (s.access || "").trim().toLowerCase();
         setLoginPerson(person);
-        setLoginName((person || s.username || s.center || "").trim());
+        setLoginName(
+          (accessName === "unit" ? s.username || person : person || s.username || s.center || "").trim()
+        );
         setLoginAccess((s.access || "").trim());
         const scope =
           scoped && ws && person ? { center: ws, person } : null;
@@ -3665,7 +3668,13 @@ function TermsApp() {
           setSettings(data);
           setPersonScope((status?.person || "").trim());
           setCenterName((status?.center || "").trim());
-          setLoginName((status?.person || status?.username || status?.center || "").trim());
+          setLoginName(
+            (
+              (status?.access || "").trim().toLowerCase() === "unit"
+                ? status?.username || status?.person
+                : status?.person || status?.username || status?.center || ""
+            ).trim()
+          );
         })
         .catch((e: Error) => {
           if (!cancelled) setError(e.message);

@@ -104,8 +104,6 @@ def _result_url(cfg: HubConfig) -> str:
     elif cfg.access == ACCESS_PERSON and str(cfg.person or "").strip():
         params["person"] = str(cfg.person).strip()
     elif cfg.access == ACCESS_UNIT:
-        if str(cfg.person or "").strip():
-            params["person"] = str(cfg.person).strip()
         account = "".join(str(cfg.account or "").split()).upper()
         if account:
             params["account"] = account

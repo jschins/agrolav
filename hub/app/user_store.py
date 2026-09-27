@@ -73,10 +73,26 @@ SELECT
     p.username COLLATE Latin1_General_CI_AI AS person,
     a.iban COLLATE Latin1_General_CI_AI AS account
 FROM dbo.unit u
-INNER JOIN dbo.person p ON p.id = u.person_id
 INNER JOIN dbo.center n ON n.center_id = u.center_id
 INNER JOIN dbo.country c ON c.country_id = u.country_id
-INNER JOIN dbo.account a ON a.account_id = u.unit_id
+INNER JOIN dbo.account a ON a.account_id = (
+    SELECT TOP 1 a2.account_id
+    FROM dbo.account a2
+    JOIN dbo.person p2 ON p2.id = a2.person_id
+    WHERE p2.center_id = u.center_id
+      AND (
+        a2.account_id = u.unit_id
+        OR LOWER(REPLACE(a2.account_name, N' ', N'_')) = LOWER(u.username)
+      )
+    ORDER BY
+      CASE
+        WHEN LOWER(REPLACE(a2.account_name, N' ', N'_')) = LOWER(u.username) THEN 0
+        ELSE 1
+      END,
+      CASE WHEN a2.account_id = u.unit_id THEN 0 ELSE 1 END,
+      a2.account_id
+)
+INNER JOIN dbo.person p ON p.id = a.person_id
 """
 
 _SQL_USER_SELECT = f"""
