@@ -9,16 +9,14 @@ from app.cross_postings import (
     CROSS_POSTING_CATEGORY_ID,
     _IBAN_NL46,
     _IBAN_NL84,
-    leg_local_code,
     between_registered_accounts,
     category_id_for_local_code,
     category_id_offset,
     is_country_bank_role,
     managed_category_ids,
     matching_transaction_ids,
+    pair_local_codes,
     stored_category_id,
-    transfer_category,
-    transfer_local_code,
     user_digits,
 )
 
@@ -111,110 +109,79 @@ class CrossPostingMatchTests(unittest.TestCase):
         self.assertEqual(kept[0][4], 20)
         self.assertEqual(kept[1][4], 30)
 
-    def test_sia_to_sib_is_plus_on_1100_and_minus_on_1099(self) -> None:
-        self.assertEqual(leg_local_code(_IBAN_NL46), 1100)
-        self.assertEqual(leg_local_code(_IBAN_NL84), 1099)
-        self.assertIsNone(leg_local_code("NL61INGB0002843544"))
-
-    def test_nl46_to_nl84_is_11099_and_the_reverse_is_11100(self) -> None:
-        self.assertEqual(transfer_category(_IBAN_NL46, _IBAN_NL84), 11099)
-        self.assertEqual(transfer_category(_IBAN_NL84, _IBAN_NL46), 11100)
-
-    def test_direction_between_the_two_ibans_wins_over_a_user_role(self) -> None:
+    def test_sib_to_sia_is_11200_and_11100(self) -> None:
+        self.assertEqual(pair_local_codes(_IBAN_NL46, _IBAN_NL84), (1200, 1100))
+        self.assertEqual(pair_local_codes(_IBAN_NL84, _IBAN_NL46), (1100, 1200))
         self.assertEqual(
-            transfer_category(_IBAN_NL46, _IBAN_NL84, "sib", "sia", "user1108", ""),
-            11099,
-        )
-
-    def test_user_four_digits_only_in_the_source_accounts_own_center(self) -> None:
-        self.assertEqual(
-            transfer_category(
-                _IBAN_NL46, "NL61INGB0002843544", "sib", "sib", "", "unit1108"
-            ),
-            11108,
-        )
-        self.assertEqual(
-            transfer_category(
-                "NL61INGB0002843544", _IBAN_NL84, "sia", "sia", "user1108", ""
-            ),
-            11108,
-        )
-        self.assertIsNone(
-            transfer_category(
-                _IBAN_NL46, "NL61INGB0002843544", "sib", "sia", "", "unit1108"
-            )
-        )
-        self.assertIsNone(transfer_category("NL11INGB0006729488", "NL61INGB0002843544", "sib", "sib", "", "unit1108"))
-        self.assertEqual(
-            transfer_category(
-                "NL00INGB0000000001",
-                "NL00INGB0000000002",
-                "north",
-                "north",
-                "source",
-                "unit1108",
-            ),
-            11108,
-        )
-
-    def test_hd_and_unit_in_the_same_center_is_11200(self) -> None:
-        self.assertEqual(
-            transfer_category(
-                "NL00INGB0000000001",
-                "NL00INGB0000000002",
-                "sib",
-                "sib",
-                "hd",
-                "unit1108",
-            ),
+            category_id_for_local_code(1200),
             11200,
         )
+        self.assertEqual(category_id_for_local_code(1100), 11100)
+
+    def test_sib_to_a_sib_unit_is_11200_and_13125(self) -> None:
         self.assertEqual(
-            transfer_local_code(
+            pair_local_codes(_IBAN_NL46, "NL61INGB0002843544", "sib", "sib", "", "unit1108"),
+            (1200, 3125),
+        )
+        self.assertEqual(category_id_for_local_code(3125), 13125)
+        self.assertEqual(
+            pair_local_codes(_IBAN_NL46, "NL61INGB0002843544", "sib", "sia", "", "unit1108"),
+            (1200, None),
+        )
+
+    def test_sia_to_a_sia_unit_is_11200_and_13126(self) -> None:
+        self.assertEqual(
+            pair_local_codes(_IBAN_NL84, "NL61INGB0002843544", "sia", "sia", "", "unit1108"),
+            (1200, 3126),
+        )
+        self.assertEqual(category_id_for_local_code(3126), 13126)
+        self.assertEqual(
+            pair_local_codes("NL61INGB0002843544", _IBAN_NL84, "sia", "sia", "unit1108", ""),
+            (3126, 1200),
+        )
+
+    def test_unit_and_hd_sibling_split_11200_and_the_unit_code(self) -> None:
+        self.assertEqual(
+            pair_local_codes(
                 "NL00INGB0000000001",
                 "NL00INGB0000000002",
                 "sib",
                 "sib",
-                "unit1108",
+                "unit1025",
                 "hd",
             ),
-            1200,
+            (1200, 1025),
         )
         self.assertEqual(
-            transfer_category(
+            pair_local_codes(
+                "NL00INGB0000000002",
+                "NL00INGB0000000001",
+                "sia",
+                "sia",
+                "hd",
+                "unit1025",
+            ),
+            (1025, 1200),
+        )
+        self.assertEqual(category_id_for_local_code(1025), 11025)
+        self.assertEqual(
+            pair_local_codes(
                 "NL00INGB0000000001",
                 "NL00INGB0000000002",
                 "sib",
                 "sia",
+                "unit1025",
                 "hd",
-                "unit1108",
             ),
-            11200,
-        )
-
-    def test_spaarrekening_of_each_source_is_11200(self) -> None:
-        self.assertEqual(
-            transfer_category(
-                _IBAN_NL46, "NL00INGB0000000021", from_category_id=11020, to_category_id=11021
-            ),
-            11200,
-        )
-        self.assertEqual(
-            transfer_category(
-                "NL00INGB0000000019", _IBAN_NL84, from_category_id=11019, to_category_id=11010
-            ),
-            11200,
-        )
-        self.assertIsNone(
-            transfer_category(
-                _IBAN_NL46, "NL00INGB0000000019", from_category_id=11020, to_category_id=11019
-            )
+            (None, None),
         )
 
     def test_everything_else_stays_uncategorized(self) -> None:
-        self.assertIsNone(transfer_category("NL11INGB0006729488", "NL61INGB0002843544"))
-        self.assertIsNone(transfer_category(_IBAN_NL46, "NL11INGB0006729488", "sib", "sib"))
-        self.assertIsNone(transfer_local_code(_IBAN_NL84, _IBAN_NL84))
+        self.assertEqual(
+            pair_local_codes("NL11INGB0006729488", "NL61INGB0002843544"),
+            (None, None),
+        )
+        self.assertEqual(pair_local_codes(_IBAN_NL84, _IBAN_NL84), (None, None))
 
     def test_country_banks_are_roles_starting_with_unit_source_or_funds(self) -> None:
         self.assertTrue(is_country_bank_role("unit1108"))
@@ -229,18 +196,7 @@ class CrossPostingMatchTests(unittest.TestCase):
         self.assertEqual(CROSS_POSTING_CATEGORY_ID, 11200)
 
     def test_country_5_stores_local_code_plus_10000(self) -> None:
-        self.assertEqual(transfer_local_code(_IBAN_NL46, _IBAN_NL84), 1099)
-        self.assertEqual(transfer_local_code(_IBAN_NL84, _IBAN_NL46), 1100)
-        self.assertEqual(
-            transfer_local_code(_IBAN_NL46, "NL61INGB0002843544", "sib", "sib", "", "unit1108"),
-            1108,
-        )
-        self.assertEqual(
-            transfer_local_code(
-                _IBAN_NL46, "NL00INGB0000000021", from_category_id=11020, to_category_id=11021
-            ),
-            1200,
-        )
+        self.assertEqual(pair_local_codes(_IBAN_NL46, _IBAN_NL84), (1200, 1100))
         self.assertEqual(category_id_for_local_code(1099), 11099)
         self.assertEqual(category_id_for_local_code(1100), 11100)
         self.assertEqual(category_id_for_local_code(1108), 11108)
@@ -258,10 +214,16 @@ class CrossPostingMatchTests(unittest.TestCase):
         self.assertEqual(category_id_for_local_code(1100, 7, [4, 5, 6, 7]), 31100)
 
     def test_a_live_bank_category_is_not_released(self) -> None:
-        found = managed_category_ids({1099: 11099, 1100: 11100, 1200: 11200, 1021: 11021}, {1108, 1021}, {11021})
+        found = managed_category_ids(
+            {1099: 11099, 1100: 11100, 1200: 11200, 3125: 13125, 3126: 13126, 1021: 11021},
+            {1108, 1021},
+            {11021},
+        )
         self.assertIn(11099, found)
         self.assertIn(11100, found)
         self.assertIn(11200, found)
+        self.assertIn(13125, found)
+        self.assertIn(13126, found)
         self.assertIn(11108, found)
         self.assertNotIn(11021, found)
 

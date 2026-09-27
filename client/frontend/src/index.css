@@ -229,6 +229,10 @@ html.refresh-busy body::before {
   cursor: pointer;
 }
 
+.center-switcher-menu button.menu-logout {
+  font-weight: 700;
+}
+
 .center-switcher-menu button:hover,
 .center-switcher-menu button.is-selected,
 .center-switcher-menu a:hover {

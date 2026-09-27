@@ -1401,6 +1401,7 @@ function ActionsMenu({
               <button
                 type="button"
                 role="menuitem"
+                className={item.id === "logout" ? "menu-logout" : undefined}
                 disabled={item.disabled}
                 onClick={() => {
                   if (item.disabled || busy) return;

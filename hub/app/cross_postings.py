@@ -1,23 +1,19 @@
 """Mark internal transfers between registered accounts as cross-postings.
 
-Any country with ``dbo.country.has_balance`` can run it. Only statements
-on a country bank are read.
-A booking is kept when that bank's counterparty is another of those banks
-and the other bank books the negated amount on the same day.
+Any country with ``dbo.country.has_balance`` can run it. Every account
+in that country with an IBAN is read. A booking is kept when its
+counterparty is another of those accounts and that account books the
+negated amount on the same day.
 
-The outgoing leg decides the category, and only these pairs are written:
+Each leg of a pair is written on its own:
 
-* SIb ``NL46INGB0001726568`` is local 1100 and SIa ``NL84INGB0002801129``
-  is local 1099. Each statement keeps its own sign. SIa wiring 1000 to
-  SIb is +1000 on 1100 and −1000 on 1099. SIb wiring 500 to SIa is −500
-  on 1100 and +500 on 1099.
-* a ``source`` account against a ``unitNNNN`` account in its own center
-  is local NNNN, on both statements
-* an ``hd`` account against a ``unitNNNN`` account, in any center, is
-  local 1200 (category 11200), on both statements
-* ``NL46INGB0001726568`` (category 11020) against its spaarrekening
-  (category 11021), or ``NL84INGB0002801129`` (category 11010) against its
-  spaarrekening (category 11019), is local 1200 (category 11200)
+* Centrale SIb (``NL46INGB0001726568``) goes to local 1200 (category 11200).
+  The counterpart is local 1100 (category 11100) when it is Centrale SIa,
+  and local 3125 (category 13125) when it is ``unitNNNN`` in center SIb.
+* Centrale SIa against ``unitNNNN`` in center SIa: SIa is local 1200
+  (11200) and the unit is local 3126 (category 13126).
+* ``unitNNNN`` against the ``hd`` account in the same center: the unit is
+  local 1200 (11200) and the HD sibling is local NNNN (category 1NNNN).
 
 The value stored on the booking is the category id. Balance countries are
 taken in ``country_id`` order. The first stores the local code. Each later
@@ -41,13 +37,13 @@ _CATEGORY_BASE = 10000
 _LOCAL_SIB_TO_SIA = 1099
 _LOCAL_SIA_TO_SIB = 1100
 _LOCAL_CROSS_POSTING = 1200
+# Country 5 stores these as 13125 and 13126.
+_LOCAL_SIB_UNIT = 3125
+_LOCAL_SIA_UNIT = 3126
+_UNIT_ROLE = re.compile(r"^unit(\d{4})$")
 CROSS_POSTING_CATEGORY_ID = _CATEGORY_BASE + _LOCAL_CROSS_POSTING
 _IBAN_NL46 = "NL46INGB0001726568"
 _IBAN_NL84 = "NL84INGB0002801129"
-_SOURCE_IBANS = frozenset({_IBAN_NL46, _IBAN_NL84})
-# NL46 is category 11020, its spaarrekening 11021.
-# NL84 is category 11010, its spaarrekening 11019.
-_SPAAR_CATEGORY_BY_IBAN = {_IBAN_NL46: 11021, _IBAN_NL84: 11019}
 _ANCHOR_CATEGORY_IDS = frozenset({11010, 11019, 11020, 11021})
 _USER_ROLE = re.compile(r"^(?:user|unit)(\d{4})$")
 _COUNTRY_BANK_PREFIXES = ("unit", "source", "funds")
@@ -255,6 +251,72 @@ def stored_category_id(
     return category_id_for_local_code(code, country_id, balance_country_ids)
 
 
+def unit_digits(role: object) -> int | None:
+    """Four digits of ``unitNNNN``. ``userNNNN`` is not a unit."""
+    match = _UNIT_ROLE.fullmatch(_role_text(role))
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _is_centrale_sib(iban: object) -> bool:
+    return _iban_key(iban) == _IBAN_NL46
+
+
+def _is_centrale_sia(iban: object) -> bool:
+    return _iban_key(iban) == _IBAN_NL84
+
+
+def pair_local_codes(
+    from_iban: object,
+    to_iban: object,
+    from_center: str | None = None,
+    to_center: str | None = None,
+    from_role: object = "",
+    to_role: object = "",
+) -> tuple[int | None, int | None]:
+    """Local codes for the outgoing leg and the incoming leg.
+
+    ``None`` leaves that leg uncategorized. Centrale SIb is always local
+    1200. Its counterpart is 1100 for Centrale SIa and 3125 for a SIb
+    ``unitNNNN``. Centrale SIa against a SIa ``unitNNNN`` is 1200 on SIa
+    and 3126 on the unit. A ``unitNNNN`` against the ``hd`` account in the
+    same center is 1200 on the unit and NNNN on the sibling.
+    """
+    from_sib = _is_centrale_sib(from_iban)
+    to_sib = _is_centrale_sib(to_iban)
+    if from_sib or to_sib:
+        sib_is_from = from_sib
+        other_iban = to_iban if sib_is_from else from_iban
+        other_role = to_role if sib_is_from else from_role
+        other_center = to_center if sib_is_from else from_center
+        other_local: int | None = None
+        if _is_centrale_sia(other_iban):
+            other_local = _LOCAL_SIA_TO_SIB
+        else:
+            digits = unit_digits(other_role)
+            if digits is not None and center_side(other_center) == "sib":
+                other_local = _LOCAL_SIB_UNIT
+        if sib_is_from:
+            return (_LOCAL_CROSS_POSTING, other_local)
+        return (other_local, _LOCAL_CROSS_POSTING)
+
+    from_unit = unit_digits(from_role)
+    to_unit = unit_digits(to_role)
+    if _is_centrale_sia(from_iban) and to_unit is not None and center_side(to_center) == "sia":
+        return (_LOCAL_CROSS_POSTING, _LOCAL_SIA_UNIT)
+    if _is_centrale_sia(to_iban) and from_unit is not None and center_side(from_center) == "sia":
+        return (_LOCAL_SIA_UNIT, _LOCAL_CROSS_POSTING)
+
+    from_hd = _role_text(from_role) == "hd"
+    to_hd = _role_text(to_role) == "hd"
+    if from_unit is not None and to_hd and _centers_match(from_center, to_center):
+        return (_LOCAL_CROSS_POSTING, from_unit)
+    if to_unit is not None and from_hd and _centers_match(from_center, to_center):
+        return (to_unit, _LOCAL_CROSS_POSTING)
+    return (None, None)
+
+
 def transfer_local_code(
     from_iban: object,
     to_iban: object,
@@ -265,80 +327,12 @@ def transfer_local_code(
     from_category_id: int | None = None,
     to_category_id: int | None = None,
 ) -> int | None:
-    """Local code for one same-day opposite pair, or ``None`` to leave it.
-
-    ``from_*`` is the outgoing booking (negative amount).
-    ``NL46INGB0001726568`` → ``NL84INGB0002801129`` is 1099 and the reverse
-    is 1100. A ``source`` account against ``unitNNNN`` in its own center is
-    NNNN. An ``hd`` account against ``unitNNNN``, in any center, is 1200.
-    ``NL46`` against category 11021, or
-    ``NL84`` against category 11019, is 1200. Anything else is left
-    uncategorized.
-    """
-    source = _iban_key(from_iban)
-    dest = _iban_key(to_iban)
-    if source == _IBAN_NL46 and dest == _IBAN_NL84:
-        return _LOCAL_SIB_TO_SIA
-    if source == _IBAN_NL84 and dest == _IBAN_NL46:
-        return _LOCAL_SIA_TO_SIB
-    if _hd_unit(from_role, to_role):
-        return _LOCAL_CROSS_POSTING
-    digits = _same_center_user_digits(source, dest, from_center, to_center, from_role, to_role)
-    if digits is not None:
-        return digits
-    if _spaar_pair(
-        source,
-        dest,
-        from_category_id,
-        to_category_id,
-        from_role,
-        to_role,
-        from_center,
-        to_center,
-    ):
-        return _LOCAL_CROSS_POSTING
-    return None
-
-
-def _same_center_user_digits(
-    source: str,
-    dest: str,
-    from_center: str | None,
-    to_center: str | None,
-    from_role: object,
-    to_role: object,
-) -> int | None:
-    """Four digits when ``source`` meets ``unitNNNN`` or ``userNNNN`` in its center."""
-    source_hit = _is_source_account(source, from_role)
-    dest_hit = _is_source_account(dest, to_role)
-    if source_hit and not dest_hit:
-        source_center, other_center, other_role = from_center, to_center, to_role
-    elif dest_hit and not source_hit:
-        source_center, other_center, other_role = to_center, from_center, from_role
-    else:
-        return None
-    if not _centers_match(source_center, other_center):
-        return None
-    return user_digits(other_role)
-
-
-def _hd_unit(from_role: object, to_role: object) -> bool:
-    """True when ``hd`` meets ``unitNNNN``, whatever the centers."""
-    left, right = _role_text(from_role), _role_text(to_role)
-    if left == "hd":
-        other = right
-    elif right == "hd":
-        other = left
-    else:
-        return False
-    return other.startswith("unit") and user_digits(other) is not None
-
-
-def _is_source_account(iban: str, role: object) -> bool:
-    """The two Instudo source IBANs, or any account whose role starts with ``source``."""
-    if iban in _SOURCE_IBANS:
-        return True
-    return _role_text(role).startswith("source")
+    """Local code of the outgoing leg, or ``None`` when that leg is not written."""
+    del from_category_id, to_category_id
+    from_local, _to_local = pair_local_codes(
+        from_iban, to_iban, from_center, to_center, from_role, to_role
+    )
+    return from_local
 
 
 def _centers_match(left: str | None, right: str | None) -> bool:
@@ -346,47 +340,6 @@ def _centers_match(left: str | None, right: str | None) -> bool:
     a = center_side(left) or str(left or "").strip().lower()
     b = center_side(right) or str(right or "").strip().lower()
     return bool(a) and a == b
-
-
-def _spaar_pair(
-    source: str,
-    dest: str,
-    from_category_id: int | None,
-    to_category_id: int | None,
-    from_role: object = "",
-    to_role: object = "",
-    from_center: str | None = None,
-    to_center: str | None = None,
-) -> bool:
-    """A source account against its spaarrekening, in either direction.
-
-    Instudo names these as NL46 against category 11021 and NL84 against
-    category 11019. Any other balance country pairs a ``source`` role with
-    a ``mirror`` role in the same center.
-    """
-    for iban, spaar_id in _SPAAR_CATEGORY_BY_IBAN.items():
-        if source == iban and to_category_id is not None and int(to_category_id) == spaar_id:
-            return True
-        if dest == iban and from_category_id is not None and int(from_category_id) == spaar_id:
-            return True
-    roles = (_role_text(from_role), _role_text(to_role))
-    if "mirror" in roles and any(role.startswith("source") for role in roles):
-        return _centers_match(from_center, to_center)
-    return False
-
-
-def leg_local_code(iban: object) -> int | None:
-    """Local code for this account's statement on an SIa↔SIb transfer.
-
-    SIb (``NL46INGB0001726568``) is 1100. SIa (``NL84INGB0002801129``) is
-    1099. The statement keeps its own sign, so the two totals are opposites.
-    """
-    key = _iban_key(iban)
-    if key == _IBAN_NL46:
-        return _LOCAL_SIA_TO_SIB
-    if key == _IBAN_NL84:
-        return _LOCAL_SIB_TO_SIA
-    return None
 
 
 def transfer_category(
@@ -427,11 +380,24 @@ def managed_category_ids(
     A four-digit code that is itself a live bank category is not released.
     """
     banks = bank_category_ids or set()
-    codes = {_LOCAL_SIB_TO_SIA, _LOCAL_SIA_TO_SIB, _LOCAL_CROSS_POSTING, *digit_codes}
+    codes = {
+        _LOCAL_SIB_TO_SIA,
+        _LOCAL_SIA_TO_SIB,
+        _LOCAL_CROSS_POSTING,
+        _LOCAL_SIB_UNIT,
+        _LOCAL_SIA_UNIT,
+        *digit_codes,
+    }
     found: set[int] = set()
     for code in codes:
         stored = stored_category_id(code, by_local, country_id, balance_country_ids)
-        if code not in (_LOCAL_SIB_TO_SIA, _LOCAL_SIA_TO_SIB, _LOCAL_CROSS_POSTING) and stored in banks:
+        if code not in (
+            _LOCAL_SIB_TO_SIA,
+            _LOCAL_SIA_TO_SIB,
+            _LOCAL_CROSS_POSTING,
+            _LOCAL_SIB_UNIT,
+            _LOCAL_SIA_UNIT,
+        ) and stored in banks:
             continue
         found.add(stored)
         if code not in banks:
@@ -488,7 +454,7 @@ def apply_cross_postings(
         raise RuntimeError(f"{table} does not exist")
 
     by_local = _category_ids_by_local_code(cursor, country_id)
-    bank_ids = _country_bank_accounts(cursor, country_id)
+    bank_ids = _country_registered_accounts(cursor, country_id)
     iban_to_accounts = _registered_accounts(cursor, bank_ids)
     iban_of = {
         account_id: iban
@@ -529,32 +495,24 @@ def apply_cross_postings(
         else:
             from_account, to_account = right_account, left_account
             from_id, to_id = right_id, left_id
-        local = transfer_local_code(
+        from_local, to_local = pair_local_codes(
             iban_of.get(from_account, ""),
             iban_of.get(to_account, ""),
             center_of.get(from_account),
             center_of.get(to_account),
             role_of.get(from_account, ""),
             role_of.get(to_account, ""),
-            account_category.get(from_account),
-            account_category.get(to_account),
         )
-        if local is None:
+        if from_local is None and to_local is None:
             continue
-        if local in (_LOCAL_SIB_TO_SIA, _LOCAL_SIA_TO_SIB):
-            written = False
-            for tid, account in ((from_id, from_account), (to_id, to_account)):
-                leg = leg_local_code(iban_of.get(account, ""))
-                if leg is None:
-                    continue
-                category_of[tid] = stored_category_id(leg, by_local, country_id, balance_ids)
-                written = True
-            if written:
-                pair_ids.append(frozenset((from_id, to_id)))
-            continue
-        category = stored_category_id(local, by_local, country_id, balance_ids)
-        category_of[to_id] = category
-        category_of[from_id] = category
+        if from_local is not None:
+            category_of[from_id] = stored_category_id(
+                from_local, by_local, country_id, balance_ids
+            )
+        if to_local is not None:
+            category_of[to_id] = stored_category_id(
+                to_local, by_local, country_id, balance_ids
+            )
         pair_ids.append(frozenset((from_id, to_id)))
     scoped = source_ids is not None
     if scoped:
@@ -621,45 +579,8 @@ def _account_centers(cursor: Any, country_id: int) -> dict[int, str]:
     return out
 
 
-def _country_bank_accounts(cursor: Any, country_id: int) -> set[int]:
-    """Country banks, the two source IBANs, and their spaarrekening categories."""
-    cursor.execute(
-        """
-        SELECT m.account_id, d.category_role
-        FROM dbo.dim_category d
-        JOIN dbo.mapping_banks m
-          ON m.category_id = d.category_id AND m.country_id = d.country_id
-        WHERE d.country_id = ?
-          AND (
-            LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'unit%'
-            OR LOWER(LTRIM(RTRIM(d.category_role))) = N'hd'
-            OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'source%'
-            OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'funds%'
-            OR LOWER(LTRIM(RTRIM(d.category_role))) LIKE N'user[0-9][0-9][0-9][0-9]'
-            OR LOWER(LTRIM(RTRIM(d.category_role))) = N'mirror'
-          )
-        """,
-        (int(country_id),),
-    )
-    out: set[int] = set()
-    for account_id, role in cursor.fetchall():
-        if account_id is None:
-            continue
-        if not is_country_bank_role(role) and _role_text(role) not in ("mirror", "hd"):
-            continue
-        out.add(int(account_id))
-    marks = ",".join("?" * len(_ANCHOR_CATEGORY_IDS))
-    cursor.execute(
-        f"""
-        SELECT account_id
-        FROM dbo.mapping_banks
-        WHERE country_id = ? AND category_id IN ({marks})
-        """,
-        (int(country_id), *sorted(_ANCHOR_CATEGORY_IDS)),
-    )
-    for (account_id,) in cursor.fetchall():
-        if account_id is not None:
-            out.add(int(account_id))
+def _country_registered_accounts(cursor: Any, country_id: int) -> set[int]:
+    """Every ``dbo.account`` in the country that has an IBAN."""
     cursor.execute(
         """
         SELECT a.account_id
@@ -667,14 +588,12 @@ def _country_bank_accounts(cursor: Any, country_id: int) -> set[int]:
         JOIN dbo.person p ON p.id = a.person_id
         JOIN dbo.center n ON n.center_id = p.center_id
         WHERE n.country_id = ?
-          AND REPLACE(UPPER(LTRIM(RTRIM(a.iban))), N' ', N'') IN (?, ?)
+          AND a.iban IS NOT NULL
+          AND LTRIM(RTRIM(a.iban)) <> N''
         """,
-        (int(country_id), _IBAN_NL46, _IBAN_NL84),
+        (int(country_id),),
     )
-    for (account_id,) in cursor.fetchall():
-        if account_id is not None:
-            out.add(int(account_id))
-    return out
+    return {int(row[0]) for row in cursor.fetchall() if row[0] is not None}
 
 
 def _account_categories(cursor: Any, country_id: int) -> dict[int, int]:
