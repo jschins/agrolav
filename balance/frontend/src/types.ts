@@ -29,6 +29,19 @@ export interface SubadministratieSheet {
   rows: SubadministratieRow[];
 }
 
+export interface CashRow {
+  label: string;
+  amount: number | null;
+  alert: boolean;
+  strong?: boolean;
+  gap?: boolean;
+}
+
+export interface CashSheet {
+  rows: CashRow[];
+  mismatch: boolean;
+}
+
 export interface BalanceSheet {
   year: number;
   as_of?: string | null;
@@ -39,6 +52,7 @@ export interface BalanceSheet {
   balanced: boolean;
   subadministratie?: SubadministratieSheet;
   afschrijvingen?: Afschrijvingen;
+  cash?: CashSheet;
 }
 
 export interface CategoryInfo {

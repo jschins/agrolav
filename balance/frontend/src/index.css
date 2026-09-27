@@ -90,9 +90,14 @@ td.code { color: #666; width: 3.5em; }
 .sheet td.plug-still { font-weight: 700; color: #1a1a1a; }
 .sheet td.plug-moved { font-weight: 700; color: #b91c1c; }
 .sheet tfoot td { border-top: 2px solid #2a5a8c; font-weight: 700; }
+.sheet .cash-block { grid-column: 1 / -1; max-width: 560px; }
+.sheet tr.strong td { font-weight: 700; }
+.sheet tr.cash-alert td { font-weight: 700; color: #b91c1c; }
+.sheet tr.gap td { border-bottom: none; height: 14px; padding: 0; }
 @media print {
   .sheet td.plug-still,
-  .sheet td.plug-moved {
+  .sheet td.plug-moved,
+  .sheet tr.cash-alert td {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }

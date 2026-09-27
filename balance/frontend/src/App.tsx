@@ -11,6 +11,7 @@ import type {
   AfschrijvingJournal,
   BalanceLine,
   BalanceSheet,
+  CashSheet,
   SubadministratieRow,
 } from "./types";
 import { buildXlsx, downloadBlob, euro2, type XlsxSheet } from "./xlsx";
@@ -181,17 +182,56 @@ function sideSheet(title: string, lines: BalanceLine[], total: number): XlsxShee
   return { name: title.slice(0, 31), rows, widths: [12, 36, 16] };
 }
 
+function cashSheet(cash: CashSheet): XlsxSheet {
+  const rows: XlsxSheet["rows"] = [["", "Bedrag"]];
+  for (const row of cash.rows) {
+    if (row.gap) {
+      rows.push(["", ""]);
+      continue;
+    }
+    rows.push([row.label, euro2(row.amount ?? 0)]);
+  }
+  return { name: "Saldo", rows, widths: [48, 16] };
+}
+
 function exportWindow(sheet: BalanceSheet, resultView: boolean): void {
-  const left = resultView ? "Kosten" : "Activa";
-  const right = resultView ? "Opbrengsten" : "Passiva";
+  const left = resultView ? "Uitgaven" : "Activa";
+  const right = resultView ? "Inkomsten" : "Passiva";
   const kind = resultView ? "Resultaat" : "Balans";
   const filename = `${kind}_${safeFilePart(loginName())}_${exportStamp()}.xlsx`;
-  downloadBlob(
-    filename,
-    buildXlsx([
-      sideSheet(left, sheet.activa, sheet.total_activa),
-      sideSheet(right, sheet.passiva, sheet.total_passiva),
-    ])
+  const sheets = [
+    sideSheet(left, sheet.activa, sheet.total_activa),
+    sideSheet(right, sheet.passiva, sheet.total_passiva),
+  ];
+  if (resultView && sheet.cash) sheets.push(cashSheet(sheet.cash));
+  downloadBlob(filename, buildXlsx(sheets));
+}
+
+function CashTable({ cash }: { cash: CashSheet }) {
+  return (
+    <section className="column cash-block">
+      <table>
+        <tbody>
+          {cash.rows.map((row, index) =>
+            row.gap ? (
+              <tr key={index} className="gap">
+                <td colSpan={2} />
+              </tr>
+            ) : (
+              <tr
+                key={index}
+                className={[row.strong ? "strong" : "", row.alert ? "cash-alert" : ""]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <td>{row.label}</td>
+                <td className="num">{EUR.format(row.amount ?? 0)}</td>
+              </tr>
+            )
+          )}
+        </tbody>
+      </table>
+    </section>
   );
 }
 
@@ -455,7 +495,7 @@ export default function App() {
       {sheet && (
         <div className="sheet">
           <SideTable
-            title={resultView ? "Kosten" : "Activa"}
+            title={resultView ? "Uitgaven" : "Activa"}
             lines={sheet.activa}
             total={sheet.total_activa}
             journalCodes={journalCodes}
@@ -463,13 +503,14 @@ export default function App() {
             onOpen={openPopup}
           />
           <SideTable
-            title={resultView ? "Opbrengsten" : "Passiva"}
+            title={resultView ? "Inkomsten" : "Passiva"}
             lines={sheet.passiva}
             total={sheet.total_passiva}
             journalCodes={journalCodes}
             subadminCodes={subadminCodes}
             onOpen={openPopup}
           />
+          {resultView && sheet.cash ? <CashTable cash={sheet.cash} /> : null}
         </div>
       )}
 
