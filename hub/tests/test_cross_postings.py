@@ -155,7 +155,7 @@ class CrossPostingMatchTests(unittest.TestCase):
             (1126, 1108),
         )
 
-    def test_unit_and_hd_sibling_stays_uncategorized(self) -> None:
+    def test_unit_xx0x_and_hd_sibling_split_1xx1x_and_11200(self) -> None:
         self.assertEqual(
             pair_local_codes(
                 "NL00INGB0000000001",
@@ -163,6 +163,42 @@ class CrossPostingMatchTests(unittest.TestCase):
                 "sib",
                 "sib",
                 "unit1108",
+                "hd",
+            ),
+            (1118, 1200),
+        )
+        self.assertEqual(
+            pair_local_codes(
+                "NL00INGB0000000002",
+                "NL00INGB0000000001",
+                "sia",
+                "sia",
+                "hd",
+                "unit1102",
+            ),
+            (1200, 1112),
+        )
+        self.assertEqual(category_id_for_local_code(1118), 11118)
+        self.assertEqual(category_id_for_local_code(1112), 11112)
+        self.assertEqual(category_id_for_local_code(1200), 11200)
+        self.assertEqual(
+            pair_local_codes(
+                "NL00INGB0000000001",
+                "NL00INGB0000000002",
+                "sib",
+                "sia",
+                "unit1108",
+                "hd",
+            ),
+            (None, None),
+        )
+        self.assertEqual(
+            pair_local_codes(
+                "NL00INGB0000000001",
+                "NL00INGB0000000002",
+                "sib",
+                "sib",
+                "unit1025",
                 "hd",
             ),
             (None, None),

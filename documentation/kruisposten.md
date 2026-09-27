@@ -45,6 +45,14 @@ A pair between Centrale SIa and a `unitxxxx` account in center SIa writes SIa to
 
 A pair between Centrale SIb and a `unitxxxx` account in center SIb writes SIb to local xxxx (category 1xxxx) and the unit to local 1125 (category 11125).
 
+## Unit and its sibling
+
+`hd` is the role exactly. The sibling of a `unitxx0x` account is the `hd` account in the same center. The third digit of the unit role is 0, as in `unit1108`. The rule applies in SIa and in SIb. A center with no `hd` account has no sibling. A unit whose third digit is not 0 is left uncategorized by this rule.
+
+The unit's bookings go to local xx1x, the same four digits with the third digit set to 1, which country 5 stores as category 1xx1x. The sibling's bookings go to local 1200, category 11200.
+
+`unit1102` through `unit1109` write the unit to categories 11112 through 11119. `unit1108` writes the unit to 11118 and the sibling to 11200.
+
 ## Everything else
 
 A pair that matches none of the rules above is not given a cross-posting

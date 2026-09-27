@@ -13,6 +13,9 @@ Each leg of a pair is written on its own:
   (category 1NNNN) and the unit is local 1126 (category 11126).
 * Centrale SIb against ``unitNNNN`` in center SIb: SIb is local NNNN
   (category 1NNNN) and the unit is local 1125 (category 11125).
+* ``unitXX0X`` against the ``hd`` account in the same center: the unit is
+  local XX1X (category 1XX1X) and the sibling is local 1200 (category 11200).
+  ``unit1108`` writes the unit to 11118 and the sibling to 11200.
 
 The value stored on the booking is the category id. Balance countries are
 taken in ``country_id`` order. The first stores the local code. Each later
@@ -304,7 +307,9 @@ def pair_local_codes(
     ``None`` leaves that leg uncategorized. Centrale SIa against Centrale
     SIb is 1100 on SIa and 1200 on SIb. Centrale SIa against a SIa
     ``unitNNNN`` is NNNN on SIa and 1126 on the unit. Centrale SIb against
-    a SIb ``unitNNNN`` is NNNN on SIb and 1125 on the unit.
+    a SIb ``unitNNNN`` is NNNN on SIb and 1125 on the unit. A ``unitXX0X``
+    against the ``hd`` account in the same center is XX1X on the unit and
+    1200 on the sibling.
     """
     from_sib = _is_centrale_sib(from_iban)
     to_sib = _is_centrale_sib(to_iban)
@@ -325,7 +330,23 @@ def pair_local_codes(
         return (to_unit, _LOCAL_SIB_UNIT)
     if to_sib and from_unit is not None and center_side(from_center) == "sib":
         return (_LOCAL_SIB_UNIT, from_unit)
+
+    from_xx0x = unit_xx0x_digits(from_role)
+    to_xx0x = unit_xx0x_digits(to_role)
+    from_hd = _role_text(from_role) == "hd"
+    to_hd = _role_text(to_role) == "hd"
+    if from_xx0x is not None and to_hd and _centers_match(from_center, to_center):
+        return (hd_sibling_local_code(from_xx0x), _LOCAL_CROSS_POSTING)
+    if to_xx0x is not None and from_hd and _centers_match(from_center, to_center):
+        return (_LOCAL_CROSS_POSTING, hd_sibling_local_code(to_xx0x))
     return (None, None)
+
+
+def _centers_match(left: str | None, right: str | None) -> bool:
+    """Same center: ``sia``/``sib`` when the name encodes that, otherwise the username."""
+    a = center_side(left) or str(left or "").strip().lower()
+    b = center_side(right) or str(right or "").strip().lower()
+    return bool(a) and a == b
 
 
 def transfer_local_code(
