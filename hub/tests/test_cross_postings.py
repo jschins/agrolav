@@ -63,12 +63,22 @@ class CrossPostingMatchTests(unittest.TestCase):
         )
         self.assertEqual(matched, set())
 
-    def test_receipt_on_the_named_account_counts_even_without_a_return_iban(self) -> None:
+    def test_receipt_without_a_return_iban_is_not_a_pair(self) -> None:
         day = date(2026, 9, 8)
         matched = matching_transaction_ids(
             [
                 (1, 10, day, Decimal("-2700"), 20),
                 (2, 20, day, Decimal("2700"), None),
+            ]
+        )
+        self.assertEqual(matched, set())
+
+    def test_both_bookings_must_name_each_other_and_oppose(self) -> None:
+        day = date(2026, 9, 8)
+        matched = matching_transaction_ids(
+            [
+                (1, 10, day, Decimal("-2700"), 20),
+                (2, 20, day, Decimal("2700"), 10),
             ]
         )
         self.assertEqual(matched, {1, 2})
@@ -118,59 +128,41 @@ class CrossPostingMatchTests(unittest.TestCase):
         )
         self.assertEqual(category_id_for_local_code(1100), 11100)
 
-    def test_sib_to_a_sib_unit_is_11200_and_13125(self) -> None:
+    def test_sib_to_a_sib_unit_is_the_unit_code_and_11125(self) -> None:
         self.assertEqual(
             pair_local_codes(_IBAN_NL46, "NL61INGB0002843544", "sib", "sib", "", "unit1108"),
-            (1200, 3125),
+            (1108, 1125),
         )
-        self.assertEqual(category_id_for_local_code(3125), 13125)
+        self.assertEqual(category_id_for_local_code(1108), 11108)
+        self.assertEqual(category_id_for_local_code(1125), 11125)
+        self.assertEqual(
+            pair_local_codes("NL61INGB0002843544", _IBAN_NL46, "sib", "sib", "unit1108", ""),
+            (1125, 1108),
+        )
         self.assertEqual(
             pair_local_codes(_IBAN_NL46, "NL61INGB0002843544", "sib", "sia", "", "unit1108"),
-            (1200, None),
+            (None, None),
         )
 
-    def test_sia_to_a_sia_unit_is_11200_and_13126(self) -> None:
+    def test_sia_to_a_sia_unit_is_the_unit_code_and_11126(self) -> None:
         self.assertEqual(
             pair_local_codes(_IBAN_NL84, "NL61INGB0002843544", "sia", "sia", "", "unit1108"),
-            (1200, 3126),
+            (1108, 1126),
         )
-        self.assertEqual(category_id_for_local_code(3126), 13126)
+        self.assertEqual(category_id_for_local_code(1126), 11126)
         self.assertEqual(
             pair_local_codes("NL61INGB0002843544", _IBAN_NL84, "sia", "sia", "unit1108", ""),
-            (3126, 1200),
+            (1126, 1108),
         )
 
-    def test_unit_and_hd_sibling_split_11200_and_the_unit_code(self) -> None:
+    def test_unit_and_hd_sibling_stays_uncategorized(self) -> None:
         self.assertEqual(
             pair_local_codes(
                 "NL00INGB0000000001",
                 "NL00INGB0000000002",
                 "sib",
                 "sib",
-                "unit1025",
-                "hd",
-            ),
-            (1200, 1025),
-        )
-        self.assertEqual(
-            pair_local_codes(
-                "NL00INGB0000000002",
-                "NL00INGB0000000001",
-                "sia",
-                "sia",
-                "hd",
-                "unit1025",
-            ),
-            (1025, 1200),
-        )
-        self.assertEqual(category_id_for_local_code(1025), 11025)
-        self.assertEqual(
-            pair_local_codes(
-                "NL00INGB0000000001",
-                "NL00INGB0000000002",
-                "sib",
-                "sia",
-                "unit1025",
+                "unit1108",
                 "hd",
             ),
             (None, None),
@@ -215,12 +207,23 @@ class CrossPostingMatchTests(unittest.TestCase):
 
     def test_a_live_bank_category_is_not_released(self) -> None:
         found = managed_category_ids(
-            {1099: 11099, 1100: 11100, 1200: 11200, 3125: 13125, 3126: 13126, 1021: 11021},
+            {
+                1099: 11099,
+                1100: 11100,
+                1125: 11125,
+                1126: 11126,
+                1200: 11200,
+                3125: 13125,
+                3126: 13126,
+                1021: 11021,
+            },
             {1108, 1021},
             {11021},
         )
         self.assertIn(11099, found)
         self.assertIn(11100, found)
+        self.assertIn(11125, found)
+        self.assertIn(11126, found)
         self.assertIn(11200, found)
         self.assertIn(13125, found)
         self.assertIn(13126, found)

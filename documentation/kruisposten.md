@@ -21,39 +21,29 @@ Two statements form a pair when all of the following hold:
 1. They sit on different accounts.
 2. `booked_on` is the same calendar day.
 3. The amounts are opposite to the cent.
-4. The statement that opens the pair names the other account’s IBAN.
-   The counterpart still counts when its own counterparty IBAN is empty.
-   When that IBAN is a registered account, it must be the opening account.
+4. Both statements name the other account’s IBAN. A blank counterparty
+   IBAN does not form a pair.
 5. Each `transaction_id` is used in at most one pair.
 
 IBAN comparison strips spaces and ignores case. The center of an account is
 `sia` or `sib`, taken from the holder’s `dbo.center.username`
 (`sia`, `center_sia`, anything ending in `_sia`, and the same for `sib`).
 
-## Centrale SIb
-
-`1020` Bank Centrale SIb is `NL46INGB0001726568`. Every paired booking on that account is local 1200, category 11200 (Kruisposten).
-
-The other leg is written only in these cases:
-
-- Centrale SIa (`NL84INGB0002801129`) goes to local 1100, category 11100.
-- A `unitxxxx` account in center SIb goes to local 3125, category 13125.
-
 Money in stays positive and money out stays negative.
+
+## Centrale SIa and Centrale SIb
+
+`1020` Bank Centrale SIb is `NL46INGB0001726568`. `1010` Bank Centrale SIa is `NL84INGB0002801129`.
+
+A pair between those two accounts writes SIb to local 1200, category 11200 (Kruisposten), and SIa to local 1100, category 11100. The two amounts must be opposite. Local 1100 and local 1200 both keep the statement sign, so the pair cancels on the balance sheet.
 
 ## Centrale SIa and a SIa unit
 
-A pair between Centrale SIa and a `unitxxxx` account in center SIa writes SIa to local 1200 (category 11200) and the unit to local 3126 (category 13126).
+A pair between Centrale SIa and a `unitxxxx` account in center SIa writes SIa to local xxxx (category 1xxxx) and the unit to local 1126 (category 11126). `unit1108` writes SIa to category 11108.
 
-## Unit and its HD sibling
+## Centrale SIb and a SIb unit
 
-`hd` is the role exactly. The sibling of a `unitxxxx` account is the `hd` account in the same center. The rule applies in SIa and in SIb. A center with no `hd` account, such as Aenstal, has no sibling.
-
-The unit's bookings go to local 1200 (category 11200). The sibling's bookings go to local xxxx, which country 5 stores as category 1xxxx. `unit1025` against its HD sibling writes the sibling to category 11025.
-
-A four-digit local code that is itself a live bank category in
-`dbo.mapping_banks` is not treated as a cross-posting category on a later
-release.
+A pair between Centrale SIb and a `unitxxxx` account in center SIb writes SIb to local xxxx (category 1xxxx) and the unit to local 1125 (category 11125).
 
 ## Everything else
 
@@ -61,6 +51,10 @@ A pair that matches none of the rules above is not given a cross-posting
 category.
 
 A later run releases a statement that this run does not assign and whose
-current category is one this routine writes (1099, 1100, 1200, 3125, 3126,
-or a four-digit code). Release sets the remainder category and
-`modification = -1`. A statement on any other category is left as it is.
+current category is one this routine writes or used to write (1099, 1100,
+1200, 1125, 1126, 3125, 3126, or a four-digit code, including the earlier
+HD-sibling codes 1112 through 1119). Release sets the remainder category
+and `modification = -1`. A statement on any other category is left as it
+is. A four-digit local code that is itself a live bank category in
+`dbo.mapping_banks` is not treated as a cross-posting category on that
+release.

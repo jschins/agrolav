@@ -7,13 +7,12 @@ negated amount on the same day.
 
 Each leg of a pair is written on its own:
 
-* Centrale SIb (``NL46INGB0001726568``) goes to local 1200 (category 11200).
-  The counterpart is local 1100 (category 11100) when it is Centrale SIa,
-  and local 3125 (category 13125) when it is ``unitNNNN`` in center SIb.
-* Centrale SIa against ``unitNNNN`` in center SIa: SIa is local 1200
-  (11200) and the unit is local 3126 (category 13126).
-* ``unitNNNN`` against the ``hd`` account in the same center: the unit is
-  local 1200 (11200) and the HD sibling is local NNNN (category 1NNNN).
+* Centrale SIa against Centrale SIb: SIb is local 1200 (category 11200)
+  and SIa is local 1100 (category 11100).
+* Centrale SIa against ``unitNNNN`` in center SIa: SIa is local NNNN
+  (category 1NNNN) and the unit is local 1126 (category 11126).
+* Centrale SIb against ``unitNNNN`` in center SIb: SIb is local NNNN
+  (category 1NNNN) and the unit is local 1125 (category 11125).
 
 The value stored on the booking is the category id. Balance countries are
 taken in ``country_id`` order. The first stores the local code. Each later
@@ -37,9 +36,23 @@ _CATEGORY_BASE = 10000
 _LOCAL_SIB_TO_SIA = 1099
 _LOCAL_SIA_TO_SIB = 1100
 _LOCAL_CROSS_POSTING = 1200
-# Country 5 stores these as 13125 and 13126.
-_LOCAL_SIB_UNIT = 3125
-_LOCAL_SIA_UNIT = 3126
+# Country 5 stores these as 11125 and 11126.
+_LOCAL_SIB_UNIT = 1125
+_LOCAL_SIA_UNIT = 1126
+# Earlier unit legs. Still released so a later run clears 13125 and 13126.
+_LOCAL_SIB_UNIT_PREVIOUS = 3125
+_LOCAL_SIA_UNIT_PREVIOUS = 3126
+_FIXED_LOCAL_CODES = frozenset(
+    {
+        _LOCAL_SIB_TO_SIA,
+        _LOCAL_SIA_TO_SIB,
+        _LOCAL_CROSS_POSTING,
+        _LOCAL_SIB_UNIT,
+        _LOCAL_SIA_UNIT,
+        _LOCAL_SIB_UNIT_PREVIOUS,
+        _LOCAL_SIA_UNIT_PREVIOUS,
+    }
+)
 _UNIT_ROLE = re.compile(r"^unit(\d{4})$")
 CROSS_POSTING_CATEGORY_ID = _CATEGORY_BASE + _LOCAL_CROSS_POSTING
 _IBAN_NL46 = "NL46INGB0001726568"
@@ -115,10 +128,9 @@ def matching_transaction_ids(
 
     ``rows`` are ``(transaction_id, account_id, booked_on, amount, counterparty_account_id)``.
     ``counterparty_account_id`` is set only when the statement IBAN is in
-    ``dbo.account`` and is a different account. A row in that list is rejected
-    unless that account books the negated amount on the same calendar day.
-    If that booking itself names a registered account, it must be this one.
-    Each booking is used once.
+    ``dbo.account`` and is a different account. Both bookings must name each
+    other, and the amounts must be opposite to the cent on the same calendar
+    day. Each booking is used once.
     """
     return {
         transaction_id
@@ -159,8 +171,7 @@ def matching_pairs(
         for other_id in by_account_day.get((other, day, -amount), ()):
             if other_id in used or other_id == transaction_id:
                 continue
-            named_back = named[other_id]
-            if named_back is not None and named_back != account_id:
+            if named[other_id] != account_id:
                 continue
             used.add(transaction_id)
             used.add(other_id)
@@ -259,6 +270,19 @@ def unit_digits(role: object) -> int | None:
     return int(match.group(1))
 
 
+def unit_xx0x_digits(role: object) -> int | None:
+    """Four digits of ``unitXX0X`` (the third digit is 0)."""
+    digits = unit_digits(role)
+    if digits is None or (digits // 10) % 10 != 0:
+        return None
+    return digits
+
+
+def hd_sibling_local_code(unit_code: int) -> int:
+    """``XX0X`` becomes ``XX1X``. ``1102`` is ``1112``, category 11112."""
+    return int(unit_code) + 10
+
+
 def _is_centrale_sib(iban: object) -> bool:
     return _iban_key(iban) == _IBAN_NL46
 
@@ -277,43 +301,30 @@ def pair_local_codes(
 ) -> tuple[int | None, int | None]:
     """Local codes for the outgoing leg and the incoming leg.
 
-    ``None`` leaves that leg uncategorized. Centrale SIb is always local
-    1200. Its counterpart is 1100 for Centrale SIa and 3125 for a SIb
-    ``unitNNNN``. Centrale SIa against a SIa ``unitNNNN`` is 1200 on SIa
-    and 3126 on the unit. A ``unitNNNN`` against the ``hd`` account in the
-    same center is 1200 on the unit and NNNN on the sibling.
+    ``None`` leaves that leg uncategorized. Centrale SIa against Centrale
+    SIb is 1100 on SIa and 1200 on SIb. Centrale SIa against a SIa
+    ``unitNNNN`` is NNNN on SIa and 1126 on the unit. Centrale SIb against
+    a SIb ``unitNNNN`` is NNNN on SIb and 1125 on the unit.
     """
     from_sib = _is_centrale_sib(from_iban)
     to_sib = _is_centrale_sib(to_iban)
-    if from_sib or to_sib:
-        sib_is_from = from_sib
-        other_iban = to_iban if sib_is_from else from_iban
-        other_role = to_role if sib_is_from else from_role
-        other_center = to_center if sib_is_from else from_center
-        other_local: int | None = None
-        if _is_centrale_sia(other_iban):
-            other_local = _LOCAL_SIA_TO_SIB
-        else:
-            digits = unit_digits(other_role)
-            if digits is not None and center_side(other_center) == "sib":
-                other_local = _LOCAL_SIB_UNIT
-        if sib_is_from:
-            return (_LOCAL_CROSS_POSTING, other_local)
-        return (other_local, _LOCAL_CROSS_POSTING)
+    from_sia = _is_centrale_sia(from_iban)
+    to_sia = _is_centrale_sia(to_iban)
+    if (from_sib and to_sia) or (from_sia and to_sib):
+        if from_sib:
+            return (_LOCAL_CROSS_POSTING, _LOCAL_SIA_TO_SIB)
+        return (_LOCAL_SIA_TO_SIB, _LOCAL_CROSS_POSTING)
 
     from_unit = unit_digits(from_role)
     to_unit = unit_digits(to_role)
-    if _is_centrale_sia(from_iban) and to_unit is not None and center_side(to_center) == "sia":
-        return (_LOCAL_CROSS_POSTING, _LOCAL_SIA_UNIT)
-    if _is_centrale_sia(to_iban) and from_unit is not None and center_side(from_center) == "sia":
-        return (_LOCAL_SIA_UNIT, _LOCAL_CROSS_POSTING)
-
-    from_hd = _role_text(from_role) == "hd"
-    to_hd = _role_text(to_role) == "hd"
-    if from_unit is not None and to_hd and _centers_match(from_center, to_center):
-        return (_LOCAL_CROSS_POSTING, from_unit)
-    if to_unit is not None and from_hd and _centers_match(from_center, to_center):
-        return (to_unit, _LOCAL_CROSS_POSTING)
+    if from_sia and to_unit is not None and center_side(to_center) == "sia":
+        return (to_unit, _LOCAL_SIA_UNIT)
+    if to_sia and from_unit is not None and center_side(from_center) == "sia":
+        return (_LOCAL_SIA_UNIT, from_unit)
+    if from_sib and to_unit is not None and center_side(to_center) == "sib":
+        return (to_unit, _LOCAL_SIB_UNIT)
+    if to_sib and from_unit is not None and center_side(from_center) == "sib":
+        return (_LOCAL_SIB_UNIT, from_unit)
     return (None, None)
 
 
@@ -333,13 +344,6 @@ def transfer_local_code(
         from_iban, to_iban, from_center, to_center, from_role, to_role
     )
     return from_local
-
-
-def _centers_match(left: str | None, right: str | None) -> bool:
-    """Same center: ``sia``/``sib`` when the name encodes that, otherwise the username."""
-    a = center_side(left) or str(left or "").strip().lower()
-    b = center_side(right) or str(right or "").strip().lower()
-    return bool(a) and a == b
 
 
 def transfer_category(
@@ -380,24 +384,12 @@ def managed_category_ids(
     A four-digit code that is itself a live bank category is not released.
     """
     banks = bank_category_ids or set()
-    codes = {
-        _LOCAL_SIB_TO_SIA,
-        _LOCAL_SIA_TO_SIB,
-        _LOCAL_CROSS_POSTING,
-        _LOCAL_SIB_UNIT,
-        _LOCAL_SIA_UNIT,
-        *digit_codes,
-    }
+    codes = set(_FIXED_LOCAL_CODES)
+    codes.update(digit_codes)
     found: set[int] = set()
     for code in codes:
         stored = stored_category_id(code, by_local, country_id, balance_country_ids)
-        if code not in (
-            _LOCAL_SIB_TO_SIA,
-            _LOCAL_SIA_TO_SIB,
-            _LOCAL_CROSS_POSTING,
-            _LOCAL_SIB_UNIT,
-            _LOCAL_SIA_UNIT,
-        ) and stored in banks:
+        if code not in _FIXED_LOCAL_CODES and stored in banks:
             continue
         found.add(stored)
         if code not in banks:
@@ -469,6 +461,11 @@ def apply_cross_postings(
         for role in role_of.values()
         if (digits := user_digits(role)) is not None
     }
+    digit_codes.update(
+        hd_sibling_local_code(digits)
+        for role in role_of.values()
+        if (digits := unit_xx0x_digits(role)) is not None
+    )
     managed = managed_category_ids(
         by_local, digit_codes, set(account_category.values()), country_id, balance_ids
     )
@@ -503,16 +500,16 @@ def apply_cross_postings(
             role_of.get(from_account, ""),
             role_of.get(to_account, ""),
         )
-        if from_local is None and to_local is None:
+        if from_local is None or to_local is None:
             continue
-        if from_local is not None:
-            category_of[from_id] = stored_category_id(
-                from_local, by_local, country_id, balance_ids
-            )
-        if to_local is not None:
-            category_of[to_id] = stored_category_id(
-                to_local, by_local, country_id, balance_ids
-            )
+        if amount_of[from_id] + amount_of[to_id] != 0:
+            continue
+        category_of[from_id] = stored_category_id(
+            from_local, by_local, country_id, balance_ids
+        )
+        category_of[to_id] = stored_category_id(
+            to_local, by_local, country_id, balance_ids
+        )
         pair_ids.append(frozenset((from_id, to_id)))
     scoped = source_ids is not None
     if scoped:

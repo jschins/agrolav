@@ -736,7 +736,7 @@ def booking_signed_amount(
 
     Transfer from stored category totals (bank sign X) onto the balance
     sheet follows the APR table: A 1000-1999 (except live-bank / spaar)
-    ``+= -X``; P 2000-2999 ``+= +X``. Local 1099 and 1100 keep ``+X``.
+    ``+= -X``; P 2000-2999 ``+= +X``. Local 1099, 1100 and 1200 keep ``+X``.
     The equity post
     (``category_role = equity``) is skipped via its role, not via local_code
     2000. Bank/spaar and computed posts: ``None``.
@@ -744,9 +744,9 @@ def booking_signed_amount(
     code = int(local_code)
     if is_hit_forbidden_role(role):
         return None
-    # 1099 (SIa) and 1100 (SIb) keep the statement sign, so the sheet
-    # shows the same total as the category: +1000 and −1000 for one wire.
-    if code in (1099, 1100):
+    # 1099, 1100 (r/c SIb) and 1200 (Kruisposten) keep the statement sign,
+    # so an opposed pair shows +1000 and −1000 and equity does not move.
+    if code in (1099, 1100, 1200):
         return amount
     if 1000 <= code <= 1999:
         return -amount
