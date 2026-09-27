@@ -3197,9 +3197,8 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     the tree. Every country gets per-category ``resultaat`` rows (3000-4999)
     and, when any P&L row has a ``parent``, ``result_tree`` built the same
     way from those rows. Each P&L row (and tree group) carries ``columns``:
-    its year sum per bank account (``result_accounts`` order), then one
-    Journaal value holding the rest of the overlay. Spaarrekening columns are
-    left out, so those P&L legs sit in Journaal. An afschrijving
+    its year sum per bank account (``result_accounts`` order). There is no
+    Journaal column. Spaarrekening amounts stay inside Totaal. An afschrijving
     whose text names SIa or SIb is added to that Centrale column. A
     percentage afschrijving, which names neither side, is added in full
     to SIb. A ``unitXX0X`` account and its ``hd``
@@ -3264,7 +3263,6 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         )
         account_ids = [int(a["account_id"]) for a in result_accounts]
 
-        # Spaarrekening columns are omitted; those P&L legs stay in Journaal.
         # Named SIa/SIb afschrijvingen go to that column. Percentage rules
         # go entirely to SIb.
         afschrijving_journals: list[tuple[int, int, Any, object]] = []
@@ -3305,8 +3303,7 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
 
         def _result_columns(cat_id: int) -> list[float]:
             acc = [pnl_sums.get(cat_id, {}).get(aid, Decimal("0")) for aid in account_ids]
-            journal = combined[cat_id] - sum(acc, Decimal("0"))
-            return [float(v) for v in (*acc, journal)]
+            return [float(v) for v in acc]
 
         result_rows = [
             {

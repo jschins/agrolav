@@ -151,7 +151,7 @@ export interface ExportExcelData {
   resultaat: ExportExcelLine[];
   /** Bank accounts behind the first Resultaat columns, in `columns` order. */
   result_accounts?: ExportResultaatAccount[];
-  /** Spaar mirror posts that follow the accounts; a Journaal column closes the row. */
+  /** Spaar mirror posts that follow the accounts. */
   result_mirrors?: { code: number; label: string }[];
   total_resultaat: number;
   /** P&L posts nested by `parent`; null when no P&L row has a parent. */

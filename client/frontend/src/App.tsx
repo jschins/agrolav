@@ -518,14 +518,14 @@ function treeSheet(
   return { name, rows, widths, outlineLevels, rowHeights, contours };
 }
 
-/** Resultaat drill-down headers: accounts, spaarrekeningen, then Journaal. */
-function resultDrillHeaders(data: ExportExcelData, terms: Record<string, string>): string[] {
+/** Resultaat drill-down headers: one per bank account. */
+function resultDrillHeaders(data: ExportExcelData, _terms: Record<string, string>): string[] {
   const accounts = resultaatAccountHeaders(data.result_accounts ?? []);
   const mirrors = (data.result_mirrors ?? []).map((m) => m.label);
   if (!accounts.length && !mirrors.length && !data.resultaat.some((l) => l.columns?.length)) {
     return [];
   }
-  return [...accounts, ...mirrors, tableHeaderTerm(terms, "Journal")];
+  return [...accounts, ...mirrors];
 }
 
 function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}): XlsxSheet[] {
