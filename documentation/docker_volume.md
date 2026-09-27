@@ -207,7 +207,7 @@ Verify the app's tables exist ([`DATABASE.md`](DATABASE.md) §1.3):
 USE agrolav;
 SELECT name FROM sys.tables
 WHERE name IN (
-  'account','administrator','bank','bank_modality','category_term',
+  'account','egress_ip','bank','bank_modality','category_term',
   'category_total','center','consent_pending','country','dim_category',
   'enable_connection','enable_redirect','person','table_header_term',
   'type_abbreviation','transaction_nederland','transaction_uk',
@@ -217,7 +217,7 @@ ORDER BY name;
 ```
 
 Then run the idempotent scripts and re-add the production router WAN addresses
-into `dbo.administrator` before country/center logins work
+into `dbo.egress_ip` before country/center logins work
 ([`DATABASE.md`](DATABASE.md) §1.3).
 
 Bring the apps back:

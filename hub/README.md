@@ -27,7 +27,7 @@ Start the hub on **8200** first, then the client on **8300**.
 ## Country / center IP allowlist
 
 There is no hub-wide TCP gate. Country and center logins are allowed only
-from addresses listed in `dbo.administrator` or in that login’s own
+from addresses listed in `dbo.egress_ip` or in that login’s own
 `egress_ip` column. The allowed set is the sum of the two; an empty column
 admits nobody. Person logins are not IP-gated.
 
@@ -38,7 +38,7 @@ On a developer’s own machine set `HUB_DEV_LOGIN=1` in `hub/.env`: a
 loopback caller skips the gate and nothing is written to `visitor_ip`.
 Never set that flag on the server.
 
-Schema: `hub/sql/administrator.sql` and `hub/sql/visitor_ip.sql`. The
+Schema: `hub/sql/egress_ip.sql` and `hub/sql/visitor_ip.sql`. The
 Restrict IP access page edits only the country/center columns.
 
 ## Upload

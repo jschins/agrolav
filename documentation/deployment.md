@@ -420,7 +420,7 @@ URL; after consent the bank returns to
 There is no hub-wide TCP allowlist. Country and center logins are gated
 by the **union** of:
 
-- `dbo.administrator` (one public address per row; every country and center)
+- `dbo.egress_ip` (one public address per row; every country and center)
 - that login’s own `egress_ip` column (comma-separated)
 
 Empty / NULL admits **nobody**. Person logins are not IP-gated.
@@ -429,7 +429,7 @@ Attempted public addresses land in `dbo.visitor_ip` (`username = ''` when
 refused). Administrator addresses, loopback, and LAN are not logged.
 
 After a restore with empty `egress_ip` columns, insert the production WAN
-addresses into `dbo.administrator` or no country/center login will work.
+addresses into `dbo.egress_ip` or no country/center login will work.
 The Restrict IP access page edits only the country/center columns;
 administrator rows are SSMS-only.
 
@@ -501,10 +501,10 @@ Country/center login. The hub log names the address:
 
 ```text
 login refused: 'beheer' from '80.12.34.56' is listed in neither
-dbo.administrator nor its own egress_ip (NULL)
+dbo.egress_ip nor its own egress_ip (NULL)
 ```
 
-Insert that public address into `dbo.administrator` or the login’s
+Insert that public address into `dbo.egress_ip` or the login’s
 `egress_ip`. If the log says `127.0.0.1`, Caddy is not forwarding
 `X-Forwarded-For` — reload Caddy from the repo `Caddyfile`. If it says
 `no usable client IP`, the BFF could not derive an address at all.

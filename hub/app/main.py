@@ -181,6 +181,8 @@ def api_auth_login(
     if user is None:
         raise HTTPException(status_code=401, detail="invalid username or password")
     raw = user_store.find_user(body.username)
+    if raw is None:
+        raw = user_store.find_user(str(user.get("username") or ""))
     if raw is not None and not hub_ip.login_ip_allowed(raw, body.client_ip):
         raise HTTPException(
             status_code=403,

@@ -128,7 +128,7 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
     elif not center:
         center = centers[0] if centers else ""
 
-    return {
+    profile = {
         "username": username,
         "title": str(user.get("title") or "").strip(),
         "access": access,
@@ -138,6 +138,9 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
         "person": person,
         "account": account,
     }
+    if user.get("administrator"):
+        profile["administrator"] = True
+    return profile
 
 
 def _b64url(data: bytes) -> str:

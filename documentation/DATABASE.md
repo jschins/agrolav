@@ -9,7 +9,7 @@ Schema sources in the repo:
 - `hub/sql/phase_c.sql` — base schema (do not run against a live database; it drops tables)
 - `hub/sql/json_independence.sql` — `language`, `country.language_id`, `bank_modality`, `enable_connection`, `enable_redirect`, `visitor_ip`
 - `hub/sql/visitor_ip.sql` — `egress_ip` columns and `dbo.visitor_ip` (idempotent)
-- `hub/sql/administrator.sql` — `dbo.administrator` (idempotent)
+- `hub/sql/egress_ip.sql` — `dbo.egress_ip` (idempotent)
 - Hub startup requires `dbo.consent_pending` (create it in SSMS if missing)
 - `maaltijden/sql/maaltijden.sql` — `dbo.maaltijden_users` and `dbo.maaltijden_data` (run in SSMS; the app does not create them)
 
@@ -303,7 +303,7 @@ The hub does not auto-create tables. After a restore:
 USE agrolav;
 SELECT name FROM sys.tables
 WHERE name IN (
-  'account','administrator','bank','bank_modality','category_term',
+  'account','egress_ip','bank','bank_modality','category_term',
   'category_total','center','consent_pending','country','dim_category',
   'enable_connection','enable_redirect','person','table_header_term',
   'type_abbreviation','transaction_nederland','transaction_uk',
@@ -315,9 +315,9 @@ ORDER BY name;
 Run the idempotent scripts so local and remote stay identical:
 
 - `hub/sql/visitor_ip.sql`
-- `hub/sql/administrator.sql`
+- `hub/sql/egress_ip.sql`
 
-Insert the production router WAN addresses into `dbo.administrator`
+Insert the production router WAN addresses into `dbo.egress_ip`
 **before** country/center logins can succeed (empty `egress_ip` admits
 nobody). See [Logins](#logins).
 
@@ -402,9 +402,9 @@ file names from `FILELISTONLY`, `MOVE`d into `/var/opt/mssql/data`). It asks
 for a typed `YES` first; `-Yes` skips that. Stop the hub, BFF and balance apps
 before running it.
 
-Then the same table check and `visitor_ip.sql` / `administrator.sql` as
+Then the same table check and `visitor_ip.sql` / `egress_ip.sql` as
 §1.3. A local restore does not need production WAN rows in
-`dbo.administrator` if you sign in with `HUB_DEV_LOGIN=1` on loopback.
+`dbo.egress_ip` if you sign in with `HUB_DEV_LOGIN=1` on loopback.
 
 ---
 
@@ -695,10 +695,10 @@ One row per spreadsheet or bank CSV taken in for an account.
 | `file_name` | `NVARCHAR(256)` | as uploaded |
 | `format` | `NVARCHAR(64)` NULL | parser that read it |
 
-### `administrator`
+### `egress_ip`
 
 Egress addresses allowed for **every** country and center. Hand-edited in
-SSMS; there is no UI for it. See `hub/sql/administrator.sql`.
+SSMS; there is no UI for it. See `hub/sql/egress_ip.sql`.
 
 | column | type | notes |
 |:-------|:-----|:------|
@@ -725,7 +725,7 @@ per UTC day).
 | Unique `(egress_ip, username, login_page)` | | repeats collapse |
 
 Not recorded: loopback and LAN addresses, anything listed in
-`dbo.administrator`, static `/assets` files, and — on a development hub
+`dbo.egress_ip`, static `/assets` files, and — on a development hub
 (`HUB_DEV_LOGIN`) — nothing at all.
 
 ### `maaltijden_users`
@@ -808,7 +808,7 @@ access level:
 
 No login spans all countries. Country and center logins are gated by egress
 IP; person logins are not. A country or center may sign in only from an
-address listed in `dbo.administrator` or in its own `egress_ip` column — the
+address listed in `dbo.egress_ip` or in its own `egress_ip` column — the
 allowed set is the **sum** of the two, and an empty column admits nobody, so a
 database with no addresses listed anywhere refuses every country and center
 login.

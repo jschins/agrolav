@@ -359,7 +359,7 @@ Pick a **Login** (a country or a center), type an IPv4 or IPv6 address,
 **Add IP**. The table lists current addresses; remove one with its button.
 
 An empty list on this page means **no** address is allowed for that login,
-unless the same address is also on the administrator list (edited in SSMS,
+unless the same address is also on the egress_ip list (edited in SSMS,
 not here). The allowed set is the sum of the two lists. If both are empty,
 no country or center login works at all.
 <!-- {en:restrict[5],page,add,ipv4,ipv6,remove,empty,list,administrator,ssms,ip[5]} -->

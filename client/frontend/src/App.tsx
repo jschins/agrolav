@@ -970,8 +970,10 @@ function menuBitOn(value: boolean | number | string | null | undefined): boolean
 function menuItemAllowed(
   id: string,
   access: string,
-  rows: CentraleSyncStatus["menu_items"]
+  rows: CentraleSyncStatus["menu_items"],
+  administrator?: boolean
 ): boolean {
+  if (administrator) return true;
   const row = (rows ?? []).find((item) => item.menu_id === id);
   if (!row) return false;
   if (access === "country") return menuBitOn(row.country);
@@ -2103,10 +2105,10 @@ function SyncNotifyShell({
     }
     return sortMenuItems(
       items.filter((item) =>
-        menuItemAllowed(item.id, access, status?.menu_items)
+        menuItemAllowed(item.id, access, status?.menu_items, status?.administrator)
       )
     );
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.result_url, status?.menu_items, menuTerms]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.result_url, status?.menu_items, status?.administrator, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
     item.onClick?.();

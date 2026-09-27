@@ -12,7 +12,7 @@ use this path.
 | Login | Password | Second step | IP gate |
 |:------|:---------|:------------|:--------|
 | Person | scrypt hash on `dbo.person.password_hash` | SMS when `mobile_phone` is set | no |
-| Center | `PASSWORD_PREFIX + username` (`!@#$%^&*()_` + name) | none | `dbo.administrator` ∪ own `egress_ip` |
+| Center | `PASSWORD_PREFIX + username` (`!@#$%^&*()_` + name) | none | `dbo.egress_ip` ∪ own `egress_ip` |
 | Country | same formula | none | same |
 
 The set-password API rejects country and center sessions even if called

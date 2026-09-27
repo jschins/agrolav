@@ -37,7 +37,7 @@ only — no email, no public object URL, no git.
 ## 3. Country and center passwords are not real passwords
 
 Those logins still derive the password from the username. The gate is the
-**egress-IP allowlist**: `dbo.administrator` union that row’s `egress_ip`.
+**egress-IP allowlist**: `dbo.egress_ip` union that row’s `egress_ip`.
 Empty or NULL admits **nobody**. A listed IP plus the known formula is a
 successful login.
 
@@ -95,7 +95,7 @@ passphrase, not NULL, and do not reuse person or country passwords there.
 Until `hub/sql/visitor_ip.sql` is applied on the droplet and the hub is
 restarted, `dbo.visitor_ip` only stores **login POSTs**, collapsed with
 no timestamp. Port scans, `GET /`, `/.env`, WordPress probes never appear.
-Caddy has **no access log** in the current `Caddyfile`. `dbo.administrator`
+Caddy has **no access log** in the current `Caddyfile`. `dbo.egress_ip`
 addresses are not logged on purpose.
 
 After the new columns: `login_page = 1` is every login/OTP post

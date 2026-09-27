@@ -258,6 +258,8 @@ def _session_from_hub_user(
     status = sync_status()
     status["authenticated"] = True
     status["auth_required"] = True
+    if session.get("administrator"):
+        status["administrator"] = True
     return status
 
 
@@ -535,6 +537,9 @@ def api_centrale_status(request: Request) -> dict[str, Any]:
         print(f"menu-access: {exc}")
         status["full_menu"] = False
         status["menu_items"] = []
+    session = getattr(request.state, "session", None)
+    if isinstance(session, dict) and session.get("administrator"):
+        status["administrator"] = True
     cfg = load_config()
     if is_country():
         status["centers"] = list_hub_centers()

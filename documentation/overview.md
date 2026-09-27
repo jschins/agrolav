@@ -18,7 +18,7 @@ The public site is Caddy in front of a thin client. The hub and SQL Server
 stay off the public internet.
 
 Country and center logins are restricted by egress IP: the address must
-appear in `dbo.administrator` or in that login's own `egress_ip` column,
+appear in `dbo.egress_ip` or in that login's own `egress_ip` column,
 and an empty column admits nobody. Person logins are not IP-gated.
 Attempted public addresses land in `dbo.visitor_ip`.
 

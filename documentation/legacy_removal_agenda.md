@@ -21,5 +21,5 @@ or dual-path leftover in the hub — not a second architecture.
 
 Do not invent a second user table or a hub-wide IP table. Logins are
 `dbo.country` / `dbo.center` / `dbo.person`. The IP gate is
-`dbo.administrator` plus each login’s `egress_ip` column. Attempts go to
+`dbo.egress_ip` plus each login’s `egress_ip` column. Attempts go to
 `dbo.visitor_ip`.

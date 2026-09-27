@@ -429,6 +429,8 @@ def _row_to_user(row: Any) -> dict[str, Any]:
 
 def _public_user(user: dict[str, Any]) -> dict[str, Any]:
     rec = enrich_user_record(user)
+    if user.get("administrator"):
+        rec["administrator"] = True
     from app.runtime import country_folder
     from app.store import list_centers, list_countries
 
@@ -712,7 +714,76 @@ def find_user(username: str) -> dict[str, Any] | None:
     return _row_to_user(row) if row else None
 
 
+def _fetch_administrator(username: str) -> dict[str, Any] | None:
+    """One ``dbo.administrator`` row, or ``None`` when the name is not one."""
+    name = (username or "").strip()
+    if not name:
+        return None
+    init_user_store()
+    cursor = _sql_connect().cursor()
+    try:
+        cursor.execute("SELECT OBJECT_ID(N'dbo.administrator', N'U')")
+        found = cursor.fetchone()
+        if not found or not found[0]:
+            return None
+        cursor.execute(
+            """
+            SELECT username, password_hash, country_id
+            FROM dbo.administrator
+            WHERE username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (name,),
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"administrator login lookup failed: {exc}")
+        return None
+    raw = cursor.fetchone()
+    if not raw:
+        return None
+    return _sql_cursor_row(cursor, raw)
+
+
+def _country_user_by_id(country_id: int) -> dict[str, Any] | None:
+    """Country login row for ``country_id`` (the session an administrator enters)."""
+    init_user_store()
+    cursor = _sql_connect().cursor()
+    cursor.execute(_SQL_COUNTRY_SELECT + " WHERE c.country_id = ?", (int(country_id),))
+    raw = cursor.fetchone()
+    if not raw:
+        return None
+    return _row_to_user(_sql_cursor_row(cursor, raw))
+
+
+def _administrator_login(username: str, password: str) -> tuple[bool, dict[str, Any] | None]:
+    """Authenticate an administrator as the country named by ``country_id``.
+
+    ``(False, None)`` means this username is not an administrator.
+    ``(True, None)`` means the row exists and the password or country does not match.
+    ``(True, user)`` is that country's login (``country_id`` 5 is ``beheer_instudo``).
+    """
+    row = _fetch_administrator(username)
+    if row is None:
+        return False, None
+    stored = str(row.get("password_hash") or "").strip() or None
+    name = str(row.get("username") or username).strip()
+    if not credentials_match(password, username=name, is_person=True, password_hash=stored):
+        return True, None
+    country_id = row.get("country_id")
+    if country_id is None:
+        return True, None
+    try:
+        user = _country_user_by_id(int(country_id))
+    except (TypeError, ValueError):
+        return True, None
+    if user is not None:
+        user["administrator"] = True
+    return True, user
+
+
 def authenticate(username: str, password: str) -> dict[str, Any] | None:
+    handled, admin_user = _administrator_login(username, password)
+    if handled:
+        return admin_user
     user = find_user(username)
     if user is None:
         return None
