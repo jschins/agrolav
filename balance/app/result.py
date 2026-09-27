@@ -13,9 +13,6 @@ from decimal import Decimal
 from typing import Any
 
 from shared.balance_values import (
-    _journal_balances,
-    _journal_effect,
-    booking_signed_amount,
     category_labels,
     result_overlay_cents,
     sql_ident,
@@ -810,81 +807,6 @@ def _cross_cash_lines(
     return _fold_cash_extras(rows, unit_code=unit_code, center=center)
 
 
-def _rc_balance(
-    country_id: int,
-    year: int,
-    account_id: int | None,
-    local_code: int,
-    cutoff: date | None,
-) -> Decimal:
-    """Balance-sheet amount of ``local_code`` on one account.
-
-    Activa codes keep the sheet sign (``-X``), so a unit outflow stored as
-    ``-18500`` on 1114 contributes ``+18500``.
-    """
-    table = _transaction_table(country_id)
-    with connect() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT TOP 1 category_id, category_role FROM dbo.dim_category "
-            "WHERE country_id = ? AND local_code = ? ORDER BY category_id",
-            country_id,
-            local_code,
-        )
-        row = cur.fetchone()
-        if not row or row[0] is None:
-            return Decimal("0")
-        cat_id = int(row[0])
-        role = row[1]
-        cur.execute(
-            "SELECT amount FROM dbo.balance_opening WHERE category_id = ? AND year = ?",
-            cat_id,
-            year,
-        )
-        opened = cur.fetchone()
-        total = (
-            Decimal(str(opened[0]))
-            if opened and opened[0] is not None
-            else Decimal("0")
-        )
-        if table is not None:
-            sql = (
-                f"SELECT SUM(t.amount) FROM {table} t "
-                "JOIN dbo.dim_category d ON d.category_id = t.category_id "
-                "AND d.country_id = ? "
-                "WHERE t.year = ? AND t.bank_id IS NULL "
-                "AND d.local_code = ? "
-                "AND (d.category_role IS NULL OR d.category_role IN "
-                "(N'remainder', N'mirror'))"
-            )
-            params: list[object] = [country_id, year, local_code]
-            if account_id is not None:
-                sql += " AND t.account_id = ?"
-                params.append(account_id)
-            if cutoff is not None:
-                sql += " AND t.booked_on <= ?"
-                params.append(cutoff.isoformat())
-            cur.execute(sql, *params)
-            summed = cur.fetchone()
-            raw = (
-                Decimal(str(summed[0]))
-                if summed and summed[0] is not None
-                else Decimal("0")
-            )
-            signed = booking_signed_amount(local_code, raw, role)
-            if signed is not None:
-                total += signed
-        total += _journal_effect(country_id, year, cur, as_of=cutoff).get(
-            cat_id, Decimal("0")
-        )
-        cur.execute("SELECT OBJECT_ID(N'dbo.transaction_mirror', N'U')")
-        if cur.fetchone()[0] is not None:
-            total += _journal_balances(country_id, year, cur, as_of=cutoff).get(
-                cat_id, Decimal("0")
-            )
-    return total
-
-
 def result_sheet(
     country_id: int,
     year: int,
@@ -954,14 +876,6 @@ def result_sheet(
 
     uitgaven = total(kosten)
     inkomsten = total(opbrengsten)
-    if kind == "hd" and sibling is not None:
-        digits = _unit_xx0x(sibling.role)
-        if digits is None:
-            digits = _unit_xx0x(sibling.unit_username)
-        if digits is not None:
-            inkomsten += _rc_balance(
-                country_id, year, sibling.account_id, digits + 10, cutoff
-            )
     if kind == "hd":
         inkomsten = -inkomsten
     cash = None
