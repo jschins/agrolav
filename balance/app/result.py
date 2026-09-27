@@ -597,6 +597,7 @@ def build_cash_table(
     uitgaven: Decimal,
     opening_day: date,
     present_day: date,
+    extras: list[tuple[str, Decimal]] | None = None,
 ) -> dict[str, Any]:
     """Opening bank, inkomsten, uitgaven, totaal, then the present bank."""
     opening_text = _slash_date(opening_day)
@@ -618,7 +619,9 @@ def build_cash_table(
         present_lines = [(f"Banksaldo d.d. {present_text}", present, True)]
     opening_sum = sum((amount for _label, amount, _alert in opening_lines), Decimal("0"))
     present_sum = sum((amount for _label, amount, _alert in present_lines), Decimal("0"))
-    calculated = opening_sum + inkomsten + uitgaven
+    extra_lines = list(extras or [])
+    extra_sum = sum((amount for _label, amount in extra_lines), Decimal("0"))
+    calculated = opening_sum + inkomsten + uitgaven + extra_sum
     mismatch = _cents(calculated) != _cents(present_sum)
     rows: list[dict[str, Any]] = []
 
@@ -637,6 +640,8 @@ def build_cash_table(
         add(label, amount, alert=alert)
     add("Inkomsten", inkomsten, alert=False)
     add("Uitgaven", uitgaven, alert=False)
+    for label, amount in extra_lines:
+        add(label, amount, alert=False)
     add("Totaal", calculated, alert=True, strong=True)
     rows.append(
         {"label": "", "amount": None, "alert": False, "strong": False, "gap": True}
@@ -692,10 +697,17 @@ def _balances_at(
     return rows
 
 
+def _rc_label(center: str) -> str:
+    text = center.strip().lower()
+    if text in ("sia", "center_sia") or text.endswith("_sia"):
+        return "Rekening courant SIa"
+    return "Rekening courant SIb"
+
+
 def _rc_balance(
     country_id: int,
     year: int,
-    account_id: int,
+    account_id: int | None,
     local_code: int,
     cutoff: date | None,
 ) -> Decimal:
@@ -734,12 +746,15 @@ def _rc_balance(
                 f"SELECT SUM(t.amount) FROM {table} t "
                 "JOIN dbo.dim_category d ON d.category_id = t.category_id "
                 "AND d.country_id = ? "
-                "WHERE t.account_id = ? AND t.year = ? AND t.bank_id IS NULL "
+                "WHERE t.year = ? AND t.bank_id IS NULL "
                 "AND d.local_code = ? "
                 "AND (d.category_role IS NULL OR d.category_role IN "
                 "(N'remainder', N'mirror'))"
             )
-            params: list[object] = [country_id, account_id, year, local_code]
+            params: list[object] = [country_id, year, local_code]
+            if account_id is not None:
+                sql += " AND t.account_id = ?"
+                params.append(account_id)
             if cutoff is not None:
                 sql += " AND t.booked_on <= ?"
                 params.append(cutoff.isoformat())
@@ -843,6 +858,16 @@ def result_sheet(
             )
     if kind == "hd":
         inkomsten = -inkomsten
+    rc_lines: list[tuple[str, Decimal]] = []
+    if kind == "unit" and login_account is not None:
+        unit_code = _unit_digits(login_account.role)
+        if unit_code is not None:
+            rc_lines.append(
+                (
+                    _rc_label(login_account.center),
+                    _rc_balance(country_id, year, None, unit_code, cutoff),
+                )
+            )
     cash = None
     if unit_level:
         opening_day = date(year, 1, 1)
@@ -862,6 +887,7 @@ def result_sheet(
             uitgaven=uitgaven,
             opening_day=opening_day,
             present_day=present_day,
+            extras=rc_lines,
         )
 
     return {

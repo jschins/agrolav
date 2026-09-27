@@ -107,6 +107,33 @@ class CashTableTests(unittest.TestCase):
         self.assertEqual(alert[0]["amount"], 1450)
         self.assertEqual(alert[1]["amount"], 1500)
 
+    def test_rekening_courant_sits_in_the_top_total(self) -> None:
+        cash = build_cash_table(
+            [
+                ("Den Eker", Decimal("7029"), Decimal("5596")),
+                ("HD Den Eker", Decimal("4751"), Decimal("5397")),
+            ],
+            named=True,
+            inkomsten=Decimal("55498"),
+            uitgaven=Decimal("-33009"),
+            opening_day=date(2026, 1, 1),
+            present_day=date(2026, 9, 27),
+            extras=[("Rekening courant SIb", Decimal("-23286"))],
+        )
+        labels = [row["label"] for row in cash["rows"] if not row["gap"]]
+        self.assertEqual(
+            labels[:5],
+            [
+                "Banksaldo Den Eker d.d. 01/01/2026",
+                "Banksaldo HD Den Eker d.d. 01/01/2026",
+                "Inkomsten",
+                "Uitgaven",
+                "Rekening courant SIb",
+            ],
+        )
+        self.assertEqual(cash["rows"][4]["amount"], -23286)
+        self.assertEqual(cash["rows"][5]["amount"], 10983)
+
     def test_matching_totals_stay_plain(self) -> None:
         cash = build_cash_table(
             [("Bank", Decimal("10"), Decimal("40"))],
