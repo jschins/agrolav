@@ -2434,12 +2434,155 @@ def merge_sibling_balance(
     return [row for row in rows if int(row["code"]) not in drop]
 
 
+def afschrijving_side(description: object) -> str | None:
+    """``sib`` or ``sia`` when the text is an afschrijving for that side."""
+    text = str(description or "").lower()
+    if "afschrijving" not in text:
+        return None
+    if "sib" in text:
+        return "sib"
+    if "sia" in text:
+        return "sia"
+    return None
+
+
+def centrale_side(name: object) -> str | None:
+    """``sib`` or ``sia`` for a Centrale SIb / Centrale SIa account name."""
+    text = str(name or "").lower()
+    if "centrale" not in text:
+        return None
+    if "sib" in text:
+        return "sib"
+    if "sia" in text:
+        return "sia"
+    return None
+
+
+def ensure_centrale_columns(
+    accounts: list[dict[str, Any]],
+    pool: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep a column for Centrale SIa and Centrale SIb when the pool has them."""
+    present = {int(item["account_id"]) for item in accounts}
+    merged = list(accounts)
+    for item in pool:
+        if centrale_side(item.get("account_name")) is None:
+            continue
+        aid = int(item["account_id"])
+        if aid in present:
+            continue
+        present.add(aid)
+        merged.append(
+            {
+                "account_id": aid,
+                "account_name": str(item.get("account_name") or "").strip(),
+                "iban": item.get("iban"),
+                "person": item.get("person"),
+            }
+        )
+    return merged
+
+
+def add_afschrijving_to_centrale(
+    accounts: list[dict[str, Any]],
+    sums: dict[int, dict[int, Any]],
+    journals: list[tuple[int, int, Any, object]],
+    local_of: Any,
+) -> None:
+    """Add each SIa/SIb afschrijving's P&L leg onto that Centrale column."""
+    from shared.balance_values import is_resultaat, journal_deltas
+
+    by_side: dict[str, int] = {}
+    for item in accounts:
+        side = centrale_side(item.get("account_name"))
+        if side and side not in by_side:
+            by_side[side] = int(item["account_id"])
+    for cat_from, cat_to, amount, description in journals:
+        side = afschrijving_side(description)
+        if side is None or side not in by_side:
+            continue
+        try:
+            src, dst = int(cat_from), int(cat_to)
+            value = Decimal(str(amount or 0))
+        except (TypeError, ValueError):
+            continue
+        src_local, dst_local = int(local_of(src)), int(local_of(dst))
+        src_delta, dst_delta = journal_deltas(src_local, dst_local, value)
+        aid = by_side[side]
+        if is_resultaat(src_local):
+            by_account = sums.setdefault(src, {})
+            by_account[aid] = by_account.get(aid, Decimal("0")) + src_delta
+        if is_resultaat(dst_local):
+            by_account = sums.setdefault(dst, {})
+            by_account[aid] = by_account.get(aid, Decimal("0")) + dst_delta
+
+
+def _unit_code(role: object) -> int | None:
+    match = _UNIT_XX0X.fullmatch(str(role or "").strip().lower())
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _parent_side(parent: object) -> str | None:
+    """``sia`` or ``sib`` from a bank group such as ``Bank SIa``."""
+    for part in str(parent or "").split("/"):
+        text = part.strip().lower()
+        if text == "sib" or text.endswith(" sib"):
+            return "sib"
+        if text == "sia" or text.endswith(" sia"):
+            return "sia"
+    return None
+
+
+def order_export_columns(
+    accounts: list[dict[str, Any]],
+    metas: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Totaal is added by the sheet. Then SIa, SIb, SIa units, SIb units.
+
+    SIa units run from Aenstal to SVOa by unit number. SIb units run from
+    Den Eker to Lepelenburg the same way. Centrale headers are ``SIa`` and
+    ``SIb``.
+    """
+    meta_by_id = {int(item["account_id"]): item for item in metas}
+
+    def key(item: dict[str, Any]) -> tuple[int, int, str]:
+        meta = meta_by_id.get(int(item["account_id"]), {})
+        name = str(item.get("account_name") or meta.get("account_name") or "")
+        side = centrale_side(name) or centrale_side(meta.get("account_name"))
+        if side == "sia":
+            return (0, 0, "")
+        if side == "sib":
+            return (1, 0, "")
+        group = _parent_side(meta.get("parent"))
+        code = _unit_code(meta.get("role"))
+        number = code if code is not None else 9999
+        if group == "sia":
+            return (2, number, name.lower())
+        if group == "sib":
+            return (3, number, name.lower())
+        return (4, number, name.lower())
+
+    ordered = sorted(accounts, key=key)
+    for item in ordered:
+        meta = meta_by_id.get(int(item["account_id"]), {})
+        side = centrale_side(item.get("account_name")) or centrale_side(
+            meta.get("account_name")
+        )
+        if side == "sia":
+            item["account_name"] = "SIa"
+        elif side == "sib":
+            item["account_name"] = "SIb"
+    return ordered
+
+
 def _load_sibling_accounts(cursor: Any, country_id: int) -> list[dict[str, Any]]:
     """Accounts with the bank-post role and local code used to pair siblings."""
     cursor.execute(
         """
         SELECT a.account_id, a.account_name, a.iban, p.username, n.center_id,
-               d.category_role, d.local_code
+               d.category_role, d.local_code, d.parent
         FROM dbo.account a
         JOIN dbo.person p ON p.id = a.person_id
         JOIN dbo.center n ON n.center_id = p.center_id
@@ -2452,7 +2595,7 @@ def _load_sibling_accounts(cursor: Any, country_id: int) -> list[dict[str, Any]]
         (int(country_id),),
     )
     found: dict[int, dict[str, Any]] = {}
-    for account_id, name, iban, person, center_id, role, local_code in cursor.fetchall():
+    for account_id, name, iban, person, center_id, role, local_code, parent in cursor.fetchall():
         if account_id is None or center_id is None:
             continue
         aid = int(account_id)
@@ -2469,12 +2612,14 @@ def _load_sibling_accounts(cursor: Any, country_id: int) -> list[dict[str, Any]]
                 "center_id": int(center_id),
                 "role": text,
                 "local_code": code,
+                "parent": str(parent or "").strip(),
                 "_rank": rank,
             }
             continue
         if rank > int(slot["_rank"]):
             slot["role"] = text
             slot["local_code"] = code
+            slot["parent"] = str(parent or "").strip()
             slot["_rank"] = rank
     rows = list(found.values())
     for row in rows:
@@ -3042,10 +3187,11 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     the tree. Every country gets per-category ``resultaat`` rows (3000-4999)
     and, when any P&L row has a ``parent``, ``result_tree`` built the same
     way from those rows. Each P&L row (and tree group) carries ``columns``:
-    its year sum per bank account (``result_accounts`` order), then per spaar
-    ``mirror`` post (``result_mirrors``: the P&L leg of journals against that
-    post), then one Journaal value holding the rest of the overlay, so the
-    columns always sum to ``amount``. A ``unitXX0X`` account and its ``hd``
+    its year sum per bank account (``result_accounts`` order), then one
+    Journaal value holding the rest of the overlay. Spaarrekening columns are
+    left out, so those P&L legs sit in Journaal. An afschrijving
+    whose text names SIa or SIb is added to the Centrale SIa or Centrale SIb
+    column. A ``unitXX0X`` account and its ``hd``
     sibling (Den Eker and HD Den Eker) share one column and, on the balance
     sheet, one bank post: the sibling's amounts are added to the unit.
     ``code`` is always the ``local_code``, never the ``category_id``.
@@ -3068,11 +3214,8 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             category_parents,
             country_has_balance,
             eigen_vermogen_id,
-            is_resultaat,
-            journal_deltas,
             recorded_resultaat_totals,
             result_overlay_cents,
-            spaar_mirrors,
             transaction_table,
             verlies_id,
         )
@@ -3103,49 +3246,41 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                 result_accounts, pnl_sums = _pnl_per_account(
                     cursor, int(country_id), int(year), table
                 )
-        sibling_pairs_for_year = sibling_pairs(
-            _load_sibling_accounts(cursor, int(country_id))
-        )
+        sibling_accounts = _load_sibling_accounts(cursor, int(country_id))
+        sibling_pairs_for_year = sibling_pairs(sibling_accounts)
         result_accounts, pnl_sums = merge_sibling_pnl(
             result_accounts, pnl_sums, sibling_pairs_for_year
         )
         account_ids = [int(a["account_id"]) for a in result_accounts]
 
-        # Spaarrekening (mirror) columns: the P&L leg of every journal whose
-        # other side is that mirror post (interest and the like). The
-        # remaining overlay — journals without a bank side, mirror rows on a
-        # P&L category — lands in the trailing Journaal column below.
-        mirror_ids = sorted(
-            {int(pair["target_category"]) for pair in spaar_mirrors(country_id, cursor)},
-            key=_local,
-        )
-        mirror_parts: dict[int, dict[int, Decimal]] = {}
+        # Spaarrekening columns are omitted; those P&L legs stay in Journaal.
+        # Afschrijvingen that name SIa or SIb are added to the matching
+        # Centrale column.
+        afschrijving_journals: list[tuple[int, int, Any, object]] = []
         cursor.execute("SELECT OBJECT_ID(N'dbo.journal', N'U')")
         journal_exists = cursor.fetchone()[0] is not None
-        if mirror_ids and journal_exists:
+        if journal_exists:
             cursor.execute(
-                "SELECT j.category_from, j.category_to, j.amount FROM dbo.journal j "
+                "SELECT j.category_from, j.category_to, j.amount, j.description "
+                "FROM dbo.journal j "
                 "JOIN dbo.dim_category d ON d.category_id = j.category_from "
                 "WHERE d.country_id = ? AND j.year = ?",
                 (int(country_id), int(year)),
             )
-            for cat_from, cat_to, amount in cursor.fetchall():
+            for cat_from, cat_to, amount, description in cursor.fetchall():
                 try:
                     src, dst = int(cat_from), int(cat_to)
                 except (TypeError, ValueError):
                     continue
-                src_delta, dst_delta = journal_deltas(
-                    _local(src), _local(dst), Decimal(str(amount or 0))
-                )
-                if is_resultaat(_local(src)) and dst in mirror_ids:
-                    by = mirror_parts.setdefault(src, {})
-                    by[dst] = by.get(dst, Decimal("0")) + src_delta
-                if is_resultaat(_local(dst)) and src in mirror_ids:
-                    by = mirror_parts.setdefault(dst, {})
-                    by[src] = by.get(src, Decimal("0")) + dst_delta
-        result_mirrors = [
-            {"code": _local(m), "label": labels.get(m, f"cat_{m}")} for m in mirror_ids
-        ]
+                if afschrijving_side(description):
+                    afschrijving_journals.append((src, dst, amount, description))
+        result_accounts = ensure_centrale_columns(result_accounts, sibling_accounts)
+        add_afschrijving_to_centrale(
+            result_accounts, pnl_sums, afschrijving_journals, _local
+        )
+        result_accounts = order_export_columns(result_accounts, sibling_accounts)
+        account_ids = [int(a["account_id"]) for a in result_accounts]
+        result_mirrors: list[dict[str, Any]] = []
 
         combined: dict[int, Decimal] = {}
         for code, amount in recorded.items():
@@ -3155,9 +3290,8 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
 
         def _result_columns(cat_id: int) -> list[float]:
             acc = [pnl_sums.get(cat_id, {}).get(aid, Decimal("0")) for aid in account_ids]
-            mir = [mirror_parts.get(cat_id, {}).get(m, Decimal("0")) for m in mirror_ids]
-            journal = combined[cat_id] - sum(acc, Decimal("0")) - sum(mir, Decimal("0"))
-            return [float(v) for v in (*acc, *mir, journal)]
+            journal = combined[cat_id] - sum(acc, Decimal("0"))
+            return [float(v) for v in (*acc, journal)]
 
         result_rows = [
             {
