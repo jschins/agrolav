@@ -3,7 +3,7 @@
 Any country with ``dbo.country.has_balance`` can run it. Every account
 in that country with an IBAN is read. A booking is kept when its
 counterparty is another of those accounts and that account books the
-negated amount on the same day.
+negated amount on the same day or one day apart.
 
 Each leg of a pair is written on its own:
 
@@ -28,7 +28,7 @@ previous cross-posting category on such a row is released.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Sequence
 
@@ -132,8 +132,8 @@ def matching_transaction_ids(
     ``rows`` are ``(transaction_id, account_id, booked_on, amount, counterparty_account_id)``.
     ``counterparty_account_id`` is set only when the statement IBAN is in
     ``dbo.account`` and is a different account. Both bookings must name each
-    other, and the amounts must be opposite to the cent on the same calendar
-    day. Each booking is used once.
+    other, and the amounts must be opposite to the cent. The booking dates
+    are the same day or differ by one day. Each booking is used once.
     """
     return {
         transaction_id
@@ -171,15 +171,21 @@ def matching_pairs(
     for transaction_id, account_id, day, amount, other in parsed:
         if other is None or transaction_id in used:
             continue
-        for other_id in by_account_day.get((other, day, -amount), ()):
-            if other_id in used or other_id == transaction_id:
-                continue
-            if named[other_id] != account_id:
-                continue
-            used.add(transaction_id)
-            used.add(other_id)
-            pairs.append((transaction_id, account_id, other_id, other))
-            break
+        # Same day first, then the day before and the day after.
+        for candidate in (day, day - timedelta(days=1), day + timedelta(days=1)):
+            found = False
+            for other_id in by_account_day.get((other, candidate, -amount), ()):
+                if other_id in used or other_id == transaction_id:
+                    continue
+                if named[other_id] != account_id:
+                    continue
+                used.add(transaction_id)
+                used.add(other_id)
+                pairs.append((transaction_id, account_id, other_id, other))
+                found = True
+                break
+            if found:
+                break
     return pairs
 
 
@@ -340,6 +346,26 @@ def pair_local_codes(
     if to_xx0x is not None and from_hd and _centers_match(from_center, to_center):
         return (_LOCAL_CROSS_POSTING, hd_sibling_local_code(to_xx0x))
     return (None, None)
+
+
+def _sheet_pair_opposed(
+    from_local: int,
+    from_amount: Decimal,
+    to_local: int,
+    to_amount: Decimal,
+) -> bool:
+    """True when the two legs cancel on activa after the sheet sign.
+
+    Stored amounts already sum to zero. A leg that the sheet reverses
+    (ordinary activa) and a leg that keeps the statement sign do not.
+    """
+    from shared.balance_values import booking_signed_amount
+
+    left = booking_signed_amount(int(from_local), from_amount)
+    right = booking_signed_amount(int(to_local), to_amount)
+    if left is None or right is None:
+        return False
+    return left + right == 0
 
 
 def _centers_match(left: str | None, right: str | None) -> bool:
@@ -524,6 +550,10 @@ def apply_cross_postings(
         if from_local is None or to_local is None:
             continue
         if amount_of[from_id] + amount_of[to_id] != 0:
+            continue
+        if not _sheet_pair_opposed(
+            from_local, amount_of[from_id], to_local, amount_of[to_id]
+        ):
             continue
         category_of[from_id] = stored_category_id(
             from_local, by_local, country_id, balance_ids

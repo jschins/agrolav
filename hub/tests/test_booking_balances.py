@@ -271,6 +271,23 @@ class BookingSignedAmountTests(unittest.TestCase):
             booking_signed_amount(1100, x) + booking_signed_amount(1200, Decimal("-100")),
             Decimal("0"),
         )
+        self.assertEqual(booking_signed_amount(1114, Decimal("-18500")), Decimal("-18500"))
+        self.assertEqual(booking_signed_amount(1118, Decimal("-100")), Decimal("-100"))
+        self.assertEqual(
+            booking_signed_amount(1118, Decimal("-100"))
+            + booking_signed_amount(1200, x),
+            Decimal("0"),
+        )
+        self.assertEqual(
+            booking_signed_amount(1108, Decimal("-100"))
+            + booking_signed_amount(1126, x),
+            Decimal("0"),
+        )
+        self.assertEqual(
+            booking_signed_amount(1108, Decimal("-100"))
+            + booking_signed_amount(1125, x),
+            Decimal("0"),
+        )
         self.assertEqual(booking_signed_amount(1110, x), Decimal("-100"))
         self.assertEqual(booking_signed_amount(2500, x), Decimal("100"))
         self.assertEqual(booking_signed_amount(2000, x), Decimal("100"))

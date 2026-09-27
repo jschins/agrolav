@@ -19,7 +19,7 @@ Every account in the country that has an IBAN in `dbo.account` is read.
 Two statements form a pair when all of the following hold:
 
 1. They sit on different accounts.
-2. `booked_on` is the same calendar day.
+2. `booked_on` is the same calendar day, or the two dates differ by one day. The same day is taken when both exist.
 3. The amounts are opposite to the cent.
 4. Both statements name the other account’s IBAN. A blank counterparty
    IBAN does not form a pair.
@@ -49,7 +49,7 @@ A pair between Centrale SIb and a `unitxxxx` account in center SIb writes SIb to
 
 `hd` is the role exactly. The sibling of a `unitxx0x` account is the `hd` account in the same center. The third digit of the unit role is 0, as in `unit1108`. The rule applies in SIa and in SIb. A center with no `hd` account has no sibling. A unit whose third digit is not 0 is left uncategorized by this rule.
 
-The unit's bookings go to local xx1x, the same four digits with the third digit set to 1, which country 5 stores as category 1xx1x. The sibling's bookings go to local 1200, category 11200.
+The unit's bookings go to local xx1x, the same four digits with the third digit set to 1, which country 5 stores as category 1xx1x. The sibling's bookings go to local 1200, category 11200. Local 1112–1119 keep the statement sign, the same as 1200, so the pair stays opposed on activa.
 
 `unit1102` through `unit1109` write the unit to categories 11112 through 11119. `unit1108` writes the unit to 11118 and the sibling to 11200.
 

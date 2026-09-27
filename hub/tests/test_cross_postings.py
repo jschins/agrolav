@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from app.cross_postings import (
@@ -18,6 +18,7 @@ from app.cross_postings import (
     pair_local_codes,
     stored_category_id,
     user_digits,
+    _sheet_pair_opposed,
 )
 
 
@@ -54,11 +55,31 @@ class CrossPostingMatchTests(unittest.TestCase):
         )
         self.assertEqual(matched, {1, 2})
 
-    def test_different_day_does_not_match(self) -> None:
+    def test_one_day_apart_matches(self) -> None:
         matched = matching_transaction_ids(
             [
                 (1, 10, date(2026, 3, 1), Decimal("-8"), 20),
                 (2, 20, date(2026, 3, 2), Decimal("8"), 10),
+            ]
+        )
+        self.assertEqual(matched, {1, 2})
+
+    def test_same_day_wins_over_the_neighbouring_day(self) -> None:
+        day = date(2026, 3, 1)
+        matched = matching_transaction_ids(
+            [
+                (1, 10, day, Decimal("-8"), 20),
+                (2, 20, day, Decimal("8"), 10),
+                (3, 20, day + timedelta(days=1), Decimal("8"), 10),
+            ]
+        )
+        self.assertEqual(matched, {1, 2})
+
+    def test_two_days_apart_does_not_match(self) -> None:
+        matched = matching_transaction_ids(
+            [
+                (1, 10, date(2026, 3, 1), Decimal("-8"), 20),
+                (2, 20, date(2026, 3, 3), Decimal("8"), 10),
             ]
         )
         self.assertEqual(matched, set())
@@ -181,6 +202,18 @@ class CrossPostingMatchTests(unittest.TestCase):
         self.assertEqual(category_id_for_local_code(1118), 11118)
         self.assertEqual(category_id_for_local_code(1112), 11112)
         self.assertEqual(category_id_for_local_code(1200), 11200)
+        self.assertTrue(
+            _sheet_pair_opposed(1118, Decimal("-100"), 1200, Decimal("100"))
+        )
+        self.assertTrue(
+            _sheet_pair_opposed(1100, Decimal("100"), 1200, Decimal("-100"))
+        )
+        self.assertTrue(
+            _sheet_pair_opposed(1108, Decimal("-100"), 1126, Decimal("100"))
+        )
+        self.assertTrue(
+            _sheet_pair_opposed(1108, Decimal("-100"), 1125, Decimal("100"))
+        )
         self.assertEqual(
             pair_local_codes(
                 "NL00INGB0000000001",
