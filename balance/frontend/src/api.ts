@@ -21,7 +21,7 @@ function apiBase(): string {
 function withScope(url: string): string {
   const page = new URLSearchParams(window.location.search);
   const scope = new URLSearchParams();
-  for (const key of ["person", "center", "account"]) {
+  for (const key of ["person", "center", "account", "unit", "login"]) {
     const value = page.get(key);
     if (value) scope.set(key, value);
   }

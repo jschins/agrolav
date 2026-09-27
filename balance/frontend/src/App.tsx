@@ -469,7 +469,7 @@ export default function App() {
             </button>
             <button
               type="button"
-              className="info-knob"
+              className={resultView ? "export-knob" : "info-knob"}
               disabled={!sheet}
               onClick={() => sheet && exportWindow(sheet, resultView)}
             >
@@ -510,9 +510,10 @@ export default function App() {
             subadminCodes={subadminCodes}
             onOpen={openPopup}
           />
-          {resultView && sheet.cash ? <CashTable cash={sheet.cash} /> : null}
         </div>
       )}
+
+      {resultView && sheet?.cash ? <CashTable cash={sheet.cash} /> : null}
 
       {openCode != null && (
         <div

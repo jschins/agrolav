@@ -211,6 +211,8 @@ def result_sheet(
     person: str = "",
     center: str = "",
     account: str = "",
+    unit: str = "",
+    login: str = "",
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
     from app.result import result_sheet as compute
@@ -222,6 +224,8 @@ def result_sheet(
         person=who[0],
         center=who[1],
         account=who[2],
+        unit=unit,
+        login=login,
         as_of=date,
     )
 

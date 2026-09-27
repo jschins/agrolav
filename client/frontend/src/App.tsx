@@ -1401,7 +1401,7 @@ function ActionsMenu({
               <button
                 type="button"
                 role="menuitem"
-                className={item.id === "logout" ? "menu-logout" : undefined}
+                className={isLogoutItem(item) ? "menu-logout" : undefined}
                 disabled={item.disabled}
                 onClick={() => {
                   if (item.disabled || busy) return;
@@ -1417,6 +1417,12 @@ function ActionsMenu({
       )}
     </div>
   );
+}
+
+function isLogoutItem(item: HeaderAction): boolean {
+  if (item.id === "logout") return true;
+  const label = item.label.trim().toLowerCase();
+  return label === "logout" || label === "uitloggen" || label === "log out";
 }
 
 function helpInline(text: string): ReactNode[] {
@@ -3671,7 +3677,7 @@ function TermsApp() {
           setLoginName(
             (
               (status?.access || "").trim().toLowerCase() === "unit"
-                ? status?.username || status?.person
+                ? status?.username || status?.person || ""
                 : status?.person || status?.username || status?.center || ""
             ).trim()
           );

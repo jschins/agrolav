@@ -47,6 +47,16 @@ button.info-knob {
   background: #c8f5c4;
 }
 button.info-knob:hover { background: #b6efb0; }
+button.export-knob {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 6px 12px;
+  border: 1px solid #8ec8ef;
+  background: #d6efff;
+}
+button.export-knob:hover { background: #bfe6fb; }
+button.export-knob:disabled { opacity: 0.55; cursor: default; }
 .note-overlay {
   position: fixed;
   inset: 0;
@@ -90,7 +100,13 @@ td.code { color: #666; width: 3.5em; }
 .sheet td.plug-still { font-weight: 700; color: #1a1a1a; }
 .sheet td.plug-moved { font-weight: 700; color: #b91c1c; }
 .sheet tfoot td { border-top: 2px solid #2a5a8c; font-weight: 700; }
-.sheet .cash-block { grid-column: 1 / -1; max-width: 560px; }
+.cash-block { margin-top: 20px; max-width: 560px; background: #fff; border: 1px solid #e0e3e8; border-radius: 8px; overflow: hidden; }
+.cash-block table { width: 100%; border-collapse: collapse; }
+.cash-block td { text-align: left; padding: 7px 14px; font-size: 0.92rem; border-bottom: 1px solid #eef0f3; }
+.cash-block td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.cash-block tr.strong td { font-weight: 700; }
+.cash-block tr.cash-alert td { font-weight: 700; color: #b91c1c; }
+.cash-block tr.gap td { border-bottom: none; height: 14px; padding: 0; }
 .sheet tr.strong td { font-weight: 700; }
 .sheet tr.cash-alert td { font-weight: 700; color: #b91c1c; }
 .sheet tr.gap td { border-bottom: none; height: 14px; padding: 0; }

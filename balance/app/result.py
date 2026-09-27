@@ -294,6 +294,7 @@ class _BankAccount:
     person: str
     center: str
     role: str
+    unit_username: str = ""
 
 
 def _unit_digits(role: str) -> int | None:
@@ -327,8 +328,12 @@ def _better_role(current: str, new: str) -> str:
     return current
 
 
+def _name_slug(name: str) -> str:
+    return "_".join(name.split()).lower()
+
+
 def _name_stems(name: str) -> set[str]:
-    slug = "_".join(name.split()).lower()
+    slug = _name_slug(name)
     if not slug:
         return set()
     stems = {slug}
@@ -391,6 +396,7 @@ def _load_accounts(country_id: int) -> list[_BankAccount]:
                 }
             else:
                 slot["role"] = _better_role(str(slot["role"]), text)
+    usernames = _unit_usernames(country_id)
     rows: list[_BankAccount] = []
     for aid, slot in sorted(found.items()):
         rows.append(
@@ -403,9 +409,123 @@ def _load_accounts(country_id: int) -> list[_BankAccount]:
                 person=str(slot["person"]),
                 center=str(slot["center"]),
                 role=str(slot["role"]),
+                unit_username=usernames.get(aid, ""),
             )
         )
     return rows
+
+
+def _unit_usernames(country_id: int) -> dict[int, str]:
+    """account_id → ``dbo.unit.username`` for this country."""
+    sql = """
+        SELECT u.username, a.account_id
+        FROM dbo.unit u
+        INNER JOIN dbo.account a ON a.account_id = (
+            SELECT TOP 1 a2.account_id
+            FROM dbo.account a2
+            JOIN dbo.person p2 ON p2.id = a2.person_id
+            WHERE p2.center_id = u.center_id
+              AND (
+                a2.account_id = u.unit_id
+                OR LOWER(REPLACE(a2.account_name, N' ', N'_')) = LOWER(u.username)
+              )
+            ORDER BY
+              CASE
+                WHEN LOWER(REPLACE(a2.account_name, N' ', N'_')) = LOWER(u.username) THEN 0
+                ELSE 1
+              END,
+              CASE WHEN a2.account_id = u.unit_id THEN 0 ELSE 1 END,
+              a2.account_id
+        )
+        WHERE u.country_id = ?
+    """
+    try:
+        with connect() as conn:
+            cur = conn.cursor()
+            cur.execute(sql, country_id)
+            rows = cur.fetchall()
+    except Exception:
+        return {}
+    out: dict[int, str] = {}
+    for username, account_id in rows:
+        if account_id is None or not str(username or "").strip():
+            continue
+        out[int(account_id)] = str(username).strip()
+    return out
+
+
+def _is_unit_level(unit: str, account: str) -> bool:
+    """A unit login is marked on the result URL, or carries its account."""
+    flag = str(unit or "").strip().lower()
+    return flag in ("1", "true", "yes") or bool(str(account or "").strip())
+
+
+def _find_by_login(accounts: list[_BankAccount], login: str) -> _BankAccount | None:
+    slug = _name_slug(login)
+    if not slug:
+        return None
+    hits = [
+        item
+        for item in accounts
+        if _name_slug(item.unit_username) == slug or _name_slug(item.name) == slug
+    ]
+    if not hits:
+        return None
+    return sorted(
+        hits,
+        key=lambda item: (
+            0 if _name_slug(item.unit_username) == slug else 1,
+            item.account_id,
+        ),
+    )[0]
+
+
+def _resolve_unit_account(
+    accounts: list[_BankAccount],
+    login: str,
+    account: str,
+) -> _BankAccount | None:
+    if account:
+        matches = _scoped_accounts(accounts, person="", center="", account=account)
+        if matches:
+            return matches[0]
+    return _find_by_login(accounts, login)
+
+
+def _unit_kind(login_account: _BankAccount | None, login: str) -> str:
+    """``hd`` or ``unit`` for a unit-level login."""
+    if login_account is not None and login_account.role == "hd":
+        return "hd"
+    if login_account is not None and _unit_digits(login_account.role) is not None:
+        return "unit"
+    if _name_slug(login).startswith("hd_"):
+        return "hd"
+    return "unit"
+
+
+def _sibling_for(
+    login_account: _BankAccount,
+    accounts: list[_BankAccount],
+    kind: str,
+    login: str,
+) -> _BankAccount | None:
+    found = _find_sibling(login_account, accounts, "unit" if kind == "hd" else "hd")
+    if found is not None:
+        return found
+    slug = _name_slug(login) or _name_slug(login_account.unit_username) or _name_slug(
+        login_account.name
+    )
+    stem = slug[3:] if slug.startswith("hd_") else slug
+    if not stem:
+        return None
+    other = _find_by_login(accounts, stem if kind == "hd" else f"hd_{stem}")
+    if (
+        other is None
+        or other.account_id == login_account.account_id
+        or other.center_id != login_account.center_id
+    ):
+        return None
+    return other
 
 
 def _scoped_accounts(
@@ -651,6 +771,8 @@ def result_sheet(
     person: str = "",
     center: str = "",
     account: str = "",
+    unit: str = "",
+    login: str = "",
     as_of: str | None = None,
 ) -> dict[str, Any]:
     """Uitgaven (3000–3999) and inkomsten (4000–4999) for one login scope."""
@@ -666,28 +788,28 @@ def result_sheet(
         cutoff=cutoff,
     )
     accounts = _load_accounts(country_id)
-    login: _BankAccount | None = None
+    unit_level = _is_unit_level(unit, account)
+    login_account: _BankAccount | None = None
     sibling: _BankAccount | None = None
+    kind = ""
     named_banks = False
-    if account:
-        matches = _scoped_accounts(accounts, person="", center="", account=account)
-        login = matches[0] if matches else None
-    if login is not None and login.role == "hd":
-        sibling = _find_sibling(login, accounts, "unit")
-    elif login is not None and _unit_digits(login.role) is not None:
-        sibling = _find_sibling(login, accounts, "hd")
-        if sibling is not None:
-            named_banks = True
-            extra = _amounts(
-                country_id,
-                year,
-                person="",
-                center="",
-                account=_iban_key(sibling.iban),
-                cutoff=cutoff,
-            )
-            for cat_id, extra_amount in extra.items():
-                amounts[cat_id] = amounts.get(cat_id, Decimal("0")) + extra_amount
+    if unit_level:
+        login_account = _resolve_unit_account(accounts, login, account)
+        if login_account is not None:
+            kind = _unit_kind(login_account, login)
+            sibling = _sibling_for(login_account, accounts, kind, login)
+            if kind == "unit" and sibling is not None:
+                named_banks = True
+                extra = _amounts(
+                    country_id,
+                    year,
+                    person="",
+                    center="",
+                    account=_iban_key(sibling.iban),
+                    cutoff=cutoff,
+                )
+                for cat_id, extra_amount in extra.items():
+                    amounts[cat_id] = amounts.get(cat_id, Decimal("0")) + extra_amount
     kosten: list[dict[str, Any]] = []
     opbrengsten: list[dict[str, Any]] = []
     for cat_id, local_code, label in _categories(country_id):
@@ -711,31 +833,34 @@ def result_sheet(
 
     uitgaven = total(kosten)
     inkomsten = total(opbrengsten)
-    if login is not None and login.role == "hd" and sibling is not None:
+    if kind == "hd" and sibling is not None:
         digits = _unit_xx0x(sibling.role)
+        if digits is None:
+            digits = _unit_xx0x(sibling.unit_username)
         if digits is not None:
             inkomsten += _rc_balance(
                 country_id, year, sibling.account_id, digits + 10, cutoff
             )
-    opening_day = date(year, 1, 1)
-    present_day = _present_day(year, cutoff)
-    if named_banks and login is not None and sibling is not None:
-        figures = _balances_at(country_id, [login, sibling], opening_day, present_day)
-    else:
-        figures = _balances_at(
-            country_id,
-            _scoped_accounts(accounts, person=person, center=center, account=account),
-            opening_day,
-            present_day,
+    cash = None
+    if unit_level:
+        opening_day = date(year, 1, 1)
+        present_day = _present_day(year, cutoff)
+        if named_banks and login_account is not None and sibling is not None:
+            bank_rows = [login_account, sibling]
+        elif login_account is not None:
+            bank_rows = [login_account]
+        else:
+            bank_rows = _scoped_accounts(
+                accounts, person=person, center=center, account=account
+            )
+        cash = build_cash_table(
+            _balances_at(country_id, bank_rows, opening_day, present_day),
+            named=named_banks,
+            inkomsten=inkomsten,
+            uitgaven=uitgaven,
+            opening_day=opening_day,
+            present_day=present_day,
         )
-    cash = build_cash_table(
-        figures,
-        named=named_banks,
-        inkomsten=inkomsten,
-        uitgaven=uitgaven,
-        opening_day=opening_day,
-        present_day=present_day,
-    )
 
     return {
         "year": year,
@@ -748,5 +873,5 @@ def result_sheet(
         "balanced": False,
         "subadministratie": {"local_codes": [], "rows": []},
         "afschrijvingen": {"from_codes": [], "journals": []},
-        "cash": cash,
+        **({"cash": cash} if cash is not None else {}),
     }

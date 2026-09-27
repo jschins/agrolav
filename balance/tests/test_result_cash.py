@@ -7,7 +7,14 @@ from decimal import Decimal
 
 from shared.balance_values import booking_signed_amount
 
-from app.result import _names_pair, _unit_xx0x, build_cash_table
+from app.result import (
+    _BankAccount,
+    _is_unit_level,
+    _names_pair,
+    _unit_kind,
+    _unit_xx0x,
+    build_cash_table,
+)
 
 
 class SiblingTests(unittest.TestCase):
@@ -24,7 +31,22 @@ class SiblingTests(unittest.TestCase):
         self.assertEqual(digits, 1104)
         self.assertEqual(digits + 10, 1114)
         signed = booking_signed_amount(1114, Decimal("-18500"))
-        self.assertEqual(signed, Decimal("18500"))
+        self.assertEqual(signed, Decimal("-18500"))
+
+
+class UnitLevelTests(unittest.TestCase):
+    def test_unit_flag_or_account_marks_a_unit_login(self) -> None:
+        self.assertTrue(_is_unit_level("1", ""))
+        self.assertTrue(_is_unit_level("", "NL00INGB0000000001"))
+        self.assertFalse(_is_unit_level("", ""))
+
+    def test_role_decides_hd_or_unit(self) -> None:
+        hd = _BankAccount(1, "HD Den Eker", Decimal("0"), "", 7, "", "den_eker", "hd")
+        unit = _BankAccount(2, "Den Eker", Decimal("0"), "", 7, "", "den_eker", "unit1104")
+        self.assertEqual(_unit_kind(hd, "hd_den_eker"), "hd")
+        self.assertEqual(_unit_kind(unit, "den_eker"), "unit")
+        self.assertEqual(_unit_kind(None, "hd_den_eker"), "hd")
+        self.assertEqual(_unit_kind(None, "den_eker"), "unit")
 
 
 class CashTableTests(unittest.TestCase):

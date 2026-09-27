@@ -229,7 +229,8 @@ html.refresh-busy body::before {
   cursor: pointer;
 }
 
-.center-switcher-menu button.menu-logout {
+.center-switcher-menu li button.menu-logout,
+.center-switcher-menu li button.menu-logout * {
   font-weight: 700;
 }
 
