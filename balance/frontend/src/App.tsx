@@ -9,9 +9,11 @@ import {
 } from "./api";
 import type {
   AfschrijvingJournal,
+  BalanceLine,
   BalanceSheet,
   SubadministratieRow,
 } from "./types";
+import { buildXlsx, downloadBlob, euro2, type XlsxSheet } from "./xlsx";
 
 const EUR = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -152,6 +154,45 @@ function SideTable({
 
 function isResultView(): boolean {
   return window.location.pathname.startsWith("/result/");
+}
+
+function loginName(): string {
+  return new URLSearchParams(window.location.search).get("login")?.trim() || "";
+}
+
+function exportStamp(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function safeFilePart(value: string): string {
+  const text = value.trim().replace(/[\\/:*?"<>|]/g, "_");
+  return text || "login";
+}
+
+function sideSheet(title: string, lines: BalanceLine[], total: number): XlsxSheet {
+  const rows: XlsxSheet["rows"] = [["Code", "Post", "Bedrag"]];
+  for (const line of lines) {
+    rows.push([line.code, line.label, euro2(line.amount)]);
+  }
+  rows.push(["", `Totaal ${title}`, euro2(total)]);
+  return { name: title.slice(0, 31), rows, widths: [12, 36, 16] };
+}
+
+function exportWindow(sheet: BalanceSheet, resultView: boolean): void {
+  const left = resultView ? "Kosten" : "Activa";
+  const right = resultView ? "Opbrengsten" : "Passiva";
+  const kind = resultView ? "Resultaat" : "Balans";
+  const filename = `${kind}_${safeFilePart(loginName())}_${exportStamp()}.xlsx`;
+  downloadBlob(
+    filename,
+    buildXlsx([
+      sideSheet(left, sheet.activa, sheet.total_activa),
+      sideSheet(right, sheet.passiva, sheet.total_passiva),
+    ])
+  );
 }
 
 export default function App() {
@@ -385,6 +426,14 @@ export default function App() {
               onClick={() => setNoteOpen(true)}
             >
               {noteTitle}
+            </button>
+            <button
+              type="button"
+              className="info-knob"
+              disabled={!sheet}
+              onClick={() => sheet && exportWindow(sheet, resultView)}
+            >
+              Export
             </button>
           </div>
         )}

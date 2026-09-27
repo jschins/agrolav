@@ -110,6 +110,9 @@ def _result_url(cfg: HubConfig) -> str:
     label = str(cfg.title or "").strip()
     if label:
         params["label"] = label
+    login = str(cfg.username or "").strip()
+    if login:
+        params["login"] = login
     slug = urllib.parse.quote(str(cfg.country).strip())
     url = f"{_result_base_url()}/result/{slug}/"
     query = urllib.parse.urlencode(params)
@@ -132,7 +135,11 @@ def _balance_url(cfg: HubConfig) -> str:
         slug = str(data.get("slug") or "").strip()
         if not slug:
             return ""
-        return f"{_balance_base_url()}/balance/{urllib.parse.quote(slug)}"
+        url = f"{_balance_base_url()}/balance/{urllib.parse.quote(slug)}"
+        login = str(cfg.username or "").strip()
+        if login:
+            url += "?" + urllib.parse.urlencode({"login": login})
+        return url
     except Exception:  # noqa: BLE001
         return ""
 
