@@ -1,10 +1,36 @@
-export type XlsxCell = string | number;
+export interface XlsxStyled {
+  value: string | number;
+  style: number;
+}
+
+export type XlsxCell = string | number | XlsxStyled;
 
 export interface XlsxSheet {
   name: string;
   rows: XlsxCell[][];
   widths?: number[];
+  merges?: string[];
+  /** Fit the sheet onto one printed page, landscape. */
+  fitPage?: boolean;
+  rowHeights?: (number | undefined)[];
 }
+
+/** Styles that mirror the Resultaat window: cream page, white cards, #ffecbc headings. */
+export const RESULT_STYLE = {
+  page: 2,
+  title: 3,
+  heading: 4,
+  head: 5,
+  code: 6,
+  text: 7,
+  amount: 8,
+  total: 9,
+  totalAmount: 10,
+  strong: 11,
+  strongAmount: 12,
+  alert: 13,
+  alertAmount: 14,
+} as const;
 
 const XML_ESCAPES: Record<string, string> = {
   "&": "&amp;",
@@ -29,21 +55,30 @@ function colLetter(idx: number): string {
   return result;
 }
 
+function cellValue(cell: XlsxCell): { value: string | number; style?: number } {
+  if (typeof cell === "object" && cell !== null) return cell;
+  return { value: cell };
+}
+
 function sheetXml(sheet: XlsxSheet): string {
   const rowsXml = sheet.rows
     .map((row, ri) => {
       if (row.length === 0) return "";
       const r = ri + 1;
+      const height = sheet.rowHeights?.[ri];
       const cellsXml = row
         .map((cell, ci) => {
           const ref = `${colLetter(ci)}${r}`;
-          if (typeof cell === "number") {
-            return `<c r="${ref}" s="1"><v>${cell}</v></c>`;
+          const { value, style } = cellValue(cell);
+          const s = style != null ? ` s="${style}"` : typeof value === "number" ? ` s="1"` : "";
+          if (typeof value === "number") {
+            return `<c r="${ref}"${s}><v>${value}</v></c>`;
           }
-          return `<c r="${ref}" t="inlineStr"><is><t>${escXml(String(cell))}</t></is></c>`;
+          return `<c r="${ref}"${s} t="inlineStr"><is><t>${escXml(String(value))}</t></is></c>`;
         })
         .join("");
-      return `<row r="${r}">${cellsXml}</row>`;
+      const ht = height ? ` ht="${height}" customHeight="1"` : "";
+      return `<row r="${r}"${ht}>${cellsXml}</row>`;
     })
     .join("");
   const colCount = Math.max(1, ...sheet.rows.map((row) => row.length));
@@ -57,8 +92,22 @@ function sheetXml(sheet: XlsxSheet): string {
           )
           .join("")}</cols>`
       : "";
+  const merges = sheet.merges ?? [];
+  const mergeXml =
+    merges.length > 0
+      ? `<mergeCells count="${merges.length}">${merges
+          .map((ref) => `<mergeCell ref="${escXml(ref)}"/>`)
+          .join("")}</mergeCells>`
+      : "";
+  const sheetPr = sheet.fitPage ? `<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>` : "";
+  const views = sheet.fitPage
+    ? `<sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>`
+    : "";
+  const setupXml = sheet.fitPage
+    ? `<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="1"/>`
+    : "";
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${lastCol}${sheet.rows.length}"/>${colsXml}<sheetData>${rowsXml}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${sheetPr}<dimension ref="A1:${lastCol}${Math.max(1, sheet.rows.length)}"/>${views}${colsXml}<sheetData>${rowsXml}</sheetData>${mergeXml}${setupXml}</worksheet>`;
 }
 
 function workbookXml(sheets: XlsxSheet[]): string {
@@ -106,9 +155,67 @@ function contentTypesXml(sheetCount: number): string {
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${overrides.join("")}</Types>`;
 }
 
+function fontXml(size: number, color: string, bold = false): string {
+  const b = bold ? "<b/>" : "";
+  return `<font>${b}<sz val="${size}"/><color rgb="${color}"/><name val="Calibri"/><family val="2"/></font>`;
+}
+
+function fillXml(rgb: string): string {
+  return `<fill><patternFill patternType="solid"><fgColor rgb="${rgb}"/><bgColor indexed="64"/></patternFill></fill>`;
+}
+
+function borderXml(top?: string, bottom?: string): string {
+  const edge = (side: string, color?: string) =>
+    color ? `<${side} style="${color === "2A5A8C" ? "medium" : "thin"}"><color rgb="FF${color}"/></${side}>` : `<${side}/>`;
+  return `<border>${edge("left")}${edge("right")}${edge("top", top)}${edge("bottom", bottom)}<diagonal/></border>`;
+}
+
+function xfXml(
+  fontId: number,
+  fillId: number,
+  borderId: number,
+  numFmtId = 0,
+  align?: "right"
+): string {
+  const alignXml = align ? `<alignment horizontal="${align}"/>` : "";
+  return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">${alignXml}</xf>`;
+}
+
 function stylesXml(): string {
+  const fonts = [
+    fontXml(11, "FF1A1A1A"),
+    fontXml(11, "FF1A1A1A", true),
+    fontXml(11, "FF666666"),
+    fontXml(11, "FFB91C1C", true),
+    fontXml(16, "FF1A1A1A", true),
+  ].join("");
+  const fills = [fillXml("FFFBF6E3"), fillXml("FFFFFFFF"), fillXml("FFFFECBC")].join("");
+  const borders = [
+    borderXml(),
+    borderXml(undefined, "EEF0F3"),
+    borderXml("2A5A8C"),
+    borderXml(undefined, "E0E3E8"),
+  ].join("");
+  // 0 plain, 1 legacy number, then the Resultaat window styles.
+  const xfs = [
+    `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`,
+    `<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>`,
+    xfXml(0, 2, 0),
+    xfXml(4, 2, 0),
+    xfXml(1, 4, 3),
+    xfXml(1, 3, 1),
+    xfXml(2, 3, 1),
+    xfXml(0, 3, 1),
+    xfXml(0, 3, 1, 165, "right"),
+    xfXml(1, 3, 2),
+    xfXml(1, 3, 2, 165, "right"),
+    xfXml(1, 3, 1),
+    xfXml(1, 3, 1, 165, "right"),
+    xfXml(3, 3, 1),
+    xfXml(3, 3, 1, 165, "right"),
+  ].join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><color rgb="FF1A1A1A"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="165" formatCode="#,##0"/></numFmts><fonts count="5">${fonts}</fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fills}</fills><borders count="4">${borders}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${15}">${xfs}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 }
 
 function rootRelsXml(): string {

@@ -14,7 +14,7 @@ import type {
   CashSheet,
   SubadministratieRow,
 } from "./types";
-import { buildXlsx, downloadBlob, euro2, type XlsxSheet } from "./xlsx";
+import { buildXlsx, downloadBlob, euro2, RESULT_STYLE, type XlsxCell, type XlsxSheet } from "./xlsx";
 
 const EUR = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -182,28 +182,126 @@ function sideSheet(title: string, lines: BalanceLine[], total: number): XlsxShee
   return { name: title.slice(0, 31), rows, widths: [12, 36, 16] };
 }
 
-function cashSheet(cash: CashSheet): XlsxSheet {
-  const rows: XlsxSheet["rows"] = [["", "Bedrag"]];
-  for (const row of cash.rows) {
-    if (row.gap) {
-      rows.push(["", ""]);
-      continue;
-    }
-    rows.push([row.label, euro2(row.amount ?? 0)]);
+function paint(value: string | number, style: number): XlsxCell {
+  return { value, style };
+}
+
+function resultSheet(data: BalanceSheet): XlsxSheet {
+  const label = new URLSearchParams(window.location.search).get("label")?.trim() || loginName();
+  const title = `Resultaat${label ? ` ${label}` : ""} ${data.year}`;
+  const S = RESULT_STYLE;
+  const page = () => paint("", S.page);
+  const rows: XlsxCell[][] = [];
+  const merges: string[] = [];
+  const heights: (number | undefined)[] = [];
+  const push = (row: XlsxCell[], height?: number) => {
+    rows.push(row);
+    heights.push(height);
+  };
+  const at = () => rows.length + 1;
+
+  push(
+    [paint(title, S.title), paint("", S.title), paint("", S.title), paint("", S.title), paint("", S.title), paint("", S.title), paint("", S.title)],
+    24
+  );
+  merges.push("A1:G1");
+  push([page(), page(), page(), page(), page(), page(), page()], 10);
+
+  const headRow = at();
+  push(
+    [
+      paint("Uitgaven", S.heading),
+      paint("", S.heading),
+      paint("", S.heading),
+      page(),
+      paint("Inkomsten", S.heading),
+      paint("", S.heading),
+      paint("", S.heading),
+    ],
+    22
+  );
+  merges.push(`A${headRow}:C${headRow}`, `E${headRow}:G${headRow}`);
+  push([
+    paint("Code", S.head),
+    paint("Post", S.head),
+    paint("Bedrag", S.head),
+    page(),
+    paint("Code", S.head),
+    paint("Post", S.head),
+    paint("Bedrag", S.head),
+  ]);
+
+  const body = (line: BalanceLine | undefined): XlsxCell[] =>
+    line
+      ? [paint(String(line.code), S.code), paint(line.label, S.text), paint(euro2(line.amount), S.amount)]
+      : [paint("", S.text), paint("", S.text), paint("", S.text)];
+  const count = Math.max(data.activa.length, data.passiva.length);
+  for (let i = 0; i < count; i += 1) {
+    push([...body(data.activa[i]), page(), ...body(data.passiva[i])]);
   }
-  return { name: "Balans", rows, widths: [48, 16] };
+
+  const totalRow = at();
+  push([
+    paint("Totaal Uitgaven", S.total),
+    paint("", S.total),
+    paint(euro2(data.total_activa), S.totalAmount),
+    page(),
+    paint("Totaal Inkomsten", S.total),
+    paint("", S.total),
+    paint(euro2(data.total_passiva), S.totalAmount),
+  ]);
+  merges.push(`A${totalRow}:B${totalRow}`, `E${totalRow}:F${totalRow}`);
+
+  if (data.cash) {
+    push([page(), page(), page(), page(), page(), page(), page()], 14);
+    const balansRow = at();
+    push(
+      [paint("Balans", S.heading), paint("", S.heading), paint("", S.heading), page(), page(), page(), page()],
+      22
+    );
+    merges.push(`A${balansRow}:C${balansRow}`);
+    for (const row of data.cash.rows) {
+      if (row.gap) {
+        push([page(), page(), page(), page(), page(), page(), page()], 10);
+        continue;
+      }
+      const labelStyle = row.alert ? S.alert : row.strong ? S.strong : S.text;
+      const amountStyle = row.alert ? S.alertAmount : row.strong ? S.strongAmount : S.amount;
+      const lineRow = at();
+      push([
+        paint(row.label, labelStyle),
+        paint("", labelStyle),
+        paint(euro2(row.amount ?? 0), amountStyle),
+        page(),
+        page(),
+        page(),
+        page(),
+      ]);
+      merges.push(`A${lineRow}:B${lineRow}`);
+    }
+  }
+
+  return {
+    name: "Resultaat",
+    rows,
+    widths: [12, 36, 14, 3, 12, 36, 14],
+    merges,
+    fitPage: true,
+    rowHeights: heights,
+  };
 }
 
 function exportWindow(sheet: BalanceSheet, resultView: boolean): void {
-  const left = resultView ? "Uitgaven" : "Activa";
-  const right = resultView ? "Inkomsten" : "Passiva";
   const kind = resultView ? "Resultaat" : "Balans";
   const filename = `${kind}_${safeFilePart(loginName())}_${exportStamp()}.xlsx`;
+  if (resultView) {
+    downloadBlob(filename, buildXlsx([resultSheet(sheet)]));
+    return;
+  }
   const sheets = [
-    sideSheet(left, sheet.activa, sheet.total_activa),
-    sideSheet(right, sheet.passiva, sheet.total_passiva),
+    sideSheet("Activa", sheet.activa, sheet.total_activa),
+    sideSheet("Passiva", sheet.passiva, sheet.total_passiva),
   ];
-  if (resultView && sheet.cash) sheets.push(cashSheet(sheet.cash));
   downloadBlob(filename, buildXlsx(sheets));
 }
 
