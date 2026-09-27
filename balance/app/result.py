@@ -841,6 +841,8 @@ def result_sheet(
             inkomsten += _rc_balance(
                 country_id, year, sibling.account_id, digits + 10, cutoff
             )
+    if kind == "hd":
+        inkomsten = -inkomsten
     cash = None
     if unit_level:
         opening_day = date(year, 1, 1)
