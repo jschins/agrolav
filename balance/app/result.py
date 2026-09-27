@@ -137,7 +137,7 @@ def _amounts(
             "JOIN dbo.dim_category d ON d.category_id = t.category_id "
             "AND d.country_id = ? "
             "LEFT JOIN dbo.account a ON a.account_id = t.account_id "
-            "WHERE n.country_id = ? AND t.year = ? "
+            "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
             "AND d.local_code BETWEEN 3000 AND 4999"
             f"{scope_sql}"
         )
@@ -622,7 +622,15 @@ def build_cash_table(
     extra_lines = list(extras or [])
     extra_sum = sum((amount for _label, amount in extra_lines), Decimal("0"))
     calculated = opening_sum + inkomsten + uitgaven + extra_sum
-    mismatch = _cents(calculated) != _cents(present_sum)
+    # Sum the cent amounts, then compare. A gap of at most one euro is the
+    # same total: both rows keep that one decimal, so the rounded euros match.
+    if abs(calculated - present_sum) <= Decimal("1"):
+        agreed = _cents(present_sum)
+        calculated = agreed
+        present_sum = agreed
+        mismatch = False
+    else:
+        mismatch = True
     rows: list[dict[str, Any]] = []
 
     def add(label: str, amount: Decimal, *, alert: bool, strong: bool = False) -> None:
@@ -702,6 +710,104 @@ def _rc_label(center: str) -> str:
     if text in ("sia", "center_sia") or text.endswith("_sia"):
         return "Rekening courant SIa"
     return "Rekening courant SIb"
+
+
+def _fold_cash_extras(
+    rows: list[tuple[int | None, str, Decimal]],
+    *,
+    unit_code: int | None,
+    center: str,
+) -> list[tuple[str, Decimal]]:
+    """Collapse non-resultaat cash into the lines shown above Totaal.
+
+    Centrale legs (1125, 1126, and the unit's own four digits) share one
+    Rekening courant label. The sibling pair (1112–1119 with 1200) is kept
+    only when it does not cancel. Every other code keeps its category name.
+    """
+    sia = _rc_label(center) == "Rekening courant SIa"
+    buckets: dict[str, Decimal] = {}
+    order: list[tuple[int, str]] = []
+    sibling = Decimal("0")
+
+    def add(label: str, amount: Decimal, sort: int) -> None:
+        if label not in buckets:
+            buckets[label] = Decimal("0")
+            order.append((sort, label))
+        buckets[label] += amount
+
+    for local_code, label, amount in rows:
+        if amount == 0:
+            continue
+        code = int(local_code) if local_code is not None else None
+        if code == 1125 or (not sia and unit_code is not None and code == unit_code):
+            add("Rekening courant SIb", amount, 0)
+        elif code == 1126 or (sia and unit_code is not None and code == unit_code):
+            add("Rekening courant SIa", amount, 0)
+        elif code == 1200 or (code is not None and 1112 <= code <= 1119):
+            sibling += amount
+        else:
+            name = (label or "").strip() or (str(code) if code is not None else "Overige")
+            add(name, amount, code if code is not None else 99999)
+    if sibling != 0:
+        add("Kruisposten", sibling, 1)
+    lines: list[tuple[str, Decimal]] = []
+    for _sort, label in sorted(order):
+        total = buckets[label]
+        if total != 0:
+            lines.append((label, total))
+    return lines
+
+
+def _cross_cash_lines(
+    country_id: int,
+    account_ids: list[int],
+    opening_day: date,
+    present_day: date,
+    *,
+    unit_code: int | None,
+    center: str,
+) -> list[tuple[str, Decimal]]:
+    """Statement amounts on these banks that are not uitgaven or inkomsten.
+
+    The window matches the bank saldo: booked on or after 1 January and on
+    or before the present day, consolidated rows only.
+    """
+    if not account_ids:
+        return []
+    table = _transaction_table(country_id)
+    if table is None:
+        return []
+    marks = ",".join("?" * len(account_ids))
+    sql = (
+        f"SELECT d.local_code, MIN(d.label), SUM(t.amount) FROM {table} t "
+        "LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id "
+        "AND d.country_id = ? "
+        f"WHERE t.bank_id IS NULL AND t.account_id IN ({marks}) "
+        "AND t.booked_on >= ? AND t.booked_on <= ? "
+        "AND (d.local_code IS NULL OR d.local_code < 3000 OR d.local_code > 4999) "
+        "GROUP BY d.local_code"
+    )
+    params: list[object] = [
+        country_id,
+        *account_ids,
+        opening_day.isoformat(),
+        present_day.isoformat(),
+    ]
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(sql, *params)
+        fetched = cur.fetchall()
+    rows: list[tuple[int | None, str, Decimal]] = []
+    for local_code, label, amount in fetched:
+        if amount is None:
+            continue
+        try:
+            value = Decimal(str(amount))
+        except (TypeError, ValueError):
+            continue
+        code = int(local_code) if local_code is not None else None
+        rows.append((code, str(label or ""), value))
+    return _fold_cash_extras(rows, unit_code=unit_code, center=center)
 
 
 def _rc_balance(
@@ -858,16 +964,6 @@ def result_sheet(
             )
     if kind == "hd":
         inkomsten = -inkomsten
-    rc_lines: list[tuple[str, Decimal]] = []
-    if kind == "unit" and login_account is not None:
-        unit_code = _unit_digits(login_account.role)
-        if unit_code is not None:
-            rc_lines.append(
-                (
-                    _rc_label(login_account.center),
-                    _rc_balance(country_id, year, None, unit_code, cutoff),
-                )
-            )
     cash = None
     if unit_level:
         opening_day = date(year, 1, 1)
@@ -880,6 +976,17 @@ def result_sheet(
             bank_rows = _scoped_accounts(
                 accounts, person=person, center=center, account=account
             )
+        unit_code = (
+            _unit_digits(login_account.role) if login_account is not None else None
+        )
+        rc_lines = _cross_cash_lines(
+            country_id,
+            [item.account_id for item in bank_rows],
+            opening_day,
+            present_day,
+            unit_code=unit_code,
+            center=login_account.center if login_account is not None else center,
+        )
         cash = build_cash_table(
             _balances_at(country_id, bank_rows, opening_day, present_day),
             named=named_banks,

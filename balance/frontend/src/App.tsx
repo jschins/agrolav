@@ -191,7 +191,7 @@ function cashSheet(cash: CashSheet): XlsxSheet {
     }
     rows.push([row.label, euro2(row.amount ?? 0)]);
   }
-  return { name: "Saldo", rows, widths: [48, 16] };
+  return { name: "Balans", rows, widths: [48, 16] };
 }
 
 function exportWindow(sheet: BalanceSheet, resultView: boolean): void {
@@ -210,6 +210,7 @@ function exportWindow(sheet: BalanceSheet, resultView: boolean): void {
 function CashTable({ cash }: { cash: CashSheet }) {
   return (
     <section className="column cash-block">
+      <h2>Balans</h2>
       <table>
         <tbody>
           {cash.rows.map((row, index) =>
