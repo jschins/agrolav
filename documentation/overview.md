@@ -5,6 +5,7 @@
 | Hub | :8200 | FastAPI data API |
 | Client | :8300 | BFF + React UI |
 | Balance | :8100 | Balance sheets under `/balance/{slug}` |
+| Result | :8500 | Profit/loss under `/result/{slug}` |
 | Maaltijden | :8400 | Meal matrix for `nl_dkg` at `/maaltijden` |
 | SQL Server | :1433 | Authoritative store |
 | Caddy | 80/443 | Public HTTPS; hub and apps stay on loopback |
@@ -20,6 +21,37 @@ Country and center logins are restricted by egress IP: the address must
 appear in `dbo.administrator` or in that login's own `egress_ip` column,
 and an empty column admits nobody. Person logins are not IP-gated.
 Attempted public addresses land in `dbo.visitor_ip`.
+
+## Hub, client, balance, and result
+
+| Process | Port | What the browser sees |
+|---------|------|------------------------|
+| Hub | 8200 | Nothing of its own. Caddy forwards selected `/api/local/*` calls. |
+| Client | 8300 | The site: login, matrix, menu. |
+| Balance | 8100 | `/balance/{slug}/` — the balance sheet. |
+| Result | 8500 | `/result/{slug}/` — profit/loss (Resultaat). |
+
+All four bind to `127.0.0.1`. `slug` is `dbo.country.username`.
+
+The hub is the data API: login, bookings, categories, bank refresh, and
+upload. SQL Server is the only store. The client is the BFF and the React
+UI. The browser session stays on the client, and the client calls the hub.
+
+Balance and Result are separate windows opened from the client menu. Escape
+on the sheet, or logout on the menu page, closes that window. Both are
+served from the balance app and its frontend build (`balance/frontend/dist`).
+
+Balance shows local codes 1000–2999, and only for a country with
+`dbo.country.has_balance = 1`. The amounts are the whole country. The menu
+link is `BALANCE_URL`, otherwise `PUBLIC_HUB_URL`, otherwise
+`http://127.0.0.1:8100`. Caddy proxies `/balance*` to port 8100.
+
+Result shows local codes 3000–4999: kosten 3000–3999 and opbrengsten
+4000–4999. The amounts follow the login — the country, that center, that
+person, or that unit account. The menu link is `RESULT_URL`, otherwise
+`http://127.0.0.1:8500`. On the public site set `RESULT_URL` to the site
+origin and proxy `/result*` to port 8500. The process is
+`uvicorn app.result_main:app` from the balance directory.
 
 ## How it is put together
 

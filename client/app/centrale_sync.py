@@ -82,6 +82,42 @@ def _balance_base_url() -> str:
     return "http://127.0.0.1:8100"
 
 
+def _result_base_url() -> str:
+    """Browser-facing result app base for ``/result/{slug}`` on port 8500.
+
+    ``RESULT_URL`` overrides. Otherwise ``http://127.0.0.1:8500``: the result
+    SPA is a separate process, not the public hub origin.
+    """
+    override = os.environ.get("RESULT_URL", "").strip().rstrip("/")
+    if override:
+        return override
+    return "http://127.0.0.1:8500"
+
+
+def _result_url(cfg: HubConfig) -> str:
+    """``/result/{country}/`` plus the login scope the sheet must apply."""
+    if not cfg.enabled or not str(cfg.country or "").strip():
+        return ""
+    params: dict[str, str] = {}
+    if cfg.access == ACCESS_CENTER and str(cfg.center or "").strip():
+        params["center"] = str(cfg.center).strip()
+    elif cfg.access == ACCESS_PERSON and str(cfg.person or "").strip():
+        params["person"] = str(cfg.person).strip()
+    elif cfg.access == ACCESS_UNIT:
+        if str(cfg.person or "").strip():
+            params["person"] = str(cfg.person).strip()
+        account = "".join(str(cfg.account or "").split()).upper()
+        if account:
+            params["account"] = account
+    label = str(cfg.title or "").strip()
+    if label:
+        params["label"] = label
+    slug = urllib.parse.quote(str(cfg.country).strip())
+    url = f"{_result_base_url()}/result/{slug}/"
+    query = urllib.parse.urlencode(params)
+    return f"{url}?{query}" if query else url
+
+
 def _balance_url(cfg: HubConfig) -> str:
     """Best-effort ``/balance/{slug}`` link for the active country.
 
@@ -899,6 +935,7 @@ def sync_status() -> dict[str, Any]:
         "auth_required": cfg.auth_required,
         "centrale_url": cfg.public_url,
         "balance_url": _balance_url(cfg),
+        "result_url": _result_url(cfg),
         "local_session_active": _hub_session_active,
         "error": _last_error,
         "last_event_id": _last_event_id,

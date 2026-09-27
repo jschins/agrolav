@@ -87,8 +87,11 @@ const CHANNEL = "boekhouding";
 const REFRESH_STATUS_KEY = "boekhouding-refresh-status";
 const BALANCE_CHANNEL = "agrolav-balance";
 const BALANCE_WINDOW_NAME = "agrolavBalance";
+const RESULT_WINDOW_NAME = "agrolavResult";
 let balanceSheetWindow: Window | null = null;
 let lastBalanceUrl: string | null = null;
+let resultSheetWindow: Window | null = null;
+let lastResultUrl: string | null = null;
 let probeWindow: Window | null = null;
 let probeTimer: number | null = null;
 let probeTries = 0;
@@ -190,6 +193,61 @@ function closeBalanceSheetWindow(): void {
   }
   balanceSheetWindow = null;
   lastBalanceUrl = null;
+  try {
+    const channel = new BroadcastChannel(BALANCE_CHANNEL);
+    channel.postMessage({ type: "agrolav-close" });
+    channel.close();
+  } catch {
+    // ignore
+  }
+}
+
+function openResultSheetWindow(url: string): void {
+  let win = resultSheetWindow && !resultSheetWindow.closed ? resultSheetWindow : null;
+  if (win) {
+    try {
+      if (url !== lastResultUrl) win.location.href = url;
+    } catch {
+      win = null;
+    }
+  }
+  if (!win) {
+    win = window.open(url, RESULT_WINDOW_NAME);
+  }
+  resultSheetWindow = win;
+  lastResultUrl = url;
+  if (win) {
+    try {
+      win.focus();
+    } catch {
+      // window may be gone; ignore
+    }
+  }
+}
+
+function closeResultSheetWindow(): void {
+  let win = resultSheetWindow && !resultSheetWindow.closed ? resultSheetWindow : null;
+  if (!win) {
+    try {
+      win = window.open("", RESULT_WINDOW_NAME);
+    } catch {
+      win = null;
+    }
+  }
+  if (win) {
+    try {
+      win.postMessage({ type: "agrolav-close" }, "*");
+    } catch {
+      // ignore
+    }
+    try {
+      win.close();
+    } catch {
+      // ignore
+    }
+  }
+  resultSheetWindow = null;
+  lastResultUrl = null;
   try {
     const channel = new BroadcastChannel(BALANCE_CHANNEL);
     channel.postMessage({ type: "agrolav-close" });
@@ -1955,6 +2013,13 @@ function SyncNotifyShell({
       label: tableHeaderTerm(menuTerms, "Search statements"),
       onClick: () => openView("search"),
     });
+    if (status?.result_url) {
+      items.push({
+        id: "profit-loss",
+        label: tableHeaderTerm(menuTerms, "Profit/Loss"),
+        onClick: () => openResultSheetWindow(status.result_url!),
+      });
+    }
     const onMatrix =
       activeYear &&
       !termsView &&
@@ -2041,7 +2106,7 @@ function SyncNotifyShell({
         menuItemAllowed(item.id, access, status?.menu_items)
       )
     );
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.menu_items, menuTerms]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.result_url, status?.menu_items, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
     item.onClick?.();
@@ -2606,6 +2671,7 @@ export default function App() {
         authRequired
           ? () => {
               closeBalanceSheetWindow();
+              closeResultSheetWindow();
               logout()
                 .then(() => {
                   clearStoredRefreshStatus();

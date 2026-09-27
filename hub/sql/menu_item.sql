@@ -59,6 +59,13 @@ WHERE NOT EXISTS (
 );
 GO
 
+INSERT INTO dbo.menu_item (menu_id, country, center, person, unit)
+SELECT N'profit-loss', 1, 1, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.menu_item WHERE menu_id = N'profit-loss'
+);
+GO
+
 SELECT menu_id, country, center, person, unit
 FROM dbo.menu_item
 ORDER BY menu_id;

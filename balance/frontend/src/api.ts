@@ -13,13 +13,28 @@ import type {
 
 function apiBase(): string {
   const p = window.location.pathname;
-  const m = p.match(/^\/balance\/([^/]+)/);
-  if (m) return `/balance/${m[1]}`;
+  const m = p.match(/^\/(balance|result)\/([^/]+)/);
+  if (m) return `/${m[1]}/${m[2]}`;
   return "";
 }
 
+function withScope(url: string): string {
+  const page = new URLSearchParams(window.location.search);
+  const scope = new URLSearchParams();
+  for (const key of ["person", "center", "account"]) {
+    const value = page.get(key);
+    if (value) scope.set(key, value);
+  }
+  if (!scope.toString()) return url;
+  const [path, existing] = url.split("?");
+  const query = new URLSearchParams(existing || "");
+  scope.forEach((value, key) => query.set(key, value));
+  const text = query.toString();
+  return text ? `${path}?${text}` : path;
+}
+
 async function getJson<T>(url: string): Promise<T> {
-  const resp = await fetch(apiBase() + url, {
+  const resp = await fetch(apiBase() + withScope(url), {
     credentials: "include",
     cache: "no-store",
   });

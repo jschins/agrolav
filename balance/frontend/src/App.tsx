@@ -150,7 +150,13 @@ function SideTable({
   );
 }
 
+function isResultView(): boolean {
+  return window.location.pathname.startsWith("/result/");
+}
+
 export default function App() {
+  const resultView = isResultView();
+  const scopeLabel = new URLSearchParams(window.location.search).get("label") || "";
   const [years, setYears] = useState<number[]>([]);
   const [year, setYear] = useState<number | null>(null);
   const [dates, setDates] = useState<string[]>([]);
@@ -158,6 +164,7 @@ export default function App() {
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const headingName = resultView ? scopeLabel || title : title;
   const [noteTitle, setNoteTitle] = useState("Kleurconventie");
   const [noteBody, setNoteBody] = useState("");
   const [closeLabel, setCloseLabel] = useState("Sluiten");
@@ -338,7 +345,8 @@ export default function App() {
     <div className="sheet-view">
       <header>
         <h1>
-          Balans{title ? ` ${title}` : ""}
+          {resultView ? "Resultaat" : "Balans"}
+          {headingName ? ` ${headingName}` : ""}
         </h1>
         {years.length > 1 && (
           <div className="year-switch">
@@ -360,7 +368,7 @@ export default function App() {
                 className="asof-select"
                 value={asOf ?? ""}
                 onChange={(e) => onAsOf(e.target.value)}
-                aria-label="Toon balans per datum"
+                aria-label={resultView ? "Toon resultaat per datum" : "Toon balans per datum"}
               >
                 <option value="">Actueel</option>
                 <option value="initial">Start (vóór mutaties)</option>
@@ -398,7 +406,7 @@ export default function App() {
       {sheet && (
         <div className="sheet">
           <SideTable
-            title="Activa"
+            title={resultView ? "Kosten" : "Activa"}
             lines={sheet.activa}
             total={sheet.total_activa}
             journalCodes={journalCodes}
@@ -406,7 +414,7 @@ export default function App() {
             onOpen={openPopup}
           />
           <SideTable
-            title="Passiva"
+            title={resultView ? "Opbrengsten" : "Passiva"}
             lines={sheet.passiva}
             total={sheet.total_passiva}
             journalCodes={journalCodes}
