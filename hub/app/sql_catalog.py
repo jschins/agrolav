@@ -2446,6 +2446,16 @@ def afschrijving_side(description: object) -> str | None:
     return None
 
 
+def afschrijving_column(description: object) -> str | None:
+    """Column for an afschrijving. A percentage rule goes entirely to SIb."""
+    side = afschrijving_side(description)
+    if side:
+        return side
+    if "afschrijving" in str(description or "").lower():
+        return "sib"
+    return None
+
+
 def centrale_side(name: object) -> str | None:
     """``sib`` or ``sia`` for a Centrale SIb / Centrale SIa account name."""
     text = str(name or "").lower()
@@ -3190,8 +3200,9 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     its year sum per bank account (``result_accounts`` order), then one
     Journaal value holding the rest of the overlay. Spaarrekening columns are
     left out, so those P&L legs sit in Journaal. An afschrijving
-    whose text names SIa or SIb is added to the Centrale SIa or Centrale SIb
-    column. A ``unitXX0X`` account and its ``hd``
+    whose text names SIa or SIb is added to that Centrale column. A
+    percentage afschrijving, which names neither side, is added in full
+    to SIb. A ``unitXX0X`` account and its ``hd``
     sibling (Den Eker and HD Den Eker) share one column and, on the balance
     sheet, one bank post: the sibling's amounts are added to the unit.
     ``code`` is always the ``local_code``, never the ``category_id``.
@@ -3254,8 +3265,8 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         account_ids = [int(a["account_id"]) for a in result_accounts]
 
         # Spaarrekening columns are omitted; those P&L legs stay in Journaal.
-        # Afschrijvingen that name SIa or SIb are added to the matching
-        # Centrale column.
+        # Named SIa/SIb afschrijvingen go to that column. Percentage rules
+        # go entirely to SIb.
         afschrijving_journals: list[tuple[int, int, Any, object]] = []
         cursor.execute("SELECT OBJECT_ID(N'dbo.journal', N'U')")
         journal_exists = cursor.fetchone()[0] is not None
@@ -3272,8 +3283,12 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                     src, dst = int(cat_from), int(cat_to)
                 except (TypeError, ValueError):
                     continue
-                if afschrijving_side(description):
+                column = afschrijving_column(description)
+                if column == "sia":
                     afschrijving_journals.append((src, dst, amount, description))
+                elif column == "sib":
+                    label = description if afschrijving_side(description) else "afschrijving SIb"
+                    afschrijving_journals.append((src, dst, amount, label))
         result_accounts = ensure_centrale_columns(result_accounts, sibling_accounts)
         add_afschrijving_to_centrale(
             result_accounts, pnl_sums, afschrijving_journals, _local

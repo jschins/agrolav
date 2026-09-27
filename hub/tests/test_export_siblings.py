@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from app.sql_catalog import (
     add_afschrijving_to_centrale,
+    afschrijving_column,
     afschrijving_side,
     ensure_centrale_columns,
     merge_sibling_balance,
@@ -158,6 +159,14 @@ class AfschrijvingColumnTests(unittest.TestCase):
             [item["account_name"] for item in accounts if item["account_id"] in (10, 20)],
             ["Bank Centrale SIa", "Bank Centrale SIb"],
         )
+
+
+class PercentageAfschrijvingTests(unittest.TestCase):
+    def test_percentage_rule_goes_fully_to_sib(self) -> None:
+        text = "[afschrijving] FALSE: afgeboekte bedragen [1050] × -0.03"
+        self.assertIsNone(afschrijving_side(text))
+        self.assertEqual(afschrijving_column(text), "sib")
+        self.assertEqual(afschrijving_column("vaste afschrijving SIa"), "sia")
 
 
 if __name__ == "__main__":
