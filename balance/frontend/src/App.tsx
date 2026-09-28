@@ -382,7 +382,12 @@ export default function App() {
       .then((r) => {
         const ys = r.years;
         setYears(ys);
-        const current = ys.length ? Math.max(...ys) : null;
+        const current =
+          r.default_year != null && ys.includes(r.default_year)
+            ? r.default_year
+            : ys.length
+              ? Math.max(...ys)
+              : null;
         setYear(current);
         getDates(current ?? 0)
           .then((dr) => {

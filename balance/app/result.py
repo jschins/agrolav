@@ -122,6 +122,7 @@ def _amounts(
     center: str,
     account: str,
     cutoff: date | None,
+    include_overlay: bool = True,
 ) -> dict[int, Decimal]:
     table = _transaction_table(country_id)
     totals: dict[int, Decimal] = {}
@@ -169,7 +170,7 @@ def _amounts(
                     totals[int(cat_id)] = Decimal(str(amount))
                 except (TypeError, ValueError):
                     continue
-    if unscoped:
+    if unscoped and include_overlay:
         as_of = cutoff.isoformat() if cutoff is not None else None
         with connect() as conn:
             cur = conn.cursor()
@@ -261,7 +262,7 @@ def _cutoff(
         return None
 
 
-def list_years(
+def _transaction_years(
     country_id: int,
     *,
     person: str = "",
@@ -270,7 +271,7 @@ def list_years(
 ) -> list[int]:
     table = _transaction_table(country_id)
     if table is None:
-        return [date.today().year]
+        return []
     scope_sql, scope_params = _scope_sql(person, center, account)
     sql = (
         f"SELECT DISTINCT t.year FROM {table} t "
@@ -283,8 +284,84 @@ def list_years(
     with connect() as conn:
         cur = conn.cursor()
         cur.execute(sql, country_id, *scope_params)
-        years = [int(r[0]) for r in cur.fetchall() if r[0] is not None]
-    return years or [date.today().year]
+        return [int(r[0]) for r in cur.fetchall() if r[0] is not None]
+
+
+def _has_opening(country_id: int, year: int) -> bool:
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) FROM dbo.balance_opening o "
+            "JOIN dbo.dim_category d ON d.category_id = o.category_id "
+            "WHERE d.country_id = ? AND o.year = ?",
+            (int(country_id), int(year)),
+        )
+        row = cur.fetchone()
+    return bool(row and row[0])
+
+
+def country_years(
+    transaction_years: list[int],
+    *,
+    opening_for_next: bool,
+    today: int | None = None,
+) -> tuple[list[int], int]:
+    """Years for a country login, plus the default year to open.
+
+    The default is the latest year that has bookings. The following year is
+    added when that year already has rows in ``dbo.balance_opening``.
+    """
+    base = sorted(set(transaction_years)) or [int(today if today is not None else date.today().year)]
+    default = max(base)
+    nxt = default + 1
+    if opening_for_next and nxt not in base:
+        return sorted([*base, nxt]), default
+    return base, default
+
+
+def opening_year_to_offer(
+    country_id: int,
+    *,
+    person: str = "",
+    center: str = "",
+    account: str = "",
+    unit: str = "",
+) -> int | None:
+    """Next year on a country login, when its opening balance is already stored.
+
+    A person, center, or unit login stays on the years that have bookings.
+    """
+    if person or center or account or str(unit or "").strip():
+        return None
+    years = _transaction_years(
+        country_id, person=person, center=center, account=account
+    )
+    base = years or [date.today().year]
+    nxt = max(base) + 1
+    if nxt in years or not _has_opening(country_id, nxt):
+        return None
+    return nxt
+
+
+def list_years(
+    country_id: int,
+    *,
+    person: str = "",
+    center: str = "",
+    account: str = "",
+    unit: str = "",
+) -> tuple[list[int], int]:
+    years = _transaction_years(
+        country_id, person=person, center=center, account=account
+    )
+    offer = opening_year_to_offer(
+        country_id, person=person, center=center, account=account, unit=unit
+    )
+    listed, default = country_years(
+        years,
+        opening_for_next=offer is not None,
+    )
+    return listed, default
 
 
 def list_dates(
@@ -858,6 +935,16 @@ def result_sheet(
     cutoff = _cutoff(
         country_id, year, as_of, person=person, center=center, account=account
     )
+    opening_only = (
+        opening_year_to_offer(
+            country_id,
+            person=person,
+            center=center,
+            account=account,
+            unit=unit,
+        )
+        == year
+    )
     amounts = _amounts(
         country_id,
         year,
@@ -865,6 +952,7 @@ def result_sheet(
         center=center,
         account=account,
         cutoff=cutoff,
+        include_overlay=not opening_only,
     )
     accounts = _load_accounts(country_id)
     unit_level = _is_unit_level(unit, account)

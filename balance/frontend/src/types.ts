@@ -69,6 +69,7 @@ export interface CategoryInfo {
 
 export interface YearsResponse {
   years: number[];
+  default_year?: number;
 }
 
 export interface DatesResponse {

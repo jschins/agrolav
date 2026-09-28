@@ -669,6 +669,101 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
     }
 
 
+def opening_balance_sheet(country_id: int, year: int) -> dict[str, Any]:
+    """Stored openings for one year, including the bank rows.
+
+    Journals, bookings, and the live account balances stay out. The result
+    post is the stored profit opening, and Eigen vermogen is the stored
+    equity opening.
+    """
+    with connect() as conn:
+        cur = conn.cursor()
+        category_map = shared_category_map(country_id, cur)
+        balance_id = _balance_id(country_id, cur)
+        result_id = _verlies_id(country_id, cur)
+        local_codes = shared_category_local_codes(country_id, cur)
+        cur.execute(
+            "SELECT o.category_id, o.amount FROM dbo.balance_opening o "
+            "JOIN dbo.dim_category d ON d.category_id = o.category_id "
+            "WHERE d.country_id = ? AND o.year = ?",
+            (int(country_id), int(year)),
+        )
+        opening: dict[int, Decimal] = {}
+        for cat_id, amount in cur.fetchall():
+            if cat_id is None:
+                continue
+            opening[int(cat_id)] = Decimal(str(amount or 0))
+    if balance_id is None or int(balance_id) not in opening:
+        raise RuntimeError(
+            "dbo.balance_opening has no Eigen vermogen amount "
+            f"for country_id={country_id} year={year}"
+        )
+    labels = _category_labels(country_id)
+
+    def display_code(cat_id: int | None) -> int | None:
+        if cat_id is None:
+            return None
+        return local_codes.get(int(cat_id), int(cat_id))
+
+    computed = {i for i in (balance_id, result_id) if i is not None}
+    activa: list[dict[str, Any]] = []
+    passiva: list[dict[str, Any]] = []
+    for cat_id in sorted(category_map):
+        if cat_id in computed:
+            continue
+        side, _account_id = category_map[cat_id]
+        local = display_code(cat_id)
+        if local is None or not is_balance_sheet_code(local):
+            continue
+        if side not in ("activa", "passiva"):
+            continue
+        row = {
+            "category_id": cat_id,
+            "code": local,
+            "label": labels.get(cat_id, f"cat_{cat_id}"),
+            "amount": float(opening.get(cat_id, Decimal("0"))),
+            "source": "opening",
+        }
+        if side == "activa":
+            activa.append(row)
+        else:
+            passiva.append(row)
+
+    if result_id is not None:
+        passiva.append({
+            "category_id": result_id,
+            "code": display_code(result_id),
+            "label": labels.get(result_id, _VERLIES_SUFFIX),
+            "amount": float(opening.get(int(result_id), Decimal("0"))),
+            "source": "opening",
+            "role": "profit",
+        })
+    passiva.append({
+        "category_id": balance_id,
+        "code": display_code(balance_id),
+        "label": labels.get(int(balance_id), "Eigen vermogen"),
+        "amount": float(opening[int(balance_id)]),
+        "source": "opening",
+        "unchanged": True,
+        "role": "equity",
+    })
+
+    total_activa = _sum_amount(activa)
+    total_passiva = _sum_amount(passiva)
+    return {
+        "year": year,
+        "country_id": country_id,
+        "as_of": None,
+        "activa": activa,
+        "passiva": passiva,
+        "total_activa": float(total_activa),
+        "total_passiva": float(total_passiva),
+        "balanced": total_activa == total_passiva,
+        "subadministratie": list_subadministratie_sheet(country_id),
+        "afschrijvingen": {"from_codes": [], "journals": []},
+    }
+
+
 def list_years(country_id: int) -> list[int]:
     """Years that have any data in balance_opening for this country."""
     with connect() as conn:

@@ -165,12 +165,20 @@ def result_years(
     person: str = "",
     center: str = "",
     account: str = "",
+    unit: str = "",
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
     from app.result import list_years
 
     who = _scope(person, center, account)
-    return {"years": list_years(resolve_country(slug), person=who[0], center=who[1], account=who[2])}
+    years, default_year = list_years(
+        resolve_country(slug),
+        person=who[0],
+        center=who[1],
+        account=who[2],
+        unit=unit,
+    )
+    return {"years": years, "default_year": default_year}
 
 
 @app.get("/result/{slug}/api/balance/{year}/dates")
@@ -264,9 +272,21 @@ def result_sheet(
     try:
         from app.balance import _country_has_balance
         from app.balance import balance_sheet as balance_compute
+        from app.balance import opening_balance_sheet
+        from app.result import opening_year_to_offer
 
         if _country_has_balance(country_id):
-            payload["balance"] = balance_compute(country_id, year, as_of=date)
+            opening_year = opening_year_to_offer(
+                country_id,
+                person=who[0],
+                center=who[1],
+                account=who[2],
+                unit=unit,
+            )
+            if opening_year is not None and opening_year == year:
+                payload["balance"] = opening_balance_sheet(country_id, year)
+            else:
+                payload["balance"] = balance_compute(country_id, year, as_of=date)
     except Exception as exc:  # noqa: BLE001
         payload["balance_error"] = str(exc)
     return payload
