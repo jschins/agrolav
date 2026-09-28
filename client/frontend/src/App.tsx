@@ -1901,6 +1901,14 @@ function SyncNotifyShell({
       .catch((e: Error) => setScratchError(e.message));
   }
 
+  useEffect(() => {
+    function onExportRequest(e: MessageEvent) {
+      if (e.data?.type === "agrolav-export-excel") exportExcel();
+    }
+    window.addEventListener("message", onExportRequest);
+    return () => window.removeEventListener("message", onExportRequest);
+  }, [activeYear, menuTerms]);
+
   function doCrossPostings() {
     if (scratchBusy || wipeBusy || crossBusy) return;
     beginRefreshBusy("please wait... cross-postings");
@@ -2042,8 +2050,7 @@ function SyncNotifyShell({
     if (onMatrix) {
       items.push({
         id: "export-excel",
-        label: tableHeaderTerm(menuTerms, "Export balance sheet"),
-        onClick: exportExcel,
+        label: tableHeaderTerm(menuTerms, "Export zip"),
       });
     }
     if (onMatrix) {

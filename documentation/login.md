@@ -25,81 +25,24 @@ stichting, sectie, deel en werkeenheid.
 
 ## Stichting Instudo
 
-<table>
-<colgroup>
-<col style="width:22%" />
-<col style="width:19.5%" />
-<col style="width:19.5%" />
-<col style="width:19.5%" />
-<col style="width:19.5%" />
-</colgroup>
-<thead>
-<tr>
-<th style="text-align:left">Niveau</th>
-<th colspan="4" style="text-align:center">Login-namen</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left">Stichting</td>
-<td colspan="4" style="text-align:center"><code>beheer_instudo</code></td>
-</tr>
-<tr>
-<td style="text-align:left">Sectie</td>
-<td colspan="2" style="text-align:center"><code>instudo_sia</code></td>
-<td colspan="2" style="text-align:center"><code>instudo_sib</code></td>
-</tr>
-<tr>
-<td style="text-align:left">Deel</td>
-<td style="text-align:center"><code>sia</code></td>
-<td style="text-align:center"><code>hd_sia</code></td>
-<td style="text-align:center"><code>sib</code></td>
-<td style="text-align:center"><code>hd_sib</code></td>
-</tr>
-<tr>
-<td style="text-align:left">Werkeenheid</td>
-<td style="text-align:center"><code>aenstal</code></td>
-<td></td>
-<td style="text-align:center"><code>leidenhoven</code></td>
-<td style="text-align:center"><code>hd_leidenhoven</code></td>
-</tr>
-<tr>
-<td></td>
-<td style="text-align:center"><code>hogeland</code></td>
-<td style="text-align:center"><code>hd_hogeland</code></td>
-<td style="text-align:center"><code>den_eker</code></td>
-<td style="text-align:center"><code>hd_den_eker</code></td>
-</tr>
-<tr>
-<td></td>
-<td style="text-align:center"><code>de_stade</code></td>
-<td style="text-align:center"><code>hd_de_stade</code></td>
-<td style="text-align:center"><code>lepelenburg</code></td>
-<td style="text-align:center"><code>hd_lepelenburg</code></td>
-</tr>
-<tr>
-<td></td>
-<td style="text-align:center"><code>de_borcht</code></td>
-<td style="text-align:center"><code>hd_de_borcht</code></td>
-<td style="text-align:center"><code>jan_luijken</code></td>
-<td style="text-align:center"><code>hd_jan_luijken</code></td>
-</tr>
-<tr>
-<td></td>
-<td style="text-align:center"><code>concertgebouw</code></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-</tbody>
-</table>
+
+| Niveau      | Login-namen      |                |               |                  |
+| ----------- | ---------------- | -------------- | ------------- | ---------------- |
+| Stichting   | `beheer_instudo` |                |               |                  |
+| Sectie      | `instudo_sia`    | `instudo_sib`  |               |                  |
+| Deel        | `sia`            | `hd_sia`       | `sib`         | `hd_sib`         |
+| Werkeenheid | `aenstal`        |                | `leidenhoven` | `hd_leidenhoven` |
+|             | `hogeland`       | `hd_hogeland`  | `den_eker`    | `hd_den_eker`    |
+|             | `de_stade`       | `hd_de_stade`  | `lepelenburg` | `hd_lepelenburg` |
+|             | `de_borcht`      | `hd_de_borcht` | `jan_luijken` | `hd_jan_luijken` |
+|             | `concertgebouw`  |                |               |                  |
 
 
 Het sia-deel van sectie `instudo_sia` heeft 5 werkeenheden. Drie daarvan hebben een bijbehorende huishoudelijke dienst: Hogeland, De Stade en De Borcht. Aenstal en Concertgebouw hebben die niet.
 
 Het sib-deel van sectie `instudo_sib` heeft 4 werkeenheden. Alle vier hebben een huishoudelijke dienst.
 
-Instudo heeft 19 automatisch gedownloade rekeningen en 2 afgeleide spaarrekeningen.   
+Instudo heeft 19 automatisch gedownloade rekeningen en 2 afgeleide spaarrekeningen.  
 Van die 19 zijn er 18 rekeningen van evenzoveel werkeenheden, en 1 van SVOa. SVOa heeft geen eigen login.
 
 ---
@@ -145,9 +88,8 @@ een sms-code voor eenmalig gebruik.
 
 SMS: inloggen in twee stappen wanneer `mobile_phone` is gezet.
 
-IP-gate: de vereniging van de lijst `dbo.administrator` en de
-`egress_ip`-lijst die op de eigen gebruikersnaam staat, wanneer
-`agrolav@agrolav:/etc/agrolav/hub.env` `HUB_LOGIN_GATING=1` heeft staan;
+IP-gate: de vereniging van de lijst `dbo.administrator` en de `egress_ip`-lijst die op de eigen gebruikersnaam staat,  
+wanneer `agrolav@agrolav:/etc/agrolav/hub.env` `HUB_LOGIN_GATING=1` heeft staan;  
 bij waarde 0 vindt géén IP-gating plaats.
 
 
@@ -163,6 +105,8 @@ De API om het wachtwoord in te stellen weigert country- en center-sessies,
 ook bij een directe aanroep.
 
 ---
+
+
 
 ## Browser path
 
@@ -190,12 +134,11 @@ formula password, so they can log in until they set their own.
 
 ## Set password
 
-Menu item only when `access === "personal"`. UI: current password, new
-password, confirm, optional mobile (`+316…` or `06…`). **Save** / **Cancel**;
+UI: new password, confirm, optional mobile (`+316…` or `06…`). **Save** / **Cancel**;
 the header menu is hidden on this page.
 
 APIs: client `POST /api/auth/password` → hub `POST /api/auth/password`.
-Rejects if current does not match, if new ≠ confirm, or if new is empty.
+Rejects if new ≠ confirm, or if new is empty.
 
 ---
 

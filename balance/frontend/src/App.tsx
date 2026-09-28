@@ -157,6 +157,14 @@ function isResultView(): boolean {
   return window.location.pathname.startsWith("/result/");
 }
 
+function isUnitLogin(): boolean {
+  return new URLSearchParams(window.location.search).get("unit") === "1";
+}
+
+function requestMenuExport(): void {
+  window.opener?.postMessage({ type: "agrolav-export-excel" }, "*");
+}
+
 function loginName(): string {
   return new URLSearchParams(window.location.search).get("login")?.trim() || "";
 }
@@ -566,14 +574,20 @@ export default function App() {
             >
               {noteTitle}
             </button>
-            <button
-              type="button"
-              className={resultView ? "export-knob" : "info-knob"}
-              disabled={!sheet}
-              onClick={() => sheet && exportWindow(sheet, resultView)}
-            >
-              Export
-            </button>
+            {resultView && (
+              <button
+                type="button"
+                className="export-knob"
+                disabled={!sheet}
+                onClick={() => {
+                  if (!sheet) return;
+                  if (isUnitLogin()) exportWindow(sheet, true);
+                  else requestMenuExport();
+                }}
+              >
+                Export
+              </button>
+            )}
           </div>
         )}
       </header>
