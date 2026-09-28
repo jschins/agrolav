@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  getBalanceSheet,
   getDates,
   getMeta,
   getPostPopup,
@@ -280,7 +279,6 @@ export default function App() {
   const [dates, setDates] = useState<string[]>([]);
   const [asOf, setAsOf] = useState<string | null>(null);
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
-  const [balanceSheet, setBalanceSheet] = useState<BalanceSheet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zipRun, setZipRun] = useState<ZipRun | null>(null);
   const [zipNow, setZipNow] = useState(0);
@@ -366,11 +364,6 @@ export default function App() {
     getSheet(y, date ?? undefined)
       .then(setSheet)
       .catch((e) => setError(toMessage(e)));
-    if (!isResultView()) return;
-    setBalanceSheet(null);
-    getBalanceSheet(y, date ?? undefined)
-      .then(setBalanceSheet)
-      .catch(() => setBalanceSheet(null));
   }, []);
 
   useEffect(() => {
@@ -435,19 +428,19 @@ export default function App() {
 
   const balanceJournalCodes = useMemo(() => {
     const codes = new Set<number>();
-    for (const code of balanceSheet?.afschrijvingen?.from_codes ?? []) {
+    for (const code of sheet?.balance?.afschrijvingen?.from_codes ?? []) {
       codes.add(Number(code));
     }
     return codes;
-  }, [balanceSheet]);
+  }, [sheet]);
 
   const balanceSubadminCodes = useMemo(() => {
     const codes = new Set(subadminRows.map((r) => Number(r.local_code)));
-    for (const code of balanceSheet?.subadministratie?.local_codes ?? []) {
+    for (const code of sheet?.balance?.subadministratie?.local_codes ?? []) {
       codes.add(Number(code));
     }
     return codes;
-  }, [balanceSheet, subadminRows]);
+  }, [sheet, subadminRows]);
 
   const closePopup = () => {
     setOpenCode(null);
@@ -685,28 +678,31 @@ export default function App() {
         </div>
       )}
 
-      {resultView && balanceSheet ? (
+      {resultView && sheet?.balance ? (
         <section className="balance-below">
           <h2>Balans</h2>
           <div className="sheet">
             <SideTable
               title="Activa"
-              lines={balanceSheet.activa}
-              total={balanceSheet.total_activa}
+              lines={sheet.balance.activa}
+              total={sheet.balance.total_activa}
               journalCodes={balanceJournalCodes}
               subadminCodes={balanceSubadminCodes}
               onOpen={openPopup}
             />
             <SideTable
               title="Passiva"
-              lines={balanceSheet.passiva}
-              total={balanceSheet.total_passiva}
+              lines={sheet.balance.passiva}
+              total={sheet.balance.total_passiva}
               journalCodes={balanceJournalCodes}
               subadminCodes={balanceSubadminCodes}
               onOpen={openPopup}
             />
           </div>
         </section>
+      ) : null}
+      {resultView && sheet?.balance_error ? (
+        <div className="error">{sheet.balance_error}</div>
       ) : null}
 
       {resultView && sheet?.cash ? <CashTable cash={sheet.cash} /> : null}

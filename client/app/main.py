@@ -1020,6 +1020,20 @@ def api_small_expenses(body: SmallExpensesRequest) -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+class OpeningBalanceRequest(BaseModel):
+    year: int
+
+
+@app.post("/api/opening-balance")
+def api_opening_balance(body: OpeningBalanceRequest) -> dict[str, Any]:
+    from app.centrale_sync import hub_post
+
+    try:
+        return hub_post("/opening-balance", {"year": int(body.year)}, timeout=600.0)
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 @app.post("/api/cross-postings")
 def api_cross_postings() -> dict[str, Any]:
     from app.centrale_sync import hub_post

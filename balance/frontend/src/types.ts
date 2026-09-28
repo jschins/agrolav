@@ -53,6 +53,8 @@ export interface BalanceSheet {
   subadministratie?: SubadministratieSheet;
   afschrijvingen?: Afschrijvingen;
   cash?: CashSheet;
+  balance?: BalanceSheet;
+  balance_error?: string;
 }
 
 export interface CategoryInfo {

@@ -162,6 +162,20 @@ def _refresh_afschrijvingen(user: dict[str, Any] | None) -> None:
         print(f"afschrijvingen: skipped: {exc}")
 
 
+def _refresh_afschrijvingen_center(center: str) -> None:
+    """Rewrite depreciation after categories are calculated, dated per data year."""
+    from app.runtime import active_country, resolve_country_for_center
+    from app.sql_catalog import country_for_center
+
+    country = (
+        country_for_center(center)
+        or resolve_country_for_center(center)
+        or active_country()
+        or ""
+    )
+    _refresh_afschrijvingen({"country": country})
+
+
 class AuthLoginRequest(BaseModel):
     username: str
     password: str
@@ -808,15 +822,21 @@ def api_recalculate_center(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        return store.mutate_and_recalculate(center, [], source="central")
+        payload = store.mutate_and_recalculate(center, [], source="central")
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    _refresh_afschrijvingen_center(center)
+    return payload
 
 
 class RecalculateScratchRequest(BaseModel):
     person: str | None = None
+
+
+class OpeningBalanceRequest(BaseModel):
+    year: int
 
 
 class WipeYearRequest(BaseModel):
@@ -838,11 +858,13 @@ def api_recalculate_from_scratch(
 ) -> dict[str, Any]:
     req = body or RecalculateScratchRequest()
     try:
-        return store.recalculate_from_scratch_all(center, person=req.person)
+        payload = store.recalculate_from_scratch_all(center, person=req.person)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    _refresh_afschrijvingen_center(center)
+    return payload
 
 
 @app.post("/api/local/{center}/recalculate-incremental")
@@ -851,11 +873,13 @@ def api_recalculate_incremental(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        return store.recalculate_incremental(center)
+        payload = store.recalculate_incremental(center)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    _refresh_afschrijvingen_center(center)
+    return payload
 
 
 @app.get("/api/local/{center}/term-changes")
@@ -880,6 +904,42 @@ def api_discard_term_changes(
     try:
         return {"ok": True, "discarded": discard_term_changes(country)}
     except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/local/{center}/opening-balance")
+def api_opening_balance(
+    center: str,
+    body: OpeningBalanceRequest,
+    country: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.runtime import request_country
+    from app.sql_catalog import country_username_for_scope
+    from app import user_store
+    from shared.balance_values import CatalogError, calculate_opening_balance
+
+    key = (country or "").strip() or str(request_country() or "").strip()
+    if not key:
+        key = country_username_for_scope(center)
+    if not key:
+        raise HTTPException(status_code=400, detail="country is required")
+    if body.year < 1900 or body.year > 3000:
+        raise HTTPException(status_code=400, detail="Enter a year")
+    conn = user_store._sql_connect()
+    cur = conn.cursor()
+    country_id = user_store._sql_country_id(cur, key)
+    if country_id is None:
+        raise HTTPException(status_code=400, detail=f"Unknown country {key}")
+    try:
+        result = calculate_opening_balance(int(country_id), int(body.year), cur)
+        conn.commit()
+        return result
+    except CatalogError as exc:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        conn.rollback()
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

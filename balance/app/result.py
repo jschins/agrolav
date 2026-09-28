@@ -15,6 +15,7 @@ from typing import Any
 from shared.balance_values import (
     category_labels,
     result_overlay_cents,
+    spaar_source_exclude_clause,
     sql_ident,
 )
 
@@ -124,27 +125,42 @@ def _amounts(
 ) -> dict[int, Decimal]:
     table = _transaction_table(country_id)
     totals: dict[int, Decimal] = {}
+    unscoped = not person and not center and not account
     if table is not None:
-        scope_sql, scope_params = _scope_sql(person, center, account)
-        sql = (
-            f"SELECT t.category_id, SUM(t.amount) "
-            f"FROM {table} t "
-            "JOIN dbo.person p ON p.id = t.person_id "
-            "JOIN dbo.center n ON n.center_id = p.center_id "
-            "JOIN dbo.dim_category d ON d.category_id = t.category_id "
-            "AND d.country_id = ? "
-            "LEFT JOIN dbo.account a ON a.account_id = t.account_id "
-            "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
-            "AND d.local_code BETWEEN 3000 AND 4999"
-            f"{scope_sql}"
-        )
-        params: list[object] = [country_id, country_id, year, *scope_params]
-        if cutoff is not None:
-            sql += " AND t.booked_on <= ?"
-            params.append(cutoff.isoformat())
-        sql += " GROUP BY t.category_id"
         with connect() as conn:
             cur = conn.cursor()
+            if unscoped:
+                exclude_sql, exclude_params = spaar_source_exclude_clause(
+                    country_id, cursor=cur
+                )
+                sql = (
+                    f"SELECT t.category_id, SUM(t.amount) FROM {table} t "
+                    "JOIN dbo.dim_category d ON d.category_id = t.category_id "
+                    "AND d.country_id = ? "
+                    "WHERE t.year = ? "
+                    "AND d.local_code BETWEEN 3000 AND 4999"
+                    f"{exclude_sql}"
+                )
+                params = [country_id, year, *exclude_params]
+            else:
+                scope_sql, scope_params = _scope_sql(person, center, account)
+                sql = (
+                    f"SELECT t.category_id, SUM(t.amount) "
+                    f"FROM {table} t "
+                    "JOIN dbo.person p ON p.id = t.person_id "
+                    "JOIN dbo.center n ON n.center_id = p.center_id "
+                    "JOIN dbo.dim_category d ON d.category_id = t.category_id "
+                    "AND d.country_id = ? "
+                    "LEFT JOIN dbo.account a ON a.account_id = t.account_id "
+                    "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
+                    "AND d.local_code BETWEEN 3000 AND 4999"
+                    f"{scope_sql}"
+                )
+                params = [country_id, country_id, year, *scope_params]
+            if cutoff is not None:
+                sql += " AND t.booked_on <= ?"
+                params.append(cutoff.isoformat())
+            sql += " GROUP BY t.category_id"
             cur.execute(sql, *params)
             for cat_id, amount in cur.fetchall():
                 if cat_id is None or amount is None:
@@ -153,7 +169,7 @@ def _amounts(
                     totals[int(cat_id)] = Decimal(str(amount))
                 except (TypeError, ValueError):
                     continue
-    if not person and not center and not account:
+    if unscoped:
         as_of = cutoff.isoformat() if cutoff is not None else None
         with connect() as conn:
             cur = conn.cursor()
@@ -201,6 +217,23 @@ def _first_booked(
     return first
 
 
+def _first_any_booked(country_id: int, year: int) -> date | None:
+    """Earliest booking in the year, the same instant the balance sheet uses."""
+    table = _transaction_table(country_id)
+    if table is None:
+        return None
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT MIN(booked_on) FROM {table} WHERE year = ?", year)
+        row = cur.fetchone()
+    if not row or row[0] is None:
+        return None
+    first = row[0]
+    if hasattr(first, "date"):
+        first = first.date()
+    return first
+
+
 def _cutoff(
     country_id: int,
     year: int,
@@ -213,9 +246,12 @@ def _cutoff(
     if as_of in (None, ""):
         return None
     if as_of == "initial":
-        first = _first_booked(
-            country_id, year, person=person, center=center, account=account
-        )
+        if not person and not center and not account:
+            first = _first_any_booked(country_id, year)
+        else:
+            first = _first_booked(
+                country_id, year, person=person, center=center, account=account
+            )
         if first is None:
             return date(2000, 1, 1)
         return first - timedelta(days=1)

@@ -44,6 +44,7 @@ import {
   recalculateIncremental,
   pendingTermChanges,
   crossPostings,
+  calculateOpeningBalance,
   wipeYear,
   smallExpenses,
   recordModification,
@@ -1650,6 +1651,7 @@ function SyncNotifyShell({
   const [scratchError, setScratchError] = useState<string | null>(null);
   const [wipeBusy, setWipeBusy] = useState(false);
   const [crossBusy, setCrossBusy] = useState(false);
+  const [openingBusy, setOpeningBusy] = useState(false);
   const [wipeError, setWipeError] = useState<string | null>(null);
   const [wipeOpen, setWipeOpen] = useState(false);
   const [smallOpen, setSmallOpen] = useState<"expense" | "income" | null>(null);
@@ -2022,6 +2024,34 @@ function SyncNotifyShell({
     return () => window.removeEventListener("message", onExportRequest);
   }, [activeYear, menuTerms]);
 
+  function doOpeningBalance() {
+    if (scratchBusy || wipeBusy || crossBusy || openingBusy) return;
+    const dutch = uiIsDutch(menuTerms);
+    const raw = window.prompt(
+      dutch ? "Jaar" : "Year",
+      String(new Date().getFullYear() + 1)
+    );
+    if (raw == null) return;
+    const year = Number(raw.trim());
+    if (!Number.isInteger(year)) {
+      setScratchError(dutch ? "Geef een jaar" : "Enter a year");
+      return;
+    }
+    beginRefreshBusy(dutch ? "Beginbalans berekenen…" : "Calculating opening balance…");
+    flushSync(() => setOpeningBusy(true));
+    afterPaint(() => {
+      calculateOpeningBalance(year)
+        .then(() => {
+          onCenterChanged?.();
+        })
+        .catch((e: Error) => setScratchError(e.message))
+        .finally(() => {
+          setOpeningBusy(false);
+          endRefreshBusy();
+        });
+    });
+  }
+
   function doCrossPostings() {
     if (scratchBusy || wipeBusy || crossBusy) return;
     beginRefreshBusy("please wait... cross-postings");
@@ -2132,6 +2162,14 @@ function SyncNotifyShell({
         label: tableHeaderTerm(menuTerms, "Automatic journal posts"),
         onClick: () => openView("afschrijvingen"),
       });
+      items.push({
+        id: "calculate-opening-balance",
+        label: openingBusy
+          ? "…"
+          : tableHeaderTerm(menuTerms, "Calculate opening balance"),
+        disabled: scratchBusy || wipeBusy || crossBusy || openingBusy,
+        onClick: doOpeningBalance,
+      });
     }
     items.push({
       id: "search-statements",
@@ -2224,7 +2262,7 @@ function SyncNotifyShell({
         menuItemAllowed(item.id, access, status?.menu_items, status?.administrator)
       )
     );
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.result_url, status?.menu_items, status?.administrator, menuTerms]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, openingBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.result_url, status?.menu_items, status?.administrator, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
     item.onClick?.();

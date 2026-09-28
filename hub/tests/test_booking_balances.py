@@ -183,6 +183,8 @@ class BookingBalancesTests(unittest.TestCase):
         sql = cursor.sql.lower()
         self.assertIn("not ((t.account_id", sql)
         self.assertIn("like ?", sql)
+        self.assertIn("n'cp'", sql)
+        self.assertIn("n'rc'", sql)
 
     def test_country_without_mirror_skips_spaar_filter(self):
         cursor = _FakeBookingCursor(rows=[])

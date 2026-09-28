@@ -1013,6 +1013,195 @@ def _account_balances_asof(
     return {aid: (cur - later.get(aid, Decimal("0"))) for aid, cur in current.items()}
 
 
+def _money(value: object) -> Decimal:
+    return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def opening_amounts_from_year_end(
+    year_end: dict[int, tuple[int, str]],
+    opening_prev: dict[int, Decimal],
+    roles: dict[int, str],
+    local_codes: dict[int, int],
+    equity_id: int,
+    *,
+    include_live_banks: bool = False,
+) -> dict[int, Decimal]:
+    """Opening amounts for year Y from the year-end sheet of Y−1.
+
+    Each stored non-bank post becomes that year-end amount. Live bank posts
+    (source ``account:``) are included only when ``include_live_banks`` is set,
+    which is how an existing year is overwritten. Posts with
+    ``category_role=balance`` are set to zero, and that year-end amount is
+    added to the previous year's Eigen vermogen opening
+    (``category_role=equity``). Posts 1101–1119 with ``category_role=rc``
+    are set to zero, and their total is added to local 1200
+    (``category_role=cp``).
+    """
+    balance_ids = {
+        cat_id
+        for cat_id, role in roles.items()
+        if category_role_canonical(role) == "balance"
+        and is_balance_sheet_code(local_codes.get(cat_id, cat_id))
+    }
+    if not balance_ids:
+        raise CatalogError(
+            "No balance-sheet category with category_role=balance"
+        )
+    written: dict[int, Decimal] = {}
+    transferred = Decimal("0.00")
+    closed: set[int] = set()
+    for cat_id, (cents, source) in year_end.items():
+        if str(source).startswith("account:") and not include_live_banks:
+            continue
+        amount = _money(Decimal(int(cents)) / Decimal(100))
+        if cat_id in balance_ids:
+            transferred += amount
+            written[cat_id] = Decimal("0.00")
+            closed.add(cat_id)
+        else:
+            written[cat_id] = amount
+    for cat_id in balance_ids:
+        if cat_id in closed:
+            continue
+        amount = _money(opening_prev.get(cat_id, 0))
+        transferred += amount
+        written[cat_id] = Decimal("0.00")
+    written[int(equity_id)] = _money(opening_prev.get(int(equity_id), 0) + transferred)
+
+    rc_ids = {
+        cat_id
+        for cat_id, role in roles.items()
+        if category_role_canonical(role) == "rc"
+        and 1101 <= local_codes.get(cat_id, cat_id) <= 1119
+    }
+    cp_id = _cp_category_id(roles, local_codes)
+    if rc_ids and cp_id is None:
+        raise CatalogError("No category with category_role=cp")
+
+    def assigned(cat_id: int) -> Decimal:
+        if cat_id in written:
+            return written[cat_id]
+        found = year_end.get(cat_id)
+        if found is not None:
+            cents, source = found
+            if not (str(source).startswith("account:") and not include_live_banks):
+                return _money(Decimal(int(cents)) / Decimal(100))
+        return _money(opening_prev.get(cat_id, 0))
+
+    if rc_ids and cp_id is not None:
+        rc_total = Decimal("0.00")
+        for cat_id in rc_ids:
+            rc_total += assigned(cat_id)
+            written[cat_id] = Decimal("0.00")
+        written[cp_id] = _money(assigned(cp_id) + rc_total)
+    return written
+
+
+def _cp_category_id(roles: dict[int, str], local_codes: dict[int, int]) -> int | None:
+    """``category_role=cp``, preferring local code 1200."""
+    found = [
+        cat_id
+        for cat_id, role in roles.items()
+        if category_role_canonical(role) == "cp"
+    ]
+    if not found:
+        return None
+    for cat_id in found:
+        if local_codes.get(cat_id, cat_id) == 1200:
+            return cat_id
+    return min(found, key=lambda cat_id: (local_codes.get(cat_id, cat_id), cat_id))
+
+
+def _opening_year_count(country_id: int, year: int, cursor: object) -> int:
+    cursor.execute(
+        "SELECT COUNT(*) FROM dbo.balance_opening o "
+        "JOIN dbo.dim_category d ON d.category_id = o.category_id "
+        "WHERE d.country_id = ? AND o.year = ?",
+        (int(country_id), int(year)),
+    )
+    row = cursor.fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+def _copy_opening_year(
+    country_id: int, source_year: int, target_year: int, cursor: object
+) -> None:
+    cursor.execute(
+        "INSERT INTO dbo.balance_opening (category_id, year, amount, note) "
+        "SELECT o.category_id, ?, o.amount, o.note "
+        "FROM dbo.balance_opening o "
+        "JOIN dbo.dim_category d ON d.category_id = o.category_id "
+        "WHERE d.country_id = ? AND o.year = ?",
+        (int(target_year), int(country_id), int(source_year)),
+    )
+
+
+def _upsert_opening_amount(
+    category_id: int, year: int, amount: Decimal, cursor: object
+) -> None:
+    cursor.execute(
+        """
+        IF EXISTS (SELECT 1 FROM dbo.balance_opening
+                   WHERE category_id = ? AND year = ?)
+            UPDATE dbo.balance_opening
+            SET amount = ?
+            WHERE category_id = ? AND year = ?
+        ELSE
+            INSERT INTO dbo.balance_opening (category_id, year, amount, note)
+            VALUES (?, ?, ?, NULL)
+        """,
+        int(category_id),
+        int(year),
+        amount,
+        int(category_id),
+        int(year),
+        int(category_id),
+        int(year),
+        amount,
+    )
+
+
+def calculate_opening_balance(country_id: int, year: int, cursor: object) -> dict[str, Any]:
+    """Write year Y's opening balances from year Y−1. Does not commit.
+
+    When Y has no ``dbo.balance_opening`` rows, every row of Y−1 for this
+    country is copied first. Y−1 must already have rows. When Y already has
+    rows, those amounts are overwritten, including live bank posts. The
+    figures come from :func:`opening_amounts_from_year_end`.
+    """
+    target = int(year)
+    previous = target - 1
+    exists = _opening_year_count(country_id, target, cursor) > 0
+    if _opening_year_count(country_id, previous, cursor) == 0:
+        raise CatalogError(f"No opening balance for {previous}")
+    if not exists:
+        _copy_opening_year(country_id, previous, target, cursor)
+    apply_afschrijvingen(country_id, cursor)
+    equity_id = eigen_vermogen_id(country_id, cursor)
+    if equity_id is None:
+        raise CatalogError(
+            f"No category with category_role=equity for country_id={int(country_id)}"
+        )
+    amounts = opening_amounts_from_year_end(
+        balance_category_breakdown(country_id, previous, cursor),
+        _opening_balances(country_id, previous, cursor),
+        category_roles(country_id, cursor),
+        category_local_codes(country_id, cursor),
+        int(equity_id),
+        include_live_banks=exists,
+    )
+    for cat_id, amount in amounts.items():
+        _upsert_opening_amount(cat_id, target, amount, cursor)
+    return {
+        "ok": True,
+        "year": target,
+        "country_id": int(country_id),
+        "copied": not exists,
+        "updated": len(amounts),
+        "equity": str(amounts[int(equity_id)]),
+    }
+
+
 def _opening_balances(country_id: int, year: int, cursor: object) -> dict[int, Decimal]:
     cursor.execute(
         "SELECT o.category_id, o.amount FROM dbo.balance_opening o "
@@ -1114,7 +1303,8 @@ def _booking_balances(
     Consolidated rows only (``bank_id IS NULL``). Amount X is the bank sign
     (in +, out -). Activa 1000-1999 get ``-X``; passiva 2000-2999 get ``+X``.
     Codes with a HIT-forbidden ``category_role`` (live bank, ``source``,
-    ``equity``, ``profit``) are skipped. ``mirror`` HIT rows are included.
+    ``equity``, ``profit``) are skipped. ``mirror``, ``cp`` and ``rc`` HIT
+    rows are included.
     Source-account spaar-keyword rows are excluded (their counterpart is the
     mirror post). P&L (3000-4999) stays on the resultaat sheet as ``+X``.
     ``{}`` when the table is missing.
@@ -1134,7 +1324,7 @@ def _booking_balances(
         "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
         "AND (d.local_code = 1099 OR d.local_code BETWEEN 1000 AND 2999) "
         "AND (d.category_role IS NULL OR d.category_role IN "
-        "(N'remainder', N'mirror'))"
+        "(N'remainder', N'mirror', N'cp', N'rc'))"
     )
     p: list[object] = [int(country_id), int(year)]
     exclude_sql, exclude_params = spaar_source_exclude_clause(
@@ -1179,7 +1369,8 @@ def _journal_effect(
     Amount X: TO ``+= +X``; FROM takes the negative APR product of the two
     class signs (A = −1, P = R = +1). FROM 1052 TO 4050 of 9000 moves +9000
     onto both. With ``as_of`` only rows dated on or before that day are
-    included.
+    included. A closed year's afschrijving is booked on 31 December of that
+    year. The year under way is booked on the day the calculation runs.
     """
     if not _journal_table_exists(cursor):
         return {}
@@ -1191,7 +1382,7 @@ def _journal_effect(
     p: list[object] = [int(country_id), int(year)]
     if as_of is not None:
         q += " AND j.date <= ?"
-        p.append(as_of.isoformat())
+        p.append(as_of.isoformat() if hasattr(as_of, "isoformat") else str(as_of))
     roles = category_roles(country_id, cursor)
     codes = category_local_codes(country_id, cursor)
     cursor.execute(q, tuple(p))
@@ -1359,6 +1550,20 @@ def afschrijving_like_pattern() -> str:
     return "![" + AFSCHRIJVING_MARKER[1:] + "%"
 
 
+def afschrijving_booked_on(year: int, *, on: date | None = None) -> str:
+    """Book date for one year's afschrijving journals.
+
+    The year under way is the day the calculation runs. A run on 15 January
+    2027 for 2027 books 2027-01-15. Every other year is 31 December of that
+    year, so the same run for 2026 books 2026-12-31.
+    """
+    day = on or date.today()
+    booked_year = int(year)
+    if booked_year == day.year:
+        return day.isoformat()
+    return f"{booked_year:04d}-12-31"
+
+
 def afschrijving_amount(fraction: object, present: Decimal) -> Decimal:
     """``fraction * present``, two decimal places."""
     return (Decimal(str(fraction)) * present).quantize(
@@ -1430,7 +1635,9 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
     uses ``fraction * present(van)``. ``role = 0`` uses ``fraction`` times
     the SUM of ``transaction_*`` bookings on van (all persons, that year,
     ``bank_id IS NULL``; no journal or mirror). Empty rules still wipe
-    leftover marker rows. ``0`` when the table is missing. Does not commit.
+    leftover marker rows. The year under way is booked on the day of the
+    run. Every other year is booked on 31 December of that year.
+    ``0`` when the table is missing. Does not commit.
     """
     cursor.execute("SELECT OBJECT_ID(N'dbo.afschrijvingen', N'U')")
     row = cursor.fetchone()
@@ -1521,7 +1728,7 @@ def apply_afschrijvingen(country_id: int, cursor: object) -> int:
                 "VALUES (?, ?, ?, ?, ?, ?, SYSUTCDATETIME())",
                 (
                     int(year),
-                    f"{int(year)}-12-31",
+                    afschrijving_booked_on(year),
                     van_id,
                     naar_id,
                     amount,
@@ -1544,8 +1751,9 @@ def result_overlay_cents(
     Journals use ``journal_deltas`` so Saldo (and passiva 2100) stay the
     numerical sum of 3000-4999: K and O share the same sign. Mirror rows in
     ``dbo.transaction_mirror`` add their amount as stored. With ``as_of``
-    (YYYY-MM-DD) only rows dated on or before that day are included. Returns
-    ``{}`` when either table is missing.
+    (YYYY-MM-DD) only rows dated on or before that day are included.
+    A closed year's afschrijving journals are booked on 31 December of that
+    year. Returns ``{}`` when either table is missing.
     """
     for table in ("dbo.journal", "dbo.transaction_mirror"):
         cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")

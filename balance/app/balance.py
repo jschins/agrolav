@@ -563,10 +563,6 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
     account balances, and the journal effects are computed up to that day; a
     date before the first transaction yields the starting balance sheet.
     """
-    with connect() as conn:
-        cur = conn.cursor()
-        apply_afschrijvingen(country_id, cur)
-        conn.commit()
     cutoff = _asof_cutoff(country_id, year, as_of)
     result_amount = _result_amount(country_id, year, cutoff)
     result_source = "as_of" if cutoff is not None else "transactions"

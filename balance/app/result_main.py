@@ -202,6 +202,20 @@ def result_subadministratie(
     return {"country_id": resolve_country(slug), "rows": []}
 
 
+@app.get("/result/{slug}/api/balance/{year}/popup")
+@_present_sheet_errors("Sheet popup")
+def result_post_popup(
+    slug: str,
+    year: int,
+    local_code: int,
+    date: str | None = None,
+    _: None = Depends(_api_key),
+) -> dict[str, Any]:
+    from app.balance import post_popup
+
+    return post_popup(resolve_country(slug), year, local_code, as_of=date)
+
+
 @app.get("/result/{slug}/api/balance/{year}/sheet")
 @_present_sheet_errors("Balance sheet")
 def result_balance_sheet(
@@ -236,8 +250,9 @@ def result_sheet(
     from app.result import result_sheet as compute
 
     who = _scope(person, center, account)
-    return compute(
-        resolve_country(slug),
+    country_id = resolve_country(slug)
+    payload = compute(
+        country_id,
         year,
         person=who[0],
         center=who[1],
@@ -246,6 +261,15 @@ def result_sheet(
         login=login,
         as_of=date,
     )
+    try:
+        from app.balance import _country_has_balance
+        from app.balance import balance_sheet as balance_compute
+
+        if _country_has_balance(country_id):
+            payload["balance"] = balance_compute(country_id, year, as_of=date)
+    except Exception as exc:  # noqa: BLE001
+        payload["balance_error"] = str(exc)
+    return payload
 
 
 def run() -> None:
