@@ -157,6 +157,8 @@ export interface ExportExcelData {
   total_resultaat: number;
   /** P&L posts nested by `parent`; null when no P&L row has a parent. */
   result_tree?: ExportTreeGroup[] | null;
+  /** Center and person workbooks: outline level 1 lists each account under a category. */
+  account_rows?: boolean;
 }
 
 export function getExportExcel(

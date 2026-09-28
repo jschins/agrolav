@@ -52,6 +52,10 @@ export interface XlsxSheet {
    * the 1…N level buttons that expand or collapse the sheet progressively.
    */
   outlineLevels?: number[];
+  /** Detail rows hidden until the user expands that outline level. */
+  rowHidden?: boolean[];
+  /** Summary rows whose detail starts collapsed. */
+  rowCollapsed?: boolean[];
   /** Explicit row height in points per row (same index as `rows`; undefined = auto). */
   rowHeights?: (number | undefined)[];
 }
@@ -320,6 +324,8 @@ function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): stri
       const r = ri + 1;
       const level = Math.min(7, Math.max(0, levels[ri] || 0));
       const outline = level > 0 ? ` outlineLevel="${level}"` : "";
+      const hidden = sheet.rowHidden?.[ri] ? ` hidden="1"` : "";
+      const collapsed = sheet.rowCollapsed?.[ri] ? ` collapsed="1"` : "";
       const ht = sheet.rowHeights?.[ri];
       const height = ht && ht > 0 ? ` ht="${ht}" customHeight="1"` : "";
       const cellsXml = row
@@ -346,7 +352,7 @@ function sheetXml(sheet: XlsxSheet, styleIdOf: (cell: XlsxCell) => number): stri
           return `<c r="${ref}" s="${styleId}" t="inlineStr"><is><t>${escXml(cell)}</t></is></c>`;
         })
         .join("");
-      return `<row r="${r}"${outline}${height}>${cellsXml}</row>`;
+      return `<row r="${r}"${outline}${hidden}${collapsed}${height}>${cellsXml}</row>`;
     })
     .join("");
   const colCount = Math.max(1, ...sheet.rows.map((row) => row.length));

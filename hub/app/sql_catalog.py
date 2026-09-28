@@ -3597,6 +3597,7 @@ def export_matrix_excel_data(
                 "result_mirrors": result_mirrors,
                 "total_resultaat": total_result,
                 "result_tree": result_tree,
+                "account_rows": scoped,
             }
 
         result_id = verlies_id(country_id, cursor)
@@ -3616,11 +3617,25 @@ def export_matrix_excel_data(
             ):
                 continue
             cents, _source = breakdown.get(cat_id, (0, "opening"))
+            amount = float(Decimal(cents) / Decimal(100))
             row = {
                 "code": _local(cat_id),
                 "label": labels.get(cat_id, f"cat_{cat_id}"),
-                "amount": float(Decimal(cents) / Decimal(100)),
+                "amount": amount,
             }
+            if scoped and result_accounts and account_id is not None:
+                slot = next(
+                    (
+                        index
+                        for index, item in enumerate(result_accounts)
+                        if int(item["account_id"]) == int(account_id)
+                    ),
+                    None,
+                )
+                if slot is not None:
+                    columns = [0.0] * len(result_accounts)
+                    columns[slot] = amount
+                    row["columns"] = columns
             (passiva if side == "passiva" else activa).append(row)
         if sibling_pairs_for_year:
             activa = merge_sibling_balance(activa, sibling_pairs_for_year)
@@ -3666,6 +3681,7 @@ def export_matrix_excel_data(
             "result_mirrors": result_mirrors,
             "total_resultaat": total_result,
             "result_tree": result_tree,
+            "account_rows": scoped,
         }
 
     try:

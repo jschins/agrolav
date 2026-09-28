@@ -364,6 +364,11 @@ interface TreeSheetOptions {
   rootIndent?: number;
   /** Thin line under each root row across the band, in this hex colour. */
   rootRule?: string;
+  /**
+   * Center and person sheets. Existing rows stay outline level 0 (the sheet
+   * as it is now). Level 1, collapsed at first, is one row per account.
+   */
+  accountNames?: string[];
 }
 
 /** Balans row bands by depth, bright → faint: deeper peach, FFECBC, its midpoint to FBFDEF, FBFDEF. */
@@ -470,15 +475,48 @@ function treeSheet(
   });
   const heightAt = (depth: number): number | undefined => options.rowHeights?.[depth];
   const rows: XlsxCell[][] = [header];
-  // Excel outline level per row = nesting depth, so the 1…N buttons collapse
-  // the sheet to roots, then root+groups, and so on.
+  // Without account rows, outline level is the nesting depth. With them, the
+  // current sheet is level 0 and each account contribution is level 1.
+  const accountNames = options.accountNames;
   const outlineLevels: number[] = [0];
+  const rowHidden: boolean[] = [false];
+  const rowCollapsed: boolean[] = [false];
   const rowHeights: (number | undefined)[] = [heightAt(0)];
   const contours: XlsxContour[] = [];
   const push = (row: XlsxCell[], depth: number, height?: number) => {
     rows.push(row);
-    outlineLevels.push(depth);
+    outlineLevels.push(accountNames ? 0 : depth);
+    rowHidden.push(false);
+    rowCollapsed.push(false);
     rowHeights.push(height);
+  };
+  const appendAccounts = (columns: number[] | undefined, depth: number) => {
+    if (!accountNames || !columns?.length) return;
+    const summary = rows.length - 1;
+    let any = false;
+    accountNames.forEach((name, index) => {
+      const value = columns[index] ?? 0;
+      if (Math.abs(value) < 0.005) return;
+      const parts = Array.from({ length: drill }, (_, i) => (i === index ? value : 0));
+      const detail = line(depth, "post", name, value, drill ? parts : undefined);
+      const label = detail[depth];
+      const labelStyle = typeof label === "object" ? { ...label.style } : {};
+      detail[depth] = {
+        value: typeof label === "object" ? label.value : String(label ?? name),
+        style: { ...labelStyle, bold: false, indent: (labelStyle.indent ?? 0) + 1 },
+      };
+      for (let column = amountCol; column < detail.length; column += 1) {
+        const cell = detail[column];
+        if (typeof cell === "object" && cell.style?.bold) {
+          detail[column] = { ...cell, style: { ...cell.style, bold: false } };
+        }
+      }
+      push(detail, depth);
+      outlineLevels[outlineLevels.length - 1] = 1;
+      rowHidden[rowHidden.length - 1] = true;
+      any = true;
+    });
+    if (any) rowCollapsed[summary] = true;
   };
   if (options.blankRowAfterTitle) push(spacer(), 0);
   const line = (
@@ -503,6 +541,7 @@ function treeSheet(
     if (node.kind === "post") {
       const label = options.hideCodes ? node.label : `${node.code} ${node.label}`;
       push(line(depth, "post", label, node.amount, node.columns), depth, height);
+      appendAccounts(node.columns, depth);
       return;
     }
     if (depth === 0 && options.rootContour) {
@@ -533,7 +572,16 @@ function treeSheet(
     i === levels - 1 ? 44 : 4
   );
   for (let i = 0; i <= drill; i += 1) widths.push(14);
-  return { name, rows, widths, outlineLevels, rowHeights, contours };
+  return {
+    name,
+    rows,
+    widths,
+    outlineLevels,
+    rowHidden: accountNames ? rowHidden : undefined,
+    rowCollapsed: accountNames ? rowCollapsed : undefined,
+    rowHeights,
+    contours,
+  };
 }
 
 /** Resultaat drill-down headers: one per bank account. */
@@ -550,6 +598,10 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
   const sheets: XlsxSheet[] = [];
   const codeOf = (line: ExportExcelLine) => String(line.code);
   const accountHeaders = resultDrillHeaders(data, terms);
+  const accountNames =
+    data.account_rows && (data.result_accounts?.length ?? 0) > 0
+      ? resultaatAccountHeaders(data.result_accounts ?? [])
+      : undefined;
   if (data.has_balance) {
     if (data.balance_tree?.length) {
       sheets.push(
@@ -569,6 +621,7 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
           hideCodes: true,
           rootIndent: 1,
           rootRule: "595959",
+          accountNames,
         })
       );
     } else {
@@ -593,7 +646,8 @@ function excelSheets(data: ExportExcelData, terms: Record<string, string> = {}):
         "Resultaat",
         `Resultaat ${data.year}`,
         data.result_tree,
-        accountHeaders.length ? ["Totaal", ...accountHeaders] : []
+        accountHeaders.length ? ["Totaal", ...accountHeaders] : [],
+        { accountNames }
       )
     );
   } else {
