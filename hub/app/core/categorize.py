@@ -1520,6 +1520,10 @@ def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
     from app.sql_replica import sync_bound_transactions
 
     sync_bound_transactions([stored])
+    if cat_changed:
+        from app.category_hand import remember_hand_category
+
+        remember_hand_category(transaction_id, stored.get("category"))
     general = _category_map(_categories_file())
     _write_category_totals(data, general)
     return _public_transaction(_canonical_transaction(stored))

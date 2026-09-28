@@ -1023,6 +1023,7 @@ def opening_amounts_from_year_end(
     roles: dict[int, str],
     local_codes: dict[int, int],
     equity_id: int,
+    result_sum: Decimal,
     *,
     include_live_banks: bool = False,
 ) -> dict[int, Decimal]:
@@ -1030,43 +1031,43 @@ def opening_amounts_from_year_end(
 
     Each stored non-bank post becomes that year-end amount. Live bank posts
     (source ``account:``) are included only when ``include_live_banks`` is set,
-    which is how an existing year is overwritten. Posts with
-    ``category_role=balance`` are set to zero, and that year-end amount is
-    added to the previous year's Eigen vermogen opening
+    which is how an existing year is overwritten. ``category_role=profit``
+    is a 2000-range post. ``category_role=balance`` is a 3000-range post
+    whose amount is ``result_sum``: the numerical sum of local codes
+    3000–4999 except that balance post. Profit is set to zero and
+    ``result_sum`` is added to the previous year's Eigen vermogen opening
     (``category_role=equity``). Posts 1101–1119 with ``category_role=rc``
     are set to zero, and their total is added to local 1200
     (``category_role=cp``).
     """
+    profit_ids = {
+        cat_id
+        for cat_id, role in roles.items()
+        if category_role_canonical(role) == "profit"
+        and 2000 <= local_codes.get(cat_id, cat_id) <= 2999
+    }
     balance_ids = {
         cat_id
         for cat_id, role in roles.items()
         if category_role_canonical(role) == "balance"
-        and is_balance_sheet_code(local_codes.get(cat_id, cat_id))
+        and is_resultaat(local_codes.get(cat_id, cat_id))
     }
+    if not profit_ids:
+        raise CatalogError("No 2000-category with category_role=profit")
     if not balance_ids:
-        raise CatalogError(
-            "No balance-sheet category with category_role=balance"
-        )
+        raise CatalogError("No 3000-category with category_role=balance")
     written: dict[int, Decimal] = {}
-    transferred = Decimal("0.00")
-    closed: set[int] = set()
     for cat_id, (cents, source) in year_end.items():
+        if cat_id in profit_ids:
+            continue
         if str(source).startswith("account:") and not include_live_banks:
             continue
-        amount = _money(Decimal(int(cents)) / Decimal(100))
-        if cat_id in balance_ids:
-            transferred += amount
-            written[cat_id] = Decimal("0.00")
-            closed.add(cat_id)
-        else:
-            written[cat_id] = amount
-    for cat_id in balance_ids:
-        if cat_id in closed:
-            continue
-        amount = _money(opening_prev.get(cat_id, 0))
-        transferred += amount
+        written[cat_id] = _money(Decimal(int(cents)) / Decimal(100))
+    for cat_id in profit_ids:
         written[cat_id] = Decimal("0.00")
-    written[int(equity_id)] = _money(opening_prev.get(int(equity_id), 0) + transferred)
+    written[int(equity_id)] = _money(
+        opening_prev.get(int(equity_id), 0) + _money(result_sum)
+    )
 
     rc_ids = {
         cat_id
@@ -1127,8 +1128,8 @@ def _copy_opening_year(
     country_id: int, source_year: int, target_year: int, cursor: object
 ) -> None:
     cursor.execute(
-        "INSERT INTO dbo.balance_opening (category_id, year, amount, note) "
-        "SELECT o.category_id, ?, o.amount, o.note "
+        "INSERT INTO dbo.balance_opening (category_id, year, amount) "
+        "SELECT o.category_id, ?, o.amount "
         "FROM dbo.balance_opening o "
         "JOIN dbo.dim_category d ON d.category_id = o.category_id "
         "WHERE d.country_id = ? AND o.year = ?",
@@ -1147,8 +1148,8 @@ def _upsert_opening_amount(
             SET amount = ?
             WHERE category_id = ? AND year = ?
         ELSE
-            INSERT INTO dbo.balance_opening (category_id, year, amount, note)
-            VALUES (?, ?, ?, NULL)
+            INSERT INTO dbo.balance_opening (category_id, year, amount)
+            VALUES (?, ?, ?)
         """,
         int(category_id),
         int(year),
@@ -1159,6 +1160,51 @@ def _upsert_opening_amount(
         int(year),
         amount,
     )
+
+
+def _resultaat_sum(
+    country_id: int,
+    year: int,
+    cursor: object,
+    exclude_ids: set[int],
+) -> Decimal:
+    """Numerical sum of local codes 3000–4999, excluding ``exclude_ids``.
+
+    Bookings use the same rows as the sheet result (spaar-source rows left
+    out). Journal and spaar-mirror effects on those categories are added.
+    """
+    total = Decimal("0")
+    table = transaction_table(country_id, cursor)
+    if table:
+        cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
+        row = cursor.fetchone()
+        if row is not None and row[0] is not None:
+            exclude_sql, exclude_params = spaar_source_exclude_clause(
+                country_id, cursor=cursor
+            )
+            skip = ""
+            skip_params: list[object] = []
+            if exclude_ids:
+                marks = ",".join("?" * len(exclude_ids))
+                skip = f" AND t.category_id NOT IN ({marks})"
+                skip_params = [int(cat_id) for cat_id in exclude_ids]
+            cursor.execute(
+                f"SELECT COALESCE(SUM(t.amount), 0) FROM {table} t "
+                "JOIN dbo.dim_category d ON d.category_id = t.category_id "
+                "AND d.country_id = ? "
+                "WHERE t.year = ? "
+                "AND d.local_code BETWEEN 3000 AND 4999"
+                f"{skip}{exclude_sql}",
+                (int(country_id), int(year), *skip_params, *exclude_params),
+            )
+            got = cursor.fetchone()
+            if got is not None and got[0] is not None:
+                total += _decimal(got[0])
+    for cat_id, cents in result_overlay_cents(country_id, year, cursor).items():
+        if int(cat_id) in exclude_ids:
+            continue
+        total += Decimal(int(cents)) / Decimal(100)
+    return _money(total)
 
 
 def calculate_opening_balance(country_id: int, year: int, cursor: object) -> dict[str, Any]:
@@ -1182,12 +1228,21 @@ def calculate_opening_balance(country_id: int, year: int, cursor: object) -> dic
         raise CatalogError(
             f"No category with category_role=equity for country_id={int(country_id)}"
         )
+    roles = category_roles(country_id, cursor)
+    codes = category_local_codes(country_id, cursor)
+    balance_ids = {
+        cat_id
+        for cat_id, role in roles.items()
+        if category_role_canonical(role) == "balance"
+        and is_resultaat(codes.get(cat_id, cat_id))
+    }
     amounts = opening_amounts_from_year_end(
         balance_category_breakdown(country_id, previous, cursor),
         _opening_balances(country_id, previous, cursor),
-        category_roles(country_id, cursor),
-        category_local_codes(country_id, cursor),
+        roles,
+        codes,
         int(equity_id),
+        _resultaat_sum(country_id, previous, cursor, balance_ids),
         include_live_banks=exists,
     )
     for cat_id, amount in amounts.items():

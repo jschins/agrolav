@@ -245,6 +245,10 @@ export function crossPostings(): Promise<{ updated: number }> {
   return sendJson("/api/cross-postings", "POST", {});
 }
 
+export function applyHandCategorizations(): Promise<{ updated: number }> {
+  return sendJson("/api/hand-categorizations", "POST", {});
+}
+
 export function calculateOpeningBalance(year: number): Promise<{ ok: boolean; year: number }> {
   return sendJson("/api/opening-balance", "POST", { year });
 }

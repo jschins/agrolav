@@ -745,7 +745,14 @@ def clear_bookings(
             whole_country=whole_country,
         )
         tx_count = 0
+        if statements:
+            from app.category_hand import forget_wiped_statements
+
+            forget_wiped_statements(cursor, country_id, table, where_sql, where_params)
         if categorizations:
+            from app.category_hand import capture_before_wipe
+
+            capture_before_wipe(cursor, country_id, table, where_sql, where_params)
             remainder_id, _remainder_code = require_remainder_row(country_id, cursor)
             cursor.execute(
                 f"UPDATE {table} SET modification = -1{where_sql}",

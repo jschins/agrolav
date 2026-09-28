@@ -1,6 +1,6 @@
 # Kruisposten
 
-Bereken kruisposten writes categories on internal transfers for the logged-in country when ``dbo.country.has_balance`` is set.
+Bereken kruisposten writes categories on internal transfers for the logged-in country when `dbo.country.has_balance` is set.
 The entry point is `apply_cross_postings` in `hub/app/cross_postings.py`.
 The menu calls `POST /api/cross-postings`.
 Uitlezen bankafschriften runs the same pairing after the download, and only on pairs that include a statement just stored. The other leg of that pair is written as well. Statements outside those pairs stay as they are. It then categorizes every remaining statement with `modification` -1. Rows already at 0, 1, 2, or 3 are left as they are.
@@ -22,7 +22,7 @@ Two statements form a pair when all of the following hold:
 2. `booked_on` is the same calendar day, or the two dates differ by one day. The same day is taken when both exist.
 3. The amounts are opposite to the cent.
 4. Both statements name the other account’s IBAN. A blank counterparty
-   IBAN does not form a pair.
+  IBAN does not form a pair.
 5. Each `transaction_id` is used in at most one pair.
 
 IBAN comparison strips spaces and ignores case. The center of an account is
@@ -66,3 +66,22 @@ and `modification = -1`. A statement on any other category is left as it
 is. A four-digit local code that is itself a live bank category in
 `dbo.mapping_banks` is not treated as a cross-posting category on that
 release.
+
+
+
+
+
+New rule set (my formulation)
+
+From all bookings between registered accounts within the country:
+
++ for all transactions between Centrale SIa and Centrale SIb: write those of Centrale Sib to 11200 kruisposten, and those of Centrale Sia to 11100
+
++ for all transactions between Centrale SIa and a unitxxxx belonging to SIa: write those of Centrale SIa to 1xxxx, and those of the unit to 11126
+
++ for all transactions between Centrale SIb and a unitxxxx belonging to SIb: write those of Centrale SIb to 1xxxx, and those of the unit to 11125
+
++ for all transactions between a unitxx0x and its sibling: write those of the unit to 1xx1x, and those of its sibling to 11200
+
+In all cases: explicitly check that all amounts are always written in sign-opposed pairs
+

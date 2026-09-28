@@ -44,6 +44,7 @@ import {
   recalculateIncremental,
   pendingTermChanges,
   crossPostings,
+  applyHandCategorizations,
   calculateOpeningBalance,
   wipeYear,
   smallExpenses,
@@ -1651,6 +1652,7 @@ function SyncNotifyShell({
   const [scratchError, setScratchError] = useState<string | null>(null);
   const [wipeBusy, setWipeBusy] = useState(false);
   const [crossBusy, setCrossBusy] = useState(false);
+  const [handBusy, setHandBusy] = useState(false);
   const [openingBusy, setOpeningBusy] = useState(false);
   const [wipeError, setWipeError] = useState<string | null>(null);
   const [wipeOpen, setWipeOpen] = useState(false);
@@ -1871,7 +1873,7 @@ function SyncNotifyShell({
   }
 
   function doRecalculate(mode: "scratch" | "incremental") {
-    if (scratchBusy || wipeBusy || crossBusy) return;
+    if (scratchBusy || wipeBusy || crossBusy || handBusy) return;
     setRecalcOpen(false);
     beginRefreshBusy("please wait... recalculating categories");
     flushSync(() => {
@@ -2025,7 +2027,7 @@ function SyncNotifyShell({
   }, [activeYear, menuTerms]);
 
   function doOpeningBalance() {
-    if (scratchBusy || wipeBusy || crossBusy || openingBusy) return;
+    if (scratchBusy || wipeBusy || crossBusy || handBusy || openingBusy) return;
     const dutch = uiIsDutch(menuTerms);
     const raw = window.prompt(
       dutch ? "Jaar" : "Year",
@@ -2053,7 +2055,7 @@ function SyncNotifyShell({
   }
 
   function doCrossPostings() {
-    if (scratchBusy || wipeBusy || crossBusy) return;
+    if (scratchBusy || wipeBusy || crossBusy || handBusy) return;
     beginRefreshBusy("please wait... cross-postings");
     flushSync(() => setCrossBusy(true));
     afterPaint(() => {
@@ -2069,8 +2071,25 @@ function SyncNotifyShell({
     });
   }
 
+  function doHandCategorizations() {
+    if (scratchBusy || wipeBusy || crossBusy || handBusy) return;
+    beginRefreshBusy("please wait... hand categorizations");
+    flushSync(() => setHandBusy(true));
+    afterPaint(() => {
+      applyHandCategorizations()
+        .then(() => {
+          onCenterChanged?.();
+        })
+        .catch((e: Error) => setScratchError(e.message))
+        .finally(() => {
+          setHandBusy(false);
+          endRefreshBusy();
+        });
+    });
+  }
+
   function doWipeYear() {
-    if (scratchBusy || wipeBusy || crossBusy) return;
+    if (scratchBusy || wipeBusy || crossBusy || handBusy) return;
     const dutch = uiIsDutch(menuTerms);
     const extra: { person?: string; account?: string } = {};
     if (access === "unit") {
@@ -2142,14 +2161,22 @@ function SyncNotifyShell({
       label: scratchBusy
         ? "Recalculating…"
         : tableHeaderTerm(menuTerms, "Recalculate"),
-      disabled: scratchBusy || wipeBusy || crossBusy,
+      disabled: scratchBusy || wipeBusy || crossBusy || handBusy,
       onClick: () => setRecalcOpen(true),
+    });
+    items.push({
+      id: "apply-hand-categorizations",
+      label: handBusy
+        ? "…"
+        : tableHeaderTerm(menuTerms, "Apply hand categorizations"),
+      disabled: scratchBusy || wipeBusy || crossBusy || handBusy,
+      onClick: doHandCategorizations,
     });
     if (status?.balance_url) {
       items.push({
         id: "cross-postings",
         label: crossBusy ? "…" : tableHeaderTerm(menuTerms, "Calculate cross-postings"),
-        disabled: scratchBusy || wipeBusy || crossBusy,
+        disabled: scratchBusy || wipeBusy || crossBusy || handBusy,
         onClick: doCrossPostings,
       });
       items.push({
@@ -2167,7 +2194,7 @@ function SyncNotifyShell({
         label: openingBusy
           ? "…"
           : tableHeaderTerm(menuTerms, "Calculate opening balance"),
-        disabled: scratchBusy || wipeBusy || crossBusy || openingBusy,
+        disabled: scratchBusy || wipeBusy || crossBusy || handBusy || openingBusy,
         onClick: doOpeningBalance,
       });
     }
@@ -2203,9 +2230,9 @@ function SyncNotifyShell({
     items.push({
         id: "small-expenses",
         label: tableHeaderTerm(menuTerms, "Smaller expenses"),
-        disabled: scratchBusy || wipeBusy || crossBusy,
+        disabled: scratchBusy || wipeBusy || crossBusy || handBusy,
         onClick: () => {
-          if (scratchBusy || wipeBusy || crossBusy) return;
+          if (scratchBusy || wipeBusy || crossBusy || handBusy) return;
           setWipeError(null);
           setSmallOpen("expense");
         },
@@ -2213,9 +2240,9 @@ function SyncNotifyShell({
       items.push({
         id: "small-income",
         label: tableHeaderTerm(menuTerms, "Smaller income"),
-        disabled: scratchBusy || wipeBusy || crossBusy,
+        disabled: scratchBusy || wipeBusy || crossBusy || handBusy,
         onClick: () => {
-          if (scratchBusy || wipeBusy || crossBusy) return;
+          if (scratchBusy || wipeBusy || crossBusy || handBusy) return;
           setWipeError(null);
           setSmallOpen("income");
         },
@@ -2224,7 +2251,7 @@ function SyncNotifyShell({
       items.push({
         id: "wipe-year",
         label: wipeBusy ? "Wiping…" : tableHeaderTerm(menuTerms, "Wipe Year"),
-        disabled: scratchBusy || wipeBusy || crossBusy,
+        disabled: scratchBusy || wipeBusy || crossBusy || handBusy,
         onClick: doWipeYear,
       });
     }
@@ -2262,7 +2289,7 @@ function SyncNotifyShell({
         menuItemAllowed(item.id, access, status?.menu_items, status?.administrator)
       )
     );
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, openingBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.result_url, status?.menu_items, status?.administrator, menuTerms]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, handBusy, openingBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.result_url, status?.menu_items, status?.administrator, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
     item.onClick?.();

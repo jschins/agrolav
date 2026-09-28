@@ -17,13 +17,14 @@ class OpeningAmountsTests(unittest.TestCase):
         amounts = opening_amounts_from_year_end(
             {
                 10: (50_000, "opening+journal"),
-                22: (12_500, "opening"),
+                22: (99_900, "opening"),
                 30: (99_900, "account:18"),
             },
             {20: Decimal("1000.00"), 22: Decimal("10.00")},
-            {20: "equity", 22: "balance", 10: ""},
-            {10: 1000, 20: 2000, 22: 2200, 30: 1051},
+            {20: "equity", 22: "profit", 98: "balance", 10: ""},
+            {10: 1000, 20: 2000, 22: 2200, 30: 1051, 98: 3998},
             20,
+            Decimal("125.00"),
         )
         self.assertEqual(amounts[10], Decimal("500.00"))
         self.assertEqual(amounts[22], Decimal("0.00"))
@@ -38,9 +39,10 @@ class OpeningAmountsTests(unittest.TestCase):
                 30: (99_900, "account:18"),
             },
             {20: Decimal("1000.00")},
-            {20: "equity", 22: "balance", 10: ""},
-            {10: 1000, 20: 2000, 22: 2200, 30: 1051},
+            {20: "equity", 22: "profit", 98: "balance", 10: ""},
+            {10: 1000, 20: 2000, 22: 2200, 30: 1051, 98: 3998},
             20,
+            Decimal("0.00"),
             include_live_banks=True,
         )
         self.assertEqual(amounts[30], Decimal("999.00"))
@@ -50,9 +52,10 @@ class OpeningAmountsTests(unittest.TestCase):
         amounts = opening_amounts_from_year_end(
             {},
             {20: Decimal("40.00"), 22: Decimal("15.50")},
-            {20: "equity", 22: "balance"},
-            {20: 2000, 22: 2200},
+            {20: "equity", 22: "profit", 98: "balance"},
+            {20: 2000, 22: 2200, 98: 3998},
             20,
+            Decimal("15.50"),
         )
         self.assertEqual(amounts[22], Decimal("0.00"))
         self.assertEqual(amounts[20], Decimal("55.50"))
@@ -69,14 +72,16 @@ class OpeningAmountsTests(unittest.TestCase):
             {20: Decimal("500.00")},
             {
                 20: "equity",
-                22: "balance",
+                22: "profit",
+                98: "balance",
                 101: "rc",
                 119: "rc",
                 100: "rc",
                 200: "cp",
             },
-            {20: 2000, 22: 2200, 101: 1101, 119: 1119, 100: 1100, 200: 1200},
+            {20: 2000, 22: 2200, 98: 3998, 101: 1101, 119: 1119, 100: 1100, 200: 1200},
             20,
+            Decimal("100.00"),
         )
         self.assertEqual(amounts[101], Decimal("0.00"))
         self.assertEqual(amounts[119], Decimal("0.00"))
@@ -89,14 +94,17 @@ class OpeningAmountsTests(unittest.TestCase):
             opening_amounts_from_year_end(
                 {101: (100, "opening")},
                 {20: Decimal("1.00")},
-                {20: "equity", 22: "balance", 101: "rc"},
-                {20: 2000, 22: 2200, 101: 1101},
+                {20: "equity", 22: "profit", 98: "balance", 101: "rc"},
+                {20: 2000, 22: 2200, 98: 3998, 101: 1101},
                 20,
+                Decimal("0.00"),
             )
 
     def test_missing_balance_role_is_an_error(self) -> None:
         with self.assertRaises(CatalogError):
-            opening_amounts_from_year_end({}, {}, {20: "equity"}, {20: 2000}, 20)
+            opening_amounts_from_year_end(
+                {}, {}, {20: "equity"}, {20: 2000}, 20, Decimal("0.00")
+            )
 
 
 class AfschrijvingDateTests(unittest.TestCase):

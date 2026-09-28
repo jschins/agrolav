@@ -725,7 +725,7 @@ def _iban_for_account(account_id: int) -> str:
 def update_opening(country_id: int, year: int, items: list[dict[str, Any]]) -> None:
     """Upsert opening balances for a country and year.
 
-    Each item: {"category_id": int, "amount": float, "note": str | None}.
+    Each item: {"category_id": int, "amount": float}.
     Computed posts (Eigen vermogen / Verlies) are never stored, and categories
     with a live account link (bank categories) are skipped too: their amount is
     the live ``dbo.account.balance``, never an opening row in balance_opening.
@@ -744,21 +744,20 @@ def update_opening(country_id: int, year: int, items: list[dict[str, Any]]) -> N
             if cat_id in (balance_id, result_id) or cat_id in account_linked:
                 continue  # computed or live-account categories, never stored
             amount = Decimal(str(item.get("amount", 0)))
-            note = item.get("note")
             cur.execute(
                 """
                 IF EXISTS (SELECT 1 FROM dbo.balance_opening
                            WHERE category_id = ? AND year = ?)
                     UPDATE dbo.balance_opening
-                    SET amount = ?, note = ?
+                    SET amount = ?
                     WHERE category_id = ? AND year = ?
                 ELSE
-                    INSERT INTO dbo.balance_opening (category_id, year, amount, note)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO dbo.balance_opening (category_id, year, amount)
+                    VALUES (?, ?, ?)
                 """,
                 cat_id, year,
-                amount, note, cat_id, year,
-                cat_id, year, amount, note,
+                amount, cat_id, year,
+                cat_id, year, amount,
             )
         conn.commit()
 

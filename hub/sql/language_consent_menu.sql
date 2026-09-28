@@ -5,6 +5,7 @@
 INSERT INTO dbo.language (term_lang1, term_lang2)
 SELECT v.term_lang1, v.term_lang2
 FROM (VALUES
+    ('Apply hand categorizations', 'Pas handmatige categorisaties toe'),
     ('Calculate opening balance', 'Bereken beginbalans'),
     ('Prepare consent', 'Bereid toestemming'),
     ('Invalidate consent', 'Verwijder toestemming'),
