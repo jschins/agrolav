@@ -3245,7 +3245,13 @@ def export_resultaat_excel_data(
         raise ValueError(str(exc)) from exc
 
 
-def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
+def export_matrix_excel_data(
+    country: str,
+    year: int,
+    *,
+    person: str | None = None,
+    center: str | None = None,
+) -> dict[str, Any]:
     """One JSON payload for the client's "Export balance sheet" workbook.
 
     Balance countries (``dbo.country.has_balance``) get ``activa``/``passiva``
@@ -3262,9 +3268,11 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
     percentage afschrijving is read from the journal. The words SIa or SIb
     win; otherwise ``dim_category.parent`` of the local code does. A parent
     containing SIa (``1051``, ``1061``, ``1071``, ``1081``) goes to SIa, one
-    containing SIb goes to SIb, and a mixed parent stays on SIb. A ``unitXX0X`` account and its ``hd``
-    sibling (Den Eker and HD Den Eker) share one column and, on the balance
-    sheet, one bank post: the sibling's amounts are added to the unit.
+    containing SIb goes to SIb, and a mixed parent stays on SIb. A country
+    login folds each unit together with its huishoudelijke dienst. A center
+    or person login does not, and includes only that login's own accounts.
+    A unit login folds the HD into the unit in the result window; an HD
+    login does not fold the unit in.
     ``code`` is always the ``local_code``, never the ``category_id``.
     The Resultaat rows come from the recorded ``dbo.category_total`` plus the
     beheer journal/mirror overlay (R). Passiva 2100 Verlies uses that same R.
@@ -3306,6 +3314,59 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         def _local(cat_id: int) -> int:
             return int(local_codes.get(int(cat_id), int(cat_id)))
 
+        person_name = (person or "").strip()
+        center_name = "" if person_name else (center or "").strip()
+        scope_sql = ""
+        scope_params: tuple[Any, ...] = ()
+        if person_name:
+            scope_sql = " AND p.username = ? COLLATE Latin1_General_CI_AI"
+            scope_params = (person_name,)
+        elif center_name:
+            scope_sql = " AND n.username = ? COLLATE Latin1_General_CI_AI"
+            scope_params = (center_name,)
+        scoped = bool(scope_sql)
+        scoped_ids: set[int] | None = None
+        if scoped:
+            cursor.execute(
+                f"""
+                SELECT a.account_id
+                FROM dbo.account a
+                JOIN dbo.person p ON p.id = a.person_id
+                JOIN dbo.center n ON n.center_id = p.center_id
+                WHERE n.country_id = ?
+                {scope_sql}
+                """,
+                (int(country_id), *scope_params),
+            )
+            scoped_ids = {
+                int(row[0]) for row in cursor.fetchall() if row[0] is not None
+            }
+            if person_name and not scoped_ids:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM dbo.person p
+                    JOIN dbo.center n ON n.center_id = p.center_id
+                    WHERE n.country_id = ?
+                      AND p.username = ? COLLATE Latin1_General_CI_AI
+                    """,
+                    (int(country_id), person_name),
+                )
+                if cursor.fetchone() is None:
+                    raise ValueError(f"unknown person: {person_name}")
+            elif center_name and not scoped_ids:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM dbo.center
+                    WHERE country_id = ?
+                      AND username = ? COLLATE Latin1_General_CI_AI
+                    """,
+                    (int(country_id), center_name),
+                )
+                if cursor.fetchone() is None:
+                    raise ValueError(f"unknown center: {center_name}")
+
         # Resultaat drill-down: one column per bank account with a booking
         # this year; each P&L row carries its per-account year sums.
         result_accounts: list[dict[str, Any]] = []
@@ -3315,13 +3376,26 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
             cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
             if cursor.fetchone()[0] is not None:
                 result_accounts, pnl_sums = _pnl_per_account(
-                    cursor, int(country_id), int(year), table
+                    cursor,
+                    int(country_id),
+                    int(year),
+                    table,
+                    scope_sql=scope_sql,
+                    scope_params=scope_params,
                 )
         sibling_accounts = _load_sibling_accounts(cursor, int(country_id))
-        sibling_pairs_for_year = sibling_pairs(sibling_accounts)
-        result_accounts, pnl_sums = merge_sibling_pnl(
-            result_accounts, pnl_sums, sibling_pairs_for_year
-        )
+        if scoped_ids is not None:
+            sibling_accounts = [
+                item
+                for item in sibling_accounts
+                if int(item["account_id"]) in scoped_ids
+            ]
+        # Country login folds HD into the unit. Center and person do not.
+        sibling_pairs_for_year = [] if scoped else sibling_pairs(sibling_accounts)
+        if sibling_pairs_for_year:
+            result_accounts, pnl_sums = merge_sibling_pnl(
+                result_accounts, pnl_sums, sibling_pairs_for_year
+            )
         account_ids = [int(a["account_id"]) for a in result_accounts]
 
         # Named SIa/SIb afschrijvingen go to that column. A percentage rule
@@ -3360,10 +3434,16 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         result_mirrors: list[dict[str, Any]] = []
 
         combined: dict[int, Decimal] = {}
-        for code, amount in recorded.items():
-            combined[code] = combined.get(code, Decimal("0")) + amount
-        for code, cents in overlay.items():
-            combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
+        if scoped:
+            for cat_id, by_acc in pnl_sums.items():
+                total = sum(by_acc.values(), Decimal("0"))
+                if total != 0:
+                    combined[int(cat_id)] = total
+        else:
+            for code, amount in recorded.items():
+                combined[code] = combined.get(code, Decimal("0")) + amount
+            for code, cents in overlay.items():
+                combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
 
         def _result_columns(cat_id: int) -> list[float]:
             acc = [pnl_sums.get(cat_id, {}).get(aid, Decimal("0")) for aid in account_ids]
@@ -3415,7 +3495,11 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
         for cat_id in sorted(cmap, key=_local):
             if cat_id in skip_ids:
                 continue
-            side, _account_id = cmap[cat_id]
+            side, account_id = cmap[cat_id]
+            if scoped_ids is not None and (
+                account_id is None or int(account_id) not in scoped_ids
+            ):
+                continue
             cents, _source = breakdown.get(cat_id, (0, "opening"))
             row = {
                 "code": _local(cat_id),
@@ -3423,9 +3507,9 @@ def export_matrix_excel_data(country: str, year: int) -> dict[str, Any]:
                 "amount": float(Decimal(cents) / Decimal(100)),
             }
             (passiva if side == "passiva" else activa).append(row)
-        activa = merge_sibling_balance(activa, sibling_pairs_for_year)
-        passiva = merge_sibling_balance(passiva, sibling_pairs_for_year)
-
+        if sibling_pairs_for_year:
+            activa = merge_sibling_balance(activa, sibling_pairs_for_year)
+            passiva = merge_sibling_balance(passiva, sibling_pairs_for_year)
         total_activa = sum(Decimal(str(row["amount"])) for row in activa) or Decimal("0")
         if result_id is not None:
             passiva.append(

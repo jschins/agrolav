@@ -841,6 +841,7 @@ def result_sheet(
         if login_account is not None:
             kind = _unit_kind(login_account, login)
             sibling = _sibling_for(login_account, accounts, kind, login)
+            # Fold the HD into the unit. An HD login keeps only its own amounts.
             if kind == "unit" and sibling is not None:
                 named_banks = True
                 extra = _amounts(

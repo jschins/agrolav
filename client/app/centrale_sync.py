@@ -749,8 +749,18 @@ def hub_put(suffix: str, body: dict[str, Any], *, timeout: float = 120.0) -> dic
 
 
 def export_excel_data(year: int) -> dict[str, Any]:
-    """Workbook payload (Balans + Resultaat + Gecondenseerde balans) for a year from the hub."""
-    return hub_get(f"/export-data?year={int(year)}", timeout=90.0)
+    """Workbook payload for a year, scoped to the current login.
+
+    Country: every account, with each unit folded together with its HD.
+    Center and person: that login's accounts only, without that fold.
+    """
+    cfg = load_config()
+    qs = [f"year={int(year)}"]
+    if cfg.access == ACCESS_PERSON and cfg.person:
+        qs.append(f"person={urllib.parse.quote(cfg.person)}")
+    elif cfg.access == ACCESS_CENTER and cfg.center:
+        qs.append(f"center_name={urllib.parse.quote(cfg.center)}")
+    return hub_get(f"/export-data?{'&'.join(qs)}", timeout=90.0)
 
 
 def export_resultaat_excel_data(year: int) -> dict[str, Any]:

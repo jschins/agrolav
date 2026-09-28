@@ -599,6 +599,8 @@ def api_export_data(
     center: str,
     year: int | None = Query(default=None),
     country: str | None = Query(default=None),
+    person: str | None = Query(default=None),
+    center_name: str | None = Query(default=None),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     import datetime
@@ -609,9 +611,14 @@ def api_export_data(
     key = (country or "").strip() or str(request_country() or "").strip()
     if not key:
         raise HTTPException(status_code=400, detail="country is required")
+    person_key = (person or "").strip()
+    scope_center = "" if person_key else (center_name or "").strip()
     try:
         return export_matrix_excel_data(
-            key, int(year) if year else int(datetime.date.today().year)
+            key,
+            int(year) if year else int(datetime.date.today().year),
+            person=person_key or None,
+            center=scope_center or None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
