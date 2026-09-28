@@ -748,19 +748,77 @@ def hub_put(suffix: str, body: dict[str, Any], *, timeout: float = 120.0) -> dic
     return hub_request("PUT", center_path(suffix), body=body, timeout=timeout)
 
 
-def export_excel_data(year: int) -> dict[str, Any]:
+def export_excel_data(
+    year: int,
+    *,
+    person: str | None = None,
+    center: str | None = None,
+) -> dict[str, Any]:
     """Workbook payload for a year, scoped to the current login.
 
     Country: every account, with each unit folded together with its HD.
-    Center and person: that login's accounts only, without that fold.
+    A country login may also ask for one person or one center; that file uses
+    the same builder, limited to that login, without the fold.
+    Center and person sessions stay on their own login.
     """
     cfg = load_config()
     qs = [f"year={int(year)}"]
-    if cfg.access == ACCESS_PERSON and cfg.person:
+    if cfg.access == ACCESS_COUNTRY:
+        asked_person = (person or "").strip()
+        asked_center = (center or "").strip()
+        if asked_person:
+            qs.append(f"person={urllib.parse.quote(asked_person)}")
+        elif asked_center:
+            qs.append(f"center_name={urllib.parse.quote(asked_center)}")
+    elif cfg.access == ACCESS_PERSON and cfg.person:
         qs.append(f"person={urllib.parse.quote(cfg.person)}")
     elif cfg.access == ACCESS_CENTER and cfg.center:
         qs.append(f"center_name={urllib.parse.quote(cfg.center)}")
     return hub_get(f"/export-data?{'&'.join(qs)}", timeout=90.0)
+
+
+def export_zip_manifest() -> dict[str, Any]:
+    """Unit, person, center, and country logins of the signed-in country."""
+    cfg = load_config()
+    if cfg.access != ACCESS_COUNTRY:
+        raise RuntimeError("export zip is available to the country login")
+    return hub_get("/export-zip-manifest", timeout=60.0)
+
+
+def unit_result_sheet(year: int, *, login: str, account: str) -> dict[str, Any]:
+    """Result sheet for one unit login, via the same result-window request."""
+    cfg = load_config()
+    if cfg.access != ACCESS_COUNTRY:
+        raise RuntimeError("export zip is available to the country login")
+    login_name = (login or "").strip()
+    if not login_name:
+        raise RuntimeError("unit login is required")
+    if not str(cfg.country or "").strip():
+        raise RuntimeError("country is required")
+    params = {"unit": "1", "login": login_name}
+    iban = "".join(str(account or "").split()).upper()
+    if iban:
+        params["account"] = iban
+    slug = urllib.parse.quote(str(cfg.country).strip())
+    url = (
+        f"{_result_base_url()}/result/{slug}/api/balance/{int(year)}"
+        f"?{urllib.parse.urlencode(params)}"
+    )
+    req = urllib.request.Request(url, method="GET")
+    key = os.environ.get("RESULT_API_KEY", "").strip()
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError(f"unit result sheet for {login_name}: {exc.code} {detail}") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"unit result sheet for {login_name}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"unit result sheet for {login_name} was not an object")
+    return payload
 
 
 def export_resultaat_excel_data(year: int) -> dict[str, Any]:

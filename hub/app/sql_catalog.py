@@ -3245,6 +3245,121 @@ def export_resultaat_excel_data(
         raise ValueError(str(exc)) from exc
 
 
+def export_zip_manifest(country: str) -> dict[str, Any]:
+    """Unit, person, center, and country logins for the country Export zip.
+
+    The zip does not calculate workbooks here. Each login is handed to the
+    same export that login already uses.
+    """
+    name = (country or "").strip()
+    if not name:
+        raise ValueError("country is required")
+
+    def _run() -> dict[str, Any]:
+        from app.user_store import display_title
+
+        cursor = _cursor()
+        country_id = _country_id_for(cursor, name)
+        if country_id is None:
+            raise ValueError(f"Unknown country: {name}")
+        cursor.execute(
+            """
+            SELECT username, title
+            FROM dbo.country
+            WHERE country_id = ?
+            """,
+            (country_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise ValueError(f"Unknown country: {name}")
+        country_login = {
+            "username": str(row[0] or "").strip(),
+            "title": str(row[1] or row[0] or "").strip(),
+        }
+        cursor.execute(
+            """
+            SELECT username, title
+            FROM dbo.center
+            WHERE country_id = ?
+            ORDER BY username
+            """,
+            (country_id,),
+        )
+        centers = [
+            {"username": str(item[0] or "").strip(), "title": str(item[1] or item[0] or "").strip()}
+            for item in cursor.fetchall()
+            if str(item[0] or "").strip()
+        ]
+        cursor.execute(
+            """
+            SELECT username, title
+            FROM dbo.person
+            WHERE country_id = ?
+            ORDER BY username
+            """,
+            (country_id,),
+        )
+        persons = [
+            {"username": str(item[0] or "").strip(), "title": str(item[1] or item[0] or "").strip()}
+            for item in cursor.fetchall()
+            if str(item[0] or "").strip()
+        ]
+        cursor.execute(
+            """
+            SELECT
+                u.username,
+                a.iban
+            FROM dbo.unit u
+            INNER JOIN dbo.account a ON a.account_id = (
+                SELECT TOP 1 a2.account_id
+                FROM dbo.account a2
+                JOIN dbo.person p2 ON p2.id = a2.person_id
+                WHERE p2.center_id = u.center_id
+                  AND (
+                    a2.account_id = u.unit_id
+                    OR LOWER(REPLACE(a2.account_name, N' ', N'_')) = LOWER(u.username)
+                  )
+                ORDER BY
+                  CASE
+                    WHEN LOWER(REPLACE(a2.account_name, N' ', N'_')) = LOWER(u.username) THEN 0
+                    ELSE 1
+                  END,
+                  CASE WHEN a2.account_id = u.unit_id THEN 0 ELSE 1 END,
+                  a2.account_id
+            )
+            WHERE u.country_id = ?
+            ORDER BY u.username
+            """,
+            (country_id,),
+        )
+        units = []
+        for item in cursor.fetchall():
+            username = str(item[0] or "").strip()
+            if not username:
+                continue
+            units.append(
+                {
+                    "username": username,
+                    "title": display_title(username),
+                    "account": "".join(str(item[1] or "").split()).upper(),
+                }
+            )
+        return {
+            "country": country_login,
+            "centers": centers,
+            "persons": persons,
+            "units": units,
+        }
+
+    try:
+        return _sql_retry(_run)
+    except ValueError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(str(exc)) from exc
+
+
 def export_matrix_excel_data(
     country: str,
     year: int,

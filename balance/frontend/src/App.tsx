@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getDates,
   getMeta,
@@ -14,7 +14,9 @@ import type {
   CashSheet,
   SubadministratieRow,
 } from "./types";
-import { buildXlsx, downloadBlob, euro2, RESULT_STYLE, type XlsxCell, type XlsxSheet } from "./xlsx";
+import { unitResultWorkbook } from "./resultWorkbook";
+import { zipDoneLine, zipMessageLine, zipPulseLine, zipStartLines } from "./zipDebug"; // ZIP_DEBUG
+import { buildXlsx, downloadBlob, euro2, type XlsxSheet } from "./xlsx";
 
 const EUR = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -161,8 +163,43 @@ function isUnitLogin(): boolean {
   return new URLSearchParams(window.location.search).get("unit") === "1";
 }
 
+function isCountryLogin(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return !params.get("person") && !params.get("center") && !params.get("unit");
+}
+
 function requestMenuExport(): void {
   window.opener?.postMessage({ type: "agrolav-export-excel" }, "*");
+}
+
+type ZipRun = {
+  line: string;
+  log: string[];
+  stepAt: number;
+  done: boolean;
+  error: string;
+};
+
+function ZipScreen({ run, now, onClose }: { run: ZipRun; now: number; onClose: () => void }) {
+  const logRef = useRef<HTMLPreElement>(null);
+  useEffect(() => {
+    logRef.current?.scrollTo(0, logRef.current.scrollHeight);
+  }, [run.log.length]);
+  const waiting = run.done ? 0 : Math.max(0, Math.floor((now - run.stepAt) / 1000));
+  return (
+    <div className="zip-screen" role="status">
+      <h2>{run.line}</h2>
+      <p className="zip-wait">
+        {run.done ? (run.error ? "Stopped" : "Download started") : `Waiting ${waiting}s on this step`}
+      </p>
+      <pre ref={logRef}>{run.log.join("\n")}</pre>
+      {run.done ? (
+        <button type="button" onClick={onClose}>
+          Sluiten
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function loginName(): string {
@@ -190,120 +227,12 @@ function sideSheet(title: string, lines: BalanceLine[], total: number): XlsxShee
   return { name: title.slice(0, 31), rows, widths: [12, 36, 16] };
 }
 
-function paint(value: string | number, style: number): XlsxCell {
-  return { value, style };
-}
-
-function resultSheet(data: BalanceSheet): XlsxSheet {
-  const label = new URLSearchParams(window.location.search).get("label")?.trim() || loginName();
-  const title = `Resultaat${label ? ` ${label}` : ""} ${data.year}`;
-  const S = RESULT_STYLE;
-  const page = () => paint("", S.page);
-  const rows: XlsxCell[][] = [];
-  const merges: string[] = [];
-  const heights: (number | undefined)[] = [];
-  const push = (row: XlsxCell[], height?: number) => {
-    rows.push(row);
-    heights.push(height);
-  };
-  const at = () => rows.length + 1;
-
-  push(
-    [paint(title, S.title), paint("", S.title), paint("", S.title), paint("", S.title), paint("", S.title), paint("", S.title), paint("", S.title)],
-    24
-  );
-  merges.push("A1:G1");
-  push([page(), page(), page(), page(), page(), page(), page()], 10);
-
-  const headRow = at();
-  push(
-    [
-      paint("Uitgaven", S.heading),
-      paint("", S.heading),
-      paint("", S.heading),
-      page(),
-      paint("Inkomsten", S.heading),
-      paint("", S.heading),
-      paint("", S.heading),
-    ],
-    22
-  );
-  merges.push(`A${headRow}:C${headRow}`, `E${headRow}:G${headRow}`);
-  push([
-    paint("Code", S.head),
-    paint("Post", S.head),
-    paint("Bedrag", S.head),
-    page(),
-    paint("Code", S.head),
-    paint("Post", S.head),
-    paint("Bedrag", S.head),
-  ]);
-
-  const body = (line: BalanceLine | undefined): XlsxCell[] =>
-    line
-      ? [paint(String(line.code), S.code), paint(line.label, S.text), paint(euro2(line.amount), S.amount)]
-      : [paint("", S.text), paint("", S.text), paint("", S.text)];
-  const count = Math.max(data.activa.length, data.passiva.length);
-  for (let i = 0; i < count; i += 1) {
-    push([...body(data.activa[i]), page(), ...body(data.passiva[i])]);
-  }
-
-  const totalRow = at();
-  push([
-    paint("Totaal Uitgaven", S.total),
-    paint("", S.total),
-    paint(euro2(data.total_activa), S.totalAmount),
-    page(),
-    paint("Totaal Inkomsten", S.total),
-    paint("", S.total),
-    paint(euro2(data.total_passiva), S.totalAmount),
-  ]);
-  merges.push(`A${totalRow}:B${totalRow}`, `E${totalRow}:F${totalRow}`);
-
-  if (data.cash) {
-    push([page(), page(), page(), page(), page(), page(), page()], 14);
-    const balansRow = at();
-    push(
-      [paint("Balans", S.heading), paint("", S.heading), paint("", S.heading), page(), page(), page(), page()],
-      22
-    );
-    merges.push(`A${balansRow}:C${balansRow}`);
-    for (const row of data.cash.rows) {
-      if (row.gap) {
-        push([page(), page(), page(), page(), page(), page(), page()], 10);
-        continue;
-      }
-      const labelStyle = row.alert ? S.alert : row.strong ? S.strong : S.text;
-      const amountStyle = row.alert ? S.alertAmount : row.strong ? S.strongAmount : S.amount;
-      const lineRow = at();
-      push([
-        paint(row.label, labelStyle),
-        paint("", labelStyle),
-        paint(euro2(row.amount ?? 0), amountStyle),
-        page(),
-        page(),
-        page(),
-        page(),
-      ]);
-      merges.push(`A${lineRow}:B${lineRow}`);
-    }
-  }
-
-  return {
-    name: "Resultaat",
-    rows,
-    widths: [12, 36, 14, 3, 12, 36, 14],
-    merges,
-    fitPage: true,
-    rowHeights: heights,
-  };
-}
-
 function exportWindow(sheet: BalanceSheet, resultView: boolean): void {
   const kind = resultView ? "Resultaat" : "Balans";
   const filename = `${kind}_${safeFilePart(loginName())}_${exportStamp()}.xlsx`;
   if (resultView) {
-    downloadBlob(filename, buildXlsx([resultSheet(sheet)]));
+    const label = new URLSearchParams(window.location.search).get("label")?.trim() || loginName();
+    downloadBlob(filename, unitResultWorkbook(sheet, label));
     return;
   }
   const sheets = [
@@ -351,6 +280,10 @@ export default function App() {
   const [asOf, setAsOf] = useState<string | null>(null);
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [zipRun, setZipRun] = useState<ZipRun | null>(null);
+  const [zipNow, setZipNow] = useState(0);
+  const zipActiveRef = useRef(false);
+  const zipMessagesRef = useRef(0);
   const [title, setTitle] = useState("");
   const headingName = resultView ? scopeLabel || title : title;
   const [noteTitle, setNoteTitle] = useState("Kleurconventie");
@@ -364,6 +297,66 @@ export default function App() {
   const [popupJournals, setPopupJournals] = useState<AfschrijvingJournal[]>([]);
   const [popupError, setPopupError] = useState<string | null>(null);
   const [popupLoading, setPopupLoading] = useState(false);
+
+  useEffect(() => {
+    if (!zipRun || zipRun.done) return;
+    const id = window.setInterval(() => setZipNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [zipRun]);
+
+  useEffect(() => {
+    // ZIP_DEBUG
+    if (!zipRun || zipRun.done) return;
+    const startedAt = zipRun.stepAt;
+    const id = window.setInterval(() => {
+      setZipRun((prev) => {
+        if (!prev || prev.done) return prev;
+        return {
+          ...prev,
+          log: [...prev.log, zipPulseLine(zipMessagesRef.current, startedAt)],
+        };
+      });
+    }, 10000);
+    return () => window.clearInterval(id);
+  }, [zipRun]);
+
+  useEffect(() => {
+    function onZipMessage(event: MessageEvent) {
+      const data = event.data;
+      if (zipActiveRef.current) {
+        // ZIP_DEBUG
+        zipMessagesRef.current += 1;
+        const index = zipMessagesRef.current;
+        setZipRun((prev) =>
+          prev ? { ...prev, log: [...prev.log, zipMessageLine(event, index)] } : prev
+        );
+      }
+      if (data?.type === "agrolav-export-zip-progress") {
+        setZipRun((prev) => ({
+          line: String(data.line || prev?.line || "Export zip"),
+          log: prev?.log ?? [],
+          stepAt: Date.now(),
+          done: false,
+          error: "",
+        }));
+        setZipNow(Date.now());
+        return;
+      }
+      if (data?.type !== "agrolav-export-zip-done") return;
+      const failure = data.error ? String(data.error) : "";
+      if (failure) setError(failure);
+      zipActiveRef.current = false;
+      setZipRun((prev) => ({
+        line: failure ? "Export zip failed" : "Export zip finished",
+        log: [...(prev?.log ?? []), zipDoneLine(failure)], // ZIP_DEBUG
+        stepAt: Date.now(),
+        done: true,
+        error: failure,
+      }));
+    }
+    window.addEventListener("message", onZipMessage);
+    return () => window.removeEventListener("message", onZipMessage);
+  }, []);
 
   const load = useCallback((y: number, date?: string | null) => {
     setError(null);
@@ -531,6 +524,13 @@ export default function App() {
 
   return (
     <div className="sheet-view">
+      {zipRun ? (
+        <ZipScreen
+          run={zipRun}
+          now={zipNow || Date.now()}
+          onClose={() => setZipRun(null)}
+        />
+      ) : null}
       <header>
         <h1>
           {resultView ? "Resultaat" : "Balans"}
@@ -586,6 +586,29 @@ export default function App() {
                 }}
               >
                 Export
+              </button>
+            )}
+            {resultView && isCountryLogin() && (
+              <button
+                type="button"
+                className="export-knob"
+                disabled={Boolean(zipRun && !zipRun.done)}
+                onClick={() => {
+                  if (zipRun && !zipRun.done) return;
+                  setError(null);
+                  setZipNow(Date.now());
+                  zipMessagesRef.current = 0; // ZIP_DEBUG
+                  zipActiveRef.current = true; // ZIP_DEBUG
+                  setZipRun({
+                    line: "Export zip",
+                    log: zipStartLines(year), // ZIP_DEBUG
+                    stepAt: Date.now(),
+                    done: false,
+                    error: "",
+                  });
+                }}
+              >
+                Export zip
               </button>
             )}
           </div>

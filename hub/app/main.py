@@ -594,6 +594,24 @@ def api_balance_slug(
     }
 
 
+@app.get("/api/local/{center}/export-zip-manifest")
+def api_export_zip_manifest(
+    center: str,
+    country: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.runtime import request_country
+    from app.sql_catalog import export_zip_manifest
+
+    key = (country or "").strip() or str(request_country() or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="country is required")
+    try:
+        return export_zip_manifest(key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/local/{center}/export-data")
 def api_export_data(
     center: str,

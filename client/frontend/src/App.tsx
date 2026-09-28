@@ -11,6 +11,8 @@ import {
   getBanks,
   getCatalog,
   getExportExcel,
+  getExportZipManifest,
+  getUnitResultSheet,
   getExportResultaat,
   type ExportExcelData,
   type ExportExcelLine,
@@ -70,6 +72,22 @@ import type {
   Transaction,
   TransactionsResponse,
 } from "./types";
+import { unitResultWorkbook } from "../../../balance/frontend/src/resultWorkbook.ts";
+import {
+  zipFailDetail,
+  zipManifestOk,
+  zipManifestStart,
+  zipMatrixOk,
+  zipMatrixStart,
+  zipPackOk,
+  zipPackStart,
+  zipReceivedDetail,
+  zipReply,
+  zipSheetOk,
+  zipUnitStart,
+  zipWorkbookOk,
+} from "./zipDebug"; // ZIP_DEBUG
+import { zipStore } from "./zip";
 import {
   buildXlsx,
   downloadBlob,
@@ -1901,9 +1919,120 @@ function SyncNotifyShell({
       .catch((e: Error) => setScratchError(e.message));
   }
 
+  async function exportZip(report: (line: string, detail: string) => void): Promise<string | null> {
+    if (!activeYear) return "No year selected";
+    setScratchError(null);
+    let current = "startup";
+    const started = performance.now();
+    const elapsed = () => `${Math.round(performance.now() - started)}ms`;
+    try {
+      current = "manifest";
+      report("Reading logins", zipManifestStart(activeYear, elapsed())); // ZIP_DEBUG
+      const manifestAt = performance.now();
+      const manifest = await getExportZipManifest();
+      report(
+        "Reading logins",
+        zipManifestOk(Math.round(performance.now() - manifestAt), manifest, elapsed())
+      ); // ZIP_DEBUG
+      const files: { name: string; bytes: Uint8Array }[] = [];
+      const part = (value: string) => value.trim().replace(/[\\/:*?"<>|]/g, "_") || "login";
+      type ZipJob = {
+        folder: string;
+        username: string;
+        title: string;
+        account: string;
+        scope?: { person?: string; center?: string };
+      };
+      const jobs: ZipJob[] = [
+        ...manifest.units.map((item) => ({
+          folder: "unit",
+          username: item.username,
+          title: item.title || item.username,
+          account: item.account || "",
+        })),
+        ...manifest.persons.map((item) => ({
+          folder: "person",
+          username: item.username,
+          title: item.title || item.username,
+          account: "",
+          scope: { person: item.username },
+        })),
+        ...manifest.centers.map((item) => ({
+          folder: "center",
+          username: item.username,
+          title: item.title || item.username,
+          account: "",
+          scope: { center: item.username },
+        })),
+        ...(manifest.country?.username
+          ? [{
+              folder: "country",
+              username: manifest.country.username,
+              title: manifest.country.title || manifest.country.username,
+              account: "",
+            }]
+          : []),
+      ];
+      for (let index = 0; index < jobs.length; index += 1) {
+        const job = jobs[index];
+        const file = `${job.folder}/${part(job.username)}.xlsx`;
+        const place = `${index + 1}/${jobs.length}`;
+        current = file;
+        if (job.folder === "unit") {
+          report(`Writing ${file} (${place})`, zipUnitStart(job.username, job.account, activeYear, elapsed())); // ZIP_DEBUG
+          const fetchAt = performance.now();
+          const sheet = await getUnitResultSheet(activeYear, job.username, job.account);
+          report(`Writing ${file} (${place})`, zipSheetOk(Math.round(performance.now() - fetchAt), sheet, elapsed())); // ZIP_DEBUG
+          const buildAt = performance.now();
+          const bytes = new Uint8Array(await unitResultWorkbook(sheet, job.title).arrayBuffer());
+          report(`Writing ${file} (${place})`, zipWorkbookOk(Math.round(performance.now() - buildAt), bytes.length, elapsed())); // ZIP_DEBUG
+          files.push({ name: file, bytes });
+          continue;
+        }
+        const scopeText = job.scope?.person
+          ? `person=${job.scope.person}`
+          : job.scope?.center
+            ? `center_name=${job.scope.center}`
+            : "country scope";
+        report(
+          `Writing ${file} (${place})`,
+          zipMatrixStart(job.folder, job.username, scopeText, activeYear, elapsed())
+        ); // ZIP_DEBUG
+        const fetchAt = performance.now();
+        const data = await getExportExcel(activeYear, job.scope);
+        report(`Writing ${file} (${place})`, zipMatrixOk(Math.round(performance.now() - fetchAt), data, elapsed())); // ZIP_DEBUG
+        const buildAt = performance.now();
+        const bytes = new Uint8Array(await buildXlsx(excelSheets(data, menuTerms)).arrayBuffer());
+        report(`Writing ${file} (${place})`, zipWorkbookOk(Math.round(performance.now() - buildAt), bytes.length, elapsed())); // ZIP_DEBUG
+        files.push({ name: file, bytes });
+      }
+      current = "zip";
+      report(`Packing export-${activeYear}.zip`, zipPackStart(activeYear, files, elapsed())); // ZIP_DEBUG
+      const packAt = performance.now();
+      downloadBlob(`export-${activeYear}.zip`, zipStore(files));
+      report(`Packing export-${activeYear}.zip`, zipPackOk(Math.round(performance.now() - packAt), elapsed())); // ZIP_DEBUG
+      return null;
+    } catch (e) {
+      const text = zipFailDetail(current, elapsed(), e); // ZIP_DEBUG
+      report("Export zip failed", text);
+      setScratchError(text);
+      return text;
+    }
+  }
+
   useEffect(() => {
     function onExportRequest(e: MessageEvent) {
       if (e.data?.type === "agrolav-export-excel") exportExcel();
+      if (e.data?.type === "agrolav-export-zip") {
+        const source = e.source;
+        const report = (line: string, detail: string) => {
+          zipReply(source, { type: "agrolav-export-zip-progress", line, detail, sentAt: Date.now() }); // ZIP_DEBUG
+        };
+        report("Export zip", zipReceivedDetail(e, activeYear || "")); // ZIP_DEBUG
+        void exportZip(report).then((message) => {
+          zipReply(source, { type: "agrolav-export-zip-done", error: message, sentAt: Date.now() }); // ZIP_DEBUG
+        });
+      }
     }
     window.addEventListener("message", onExportRequest);
     return () => window.removeEventListener("message", onExportRequest);
@@ -2047,12 +2176,6 @@ function SyncNotifyShell({
       !journalView &&
       !afschrijvingenView &&
       !searchView;
-    if (onMatrix) {
-      items.push({
-        id: "export-excel",
-        label: tableHeaderTerm(menuTerms, "Export zip"),
-      });
-    }
     if (onMatrix) {
       items.push({
         id: "back-to-matrix",

@@ -170,25 +170,7 @@ On `dbo.person`:
 | `mobile_phone`  | `NVARCHAR(32) NULL`  | E.164                   |
 
 
-These columns are in `hub/sql/phase_c.sql` for new installs. Live databases
-that predate them need the same `ALTER` on **local and remote** so they
-stay identical:
 
-```sql
-USE agrolav;
-GO
-
-IF COL_LENGTH(N'dbo.person', N'password_hash') IS NULL
-    ALTER TABLE dbo.person ADD password_hash NVARCHAR(256) NULL;
-GO
-
-IF COL_LENGTH(N'dbo.person', N'mobile_phone') IS NULL
-    ALTER TABLE dbo.person ADD mobile_phone NVARCHAR(32) NULL;
-GO
-```
-
-Backfill hashes with a Python loop (unique scrypt salt per row), not a
-single SQL `UPDATE`. `hub/scripts/` has the one-off hasher.
 
 ---
 

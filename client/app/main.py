@@ -732,13 +732,45 @@ def api_banks(year: str | None = Query(default=None)) -> dict[str, Any]:
 
 
 @app.get("/api/export-excel")
-def api_export_excel(year: int | None = Query(default=None)) -> dict[str, Any]:
+def api_export_excel(
+    year: int | None = Query(default=None),
+    person: str | None = Query(default=None),
+    center_name: str | None = Query(default=None),
+) -> dict[str, Any]:
     import datetime
 
     from app.centrale_sync import export_excel_data
 
     try:
-        return export_excel_data(int(year) if year else int(datetime.date.today().year))
+        return export_excel_data(
+            int(year) if year else int(datetime.date.today().year),
+            person=person,
+            center=center_name,
+        )
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.get("/api/export-zip-manifest")
+def api_export_zip_manifest() -> dict[str, Any]:
+    from app.centrale_sync import export_zip_manifest
+
+    try:
+        return export_zip_manifest()
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.get("/api/unit-result-sheet")
+def api_unit_result_sheet(
+    year: int = Query(...),
+    login: str = Query(...),
+    account: str = Query(default=""),
+) -> dict[str, Any]:
+    from app.centrale_sync import unit_result_sheet
+
+    try:
+        return unit_result_sheet(int(year), login=login, account=account)
     except Exception as exc:
         raise _hub_error(exc) from exc
 

@@ -1,3 +1,4 @@
+import type { BalanceSheet } from "../../../balance/frontend/src/types.ts";
 import type {
   AddTermResponse,
   CatalogCategory,
@@ -158,9 +159,42 @@ export interface ExportExcelData {
   result_tree?: ExportTreeGroup[] | null;
 }
 
-export function getExportExcel(year?: string): Promise<ExportExcelData> {
-  const q = year ? `?year=${encodeURIComponent(year)}` : "";
-  return getJson(`/api/export-excel${q}`);
+export function getExportExcel(
+  year?: string,
+  scope?: { person?: string; center?: string }
+): Promise<ExportExcelData> {
+  const q = new URLSearchParams();
+  if (year) q.set("year", year);
+  if (scope?.person) q.set("person", scope.person);
+  if (scope?.center) q.set("center_name", scope.center);
+  const text = q.toString();
+  return getJson(`/api/export-excel${text ? `?${text}` : ""}`);
+}
+
+export interface ExportZipLogin {
+  username: string;
+  title: string;
+  account?: string;
+}
+
+export interface ExportZipManifest {
+  country: ExportZipLogin;
+  centers: ExportZipLogin[];
+  persons: ExportZipLogin[];
+  units: ExportZipLogin[];
+}
+
+export function getExportZipManifest(): Promise<ExportZipManifest> {
+  return getJson("/api/export-zip-manifest");
+}
+
+export function getUnitResultSheet(
+  year: string,
+  login: string,
+  account: string
+): Promise<BalanceSheet> {
+  const q = new URLSearchParams({ year, login, account });
+  return getJson(`/api/unit-result-sheet?${q}`);
 }
 
 export interface ExportResultaatMaaltijden {
