@@ -83,6 +83,11 @@ export function getMeta(): Promise<{
   return getJson("/api/balance/meta");
 }
 
+export function getBalanceSheet(year: number, date?: string): Promise<BalanceSheet> {
+  const q = date ? `?date=${encodeURIComponent(date)}` : "";
+  return getJson(`/api/balance/${year}/sheet${q}`);
+}
+
 export function getSheet(year: number, date?: string): Promise<BalanceSheet> {
   const q = date
     ? `?date=${encodeURIComponent(date)}`

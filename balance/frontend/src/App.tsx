@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  getBalanceSheet,
   getDates,
   getMeta,
   getPostPopup,
@@ -279,6 +280,7 @@ export default function App() {
   const [dates, setDates] = useState<string[]>([]);
   const [asOf, setAsOf] = useState<string | null>(null);
   const [sheet, setSheet] = useState<BalanceSheet | null>(null);
+  const [balanceSheet, setBalanceSheet] = useState<BalanceSheet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zipRun, setZipRun] = useState<ZipRun | null>(null);
   const [zipNow, setZipNow] = useState(0);
@@ -364,6 +366,11 @@ export default function App() {
     getSheet(y, date ?? undefined)
       .then(setSheet)
       .catch((e) => setError(toMessage(e)));
+    if (!isResultView()) return;
+    setBalanceSheet(null);
+    getBalanceSheet(y, date ?? undefined)
+      .then(setBalanceSheet)
+      .catch(() => setBalanceSheet(null));
   }, []);
 
   useEffect(() => {
@@ -425,6 +432,22 @@ export default function App() {
     }
     return codes;
   }, [sheet, subadminRows]);
+
+  const balanceJournalCodes = useMemo(() => {
+    const codes = new Set<number>();
+    for (const code of balanceSheet?.afschrijvingen?.from_codes ?? []) {
+      codes.add(Number(code));
+    }
+    return codes;
+  }, [balanceSheet]);
+
+  const balanceSubadminCodes = useMemo(() => {
+    const codes = new Set(subadminRows.map((r) => Number(r.local_code)));
+    for (const code of balanceSheet?.subadministratie?.local_codes ?? []) {
+      codes.add(Number(code));
+    }
+    return codes;
+  }, [balanceSheet, subadminRows]);
 
   const closePopup = () => {
     setOpenCode(null);
@@ -536,7 +559,20 @@ export default function App() {
           {resultView ? "Resultaat" : "Balans"}
           {headingName ? ` ${headingName}` : ""}
         </h1>
-        {years.length > 1 && (
+        {resultView && year != null && years.length > 0 ? (
+          <select
+            className="year-select"
+            value={year}
+            onChange={(e) => onYear(Number(e.target.value))}
+            aria-label="Jaar"
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        ) : years.length > 1 ? (
           <div className="year-switch">
             {years.map((y) => (
               <button
@@ -548,7 +584,7 @@ export default function App() {
               </button>
             ))}
           </div>
-        )}
+        ) : null}
         {year != null && (
           <div className="toolbar">
             {dates.length > 0 && (
@@ -648,6 +684,30 @@ export default function App() {
           />
         </div>
       )}
+
+      {resultView && balanceSheet ? (
+        <section className="balance-below">
+          <h2>Balans</h2>
+          <div className="sheet">
+            <SideTable
+              title="Activa"
+              lines={balanceSheet.activa}
+              total={balanceSheet.total_activa}
+              journalCodes={balanceJournalCodes}
+              subadminCodes={balanceSubadminCodes}
+              onOpen={openPopup}
+            />
+            <SideTable
+              title="Passiva"
+              lines={balanceSheet.passiva}
+              total={balanceSheet.total_passiva}
+              journalCodes={balanceJournalCodes}
+              subadminCodes={balanceSubadminCodes}
+              onOpen={openPopup}
+            />
+          </div>
+        </section>
+      ) : null}
 
       {resultView && sheet?.cash ? <CashTable cash={sheet.cash} /> : null}
 

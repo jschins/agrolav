@@ -107,83 +107,14 @@ const BALANCE_CHANNEL = "agrolav-balance";
 const BALANCE_WINDOW_NAME = "agrolavBalance";
 const RESULT_WINDOW_NAME = "agrolavResult";
 let balanceSheetWindow: Window | null = null;
-let lastBalanceUrl: string | null = null;
 let resultSheetWindow: Window | null = null;
 let lastResultUrl: string | null = null;
-let probeWindow: Window | null = null;
 let probeTimer: number | null = null;
-let probeTries = 0;
 
 function clearProbe(): void {
   if (probeTimer !== null) {
     window.clearTimeout(probeTimer);
     probeTimer = null;
-  }
-  probeWindow = null;
-  probeTries = 0;
-}
-
-function handleBalancePong(source: Window): void {
-  if (source !== probeWindow) return;
-  clearProbe();
-}
-
-function probeBalanceOwnership(win: Window): void {
-  clearProbe();
-  probeWindow = win;
-  probeTries = 0;
-  const scheduleNextProbe = () => {
-    probeTries += 1;
-    if (probeTries > 8) {
-      // Window does not cooperate (e.g. left over from a previous deploy
-      // without an opener): replace it so focus/close can reach it.
-      const w = probeWindow;
-      probeWindow = null;
-      probeTimer = null;
-      if (w && w === balanceSheetWindow) {
-        try {
-          w.close();
-        } catch {
-          // ignore
-        }
-        if (balanceSheetWindow === w) balanceSheetWindow = null;
-      }
-      return;
-    }
-    try {
-      win.postMessage({ type: "agrolav-probe" }, "*");
-    } catch {
-      probeTimer = null;
-      probeWindow = null;
-      return;
-    }
-    probeTimer = window.setTimeout(scheduleNextProbe, 500);
-  };
-  scheduleNextProbe();
-}
-
-function openBalanceSheetWindow(url: string): void {
-  let win = balanceSheetWindow && !balanceSheetWindow.closed ? balanceSheetWindow : null;
-  const reused = Boolean(win);
-  if (win) {
-    try {
-      if (url !== lastBalanceUrl) win.location.href = url;
-    } catch {
-      win = null;
-    }
-  }
-  if (!win) {
-    win = window.open(url, BALANCE_WINDOW_NAME);
-  }
-  balanceSheetWindow = win;
-  lastBalanceUrl = url;
-  if (win) {
-    try {
-      win.focus();
-    } catch {
-      // window may be gone; ignore
-    }
-    if (reused) probeBalanceOwnership(win);
   }
 }
 
@@ -210,7 +141,6 @@ function closeBalanceSheetWindow(): void {
     }
   }
   balanceSheetWindow = null;
-  lastBalanceUrl = null;
   try {
     const channel = new BroadcastChannel(BALANCE_CHANNEL);
     channel.postMessage({ type: "agrolav-close" });
@@ -2193,11 +2123,6 @@ function SyncNotifyShell({
         onClick: doCrossPostings,
       });
       items.push({
-        id: "balance-sheet",
-        label: tableHeaderTerm(menuTerms, "Balance sheet"),
-        onClick: () => openBalanceSheetWindow(status.balance_url!),
-      });
-      items.push({
         id: "journal",
         label: tableHeaderTerm(menuTerms, "Manual journal posts"),
         onClick: () => openView("journal"),
@@ -2819,9 +2744,6 @@ export default function App() {
         } catch {
           // ignore
         }
-      }
-      if (e.data?.type === "agrolav-pong" && e.source instanceof Window) {
-        handleBalancePong(e.source);
       }
     }
     window.addEventListener("message", onMessage);

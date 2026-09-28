@@ -202,6 +202,24 @@ def result_subadministratie(
     return {"country_id": resolve_country(slug), "rows": []}
 
 
+@app.get("/result/{slug}/api/balance/{year}/sheet")
+@_present_sheet_errors("Balance sheet")
+def result_balance_sheet(
+    slug: str,
+    year: int,
+    date: str | None = None,
+    _: None = Depends(_api_key),
+) -> dict[str, Any]:
+    """The balance-window sheet, shown under Resultaat."""
+    from app.balance import _country_has_balance
+    from app.balance import balance_sheet as compute
+
+    country_id = resolve_country(slug)
+    if not _country_has_balance(country_id):
+        raise HTTPException(status_code=404, detail="no balance sheet")
+    return compute(country_id, year, as_of=date)
+
+
 @app.get("/result/{slug}/api/balance/{year}")
 @_present_sheet_errors("Result sheet")
 def result_sheet(
