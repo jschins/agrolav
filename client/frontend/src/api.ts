@@ -455,7 +455,7 @@ export interface CentraleSyncStatus {
   balance_url?: string;
   /** Profit/loss window on port 8500, scoped to this login. */
   result_url?: string;
-  /** False when this egress address is not in dbo.egress_ip. */
+  /** False when this egress address is not in dbo.administrator.egress_ip. */
   full_menu?: boolean;
   /** Administrator login: the menu shows every item, ignoring dbo.menu_item. */
   administrator?: boolean;

@@ -28,6 +28,11 @@ class EgressListTests(unittest.TestCase):
 
 
 class AdministratorEgressTests(unittest.TestCase):
+    def setUp(self):
+        self.env = mock.patch.dict(os.environ, {"HUB_LOGIN_GATING": "1"})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
     def test_administrator_ip_is_allowed_for_restricted_login(self):
         from app import hub_ip
 
@@ -101,11 +106,51 @@ class AdministratorEgressTests(unittest.TestCase):
         ):
             self.assertFalse(hub_ip.login_ip_allowed(user, "80.12.34.56"))
 
-    def test_person_login_stays_ungated(self):
+    def test_person_in_an_expenses_country_stays_ungated(self):
         from app import hub_ip
 
         user = {"id": 7, "center": "dkg", "country": "nederland", "person": "jan"}
-        with mock.patch.object(hub_ip, "administrator_ip_allowed") as admin:
+        with mock.patch.object(hub_ip, "administrator_ip_allowed") as admin, mock.patch(
+            "app.sql_catalog.country_has_balance", return_value=False
+        ):
+            self.assertTrue(hub_ip.login_ip_allowed(user, "80.12.34.56"))
+        admin.assert_not_called()
+
+    def test_person_in_a_balance_country_is_gated(self):
+        from app import hub_ip
+
+        user = {"id": 7, "center": "dkg", "country": "instudo", "person": "sia"}
+        with mock.patch.object(
+            hub_ip, "administrator_ip_allowed", return_value=False
+        ), mock.patch.object(
+            hub_ip, "_egress_raw_for_user", return_value="81.23.45.67"
+        ), mock.patch("app.sql_catalog.country_has_balance", return_value=True):
+            self.assertFalse(hub_ip.login_ip_allowed(user, "80.12.34.56"))
+            self.assertTrue(hub_ip.login_ip_allowed(user, "81.23.45.67"))
+
+    def test_unit_login_stays_ungated(self):
+        from app import hub_ip
+
+        user = {
+            "id": 7,
+            "center": "dkg",
+            "country": "instudo",
+            "person": "sia",
+            "account": "NL00",
+        }
+        with mock.patch.object(hub_ip, "administrator_ip_allowed") as admin, mock.patch(
+            "app.sql_catalog.country_has_balance", return_value=True
+        ):
+            self.assertTrue(hub_ip.login_ip_allowed(user, "80.12.34.56"))
+        admin.assert_not_called()
+
+    def test_gate_stays_off_when_login_gating_is_zero(self):
+        from app import hub_ip
+
+        user = {"id": 7, "center": "dkg", "country": "nederland", "person": ""}
+        with mock.patch.dict(os.environ, {"HUB_LOGIN_GATING": "0"}), mock.patch.object(
+            hub_ip, "administrator_ip_allowed"
+        ) as admin:
             self.assertTrue(hub_ip.login_ip_allowed(user, "80.12.34.56"))
         admin.assert_not_called()
 
@@ -118,17 +163,19 @@ class AdministratorEgressTests(unittest.TestCase):
             self.assertFalse(hub_ip.administrator_ip_allowed("80.12.34.56"))
         self.assertEqual(len(cursor.execute.call_args_list), 1)
 
-    def test_administrator_table_matches_exact_ip(self):
+    def test_administrator_column_splits_commas(self):
         from app import hub_ip
 
-        cursor = mock.Mock()
-        cursor.fetchone.side_effect = [(123,), (1,)]
-        with mock.patch.object(hub_ip, "_cursor", return_value=cursor):
+        def cursor_for(_ip):
+            cursor = mock.Mock()
+            cursor.fetchone.side_effect = [(123,), (256,)]
+            cursor.fetchall.return_value = [("1.1.1.1, 80.12.34.56",), ("9.9.9.9",)]
+            return cursor
+
+        with mock.patch.object(hub_ip, "_cursor", side_effect=lambda: cursor_for(None)):
             self.assertTrue(hub_ip.administrator_ip_allowed("80.12.34.56"))
-        self.assertEqual(
-            cursor.execute.call_args_list[-1].args[1],
-            ("80.12.34.56",),
-        )
+            self.assertTrue(hub_ip.administrator_ip_allowed("9.9.9.9"))
+            self.assertFalse(hub_ip.administrator_ip_allowed("8.8.8.8"))
 
 
 class RecordVisitTests(unittest.TestCase):
@@ -279,26 +326,30 @@ class DevelopmentHubTests(unittest.TestCase):
     def test_loopback_login_is_allowed_when_the_flag_is_set(self):
         from app import hub_ip
 
-        with mock.patch.dict(os.environ, {"HUB_DEV_LOGIN": "1"}), mock.patch.object(
-            hub_ip, "administrator_ip_allowed"
-        ) as admin:
+        with mock.patch.dict(
+            os.environ, {"HUB_DEV_LOGIN": "1", "HUB_LOGIN_GATING": "1"}
+        ), mock.patch.object(hub_ip, "administrator_ip_allowed") as admin:
             self.assertTrue(hub_ip.login_ip_allowed(self.USER, "127.0.0.1"))
             self.assertTrue(hub_ip.login_ip_allowed(self.USER, "::1"))
         admin.assert_not_called()
 
-    def test_flag_unset_keeps_loopback_gated(self):
+    def test_login_gating_zero_skips_the_gate(self):
         from app import hub_ip
 
-        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
-            hub_ip, "administrator_ip_allowed", return_value=False
-        ), mock.patch.object(hub_ip, "_egress_raw_for_user", return_value=None):
-            self.assertFalse(hub_ip.login_ip_allowed(self.USER, "127.0.0.1"))
+        with mock.patch.dict(os.environ, {"HUB_LOGIN_GATING": "0"}, clear=True), mock.patch.object(
+            hub_ip, "administrator_ip_allowed"
+        ) as admin:
+            self.assertTrue(hub_ip.login_ip_allowed(self.USER, "127.0.0.1"))
+            self.assertTrue(hub_ip.login_ip_allowed(self.USER, "80.12.34.56"))
+        admin.assert_not_called()
 
     def test_flag_does_not_admit_a_remote_caller(self):
-        # A flag left on by accident must not open the gate to the internet.
+        # A development flag left on by accident must not open the gate to the internet.
         from app import hub_ip
 
-        with mock.patch.dict(os.environ, {"HUB_DEV_LOGIN": "1"}), mock.patch.object(
+        with mock.patch.dict(
+            os.environ, {"HUB_DEV_LOGIN": "1", "HUB_LOGIN_GATING": "1"}
+        ), mock.patch.object(
             hub_ip, "administrator_ip_allowed", return_value=False
         ), mock.patch.object(hub_ip, "_egress_raw_for_user", return_value=None):
             self.assertFalse(hub_ip.login_ip_allowed(self.USER, "80.12.34.56"))
@@ -329,7 +380,7 @@ class IPv6Tests(unittest.TestCase):
         from app import hub_ip
 
         user = {"id": 7, "center": "dkg", "country": "nederland", "person": ""}
-        with mock.patch.object(
+        with mock.patch.dict(os.environ, {"HUB_LOGIN_GATING": "1"}), mock.patch.object(
             hub_ip, "administrator_ip_allowed", return_value=False
         ), mock.patch.object(
             hub_ip, "_egress_raw_for_user", return_value="2001:db8::1"

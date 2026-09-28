@@ -1,11 +1,14 @@
-"""Country/center login allowlists on ``egress_ip``, plus ``dbo.visitor_ip`` logs.
+"""Login allowlists on ``egress_ip`` columns, plus ``dbo.visitor_ip`` logs.
 
-Country and center logins (one-step) are allowed from IPs listed in
-``dbo.egress_ip`` or in their own ``dbo.country.egress_ip`` /
-``dbo.center.egress_ip`` column (comma-separated). The allowed set is the sum
-of those two tables; an empty or NULL column admits nothing, so a database
-with no addresses listed anywhere refuses every country and center login.
-Person logins are not IP-gated.
+When ``HUB_LOGIN_GATING`` is ``1``, an IP-gated login is allowed from an
+address listed in ``dbo.administrator.egress_ip`` or in that username's own
+``egress_ip`` column. Both columns are comma-separated and 256 characters
+long. The allowed set is the union of the two. Value ``0`` (or an unset
+variable) skips the gate.
+
+IP-gated levels, from the login scheme: country and center always; person
+only in a country with ``has_balance``. Unit, and person in an expenses-only
+country, are not IP-gated.
 
 A development hub (``HUB_DEV_LOGIN`` set, caller on loopback) skips the gate
 entirely and writes no visitor rows: browser, client and hub share one machine
@@ -16,8 +19,8 @@ login/OTP POST and is written immediately (counter + last_seen).
 ``login_page = 0`` is any other HTTP hit, at most once per UTC day.
 Successful login stores the username; a refused attempt stores ``''``.
 ``UNIQUE (egress_ip, username, login_page)`` collapses repeats. Addresses
-listed in ``dbo.egress_ip`` are not logged. A development hub records
-nothing at all.
+listed in ``dbo.administrator.egress_ip`` are not logged. A development hub
+records nothing at all.
 """
 from __future__ import annotations
 
@@ -87,15 +90,33 @@ def ip_in_allowlist(client_ip: str | None, allow: list[str]) -> bool:
     return bool(ip) and ip in allow
 
 
-def open_logins() -> bool:
-    """Whether country and center logins skip the egress allowlist.
+def ip_gate_enabled() -> bool:
+    """Whether IP-gated logins must pass the allowlist.
 
-    Set ``HUB_OPEN_LOGINS`` to ``1`` for that period. Unset it to restore the
-    allowlist (``dbo.egress_ip`` plus each login's own ``egress_ip``).
-    The limited menu for addresses outside ``dbo.egress_ip`` stays either way.
+    ``HUB_LOGIN_GATING=1`` turns the gate on. ``0``, or an unset variable,
+    admits every address. The menu check is separate and still reads
+    ``dbo.administrator.egress_ip``.
     """
-    flag = os.environ.get("HUB_OPEN_LOGINS", "").strip().lower()
+    flag = os.environ.get("HUB_LOGIN_GATING", "").strip().lower()
     return flag in ("1", "true", "yes", "on")
+
+
+def ip_gated_login(user: dict[str, Any]) -> bool:
+    """Whether this login's scheme cell is ``egress_ip``.
+
+    Country and center are gated for balance and for expenses. Person is
+    gated only in a balance country. Unit is never gated.
+    """
+    from app.user_store import login_kind
+
+    kind = login_kind(user)
+    if kind in ("country", "center"):
+        return True
+    if kind != "person":
+        return False
+    from app.sql_catalog import country_has_balance
+
+    return country_has_balance(str(user.get("country") or ""))
 
 
 def development_hub() -> bool:
@@ -141,10 +162,10 @@ def _has_visitor_table(cursor) -> bool:
 
 
 def administrator_ip_allowed(client_ip: str | None) -> bool:
-    """Whether ``client_ip`` occurs in ``dbo.egress_ip``.
+    """Whether ``client_ip`` occurs in ``dbo.administrator.egress_ip``.
 
-    A missing table means no administrator bypass, allowing the code to be
-    deployed before the database migration.
+    Each row's column is a comma-separated list, up to 256 characters.
+    A missing table or column means no administrator addresses.
     """
     ip = normalize_ip(client_ip)
     if not ip:
@@ -152,23 +173,23 @@ def administrator_ip_allowed(client_ip: str | None) -> bool:
     cursor = _cursor()
     if cursor is None:
         return False
-    cursor.execute("SELECT OBJECT_ID(N'dbo.egress_ip', N'U')")
+    cursor.execute("SELECT OBJECT_ID(N'dbo.administrator', N'U')")
     row = cursor.fetchone()
     if not row or not row[0]:
         return False
-    cursor.execute(
-        """
-        SELECT TOP 1 1
-        FROM dbo.egress_ip
-        WHERE egress_ip = ?
-        """,
-        (ip,),
-    )
-    return cursor.fetchone() is not None
+    cursor.execute("SELECT COL_LENGTH(N'dbo.administrator', N'egress_ip')")
+    col = cursor.fetchone()
+    if not col or not col[0]:
+        return False
+    cursor.execute("SELECT egress_ip FROM dbo.administrator")
+    for (raw,) in cursor.fetchall():
+        if ip_in_allowlist(ip, parse_egress_list(None if raw is None else str(raw))):
+            return True
+    return False
 
 
 def full_menu_for_ip(client_ip: str | None) -> bool:
-    """Addresses in ``dbo.egress_ip`` keep every menu item.
+    """Addresses in ``dbo.administrator.egress_ip`` keep every menu item.
 
     Any other address, including loopback on a development hub, keeps the
     short menu.
@@ -192,15 +213,17 @@ def _egress_raw_for_user(user: dict[str, Any]) -> str | None:
     column alike: none of them list an address, so none of them admit one.
     """
     ident = int(user.get("id") or 0)
-    if ident <= 0 or str(user.get("person") or "").strip():
+    if ident <= 0:
         return None
+    from app.user_store import login_kind
+
+    kind = login_kind(user)
+    key = {"country": "country_id", "center": "center_id", "person": "id"}.get(kind)
+    if key is None:
+        return None
+    table = kind
     cursor = _cursor()
     if cursor is None:
-        return None
-    center = str(user.get("center") or "").strip()
-    country = str(user.get("country") or "").strip()
-    table = "center" if center else "country" if country else ""
-    if not table:
         return None
     if not _has_egress_column(cursor, table):
         print(
@@ -208,7 +231,6 @@ def _egress_raw_for_user(user: dict[str, Any]) -> str | None:
             f"hub/sql/visitor_ip.sql; no {table} login can be allowed"
         )
         return None
-    key = "center_id" if table == "center" else "country_id"
     cursor.execute(
         f"SELECT egress_ip FROM dbo.{table} WHERE {key} = ?",
         (ident,),
@@ -222,24 +244,25 @@ def _egress_raw_for_user(user: dict[str, Any]) -> str | None:
 def login_ip_allowed(user: dict[str, Any], client_ip: str | None) -> bool:
     """Whether this login may proceed from ``client_ip``.
 
-    A country or center login needs its address listed in
-    ``dbo.egress_ip`` or in its own ``egress_ip`` column; the allowed set
-    is the sum of the two. An address listed in neither is refused, so no
-    listed address anywhere means no such login at all. Person logins carry
-    their own password (and optional OTP) and stay ungated.
+    An IP-gated login needs its address in ``dbo.administrator.egress_ip``
+    or in its own ``egress_ip`` column; the allowed set is the union of the
+    two. Both columns split on commas. The gate runs when
+    ``HUB_LOGIN_GATING`` is ``1``. Value ``0``, or an unset variable, skips
+    it. Unit logins, and person logins in an expenses-only country, are not
+    gated.
     """
-    if str(user.get("person") or "").strip():
+    if not ip_gated_login(user):
         return True
     name = str(user.get("username") or "")
-    if open_logins():
-        print(f"login allowed: {name!r} while HUB_OPEN_LOGINS is set")
+    if not ip_gate_enabled():
+        print(f"login allowed: {name!r} while HUB_LOGIN_GATING is not 1")
         return True
     if development_login(client_ip):
         print(f"login allowed: {name!r} on a development hub (HUB_DEV_LOGIN)")
         return True
     try:
         # A sentinel such as the client's "unknown" must never reach the
-        # tables: dbo.egress_ip is hand-filled and would match it.
+        # columns: they are hand-filled and a raw match would accept it.
         ip = validate_ip(client_ip)
     except HubIpError:
         print(f"login refused: no usable client IP for {name!r} ({client_ip!r})")
@@ -249,7 +272,7 @@ def login_ip_allowed(user: dict[str, Any], client_ip: str | None) -> bool:
             return True
     except Exception as exc:  # noqa: BLE001
         # Falling through to the login's own list is never more permissive
-        # than the sum of both, so a failed lookup here cannot open a door.
+        # than the union of both, so a failed lookup here cannot open a door.
         print(f"administrator: could not check egress IP {ip!r}: {exc}")
     try:
         raw = _egress_raw_for_user(user)
@@ -260,7 +283,7 @@ def login_ip_allowed(user: dict[str, Any], client_ip: str | None) -> bool:
     if not allowed:
         print(
             f"login refused: {name!r} from {ip!r} is listed in neither "
-            f"dbo.egress_ip nor its own egress_ip ({raw or 'NULL'})"
+            f"dbo.administrator nor its own egress_ip ({raw or 'NULL'})"
         )
     return allowed
 
@@ -304,7 +327,7 @@ def record_visit(
     ``login_page=True`` (login/OTP POST) always bumps ``number_of_attempts``
     and ``last_seen``. ``login_page=False`` writes at most once per UTC day.
     Refused login uses ``username = ''``. Only a public address is stored.
-    An address in ``dbo.egress_ip`` is skipped. A development hub
+    An address in ``dbo.administrator.egress_ip`` is skipped. A development hub
     records nothing at all.
     """
     if development_hub():
@@ -317,7 +340,7 @@ def record_visit(
             return
     except Exception as exc:  # noqa: BLE001
         # Rather log one of our own addresses than lose a real visitor.
-        print(f"visitor_ip: could not read dbo.egress_ip for {ip_s!r}: {exc}")
+        print(f"visitor_ip: could not read dbo.administrator for {ip_s!r}: {exc}")
     ip_s = ip_s[:45]
     name = str(username or "").strip()[:64]
     flag = 1 if login_page else 0

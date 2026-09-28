@@ -3,9 +3,11 @@
 --
 -- SSMS: connect to database agrolav, then execute this file.
 --
--- egress_ip is the "egress-IP" allowlist (comma-separated). Empty/NULL admits
--- nothing: a country/center login needs its address here or in dbo.egress_ip
--- (see egress_ip.sql), and the allowed set is the sum of the two.
+-- egress_ip is the username allowlist (comma-separated, 256 characters).
+-- Empty/NULL admits nothing from this column. When HUB_LOGIN_GATING=1, an
+-- IP-gated login is allowed when its address is here or in
+-- dbo.administrator.egress_ip; the allowed set is the union of the two.
+-- Person is IP-gated only in a balance country, so dbo.person has the column too.
 -- dbo.hub_ip is replaced by dbo.visitor_ip. Login posts (login_page = 1) are
 -- written immediately; other HTTP hits (login_page = 0) at most once per UTC
 -- day. Drop hub_ip yourself after this succeeds, when you are ready.
@@ -19,6 +21,10 @@ GO
 
 IF COL_LENGTH(N'dbo.center', N'egress_ip') IS NULL
     ALTER TABLE dbo.center ADD egress_ip VARCHAR(256) NULL;
+GO
+
+IF COL_LENGTH(N'dbo.person', N'egress_ip') IS NULL
+    ALTER TABLE dbo.person ADD egress_ip VARCHAR(256) NULL;
 GO
 
 IF OBJECT_ID(N'dbo.visitor_ip', N'U') IS NULL
