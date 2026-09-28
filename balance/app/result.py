@@ -14,6 +14,9 @@ from typing import Any
 
 from shared.balance_values import (
     category_labels,
+    category_role_canonical,
+    is_cp_role,
+    is_rc_role,
     result_overlay_cents,
     spaar_source_exclude_clause,
     sql_ident,
@@ -823,18 +826,16 @@ def _rc_label(center: str) -> str:
 
 
 def _fold_cash_extras(
-    rows: list[tuple[int | None, str, Decimal]],
+    rows: list[tuple[int | None, str, Decimal, str]],
     *,
-    unit_code: int | None,
     center: str,
 ) -> list[tuple[str, Decimal]]:
     """Collapse non-resultaat cash into the lines shown above Totaal.
 
-    Centrale legs (1125, 1126, and the unit's own four digits) share one
-    Rekening courant label. The sibling pair (1112–1119 with 1200) is kept
-    only when it does not cancel. Every other code keeps its category name.
+    ``category_role`` ``rc``, ``sia`` or ``sib`` shares one Rekening courant
+    label for this center. ``category_role=cp`` is kept only when the lines
+    do not cancel. Every other code keeps its category name.
     """
-    sia = _rc_label(center) == "Rekening courant SIa"
     buckets: dict[str, Decimal] = {}
     order: list[tuple[int, str]] = []
     sibling = Decimal("0")
@@ -845,15 +846,19 @@ def _fold_cash_extras(
             order.append((sort, label))
         buckets[label] += amount
 
-    for local_code, label, amount in rows:
+    for local_code, label, amount, role in rows:
+        kind = category_role_canonical(role)
+        print(
+            f"rc cash local={local_code} role={role!r} canonical={kind} amount={amount}",
+            flush=True,
+        )
         if amount == 0:
             continue
         code = int(local_code) if local_code is not None else None
-        if code == 1125 or (not sia and unit_code is not None and code == unit_code):
-            add("Rekening courant SIb", amount, 0)
-        elif code == 1126 or (sia and unit_code is not None and code == unit_code):
-            add("Rekening courant SIa", amount, 0)
-        elif code == 1200 or (code is not None and 1112 <= code <= 1119):
+        kind = category_role_canonical(role)
+        if is_rc_role(kind):
+            add(_rc_label(center), amount, 0)
+        elif is_cp_role(kind):
             sibling += amount
         else:
             name = (label or "").strip() or (str(code) if code is not None else "Overige")
@@ -874,7 +879,6 @@ def _cross_cash_lines(
     opening_day: date,
     present_day: date,
     *,
-    unit_code: int | None,
     center: str,
 ) -> list[tuple[str, Decimal]]:
     """Statement amounts on these banks that are not uitgaven or inkomsten.
@@ -889,7 +893,8 @@ def _cross_cash_lines(
         return []
     marks = ",".join("?" * len(account_ids))
     sql = (
-        f"SELECT d.local_code, MIN(d.label), SUM(t.amount) FROM {table} t "
+        f"SELECT d.local_code, MIN(d.label), SUM(t.amount), "
+        f"MIN(d.category_role) FROM {table} t "
         "LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id "
         "AND d.country_id = ? "
         f"WHERE t.bank_id IS NULL AND t.account_id IN ({marks}) "
@@ -907,8 +912,8 @@ def _cross_cash_lines(
         cur = conn.cursor()
         cur.execute(sql, *params)
         fetched = cur.fetchall()
-    rows: list[tuple[int | None, str, Decimal]] = []
-    for local_code, label, amount in fetched:
+    rows: list[tuple[int | None, str, Decimal, str]] = []
+    for local_code, label, amount, role in fetched:
         if amount is None:
             continue
         try:
@@ -916,8 +921,8 @@ def _cross_cash_lines(
         except (TypeError, ValueError):
             continue
         code = int(local_code) if local_code is not None else None
-        rows.append((code, str(label or ""), value))
-    return _fold_cash_extras(rows, unit_code=unit_code, center=center)
+        rows.append((code, str(label or ""), value, str(role or "")))
+    return _fold_cash_extras(rows, center=center)
 
 
 def result_sheet(
@@ -1015,15 +1020,11 @@ def result_sheet(
             bank_rows = _scoped_accounts(
                 accounts, person=person, center=center, account=account
             )
-        unit_code = (
-            _unit_digits(login_account.role) if login_account is not None else None
-        )
         rc_lines = _cross_cash_lines(
             country_id,
             [item.account_id for item in bank_rows],
             opening_day,
             present_day,
-            unit_code=unit_code,
             center=login_account.center if login_account is not None else center,
         )
         cash = build_cash_table(

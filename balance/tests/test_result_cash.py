@@ -5,8 +5,6 @@ import unittest
 from datetime import date
 from decimal import Decimal
 
-from shared.balance_values import booking_signed_amount
-
 from app.result import (
     _BankAccount,
     _fold_cash_extras,
@@ -27,12 +25,9 @@ class SiblingTests(unittest.TestCase):
         self.assertFalse(_names_pair("Den Eker", "Den Eker"))
         self.assertFalse(_names_pair("HD Den Eker", "Aenstal"))
 
-    def test_unit1104_reads_local_1114(self) -> None:
-        digits = _unit_xx0x("unit1104")
-        self.assertEqual(digits, 1104)
-        self.assertEqual(digits + 10, 1114)
-        signed = booking_signed_amount(1114, Decimal("-18500"))
-        self.assertEqual(signed, Decimal("-18500"))
+    def test_unit1104_is_xx0x(self) -> None:
+        self.assertEqual(_unit_xx0x("unit1104"), 1104)
+        self.assertIsNone(_unit_xx0x("unit1114"))
 
 
 class UnitLevelTests(unittest.TestCase):
@@ -54,13 +49,12 @@ class CrossCashTests(unittest.TestCase):
     def test_sib_unit_folds_1125_and_its_own_code(self) -> None:
         lines = _fold_cash_extras(
             [
-                (1125, "r/c centrale", Decimal("-2490")),
-                (1108, "r/c Lepelenburg", Decimal("10")),
-                (1118, "r/c HD Lepelenburg", Decimal("100")),
-                (1200, "Kruisposten", Decimal("-100")),
-                (3001, "Lonen", Decimal("5")),
+                (1125, "r/c centrale", Decimal("-2490"), "sib"),
+                (1108, "r/c Lepelenburg", Decimal("10"), "rc"),
+                (1118, "r/c HD Lepelenburg", Decimal("100"), "cp"),
+                (1200, "Kruisposten", Decimal("-100"), "cp"),
+                (3001, "Lonen", Decimal("5"), ""),
             ],
-            unit_code=1108,
             center="lepelenburg",
         )
         self.assertEqual(
@@ -74,18 +68,16 @@ class CrossCashTests(unittest.TestCase):
     def test_unbalanced_sibling_posts_stay_visible(self) -> None:
         lines = _fold_cash_extras(
             [
-                (1118, "r/c HD Lepelenburg", Decimal("2490")),
-                (1200, "Kruisposten", Decimal("-100")),
+                (1118, "r/c HD Lepelenburg", Decimal("2490"), "cp"),
+                (1200, "Kruisposten", Decimal("-100"), "cp"),
             ],
-            unit_code=1108,
             center="lepelenburg",
         )
         self.assertEqual(lines, [("Kruisposten", Decimal("2390"))])
 
     def test_sia_center_uses_rekening_courant_sia(self) -> None:
         lines = _fold_cash_extras(
-            [(1126, "r/c", Decimal("2490"))],
-            unit_code=1101,
+            [(1126, "r/c", Decimal("2490"), "sia")],
             center="center_sia",
         )
         self.assertEqual(lines, [("Rekening courant SIa", Decimal("2490"))])

@@ -26,6 +26,8 @@ from shared.balance_values import (
     SPAAR_MARKER,
     CatalogError,
     balance_category_breakdown,
+    is_opening_sheet_year,
+    opening_sheet_breakdown,
     category_labels as shared_category_labels,
     category_local_codes as shared_category_local_codes,
     category_map as shared_category_map,
@@ -46,6 +48,7 @@ from shared.balance_values import (
     spaar_mirror_posted_amount,
     spaar_source_exclude_clause,
     sql_ident,
+    subadministratie_year_present,
     verlies_id as shared_verlies_id,
 )
 
@@ -273,7 +276,7 @@ def _dim_category_ids(country_id: int) -> set[int]:
         cur = conn.cursor()
         cur.execute(
             "SELECT DISTINCT category_id FROM dbo.dim_category "
-            "WHERE country_id = ? AND (local_code = 1099 OR local_code BETWEEN 1000 AND 4999)",
+            "WHERE country_id = ? AND local_code BETWEEN 1000 AND 4999",
             country_id,
         )
         return {int(r[0]) for r in cur.fetchall()}
@@ -568,7 +571,11 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
     result_source = "as_of" if cutoff is not None else "transactions"
     with connect() as conn:
         cur = conn.cursor()
-        breakdown = balance_category_breakdown(country_id, year, cur, as_of=cutoff)
+        breakdown = None
+        if as_of is None and is_opening_sheet_year(country_id, year, cur):
+            breakdown = opening_sheet_breakdown(country_id, year, cur)
+        if breakdown is None:
+            breakdown = balance_category_breakdown(country_id, year, cur, as_of=cutoff)
         category_map = shared_category_map(country_id, cur)
         balance_id = _balance_id(country_id, cur)
         result_id = _verlies_id(country_id, cur)
@@ -664,17 +671,18 @@ def balance_sheet(country_id: int, year: int, as_of: str | None = None) -> dict[
         "total_activa": float(total_activa),
         "total_passiva": float(total_passiva),
         "balanced": total_activa == total_passiva,
-        "subadministratie": list_subadministratie_sheet(country_id),
+        "subadministratie": list_subadministratie_sheet(country_id, year),
         "afschrijvingen": list_afschrijvingen(country_id, year),
     }
 
 
 def opening_balance_sheet(country_id: int, year: int) -> dict[str, Any]:
-    """Stored openings for one year, including the bank rows.
+    """Openings for one year, including the bank rows.
 
-    Journals, bookings, and the live account balances stay out. The result
-    post is the stored profit opening, and Eigen vermogen is the stored
-    equity opening.
+    Journals, bookings, and the live account balances stay out. When this
+    year is the opening year after the latest bookings, the figures are the
+    close Calculate opening balance would write: ``rc``, ``sia`` and ``sib``
+    are zero and their year-end total is on ``cp``.
     """
     with connect() as conn:
         cur = conn.cursor()
@@ -693,6 +701,14 @@ def opening_balance_sheet(country_id: int, year: int) -> dict[str, Any]:
             if cat_id is None:
                 continue
             opening[int(cat_id)] = Decimal(str(amount or 0))
+        closed = (
+            opening_sheet_breakdown(country_id, year, cur)
+            if is_opening_sheet_year(country_id, year, cur)
+            else None
+        )
+    if closed is not None:
+        for cat_id, (cents, _source) in closed.items():
+            opening[int(cat_id)] = Decimal(cents) / Decimal(100)
     if balance_id is None or int(balance_id) not in opening:
         raise RuntimeError(
             "dbo.balance_opening has no Eigen vermogen amount "
@@ -759,7 +775,7 @@ def opening_balance_sheet(country_id: int, year: int) -> dict[str, Any]:
         "total_activa": float(total_activa),
         "total_passiva": float(total_passiva),
         "balanced": total_activa == total_passiva,
-        "subadministratie": list_subadministratie_sheet(country_id),
+        "subadministratie": list_subadministratie_sheet(country_id, year),
         "afschrijvingen": {"from_codes": [], "journals": []},
     }
 
@@ -980,24 +996,47 @@ def _merge_subadministratie_persons(rows: list[dict[str, Any]]) -> list[dict[str
     return merged
 
 
-def list_subadministratie_sheet(country_id: int) -> dict[str, Any]:
+def list_subadministratie_sheet(country_id: int, year: int | None = None) -> dict[str, Any]:
     """Clickable local_codes and rows from ``dbo.subadministratie`` (no hardcoded codes)."""
-    rows = list_subadministratie(country_id)
+    rows = list_subadministratie(country_id, year=year)
     codes = sorted({int(r["local_code"]) for r in rows})
     return {"local_codes": codes, "rows": rows}
 
 
-def list_subadministratie(country_id: int, local_code: int | None = None) -> list[dict[str, Any]]:
-    """Rows of dbo.subadministratie for a country (by name), optionally for one local_code."""
+def list_subadministratie(
+    country_id: int,
+    local_code: int | None = None,
+    year: int | None = None,
+) -> list[dict[str, Any]]:
+    """Rows of dbo.subadministratie for a country, optionally one code and year.
+
+    When ``year`` is set and that year has rows, only those rows are returned.
+    Undated rows are used when the year has none yet.
+    """
     rows: list[dict[str, Any]] = []
     with connect() as conn:
         cur = conn.cursor()
         try:
-            cur.execute(
-                "SELECT local_code, name, amount FROM dbo.subadministratie "
-                "WHERE country_id = ? ORDER BY name",
-                int(country_id),
-            )
+            has_year = subadministratie_year_present(cur)
+            if has_year and year is not None:
+                cur.execute(
+                    "SELECT local_code, name, amount FROM dbo.subadministratie "
+                    "WHERE country_id = ? AND ("
+                    " year = ? OR ("
+                    "  year IS NULL AND NOT EXISTS ("
+                    "   SELECT 1 FROM dbo.subadministratie s "
+                    "   WHERE s.country_id = ? AND s.year = ?"
+                    "  )"
+                    " )"
+                    ") ORDER BY name",
+                    (int(country_id), int(year), int(country_id), int(year)),
+                )
+            else:
+                cur.execute(
+                    "SELECT local_code, name, amount FROM dbo.subadministratie "
+                    "WHERE country_id = ? ORDER BY name",
+                    int(country_id),
+                )
         except Exception as exc:
             if "42S02" in str(exc) or "Invalid object" in str(exc):
                 return []
@@ -1081,7 +1120,7 @@ def post_popup(
 ) -> dict[str, Any]:
     """Journal rows (blue) and ``dbo.subadministratie`` rows (green) for one code."""
     code = int(local_code)
-    names = list_subadministratie(country_id, code)
+    names = list_subadministratie(country_id, code, year)
     by_name: dict[str, float] = {}
     for row in names:
         key = str(row["name"])

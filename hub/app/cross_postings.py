@@ -5,17 +5,20 @@ in that country with an IBAN is read. A booking is kept when its
 counterparty is another of those accounts and that account books the
 negated amount on the same day or one day apart.
 
-Each leg of a pair is written on its own:
+Each leg of a pair is written on its own. Every fixed leg is the
+``dbo.dim_category`` row with that ``category_role``, read on each run:
 
-* Centrale SIa against Centrale SIb: SIb is local 1200 (category 11200)
-  and SIa is local 1100 (category 11100).
+* Centrale SIa against Centrale SIb: SIb is the ``cp`` row and SIa is the
+  ``siasib`` row.
 * Centrale SIa against ``unitNNNN`` in center SIa: SIa is local NNNN
-  (category 1NNNN) and the unit is local 1126 (category 11126).
+  (category 1NNNN) and the unit is the ``sia`` row.
 * Centrale SIb against ``unitNNNN`` in center SIb: SIb is local NNNN
-  (category 1NNNN) and the unit is local 1125 (category 11125).
+  (category 1NNNN) and the unit is the ``sib`` row.
 * ``unitXX0X`` against the ``hd`` account in the same center: the unit is
-  local XX1X (category 1XX1X) and the sibling is local 1200 (category 11200).
-  ``unit1108`` writes the unit to 11118 and the sibling to 11200.
+  local XX1X (category 1XX1X) and the sibling is the ``cp`` row.
+  ``unit1108`` writes the unit to 11118.
+
+A country without a row for a role leaves that leg uncategorized.
 
 The value stored on the booking is the category id. Balance countries are
 taken in ``country_id`` order. The first stores the local code. Each later
@@ -28,6 +31,7 @@ previous cross-posting category on such a row is released.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Sequence
@@ -36,34 +40,31 @@ CROSS_POSTING_COUNTRY_ID = 5
 # Country 5 (the second balance country): local_code + 10000. Local 1200 is 11200.
 # The next country with has_balance adds another 10000. See category_id_offset.
 _CATEGORY_BASE = 10000
-_LOCAL_SIB_TO_SIA = 1099
-_LOCAL_SIA_TO_SIB = 1100
-_LOCAL_CROSS_POSTING = 1200
-# Country 5 stores these as 11125 and 11126.
-_LOCAL_SIB_UNIT = 1125
-_LOCAL_SIA_UNIT = 1126
-# Earlier unit legs. Still released so a later run clears 13125 and 13126.
-_LOCAL_SIB_UNIT_PREVIOUS = 3125
-_LOCAL_SIA_UNIT_PREVIOUS = 3126
-_FIXED_LOCAL_CODES = frozenset(
-    {
-        _LOCAL_SIB_TO_SIA,
-        _LOCAL_SIA_TO_SIB,
-        _LOCAL_CROSS_POSTING,
-        _LOCAL_SIB_UNIT,
-        _LOCAL_SIA_UNIT,
-        _LOCAL_SIB_UNIT_PREVIOUS,
-        _LOCAL_SIA_UNIT_PREVIOUS,
-    }
-)
 _UNIT_ROLE = re.compile(r"^unit(\d{4})$")
-CROSS_POSTING_CATEGORY_ID = _CATEGORY_BASE + _LOCAL_CROSS_POSTING
 _IBAN_NL46 = "NL46INGB0001726568"
 _IBAN_NL84 = "NL84INGB0002801129"
 _ANCHOR_CATEGORY_IDS = frozenset({11010, 11019, 11020, 11021})
 _USER_ROLE = re.compile(r"^(?:user|unit)(\d{4})$")
 _COUNTRY_BANK_PREFIXES = ("unit", "source", "funds")
 _MONEY = Decimal("0.01")
+
+
+@dataclass(frozen=True)
+class PairLegs:
+    """Local codes of the fixed legs, read from ``dbo.dim_category`` by role.
+
+    ``cp`` is the kruisposten row, ``siasib`` the SIa leg of a SIa–SIb pair,
+    ``sia`` / ``sib`` the unit leg of a Centrale SIa / SIb pair. ``None``
+    leaves that leg uncategorized.
+    """
+
+    cp: int | None = None
+    siasib: int | None = None
+    sia: int | None = None
+    sib: int | None = None
+
+    def codes(self) -> set[int]:
+        return {code for code in (self.cp, self.siasib, self.sia, self.sib) if code is not None}
 
 
 def _money(value: Any) -> Decimal:
@@ -288,7 +289,12 @@ def unit_xx0x_digits(role: object) -> int | None:
 
 
 def hd_sibling_local_code(unit_code: int) -> int:
-    """``XX0X`` becomes ``XX1X``. ``1102`` is ``1112``, category 11112."""
+    """Local code written on the unit leg of a unit–HD pair.
+
+    ``XX0X`` plus 10 is ``XX1X``. ``1102`` is ``1112``, category 11112.
+    This number is only the category the pair is written to. A category is
+    ``rc`` when ``dbo.dim_category.category_role`` says so.
+    """
     return int(unit_code) + 10
 
 
@@ -307,45 +313,63 @@ def pair_local_codes(
     to_center: str | None = None,
     from_role: object = "",
     to_role: object = "",
+    *,
+    legs: PairLegs | None = None,
 ) -> tuple[int | None, int | None]:
     """Local codes for the outgoing leg and the incoming leg.
 
     ``None`` leaves that leg uncategorized. Centrale SIa against Centrale
-    SIb is 1100 on SIa and 1200 on SIb. Centrale SIa against a SIa
-    ``unitNNNN`` is NNNN on SIa and 1126 on the unit. Centrale SIb against
-    a SIb ``unitNNNN`` is NNNN on SIb and 1125 on the unit. A ``unitXX0X``
-    against the ``hd`` account in the same center is XX1X on the unit and
-    1200 on the sibling.
+    SIb is ``legs.siasib`` on SIa and ``legs.cp`` on SIb. Centrale SIa
+    against a SIa ``unitNNNN`` is NNNN on SIa and ``legs.sia`` on the unit.
+    Centrale SIb against a SIb ``unitNNNN`` is NNNN on SIb and ``legs.sib``
+    on the unit. A ``unitXX0X`` against the ``hd`` account in the same
+    center is XX1X on the unit and ``legs.cp`` on the sibling. Every leg in
+    ``legs`` is a ``dim_category`` row found by its ``category_role``.
     """
+    fixed = legs or PairLegs()
     from_sib = _is_centrale_sib(from_iban)
     to_sib = _is_centrale_sib(to_iban)
     from_sia = _is_centrale_sia(from_iban)
     to_sia = _is_centrale_sia(to_iban)
     if (from_sib and to_sia) or (from_sia and to_sib):
         if from_sib:
-            return (_LOCAL_CROSS_POSTING, _LOCAL_SIA_TO_SIB)
-        return (_LOCAL_SIA_TO_SIB, _LOCAL_CROSS_POSTING)
+            return (fixed.cp, fixed.siasib)
+        return (fixed.siasib, fixed.cp)
 
     from_unit = unit_digits(from_role)
     to_unit = unit_digits(to_role)
     if from_sia and to_unit is not None and center_side(to_center) == "sia":
-        return (to_unit, _LOCAL_SIA_UNIT)
+        return (to_unit, fixed.sia)
     if to_sia and from_unit is not None and center_side(from_center) == "sia":
-        return (_LOCAL_SIA_UNIT, from_unit)
+        return (fixed.sia, from_unit)
     if from_sib and to_unit is not None and center_side(to_center) == "sib":
-        return (to_unit, _LOCAL_SIB_UNIT)
+        return (to_unit, fixed.sib)
     if to_sib and from_unit is not None and center_side(from_center) == "sib":
-        return (_LOCAL_SIB_UNIT, from_unit)
+        return (fixed.sib, from_unit)
 
     from_xx0x = unit_xx0x_digits(from_role)
     to_xx0x = unit_xx0x_digits(to_role)
     from_hd = _role_text(from_role) == "hd"
     to_hd = _role_text(to_role) == "hd"
     if from_xx0x is not None and to_hd and _centers_match(from_center, to_center):
-        return (hd_sibling_local_code(from_xx0x), _LOCAL_CROSS_POSTING)
+        return (hd_sibling_local_code(from_xx0x), fixed.cp)
     if to_xx0x is not None and from_hd and _centers_match(from_center, to_center):
-        return (_LOCAL_CROSS_POSTING, hd_sibling_local_code(to_xx0x))
+        return (fixed.cp, hd_sibling_local_code(to_xx0x))
     return (None, None)
+
+
+def _activa_sheet_amount(local_code: int, amount: Decimal) -> Decimal | None:
+    """Activa sign for a cross-posting leg.
+
+    1000–1999 reverse the statement amount. 2000–2999 keep it. The
+    ``category_role`` is not read here.
+    """
+    code = int(local_code)
+    if 1000 <= code <= 1999:
+        return -amount
+    if 2000 <= code <= 2999:
+        return amount
+    return None
 
 
 def _sheet_pair_opposed(
@@ -354,15 +378,14 @@ def _sheet_pair_opposed(
     to_local: int,
     to_amount: Decimal,
 ) -> bool:
-    """True when the two legs cancel on activa after the sheet sign.
+    """True when the two legs cancel after the activa sign.
 
-    Stored amounts already sum to zero. A leg that the sheet reverses
-    (ordinary activa) and a leg that keeps the statement sign do not.
+    Stored amounts already sum to zero. Both legs of a written pair sit on
+    activa, so both reverse and the pair still cancels. The ``rc`` role is
+    a separate read of ``dbo.dim_category`` and does not decide this.
     """
-    from shared.balance_values import booking_signed_amount
-
-    left = booking_signed_amount(int(from_local), from_amount)
-    right = booking_signed_amount(int(to_local), to_amount)
+    left = _activa_sheet_amount(int(from_local), from_amount)
+    right = _activa_sheet_amount(int(to_local), to_amount)
     if left is None or right is None:
         return False
     return left + right == 0
@@ -425,18 +448,22 @@ def managed_category_ids(
     bank_category_ids: set[int] | None = None,
     country_id: int = CROSS_POSTING_COUNTRY_ID,
     balance_country_ids: Sequence[int] | None = None,
+    role_codes: set[int] | None = None,
 ) -> set[int]:
     """Category ids this routine writes, so a later run can release the rest.
 
-    A four-digit code that is itself a live bank category is not released.
+    ``role_codes`` are the local codes of the ``cp`` / ``siasib`` / ``sia`` /
+    ``sib`` rows. A four-digit code that is itself a live bank category is
+    not released.
     """
     banks = bank_category_ids or set()
-    codes = set(_FIXED_LOCAL_CODES)
+    fixed = set(role_codes or ())
+    codes = set(fixed)
     codes.update(digit_codes)
     found: set[int] = set()
     for code in codes:
         stored = stored_category_id(code, by_local, country_id, balance_country_ids)
-        if code not in _FIXED_LOCAL_CODES and stored in banks:
+        if code not in fixed and stored in banks:
             continue
         found.add(stored)
         if code not in banks:
@@ -493,6 +520,7 @@ def apply_cross_postings(
         raise RuntimeError(f"{table} does not exist")
 
     by_local = _category_ids_by_local_code(cursor, country_id)
+    legs = _pair_legs(cursor, country_id)
     bank_ids = _country_registered_accounts(cursor, country_id)
     iban_to_accounts = _registered_accounts(cursor, bank_ids)
     iban_of = {
@@ -514,7 +542,12 @@ def apply_cross_postings(
         if (digits := unit_xx0x_digits(role)) is not None
     )
     managed = managed_category_ids(
-        by_local, digit_codes, set(account_category.values()), country_id, balance_ids
+        by_local,
+        digit_codes,
+        set(account_category.values()),
+        country_id,
+        balance_ids,
+        legs.codes(),
     )
     fetched = _load_candidates(cursor, table, bank_ids, managed)
     pair_rows = [
@@ -546,6 +579,7 @@ def apply_cross_postings(
             center_of.get(to_account),
             role_of.get(from_account, ""),
             role_of.get(to_account, ""),
+            legs=legs,
         )
         if from_local is None or to_local is None:
             continue
@@ -712,6 +746,42 @@ def _registered_accounts(cursor: Any, bank_ids: set[int]) -> dict[str, list[int]
         if aid not in bucket:
             bucket.append(aid)
     return out
+
+
+def _pair_legs(cursor: Any, country_id: int) -> PairLegs:
+    """Fixed legs by ``category_role``: ``cp``, ``siasib``, ``sia``, ``sib``.
+
+    A role without a row leaves that leg ``None``, and pairs that need it
+    stay uncategorized.
+    """
+    cursor.execute(
+        """
+        SELECT LOWER(LTRIM(RTRIM(category_role))), MIN(local_code)
+        FROM dbo.dim_category
+        WHERE country_id = ?
+          AND LOWER(LTRIM(RTRIM(category_role))) IN (N'cp', N'siasib', N'sia', N'sib')
+          AND local_code IS NOT NULL
+        GROUP BY LOWER(LTRIM(RTRIM(category_role)))
+        """,
+        (int(country_id),),
+    )
+    found: dict[str, int] = {}
+    for role, local_code in cursor.fetchall():
+        if role is None or local_code is None:
+            continue
+        found[str(role)] = int(local_code)
+    legs = PairLegs(
+        cp=found.get("cp"),
+        siasib=found.get("siasib"),
+        sia=found.get("sia"),
+        sib=found.get("sib"),
+    )
+    print(
+        f"rc pair legs country={int(country_id)} cp={legs.cp} siasib={legs.siasib} "
+        f"sia={legs.sia} sib={legs.sib}",
+        flush=True,
+    )
+    return legs
 
 
 def _category_ids_by_local_code(cursor: Any, country_id: int) -> dict[int, int]:

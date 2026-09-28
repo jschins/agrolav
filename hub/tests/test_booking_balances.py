@@ -264,20 +264,24 @@ class SpaarMirrorTests(unittest.TestCase):
 class BookingSignedAmountTests(unittest.TestCase):
     def test_ranges(self):
         x = Decimal("100")
-        self.assertEqual(booking_signed_amount(1099, x), Decimal("100"))
-        self.assertEqual(booking_signed_amount(1100, x), Decimal("100"))
-        self.assertEqual(booking_signed_amount(1200, x), Decimal("100"))
-        self.assertEqual(booking_signed_amount(1099, Decimal("-100")), Decimal("-100"))
-        self.assertEqual(booking_signed_amount(1200, Decimal("-100")), Decimal("-100"))
+        self.assertEqual(booking_signed_amount(1101, x, "rc"), Decimal("100"))
+        self.assertEqual(booking_signed_amount(1200, x, "cp"), Decimal("100"))
+        self.assertEqual(booking_signed_amount(1100, x, "siasib"), Decimal("100"))
+        self.assertEqual(booking_signed_amount(1125, Decimal("-100"), "sib"), Decimal("-100"))
+        self.assertEqual(booking_signed_amount(1126, Decimal("-100"), "sia"), Decimal("-100"))
+        self.assertEqual(booking_signed_amount(1100, Decimal("-100"), "siasib"), Decimal("-100"))
+        self.assertEqual(booking_signed_amount(1200, Decimal("-100"), "cp"), Decimal("-100"))
         self.assertEqual(
-            booking_signed_amount(1100, x) + booking_signed_amount(1200, Decimal("-100")),
+            booking_signed_amount(1100, x, "siasib")
+            + booking_signed_amount(1200, Decimal("-100"), "cp"),
             Decimal("0"),
         )
-        self.assertEqual(booking_signed_amount(1114, Decimal("-18500")), Decimal("-18500"))
-        self.assertEqual(booking_signed_amount(1118, Decimal("-100")), Decimal("-100"))
+        self.assertEqual(booking_signed_amount(1114, Decimal("-18500"), "rc"), Decimal("-18500"))
+        self.assertEqual(booking_signed_amount(1119, Decimal("-100"), "rc"), Decimal("-100"))
+        self.assertEqual(booking_signed_amount(1119, Decimal("-100")), Decimal("100"))
         self.assertEqual(
-            booking_signed_amount(1118, Decimal("-100"))
-            + booking_signed_amount(1200, x),
+            booking_signed_amount(1118, Decimal("-100"), "rc")
+            + booking_signed_amount(1200, x, "cp"),
             Decimal("0"),
         )
         self.assertEqual(

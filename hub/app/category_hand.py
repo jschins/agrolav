@@ -98,9 +98,6 @@ def remember_hand_category(source_id: str, category: object) -> None:
     bound.conn.commit()
 
 
-_CROSS_LOCALS = (1099, 1100, 1200, 1125, 1126, 3125, 3126)
-
-
 def capture_before_wipe(
     cursor: Any,
     country_id: int,
@@ -110,7 +107,8 @@ def capture_before_wipe(
 ) -> None:
     """Copy current hand-set bookings into ``dbo.category_hand`` before a reset.
 
-    Rows already stored are left as they are. Cross-posting categories are
+    Rows already stored are left as they are. Categories with
+    ``category_role`` ``rc``, ``sia``, ``sib``, ``siasib`` or ``cp`` are
     skipped: those are rebuilt by Calculate cross-postings, not by this log.
     """
     if not _table_exists(cursor):
@@ -122,7 +120,6 @@ def capture_before_wipe(
             "person_id", "t.person_id"
         )
         scope = f" AND {scoped}"
-    locals_sql = ",".join(str(int(code)) for code in _CROSS_LOCALS)
     cursor.execute(
         f"""
         INSERT INTO dbo.category_hand
@@ -136,11 +133,10 @@ def capture_before_wipe(
           AND (
             d.category_role IS NULL
             OR LOWER(LTRIM(RTRIM(d.category_role))) NOT IN
-               (N'cp', N'rc', N'bank', N'no_hit', N'source', N'remainder',
-                N'equity', N'never', N'profit', N'balance', N'last_booked')
+               (N'cp', N'rc', N'sia', N'sib', N'siasib', N'bank', N'no_hit',
+                N'source', N'remainder', N'equity', N'never', N'profit',
+                N'balance', N'last_booked')
           )
-          AND d.local_code NOT IN ({locals_sql})
-          AND NOT (d.local_code BETWEEN 1112 AND 1119)
           AND NOT EXISTS (
             SELECT 1 FROM dbo.category_hand h
             WHERE h.country_id = ?

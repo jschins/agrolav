@@ -8,7 +8,9 @@ from decimal import Decimal
 from shared.balance_values import (
     CatalogError,
     afschrijving_booked_on,
+    creditor_label,
     opening_amounts_from_year_end,
+    roll_creditor_amounts,
 )
 
 
@@ -68,6 +70,8 @@ class OpeningAmountsTests(unittest.TestCase):
                 119: (-4_000, "opening"),
                 200: (8_000, "opening"),
                 100: (1_000, "opening"),
+                125: (-6_561_700, "opening+bookings"),
+                126: (-6_800_000, "opening+bookings"),
             },
             {20: Decimal("500.00")},
             {
@@ -76,17 +80,32 @@ class OpeningAmountsTests(unittest.TestCase):
                 98: "balance",
                 101: "rc",
                 119: "rc",
-                100: "rc",
+                100: "siasib",
+                125: "sib",
+                126: "sia",
                 200: "cp",
             },
-            {20: 2000, 22: 2200, 98: 3998, 101: 1101, 119: 1119, 100: 1100, 200: 1200},
+            {
+                20: 2000,
+                22: 2200,
+                98: 3998,
+                101: 1101,
+                119: 1119,
+                100: 1100,
+                125: 1125,
+                126: 1126,
+                200: 1200,
+            },
             20,
             Decimal("100.00"),
         )
         self.assertEqual(amounts[101], Decimal("0.00"))
         self.assertEqual(amounts[119], Decimal("0.00"))
+        # siasib keeps its year-end amount.
         self.assertEqual(amounts[100], Decimal("10.00"))
-        self.assertEqual(amounts[200], Decimal("65.00"))
+        self.assertEqual(amounts[125], Decimal("0.00"))
+        self.assertEqual(amounts[126], Decimal("0.00"))
+        self.assertEqual(amounts[200], Decimal("-133552.00"))
         self.assertEqual(amounts[20], Decimal("600.00"))
 
     def test_rc_without_cp_is_an_error(self) -> None:
@@ -105,6 +124,19 @@ class OpeningAmountsTests(unittest.TestCase):
             opening_amounts_from_year_end(
                 {}, {}, {20: "equity"}, {20: 2000}, 20, Decimal("0.00")
             )
+
+
+class CreditorRollTests(unittest.TestCase):
+    def test_lowercase_name_and_repayment_reduce_the_opening(self) -> None:
+        self.assertEqual(creditor_label("Ten Hage"), "ten hage")
+        rows = roll_creditor_amounts(
+            [(2500, "Driessen", Decimal("20606.20")), (2500, "Ten Hage", Decimal("9333.32"))],
+            [(2500, "ten hage", Decimal("-9333.32"))],
+        )
+        self.assertEqual(
+            rows,
+            [(2500, "driessen", Decimal("20606.20"))],
+        )
 
 
 class AfschrijvingDateTests(unittest.TestCase):

@@ -22,8 +22,8 @@ Then three closings:
 
 1. Each non-bank post keeps that year-end amount.
 2. Profit is set to zero. The balance sum is added to Eigen vermogen. Eigen vermogen (`category_role=equity`, 2000) starts from its opening in Y−1, not from the amount already stored for Y, so a second run does not add the result again.
-3. Every post with local code 1101–1119 and `category_role=rc` is set to zero. The sum of those year-end amounts is added to local 1200 (`category_role=cp`).
+3. Every category with `category_role` `rc`, `sia` or `sib` is set to zero. The sum of those year-end amounts is added to `category_role=cp` (local 1200 when that row is present), so the activa total is unchanged.
 
 A live bank post is rewritten only when Y already had rows; on a new year it stays the copied amount.
 
-The country must have an equity post, a 2000-range post with `category_role=profit`, and a 3000-range post with `category_role=balance`. If any 1101–1119 `rc` post exists, a `category_role=cp` post must exist too (local 1200 when that row is present).
+The country must have an equity post, a 2000-range post with `category_role=profit`, and a 3000-range post with `category_role=balance`. If any `rc`, `sia` or `sib` post exists, a `category_role=cp` post must exist too (local 1200 when that row is present).

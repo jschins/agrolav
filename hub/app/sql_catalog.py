@@ -3408,6 +3408,8 @@ def export_matrix_excel_data(
 
         from shared.balance_values import (
             balance_category_breakdown,
+            is_opening_sheet_year,
+            opening_sheet_breakdown,
             build_parent_tree,
             category_labels,
             category_local_codes,
@@ -3609,7 +3611,11 @@ def export_matrix_excel_data(
 
         result_id = verlies_id(country_id, cursor)
         balance_id = eigen_vermogen_id(country_id, cursor)
-        breakdown = balance_category_breakdown(country_id, int(year), cursor)
+        breakdown = None
+        if is_opening_sheet_year(country_id, int(year), cursor):
+            breakdown = opening_sheet_breakdown(country_id, int(year), cursor)
+        if breakdown is None:
+            breakdown = balance_category_breakdown(country_id, int(year), cursor)
         cmap = category_map(country_id, cursor)
 
         activa: list[dict[str, Any]] = []

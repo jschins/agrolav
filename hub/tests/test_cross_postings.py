@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.cross_postings import (
-    CROSS_POSTING_CATEGORY_ID,
+    PairLegs,
     _IBAN_NL46,
     _IBAN_NL84,
     between_registered_accounts,
@@ -20,6 +20,9 @@ from app.cross_postings import (
     user_digits,
     _sheet_pair_opposed,
 )
+
+# Country 5 rows: cp 1200, siasib 1100, sia 1126, sib 1125.
+_LEGS = PairLegs(cp=1200, siasib=1100, sia=1126, sib=1125)
 
 
 class CrossPostingMatchTests(unittest.TestCase):
@@ -140,43 +143,65 @@ class CrossPostingMatchTests(unittest.TestCase):
         self.assertEqual(kept[0][4], 20)
         self.assertEqual(kept[1][4], 30)
 
-    def test_sib_to_sia_is_11200_and_11100(self) -> None:
-        self.assertEqual(pair_local_codes(_IBAN_NL46, _IBAN_NL84), (1200, 1100))
-        self.assertEqual(pair_local_codes(_IBAN_NL84, _IBAN_NL46), (1100, 1200))
+    def test_sib_to_sia_is_the_cp_row_and_the_siasib_row(self) -> None:
+        self.assertEqual(pair_local_codes(_IBAN_NL46, _IBAN_NL84, legs=_LEGS), (1200, 1100))
+        self.assertEqual(pair_local_codes(_IBAN_NL84, _IBAN_NL46, legs=_LEGS), (1100, 1200))
         self.assertEqual(
             category_id_for_local_code(1200),
             11200,
         )
         self.assertEqual(category_id_for_local_code(1100), 11100)
+        # No cp / siasib rows: both legs stay uncategorized.
+        self.assertEqual(pair_local_codes(_IBAN_NL46, _IBAN_NL84), (None, None))
 
-    def test_sib_to_a_sib_unit_is_the_unit_code_and_11125(self) -> None:
+    def test_sib_to_a_sib_unit_is_the_unit_code_and_the_sib_row(self) -> None:
         self.assertEqual(
-            pair_local_codes(_IBAN_NL46, "NL61INGB0002843544", "sib", "sib", "", "unit1108"),
+            pair_local_codes(
+                _IBAN_NL46, "NL61INGB0002843544", "sib", "sib", "", "unit1108",
+                legs=_LEGS,
+            ),
             (1108, 1125),
         )
         self.assertEqual(category_id_for_local_code(1108), 11108)
         self.assertEqual(category_id_for_local_code(1125), 11125)
         self.assertEqual(
-            pair_local_codes("NL61INGB0002843544", _IBAN_NL46, "sib", "sib", "unit1108", ""),
+            pair_local_codes(
+                "NL61INGB0002843544", _IBAN_NL46, "sib", "sib", "unit1108", "",
+                legs=_LEGS,
+            ),
             (1125, 1108),
         )
         self.assertEqual(
-            pair_local_codes(_IBAN_NL46, "NL61INGB0002843544", "sib", "sia", "", "unit1108"),
+            pair_local_codes(
+                _IBAN_NL46, "NL61INGB0002843544", "sib", "sia", "", "unit1108",
+                legs=_LEGS,
+            ),
             (None, None),
         )
-
-    def test_sia_to_a_sia_unit_is_the_unit_code_and_11126(self) -> None:
+        # No sib row in dim_category: the unit leg is left uncategorized.
         self.assertEqual(
-            pair_local_codes(_IBAN_NL84, "NL61INGB0002843544", "sia", "sia", "", "unit1108"),
+            pair_local_codes(_IBAN_NL46, "NL61INGB0002843544", "sib", "sib", "", "unit1108"),
+            (1108, None),
+        )
+
+    def test_sia_to_a_sia_unit_is_the_unit_code_and_the_sia_row(self) -> None:
+        self.assertEqual(
+            pair_local_codes(
+                _IBAN_NL84, "NL61INGB0002843544", "sia", "sia", "", "unit1108",
+                legs=_LEGS,
+            ),
             (1108, 1126),
         )
         self.assertEqual(category_id_for_local_code(1126), 11126)
         self.assertEqual(
-            pair_local_codes("NL61INGB0002843544", _IBAN_NL84, "sia", "sia", "unit1108", ""),
+            pair_local_codes(
+                "NL61INGB0002843544", _IBAN_NL84, "sia", "sia", "unit1108", "",
+                legs=_LEGS,
+            ),
             (1126, 1108),
         )
 
-    def test_unit_xx0x_and_hd_sibling_split_1xx1x_and_11200(self) -> None:
+    def test_unit_xx0x_and_hd_sibling_split_1xx1x_and_the_cp_row(self) -> None:
         self.assertEqual(
             pair_local_codes(
                 "NL00INGB0000000001",
@@ -185,6 +210,7 @@ class CrossPostingMatchTests(unittest.TestCase):
                 "sib",
                 "unit1108",
                 "hd",
+                legs=_LEGS,
             ),
             (1118, 1200),
         )
@@ -196,6 +222,7 @@ class CrossPostingMatchTests(unittest.TestCase):
                 "sia",
                 "hd",
                 "unit1102",
+                legs=_LEGS,
             ),
             (1200, 1112),
         )
@@ -222,6 +249,7 @@ class CrossPostingMatchTests(unittest.TestCase):
                 "sia",
                 "unit1108",
                 "hd",
+                legs=_LEGS,
             ),
             (None, None),
         )
@@ -233,16 +261,17 @@ class CrossPostingMatchTests(unittest.TestCase):
                 "sib",
                 "unit1025",
                 "hd",
+                legs=_LEGS,
             ),
             (None, None),
         )
 
     def test_everything_else_stays_uncategorized(self) -> None:
         self.assertEqual(
-            pair_local_codes("NL11INGB0006729488", "NL61INGB0002843544"),
+            pair_local_codes("NL11INGB0006729488", "NL61INGB0002843544", legs=_LEGS),
             (None, None),
         )
-        self.assertEqual(pair_local_codes(_IBAN_NL84, _IBAN_NL84), (None, None))
+        self.assertEqual(pair_local_codes(_IBAN_NL84, _IBAN_NL84, legs=_LEGS), (None, None))
 
     def test_country_banks_are_roles_starting_with_unit_source_or_funds(self) -> None:
         self.assertTrue(is_country_bank_role("unit1108"))
@@ -253,12 +282,13 @@ class CrossPostingMatchTests(unittest.TestCase):
         self.assertFalse(is_country_bank_role("mirror"))
         self.assertEqual(user_digits("unit1108"), 1108)
 
-    def test_category_id_is_11200_not_the_local_code(self) -> None:
-        self.assertEqual(CROSS_POSTING_CATEGORY_ID, 11200)
+    def test_pair_legs_codes_skip_missing_rows(self) -> None:
+        self.assertEqual(_LEGS.codes(), {1100, 1125, 1126, 1200})
+        self.assertEqual(PairLegs(cp=1200).codes(), {1200})
+        self.assertEqual(PairLegs().codes(), set())
 
     def test_country_5_stores_local_code_plus_10000(self) -> None:
-        self.assertEqual(pair_local_codes(_IBAN_NL46, _IBAN_NL84), (1200, 1100))
-        self.assertEqual(category_id_for_local_code(1099), 11099)
+        self.assertEqual(pair_local_codes(_IBAN_NL46, _IBAN_NL84, legs=_LEGS), (1200, 1100))
         self.assertEqual(category_id_for_local_code(1100), 11100)
         self.assertEqual(category_id_for_local_code(1108), 11108)
         self.assertEqual(category_id_for_local_code(1200), 11200)
@@ -267,7 +297,7 @@ class CrossPostingMatchTests(unittest.TestCase):
         self.assertEqual(category_id_offset(4, balance), 0)
         self.assertEqual(category_id_offset(5, balance), 10000)
         self.assertEqual(category_id_offset(6, balance), 20000)
-        self.assertEqual(category_id_for_local_code(1099, 6, balance), 21099)
+        self.assertEqual(category_id_for_local_code(1100, 6, balance), 21100)
         self.assertEqual(category_id_for_local_code(1200, 6, balance), 21200)
         # Country 7 takes the next block only when it has a balance.
         # A gap (no balance on 6) does not consume 20000.
@@ -277,31 +307,28 @@ class CrossPostingMatchTests(unittest.TestCase):
     def test_a_live_bank_category_is_not_released(self) -> None:
         found = managed_category_ids(
             {
-                1099: 11099,
                 1100: 11100,
                 1125: 11125,
                 1126: 11126,
                 1200: 11200,
-                3125: 13125,
-                3126: 13126,
                 1021: 11021,
             },
             {1108, 1021},
             {11021},
+            role_codes=_LEGS.codes(),
         )
-        self.assertIn(11099, found)
         self.assertIn(11100, found)
         self.assertIn(11125, found)
         self.assertIn(11126, found)
         self.assertIn(11200, found)
-        self.assertIn(13125, found)
-        self.assertIn(13126, found)
         self.assertIn(11108, found)
         self.assertNotIn(11021, found)
+        # Without role rows only the digit codes are managed.
+        self.assertEqual(managed_category_ids({}, {1108}), {1108, 11108})
 
     def test_dim_category_row_supplies_the_stored_id(self) -> None:
-        self.assertEqual(stored_category_id(1099, {1099: 11099}), 11099)
-        self.assertEqual(stored_category_id(1099, {}), 11099)
+        self.assertEqual(stored_category_id(1100, {1100: 11100}), 11100)
+        self.assertEqual(stored_category_id(1100, {}), 11100)
 
 
 if __name__ == "__main__":
