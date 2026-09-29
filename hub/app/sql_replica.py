@@ -119,6 +119,7 @@ class _BoundScope:
     username: str
     person_id: int
     year: int
+    country_id: int | None
     bank_key: int | None
     account_id: int | None
     cursor: Any
@@ -208,6 +209,19 @@ def _open_bound_scope() -> _BoundScope | None:
         print(f"sql replica: no person {username!r}")
         return None
     person_id = int(row[0])
+    country_id = _country_id_for_username(cursor, country_name)
+    if country_id is None:
+        cursor.execute(
+            """
+            SELECT c.country_id
+            FROM dbo.person p
+            JOIN dbo.country c ON c.country_id = p.country_id
+            WHERE p.id = ?
+            """,
+            (person_id,),
+        )
+        country_row = cursor.fetchone()
+        country_id = int(country_row[0]) if country_row else None
 
     account_id: int | None = None
     if account_iban:
@@ -221,6 +235,7 @@ def _open_bound_scope() -> _BoundScope | None:
         username=username,
         person_id=person_id,
         year=int(year),
+        country_id=country_id,
         bank_key=None,
         account_id=account_id,
         cursor=cursor,
@@ -1215,18 +1230,15 @@ def ingest_bound_transactions(
             print(f"sql replica: no remainder category for {bound.username!r}")
             return 0
         bank_id = bound.bank_key if (bound.bank_key or 0) >= 0 else None
+        include_country = _has_column(bound.cursor, bound.table, "country_id")
+        if include_country and bound.country_id is None:
+            raise RuntimeError(f"{bound.table} requires country_id from dbo.country")
         bound.cursor.execute(
             f"SELECT source_id FROM {bound.table} WHERE person_id = ? AND bank_id IS NULL",
             (bound.person_id,),
         )
         existing = {str(row[0]) for row in bound.cursor.fetchall()}
-        sql = f"""
-            INSERT INTO {bound.table} (
-                person_id, account_id, year, bank_id, source_id, amount,
-                bank_type, counterparty_name, counterparty_iban, description,
-                booked_on, category_id, modification, hit
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
+        sql = _booking_insert_sql(bound.table, country=include_country)
         params: list[tuple[Any, ...]] = []
         inserted_uids: list[str] = []
         new_source_ids: list[str] = []
@@ -1258,24 +1270,25 @@ def ingest_bound_transactions(
                 by_code.get(code, remainder_id) if lock and code is not None else remainder_id
             )
             modification = _mod_bits(0, category=True) if lock else -1
-            params.append(
-                (
-                    bound.person_id,
-                    acc_id,
-                    booked.year,
-                    bank_id,
-                    source_id,
-                    amount,
-                    str(item.get("type") or "")[:64] or None,
-                    str(item.get("name") or "")[:512] or None,
-                    iban,
-                    str(item.get("description") or "") or None,
-                    booked,
-                    category_id,
-                    modification,
-                    None,
-                )
+            row_values: tuple[Any, ...] = (
+                bound.person_id,
+                acc_id,
+                booked.year,
+                bank_id,
+                source_id,
+                amount,
+                str(item.get("type") or "")[:64] or None,
+                str(item.get("name") or "")[:512] or None,
+                iban,
+                str(item.get("description") or "") or None,
+                booked,
+                category_id,
+                modification,
+                None,
             )
+            if include_country:
+                row_values = (bound.country_id, *row_values)
+            params.append(row_values)
             existing.add(source_id)
             inserted_uids.append(str(item.get("account_uid") or "").strip())
             new_source_ids.append(source_id)
@@ -1309,10 +1322,45 @@ def _root_source_id(source_id: str) -> str:
     return match.group(1) if match else str(source_id or "").strip()
 
 
-def _has_parent_source_column(cursor, table: str) -> bool:
-    cursor.execute(f"SELECT COL_LENGTH(N'{table}', N'parent_source_id')")
+def _has_column(cursor, table: str, column: str) -> bool:
+    if not _IDENT.fullmatch(column):
+        return False
+    cursor.execute(f"SELECT COL_LENGTH(N'{table}', N'{column}')")
     row = cursor.fetchone()
-    return bool(row and row[0])
+    return bool(row and row[0] is not None)
+
+
+def _has_parent_source_column(cursor, table: str) -> bool:
+    return _has_column(cursor, table, "parent_source_id")
+
+
+_BOOKING_COLUMNS = (
+    "person_id",
+    "account_id",
+    "year",
+    "bank_id",
+    "source_id",
+    "amount",
+    "bank_type",
+    "counterparty_name",
+    "counterparty_iban",
+    "description",
+    "booked_on",
+    "category_id",
+    "modification",
+    "hit",
+)
+
+
+def _booking_insert_sql(table: str, *, country: bool, parent: bool = False) -> str:
+    """INSERT column list. ``country`` writes ``dbo.country.country_id``."""
+    cols = list(_BOOKING_COLUMNS)
+    if country:
+        cols.insert(0, "country_id")
+    if parent:
+        cols.append("parent_source_id")
+    marks = ", ".join("?" * len(cols))
+    return f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({marks})"
 
 
 def _next_split_ids(parent_id: str, used: set[int], count: int) -> list[str]:
@@ -1417,6 +1465,9 @@ def save_bound_split(
     if bound is None:
         raise RuntimeError("SQL Server is not configured")
     has_parent = _has_parent_source_column(bound.cursor, bound.table)
+    include_country = _has_column(bound.cursor, bound.table, "country_id")
+    if include_country and bound.country_id is None:
+        raise RuntimeError(f"{bound.table} requires country_id from dbo.country")
     where_sql, where_params = _bound_where(bound)
     bound.cursor.execute(
         f"""
@@ -1510,15 +1561,9 @@ def save_bound_split(
     fresh_ids = _next_split_ids(parent_id, used_n, need_new)
     fresh_i = 0
 
-    insert_sql = f"""
-        INSERT INTO {bound.table} (
-            person_id, account_id, year, bank_id, source_id, amount,
-            bank_type, counterparty_name, counterparty_iban, description,
-            booked_on, category_id, modification, hit
-            {', parent_source_id' if has_parent else ''}
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            {', ?' if has_parent else ''})
-        """
+    insert_sql = _booking_insert_sql(
+        bound.table, country=include_country, parent=has_parent
+    )
     update_sql = f"""
         UPDATE {bound.table}
         SET amount = ?, description = ?, modification = ?
@@ -1561,6 +1606,8 @@ def save_bound_split(
             child_flag,
             hit,
         ]
+        if include_country:
+            values.insert(0, bound.country_id)
         if has_parent:
             values.append(parent_id)
         bound.cursor.execute(insert_sql, tuple(values))
