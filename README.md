@@ -85,9 +85,10 @@ Opens the term window: keywords that assign bookings to categories. See
 [Edit Terms](#edit-terms). Shortcut: `Alt+T`.
 
 **Recalculate categories**  
-Reassigns bookings from the terms, for every year in reach. A person login
-covers that person. A country or center login covers every person in the
-center now selected; other centers stay as they are. A category you set by
+Reassigns bookings from the terms, for every year in reach, and only the
+bookings in this login. A unit login covers its own account. A person login
+covers that person. A center login covers that center. A country login covers
+the whole country, which is where G-terms are written. A category you set by
 hand, and a row that came from Excel, stay. Use this after you change terms
 or the category list.
 

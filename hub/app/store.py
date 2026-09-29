@@ -500,19 +500,67 @@ def mutate_and_publish(
     }
 
 
+def term_changes_in_scope(
+    rows: list[dict[str, Any]],
+    *,
+    center: str,
+    person: str | None = None,
+    account_uid: str | None = None,
+    whole_country: bool = False,
+) -> tuple[list[dict[str, Any]], list[int]]:
+    """Pending term edits this login may rescore, and the log ids it fully covers.
+
+    A row with no person is a G-term. Only a country pass applies and clears
+    those, because a G-term is written for the whole country. A unit pass
+    (``account_uid``) rescores that account. A person-wide P-term is applied
+    there and left in the log, because the person's other accounts were not
+    rescored.
+    """
+    center_name = (center or "").strip().lower()
+    who = (person or "").strip().lower()
+    uid = (account_uid or "").strip()
+    apply_rows: list[dict[str, Any]] = []
+    clear_ids: list[int] = []
+    for row in rows:
+        term_person = str(row.get("person") or "").strip()
+        if not term_person:
+            if whole_country:
+                apply_rows.append(row)
+                clear_ids.append(int(row["id"]))
+            continue
+        row_center = str(row.get("center") or "").strip().lower()
+        if not whole_country and row_center and row_center != center_name:
+            continue
+        if who and term_person.lower() != who:
+            continue
+        row_account = str(row.get("account") or "").strip()
+        if uid and row_account and row_account != uid:
+            continue
+        apply_rows.append(row)
+        if uid and row_account != uid:
+            continue
+        clear_ids.append(int(row["id"]))
+    return apply_rows, clear_ids
+
+
 def recalculate_from_scratch_all(
     center: str,
     *,
     person: str | None = None,
+    account: str | None = None,
+    whole_country: bool = False,
     source: str = "central",
 ) -> dict[str, Any]:
-    """Re-categorize the logged-in scope from scratch, keeping user-set locks.
+    """Re-categorize bookings in the login scope, keeping user-set locks.
 
     Rows at 1 (cross-posting) and 2 (hand) are left untouched. Hits (0) and
     uncalculated rows (-1) are reset and re-derived. Excel rows stay.
 
-    ``person`` set → that person only. Otherwise every person in ``center``.
-    Does not walk other centers or countries.
+    ``whole_country`` scores every center. That is the country login: G-terms
+    are written there and match bookings in every center. ``person`` scores
+    that person. ``account`` (an IBAN) scores that account only. Otherwise
+    every person in ``center`` is scored, and other centers stay as they are.
+    G-term log rows are cleared only after a country pass.
     """
     from app.matrix import build_matrix, recalculate_all_from_scratch
     from app.runtime import CALC_LOCK
@@ -523,41 +571,70 @@ def recalculate_from_scratch_all(
         set_request_country,
     )
     from app.settings import init_app
+    from app.sql_catalog import (
+        account_uid_for_iban,
+        clear_country_term_changes,
+        clear_personal_term_changes,
+    )
 
     primary = _clean_center(center)
     primary_country = resolve_country_for_center(primary) or active_country()
     name = (person or "").strip()
+    iban = "".join(str(account or "").split()).upper()
     folders = [name] if name else None
+    centers = list_centers(primary_country) if whole_country and primary_country else [primary]
+    if not centers:
+        centers = [primary]
+    uid = account_uid_for_iban(name, iban) if name and iban else None
     with CALC_LOCK:
         if primary_country:
             set_request_country(primary_country)
+        announced: list[str] = []
+        for ws in centers:
+            set_active_center(ws, country=primary_country)
+            init_app()
+            recalculate_all_from_scratch(folders, account=iban or None)
+            announced.extend(
+                announce_mutation(
+                    ws,
+                    derived_paths_for_center(ws, all_years=True),
+                    source=source,
+                )
+            )
+            if uid:
+                clear_personal_term_changes(ws, name or None, account_uid=uid)
+            else:
+                clear_personal_term_changes(ws, name or None)
+        if whole_country and primary_country:
+            clear_country_term_changes(primary_country)
         set_active_center(primary, country=primary_country)
         init_app()
-        recalculate_all_from_scratch(folders)
-        announced = announce_mutation(
-            primary,
-            derived_paths_for_center(primary, all_years=True),
-            source=source,
-        )
         matrix_payload = build_matrix()
-        from app.sql_catalog import clear_country_term_changes, clear_personal_term_changes
-
-        clear_personal_term_changes(primary, name or None)
-        if primary_country and not name:
-            clear_country_term_changes(primary_country)
     if isinstance(matrix_payload, dict) and "center" not in matrix_payload:
         matrix_payload = {**matrix_payload, "center": primary}
     return {
         "ok": True,
         "center": primary,
         "person": name,
+        "account": iban,
+        "whole_country": bool(whole_country),
         "affected_files": announced,
         "matrix": matrix_payload,
     }
 
 
-def recalculate_incremental(center: str) -> dict[str, Any]:
-    """Run iRCfT for the term edits stored in ``dbo.term_change``, then clear them."""
+def recalculate_incremental(
+    center: str,
+    *,
+    person: str | None = None,
+    account: str | None = None,
+    whole_country: bool = False,
+) -> dict[str, Any]:
+    """Run iRCfT for pending term edits inside the login scope, then clear those.
+
+    G-term edits are applied across every center only when ``whole_country``
+    is set. A center, person, or unit pass leaves them in the log.
+    """
     from app.runtime import CALC_LOCK
     from app.runtime import (
         active_country,
@@ -566,26 +643,42 @@ def recalculate_incremental(center: str) -> dict[str, Any]:
         set_request_country,
     )
     from app.settings import init_app
-    from app.sql_catalog import clear_term_changes, country_for_center, load_term_changes
+    from app.sql_catalog import (
+        account_uid_for_iban,
+        clear_term_changes,
+        country_for_center,
+        load_term_changes,
+    )
 
     primary = _clean_center(center)
     country = country_for_center(primary) or resolve_country_for_center(primary) or active_country() or ""
+    name = (person or "").strip()
+    iban = "".join(str(account or "").split()).upper()
+    uid = account_uid_for_iban(name, iban) if name and iban else None
     rows = load_term_changes(country)
-    if not rows:
+    scoped, clear_ids = term_changes_in_scope(
+        rows,
+        center=primary,
+        person=name or None,
+        account_uid=uid,
+        whole_country=whole_country,
+    )
+    if not scoped:
         return {"ok": True, "center": primary, "changes": 0, "matrix": None}
     general_added: list[str] = []
     general_removed: list[str] = []
     personal: dict[tuple[str, str, str | None], dict[str, list[str]]] = {}
-    for row in rows:
+    for row in scoped:
         term = str(row.get("term") or "").strip()
         if not term:
             continue
         bucket = "added" if row.get("added") else "removed"
-        person = row.get("person")
-        if not person:
+        row_person = row.get("person")
+        if not row_person:
             (general_added if row.get("added") else general_removed).append(term)
             continue
-        key = (str(row.get("center") or primary), str(person), row.get("account"))
+        row_account = row.get("account") or (uid if uid else None)
+        key = (str(row.get("center") or primary), str(row_person), row_account)
         group = personal.setdefault(key, {"added": [], "removed": []})
         group[bucket].append(term)
     with CALC_LOCK:
@@ -604,7 +697,7 @@ def recalculate_incremental(center: str) -> dict[str, Any]:
                     with_matrix=False,
                     lock=False,
                 )
-        for (ws, person_name, account), group in personal.items():
+        for (ws, person_name, row_account), group in personal.items():
             ircft_center(
                 ws,
                 person_folders=[person_name],
@@ -612,15 +705,15 @@ def recalculate_incremental(center: str) -> dict[str, Any]:
                 removed=group["removed"],
                 personal=True,
                 category_name="",
-                account=account,
+                account=row_account,
                 with_matrix=False,
                 lock=False,
             )
-        clear_term_changes([int(row["id"]) for row in rows])
+        clear_term_changes(clear_ids)
     return {
         "ok": True,
         "center": primary,
-        "changes": len(rows),
+        "changes": len(clear_ids),
         "matrix": None,
     }
 

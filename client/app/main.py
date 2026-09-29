@@ -931,12 +931,37 @@ def api_discard_term_changes() -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+def _recalculate_scope() -> dict[str, Any]:
+    """Bookings this login may rescore. G-terms are a country-wide write."""
+    from app.centrale_sync import configured_person, load_config
+    from shared.user_access import ACCESS_CENTER, ACCESS_COUNTRY, ACCESS_PERSON, ACCESS_UNIT
+
+    cfg = load_config()
+    if cfg.access == ACCESS_COUNTRY:
+        return {"whole_country": True}
+    if cfg.access == ACCESS_CENTER:
+        return {}
+    if cfg.access == ACCESS_PERSON:
+        person = configured_person()
+        return {"person": person} if person else {}
+    if cfg.access == ACCESS_UNIT:
+        body: dict[str, Any] = {}
+        person = configured_person()
+        if person:
+            body["person"] = person
+        account = "".join(str(cfg.account or "").split()).upper()
+        if account:
+            body["account"] = account
+        return body
+    raise HTTPException(status_code=403, detail="Recalculate categories requires a login")
+
+
 @app.post("/api/recalculate-incremental")
 def api_recalculate_incremental() -> dict[str, Any]:
     from app.centrale_sync import hub_post, scope_matrix
 
     try:
-        result = hub_post("/recalculate-incremental", {}, timeout=600.0)
+        result = hub_post("/recalculate-incremental", _recalculate_scope(), timeout=600.0)
         matrix = result.get("matrix")
         if isinstance(matrix, dict):
             return scope_matrix(matrix)
@@ -949,12 +974,10 @@ def api_recalculate_incremental() -> dict[str, Any]:
 
 @app.post("/api/recalculate-from-scratch")
 def api_recalculate_from_scratch() -> dict[str, Any]:
-    from app.centrale_sync import configured_person, hub_post, scope_matrix
+    from app.centrale_sync import hub_post, scope_matrix
 
     try:
-        person = configured_person()
-        body: dict[str, Any] = {"person": person} if person else {}
-        result = hub_post("/recalculate-from-scratch", body, timeout=600.0)
+        result = hub_post("/recalculate-from-scratch", _recalculate_scope(), timeout=600.0)
         matrix = result.get("matrix")
         if isinstance(matrix, dict):
             return scope_matrix(matrix)

@@ -1744,10 +1744,51 @@ def clear_term_changes(change_ids: list[int]) -> None:
     _sql_retry(_run)
 
 
-def clear_personal_term_changes(center: str, person: str | None = None) -> None:
-    """Drop personal log rows for the people a from-scratch pass just scored."""
+def account_uid_for_iban(person: str, iban: str) -> str | None:
+    """``dbo.account.uid`` for this person's IBAN, or None."""
+    who = (person or "").strip()
+    compact = "".join(str(iban or "").split()).upper()
+    if not who or not compact or not _sql_ready():
+        return None
+
+    def _run() -> str | None:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            SELECT a.uid
+            FROM dbo.account a
+            JOIN dbo.person p ON p.id = a.person_id
+            WHERE p.username = ? COLLATE Latin1_General_CI_AI
+              AND UPPER(REPLACE(a.iban, ' ', '')) = ?
+            """,
+            (who, compact),
+        )
+        row = cursor.fetchone()
+        if row is None or row[0] is None:
+            return None
+        return str(row[0]).strip() or None
+
+    try:
+        return _sql_retry(_run)
+    except Exception as exc:  # noqa: BLE001
+        print(f"sql catalog: failed to resolve account uid: {exc}")
+        return None
+
+
+def clear_personal_term_changes(
+    center: str,
+    person: str | None = None,
+    *,
+    account_uid: str | None = None,
+) -> None:
+    """Drop personal log rows for the people a from-scratch pass just scored.
+
+    ``account_uid`` limits the delete to that account. Person-wide rows
+    (``account_id`` NULL) and G-term rows stay.
+    """
     ws = (center or "").strip()
     who = (person or "").strip()
+    uid = (account_uid or "").strip()
     if not ws or not _sql_ready():
         return
 
@@ -1758,7 +1799,21 @@ def clear_personal_term_changes(center: str, person: str | None = None) -> None:
         cursor = conn.cursor()
         if not term_change_table(cursor):
             return
-        if who:
+        if uid:
+            cursor.execute(
+                """
+                DELETE tc
+                FROM dbo.term_change tc
+                JOIN dbo.person p ON p.id = tc.person_id
+                JOIN dbo.center n ON n.center_id = p.center_id
+                JOIN dbo.account a ON a.account_id = tc.account_id
+                WHERE n.username = ? COLLATE Latin1_General_CI_AI
+                  AND (? = '' OR p.username = ? COLLATE Latin1_General_CI_AI)
+                  AND a.uid = ?
+                """,
+                (ws, who, who, uid),
+            )
+        elif who:
             cursor.execute(
                 """
                 DELETE tc

@@ -518,10 +518,20 @@ def recalculate_pack_from_scratch(pack: PersonScope) -> None:
             recategorize_transactions(from_scratch=True)
 
 
-def recalculate_all_from_scratch(person_folders: list[str] | None = None) -> dict[str, Any]:
-    """From-scratch recategorize of the bound center (every year folder)."""
+def recalculate_all_from_scratch(
+    person_folders: list[str] | None = None,
+    *,
+    account: str | None = None,
+) -> dict[str, Any]:
+    """From-scratch recategorize of the bound center (every year folder).
+
+    ``account`` is an IBAN. Set it to rescore that account only.
+    """
+    from dataclasses import replace
+
     from app.runtime import CALC_LOCK
 
+    iban = "".join(str(account or "").split()).upper() or None
     with CALC_LOCK:
         packs = refresh_people()
         if person_folders:
@@ -530,7 +540,8 @@ def recalculate_all_from_scratch(person_folders: list[str] | None = None) -> dic
         else:
             to_run = packs
         for pack in to_run:
-            recalculate_pack_from_scratch(pack)
+            scoped = replace(pack, account=iban) if iban else pack
+            recalculate_pack_from_scratch(scoped)
         return build_matrix(packs)
 
 

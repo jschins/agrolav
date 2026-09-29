@@ -835,6 +835,8 @@ def api_recalculate_center(
 
 class RecalculateScratchRequest(BaseModel):
     person: str | None = None
+    account: str | None = None
+    whole_country: bool = False
 
 
 class OpeningBalanceRequest(BaseModel):
@@ -860,7 +862,12 @@ def api_recalculate_from_scratch(
 ) -> dict[str, Any]:
     req = body or RecalculateScratchRequest()
     try:
-        payload = store.recalculate_from_scratch_all(center, person=req.person)
+        payload = store.recalculate_from_scratch_all(
+            center,
+            person=req.person,
+            account=req.account,
+            whole_country=req.whole_country,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -872,10 +879,17 @@ def api_recalculate_from_scratch(
 @app.post("/api/local/{center}/recalculate-incremental")
 def api_recalculate_incremental(
     center: str,
+    body: RecalculateScratchRequest | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
+    req = body or RecalculateScratchRequest()
     try:
-        payload = store.recalculate_incremental(center)
+        payload = store.recalculate_incremental(
+            center,
+            person=req.person,
+            account=req.account,
+            whole_country=req.whole_country,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
