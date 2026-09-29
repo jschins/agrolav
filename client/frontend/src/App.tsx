@@ -840,35 +840,6 @@ function loginHasUsernameRole(
   });
 }
 
-/** P&L rows shown in Resultaat when ``category_role`` is this username. */
-function resultaatEditCategoryNames(
-  settings: SettingsResponse,
-  username: string
-): string[] | null {
-  const key = username.trim().toLowerCase();
-  if (!key || SYSTEM_CATEGORY_ROLES.has(key)) return null;
-  if (!loginHasUsernameRole(settings.category_roles, key)) return null;
-  return settings.categories.filter((name) => {
-    const code = categoryCodeFromName(name);
-    if (code == null || code < 3000 || code > 4999) return false;
-    const role = String(settings.category_roles?.[name] ?? "")
-      .trim()
-      .toLowerCase();
-    return role === key || role === "remainder";
-  });
-}
-
-function firstResultaatRestrict(
-  settings: SettingsResponse,
-  ...usernames: (string | undefined)[]
-): string[] | null {
-  for (const name of usernames) {
-    const list = resultaatEditCategoryNames(settings, name || "");
-    if (list) return list;
-  }
-  return null;
-}
-
 function scopedAccountGroups(
   groups: AccountGroup[] | undefined,
   personScope?: string
@@ -3423,12 +3394,13 @@ function MainApp({
     term: string,
     targetCategory: string,
     general: boolean,
-    account?: string
+    account?: string,
+    transactionId?: string
   ) {
     const centerTarget = centerNameFromKey(account || "");
     if (centerTarget) {
       const sel = selectionRef.current;
-      const rowId = termMenu?.transactionId;
+      const rowId = transactionId || termMenu?.transactionId;
       closeTermMenu();
       if (sel && targetCategory !== sel.category) {
         setDetail((prev) =>
@@ -3451,7 +3423,7 @@ function MainApp({
     const person_name = selectionRef.current?.person_name;
     if (!general && !person_name) return Promise.resolve();
     const sel = selectionRef.current;
-    const rowId = termMenu?.transactionId;
+    const rowId = transactionId || termMenu?.transactionId;
     closeTermMenu();
     if (sel && targetCategory !== sel.category) {
       setDetail((prev) =>
@@ -3806,13 +3778,15 @@ function MainApp({
             onModify={modifyTransaction}
             onCategoryError={setError}
             onTermContextMenu={openTermMenu}
+            onAssignTerm={(term, categoryName, general, account, transactionId) =>
+              saveTermMenu(term, categoryName, general, account, transactionId)
+            }
           />
         )}
         {termMenu && termMenuSettings && (
           <TermContextMenu
             settings={termMenuSettings}
             initialTerm={termMenu.term}
-            personName={detail?.person || selection?.person_name || loginName}
             personScope={loginPerson}
             showCenters={!loginPerson && (loginAccess === "local" || loginAccess === "country")}
             generalEditable={loginAccess.trim().toLowerCase() === "country"}
@@ -3831,7 +3805,6 @@ function MainApp({
 function TermsApp() {
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [priorityOpen, setPriorityOpen] = useState(false);
-  const [loginName, setLoginName] = useState("");
   const [personScope, setPersonScope] = useState("");
   const [centerName, setCenterName] = useState("");
   const [generalEditable, setGeneralEditable] = useState(false);
@@ -3848,13 +3821,6 @@ function TermsApp() {
           setPersonScope((status?.person || "").trim());
           setCenterName((status?.center || "").trim());
           setGeneralEditable((status?.access || "").trim().toLowerCase() === "country");
-          setLoginName(
-            (
-              (status?.access || "").trim().toLowerCase() === "unit"
-                ? status?.username || status?.person || ""
-                : status?.person || status?.username || status?.center || ""
-            ).trim()
-          );
         })
         .catch((e: Error) => {
           if (!cancelled) setError(e.message);
@@ -4042,7 +4008,6 @@ function TermsApp() {
         {settings ? (
           <TermsTables
             settings={settings}
-            loginName={loginName}
             personScope={personScope}
             centerName={centerName}
             generalEditable={generalEditable}
@@ -5213,74 +5178,104 @@ function SplitApp() {
 function categoryPickerItems(
   names: string[],
   codes: number[]
-): { code: number; label: string }[] {
-  const byCode = new Map<number, string>();
+): { code: number; label: string; name: string }[] {
+  const byCode = new Map<number, { label: string; name: string }>();
   for (const name of names) {
     const match = String(name).match(/^(\d{4})\s+(.*)$/);
     if (!match) continue;
     const code = parseInt(match[1], 10);
     if (code < 1000 || code > 4999) continue;
-    byCode.set(code, match[2].trim());
+    byCode.set(code, { label: match[2].trim(), name });
   }
   for (const code of codes) {
     if (code < 1000 || code > 4999) continue;
-    if (!byCode.has(code)) byCode.set(code, "");
+    if (!byCode.has(code)) byCode.set(code, { label: "", name: "" });
   }
   return [...byCode.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([code, label]) => ({ code, label }));
+    .map(([code, item]) => ({ code, label: item.label, name: item.name }));
 }
 
 function CategoryPickerPopup({
   currentCode,
   extraCodes,
-  personName,
+  term,
+  bankIban,
   onPick,
+  onAssignTerm,
   onClose,
 }: {
   currentCode: number | null;
   extraCodes: number[];
-  personName?: string;
+  /** Counterparty text used when a G or P box adds a term. */
+  term: string;
+  bankIban?: string;
   onPick: (code: number) => void;
+  onAssignTerm?: (
+    term: string,
+    categoryName: string,
+    general: boolean,
+    account?: string
+  ) => void | Promise<void>;
   onClose: () => void;
 }) {
-  const [items, setItems] = useState<{ code: number; label: string }[] | null>(null);
+  const [items, setItems] = useState<{ code: number; label: string; name: string }[] | null>(null);
+  const [settings, setSettings] = useState<SettingsResponse | null>(null);
+  const [access, setAccess] = useState("");
+  const [personScope, setPersonScope] = useState("");
+  const [accountKey, setAccountKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const extraKey = extraCodes.join(",");
 
   useEffect(() => {
     let cancelled = false;
+    const codes = extraKey
+      ? extraKey.split(",").map((part) => Number(part))
+      : [];
     Promise.all([getSettings(), getCentraleStatus().catch(() => null)])
-      .then(([settings, status]) => {
+      .then(([loaded, status]) => {
         if (cancelled) return;
-        const restrict = firstResultaatRestrict(
-          settings,
-          personName,
-          status?.person,
-          status?.username
-        );
-        if (restrict) {
-          const codes = restrict
-            .map((name) => categoryCodeFromName(name))
-            .filter((code): code is number => code != null);
-          if (currentCode != null && !codes.includes(currentCode)) {
-            codes.push(currentCode);
-          }
-          setItems(categoryPickerItems(restrict, codes));
-          return;
-        }
+        setSettings(loaded);
+        setAccess((status?.access || "").trim().toLowerCase());
+        setPersonScope((status?.person || "").trim());
         setItems(
-          categoryPickerItems(settings.categories, [
-            ...(settings.valid_category_codes ?? []),
-            ...extraCodes,
+          categoryPickerItems(loaded.categories, [
+            ...(loaded.valid_category_codes ?? []),
+            ...codes,
           ])
         );
       })
       .catch(() => {
-        if (!cancelled) setItems(categoryPickerItems([], extraCodes));
+        if (!cancelled) setItems(categoryPickerItems([], codes));
       });
     return () => {
       cancelled = true;
     };
-  }, [currentCode, personName]);
+  }, [currentCode, extraKey]);
+
+  const accountGroups = scopedAccountGroups(settings?.account_groups, personScope);
+  const accountModality = accountGroups.length > 0;
+  const menuBlocks = accountBlocks(accountGroups, "");
+  const showCenters = Boolean(
+    !personScope &&
+      (access === "local" || access === "country") &&
+      menuBlocks.some((block) => block.center)
+  );
+  const showGeneral = access === "country";
+  const centerPicked = Boolean(centerNameFromKey(accountKey));
+  const columnCount = (showGeneral ? 1 : 0) + 2 + 1;
+
+  useEffect(() => {
+    const groups = scopedAccountGroups(settings?.account_groups, personScope);
+    const preset = bankIban
+      ? groups.find(
+          (group) =>
+            String(group.iban ?? "").trim().toUpperCase() ===
+            String(bankIban).trim().toUpperCase()
+        )
+      : undefined;
+    setAccountKey(preset?.account_key ?? groups[0]?.account_key ?? "");
+  }, [settings, personScope, bankIban]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -5289,6 +5284,16 @@ function CategoryPickerPopup({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  function assign(categoryName: string, general: boolean) {
+    const cleaned = term.trim();
+    if (!cleaned || !categoryName || saving || !onAssignTerm) return;
+    if (general && !showGeneral) return;
+    setSaving(true);
+    Promise.resolve(
+      onAssignTerm(cleaned, categoryName, general, general ? undefined : accountKey || undefined)
+    ).finally(() => setSaving(false));
+  }
 
   return (
     <div className="category-picker-backdrop" onClick={onClose}>
@@ -5304,19 +5309,92 @@ function CategoryPickerPopup({
           <table className="category-picker-table">
             <thead>
               <tr>
+                {showGeneral ? (
+                  <th
+                    className="category-picker-gp"
+                    title={tableHeaderTerm(settings?.table_header_terms, "General")}
+                  >
+                    {tableHeaderTerm(settings?.table_header_terms, "G")}
+                  </th>
+                ) : null}
                 <th className="code">Code</th>
                 <th>Post</th>
+                <th
+                  className="category-picker-scope"
+                  title={tableHeaderTerm(settings?.table_header_terms, "Personal")}
+                >
+                  {accountModality ? (
+                    <select
+                      className={
+                        centerPicked
+                          ? "term-context-account-select center-picked"
+                          : "term-context-account-select"
+                      }
+                      value={accountKey}
+                      title={tableHeaderTerm(settings?.table_header_terms, "Personal")}
+                      disabled={saving}
+                      onChange={(e) => setAccountKey(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {(showCenters
+                        ? menuBlocks
+                        : [{ center: "", key: "", accounts: accountGroups }]
+                      ).flatMap((block) => [
+                        showCenters && block.center ? (
+                          <option
+                            key={block.key}
+                            value={block.key}
+                            style={{ color: "#b91c1c", fontWeight: 600 }}
+                          >
+                            {block.center}
+                          </option>
+                        ) : null,
+                        ...block.accounts.map((group) => (
+                          <option key={group.account_key} value={group.account_key}>
+                            {showCenters
+                              ? `\u00a0\u00a0${group.account_name || group.account_key}`
+                              : group.account_name || group.account_key}
+                          </option>
+                        )),
+                      ])}
+                    </select>
+                  ) : (
+                    tableHeaderTerm(settings?.table_header_terms, "P")
+                  )}
+                </th>
               </tr>
             </thead>
             <tbody>
+              <tr className="category-picker-row category-picker-cancel" onClick={onClose}>
+                <td colSpan={columnCount}>cancel</td>
+              </tr>
               {items.map((item) => (
                 <tr
                   key={item.code}
                   className={`category-picker-row${item.code === currentCode ? " selected" : ""}`}
-                  onClick={() => onPick(item.code)}
                 >
-                  <td className="code">{String(item.code).padStart(4, "0")}</td>
-                  <td>{item.label}</td>
+                  {showGeneral ? (
+                    <td className="category-picker-gp">
+                      <input
+                        type="checkbox"
+                        aria-label={`${item.label || item.code} general`}
+                        disabled={saving || !term.trim() || !item.name}
+                        onChange={() => assign(item.name, true)}
+                      />
+                    </td>
+                  ) : null}
+                  <td className="code" onClick={() => onPick(item.code)}>
+                    {String(item.code).padStart(4, "0")}
+                  </td>
+                  <td onClick={() => onPick(item.code)}>{item.label}</td>
+                  <td className="category-picker-gp">
+                    <input
+                      type="checkbox"
+                      aria-label={`${item.label || item.code} personal`}
+                      disabled={saving || !term.trim() || !item.name}
+                      onChange={() => assign(item.name, false)}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -5622,6 +5700,7 @@ function PTable({
   onModify,
   onCategoryError,
   onTermContextMenu,
+  onAssignTerm,
 }: {
   categoryName: string;
   detail: TransactionsResponse;
@@ -5631,6 +5710,13 @@ function PTable({
   onModify: (transaction: Transaction) => void;
   onCategoryError?: (message: string | null) => void;
   onTermContextMenu?: (e: MouseEvent, cellText: string, transactionId: string) => void;
+  onAssignTerm?: (
+    term: string,
+    categoryName: string,
+    general: boolean,
+    account: string | undefined,
+    transactionId: string
+  ) => void | Promise<void>;
 }) {
   const [picker, setPicker] = useState<Transaction | null>(null);
   const [signOpen, setSignOpen] = useState(false);
@@ -5853,12 +5939,18 @@ function PTable({
         <CategoryPickerPopup
           currentCode={Number(picker.category)}
           extraCodes={[...validCategoryCodes]}
-          personName={detail.person}
+          term={formatCell(picker.name).trim() || formatCell(picker.description).trim()}
+          bankIban={bank}
           onPick={(code) => {
             const current = Number(picker.category);
             setPicker(null);
             onCategoryError?.(null);
             if (code !== current) onModify({ ...picker, category: code });
+          }}
+          onAssignTerm={(term, categoryName, general, account) => {
+            const id = String(picker.id ?? "");
+            setPicker(null);
+            return onAssignTerm?.(term, categoryName, general, account, id);
           }}
           onClose={() => setPicker(null)}
         />
@@ -5870,7 +5962,6 @@ function PTable({
 function TermContextMenu({
   settings,
   initialTerm,
-  personName,
   personScope,
   showCenters,
   bankIban,
@@ -5882,7 +5973,6 @@ function TermContextMenu({
 }: {
   settings: SettingsResponse;
   initialTerm: string;
-  personName?: string;
   personScope?: string;
   showCenters?: boolean;
   bankIban?: string;
@@ -5919,12 +6009,10 @@ function TermContextMenu({
   });
   const centerPicked = Boolean(centerNameFromKey(accountKey));
 
-  const categories =
-    firstResultaatRestrict(settings, personName) ??
-    settings.categories.filter(
-      (name) =>
-        name !== settings.remainder_category && isHitCategoryName(name, settings)
-    );
+  const categories = settings.categories.filter(
+    (name) =>
+      name !== settings.remainder_category && isHitCategoryName(name, settings)
+  );
 
   useEffect(() => {
     setTerm(initialTerm);
@@ -6154,16 +6242,10 @@ function wordAtClick(root: EventTarget, clientX: number, clientY: number): strin
   return wordAtIndex(text, offset);
 }
 
-function termsTableCategories(
-  settings: SettingsResponse,
-  ...usernames: (string | undefined)[]
-): string[] {
-  return (
-    firstResultaatRestrict(settings, ...usernames) ??
-    settings.categories.filter(
-      (name) =>
-        name !== settings.remainder_category && isHitCategoryName(name, settings)
-    )
+function termsTableCategories(settings: SettingsResponse): string[] {
+  return settings.categories.filter(
+    (name) =>
+      name !== settings.remainder_category && isHitCategoryName(name, settings)
   );
 }
 
@@ -6241,7 +6323,6 @@ function unionAccountTerms(
 
 function TermsTables({
   settings,
-  loginName,
   personScope,
   centerName,
   generalEditable = true,
@@ -6250,7 +6331,6 @@ function TermsTables({
   onUpdateCenter,
 }: {
   settings: SettingsResponse;
-  loginName?: string;
   personScope?: string;
   centerName?: string;
   /** Country login only. Other logins see G-terms greyed out. */
@@ -6272,10 +6352,7 @@ function TermsTables({
   const [selectedPerson, setSelectedPerson] = useState(people[0]?.person_name ?? "");
   const [selectedAccount, setSelectedAccount] = useState(account_groups[0]?.account_key ?? "");
   const selectedAccountGroup = account_groups.find((g) => g.account_key === selectedAccount);
-  const columns = termsTableCategories(
-    settings,
-    ...(personScope ? [personScope, loginName] : [])
-  );
+  const columns = termsTableCategories(settings);
   const accountModality = Boolean(account_groups && account_groups.length > 0);
   const showCenters = Boolean(!personScope && accountModality && blocks.some((block) => block.center));
 

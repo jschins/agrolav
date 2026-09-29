@@ -20,8 +20,8 @@ Neither of the four menu items affects the hand-set rows, which are 2.
 
 With the new rules
 
-- the order of running terms and cross postings after a category swipe is immaterial
-- hand-edited modifications on either description or category are not reset by a category swipe
+- the order of running terms and cross postings after a category wipe is immaterial
+- hand-edited modifications on either description or category are not reset by a category wipe
 - Included in the bank statement refresh functionality are the runs of both cross postings and terms on the freshly downloaded statements
 
 In contrast to menu-ordered runs, the automatic runs after a fresh download of bank statements

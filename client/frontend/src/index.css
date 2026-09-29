@@ -1228,8 +1228,29 @@ tr.modified td:not(.amount) {
   font-variant-numeric: tabular-nums;
 }
 
+.category-picker-table .category-picker-gp {
+  width: 1.6rem;
+  text-align: center;
+}
+
+.category-picker-table .category-picker-gp input[type="checkbox"] {
+  cursor: pointer;
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.category-picker-table .category-picker-scope {
+  text-align: left;
+}
+
 .category-picker-row {
   cursor: pointer;
+}
+
+.category-picker-cancel td {
+  color: #64748b;
+  font-style: italic;
+  text-align: left;
 }
 
 .category-picker-row:hover {
