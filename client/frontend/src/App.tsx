@@ -815,31 +815,6 @@ function matrixRowsToShow(
   });
 }
 
-const SYSTEM_CATEGORY_ROLES = new Set([
-  "remainder",
-  "balance",
-  "last_booked",
-  "equity",
-  "never",
-  "profit",
-  "bank",
-  "no_hit",
-  "source",
-  "mirror",
-]);
-
-function loginHasUsernameRole(
-  roles: Record<string, string> | undefined,
-  login: string
-): boolean {
-  const loginL = login.trim().toLowerCase();
-  if (!loginL) return false;
-  return Object.values(roles ?? {}).some((role) => {
-    const text = String(role || "").trim().toLowerCase();
-    return text === loginL && !SYSTEM_CATEGORY_ROLES.has(text);
-  });
-}
-
 function scopedAccountGroups(
   groups: AccountGroup[] | undefined,
   personScope?: string
@@ -850,26 +825,6 @@ function scopedAccountGroups(
   return all.filter(
     (group) => String(group.person || "").trim().toLowerCase() === needle
   );
-}
-
-function visibleMatrixCategories(
-  matrix: MatrixResponse,
-  roles: Record<string, string> | undefined,
-  login: string
-): string[] {
-  const loginL = login.trim().toLowerCase();
-  if (!loginHasUsernameRole(roles, login)) return matrix.categories;
-  const greyPerson =
-    matrix.people.length === 1 ? matrix.people[0].person_name : undefined;
-  const saldoName = matrixFooterNames(matrix).balance;
-  return matrix.categories.filter((cat) => {
-    if (cat === saldoName) return false;
-    if (isMatrixFooter(matrix, cat)) return true;
-    const role = String(roles?.[cat] ?? "").trim().toLowerCase();
-    if (role === "remainder") return true;
-    if (role !== loginL) return false;
-    return !categoryRowGreyed(matrix, cat, greyPerson);
-  });
 }
 
 function bookingContainsTerm(row: Transaction, term: string): boolean {
@@ -967,7 +922,8 @@ type AppView =
   | "password"
   | "journal"
   | "afschrijvingen"
-  | "search";
+  | "search"
+  | "monthly";
 
 const VIEW_CHANGE_EVENT = "boekhouding-view";
 
@@ -2181,6 +2137,11 @@ function SyncNotifyShell({
         onClick: () => openResultSheetWindow(status.result_url!),
       });
     }
+    items.push({
+      id: "monthly-drilldown",
+      label: tableHeaderTerm(menuTerms, "Monthly drilldown"),
+      onClick: () => openView("monthly"),
+    });
     const onMatrix =
       activeYear &&
       !termsView &&
@@ -2661,7 +2622,8 @@ function parseAppView(search = window.location.search): AppView {
     view === "password" ||
     view === "journal" ||
     view === "afschrijvingen" ||
-    view === "search"
+    view === "search" ||
+    view === "monthly"
   ) {
     return view;
   }
@@ -2669,7 +2631,16 @@ function parseAppView(search = window.location.search): AppView {
 }
 
 function viewUrl(
-  target: "main" | "terms" | "categories" | "ip" | "password" | "journal" | "afschrijvingen" | "search"
+  target:
+    | "main"
+    | "terms"
+    | "categories"
+    | "ip"
+    | "password"
+    | "journal"
+    | "afschrijvingen"
+    | "search"
+    | "monthly"
 ): string {
   if (target === "terms") return `${window.location.pathname}?view=terms`;
   if (target === "categories") return `${window.location.pathname}?view=categories`;
@@ -2678,6 +2649,7 @@ function viewUrl(
   if (target === "journal") return `${window.location.pathname}?view=journal`;
   if (target === "afschrijvingen") return `${window.location.pathname}?view=afschrijvingen`;
   if (target === "search") return `${window.location.pathname}?view=search`;
+  if (target === "monthly") return `${window.location.pathname}?view=monthly`;
   return window.location.pathname;
 }
 
@@ -2691,7 +2663,16 @@ function showInThisWindow(url: string) {
 }
 
 function openView(
-  target: "main" | "terms" | "categories" | "ip" | "password" | "journal" | "afschrijvingen" | "search"
+  target:
+    | "main"
+    | "terms"
+    | "categories"
+    | "ip"
+    | "password"
+    | "journal"
+    | "afschrijvingen"
+    | "search"
+    | "monthly"
 ) {
   showInThisWindow(viewUrl(target));
 }
@@ -2722,6 +2703,7 @@ export default function App() {
   const isJournal = appView === "journal";
   const isAfschrijvingen = appView === "afschrijvingen";
   const isSearch = appView === "search";
+  const isMonthly = appView === "monthly";
   const [wsEpoch, setWsEpoch] = useState(0);
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -2863,6 +2845,8 @@ export default function App() {
           />
         ) : isSearch ? (
           <SearchStatementsApp key={wsEpoch} terms={menuTerms} />
+        ) : isMonthly ? (
+          <MonthlyDrilldownApp key={wsEpoch} year={year} dataRev={dataRev} />
         ) : (
           <MainApp
             key={wsEpoch}
@@ -3130,10 +3114,8 @@ function MainApp({
   } | null>(null);
   const [termMenuSettings, setTermMenuSettings] = useState<SettingsResponse | null>(null);
   const termSettingsRef = useRef<SettingsResponse | null>(null);
-  const [loginName, setLoginName] = useState("");
   const [loginPerson, setLoginPerson] = useState("");
   const [loginAccess, setLoginAccess] = useState("");
-  const [categoryRoles, setCategoryRoles] = useState<Record<string, string>>({});
   const [languageLong, setLanguageLong] = useState<Record<string, string>>({});
   const selectionRef = useRef<CellSelection | null>(null);
   const dirtyRef = useRef(false);
@@ -3155,11 +3137,7 @@ function MainApp({
         }
         // Personal login: restore this person's refresh status only (no auto-fetch).
         const person = (s.person || "").trim();
-        const accessName = (s.access || "").trim().toLowerCase();
         setLoginPerson(person);
-        setLoginName(
-          (accessName === "unit" ? s.username || person : person || s.username || s.center || "").trim()
-        );
         setLoginAccess((s.access || "").trim());
         const scope =
           scoped && ws && person ? { center: ws, person } : null;
@@ -3172,7 +3150,6 @@ function MainApp({
       .catch(() => {
         setHasSecrets(false);
         setAddPersonUrl(null);
-        setLoginName("");
       });
   }, []);
 
@@ -3182,11 +3159,10 @@ function MainApp({
       .then((s) => {
         if (cancelled) return;
         termSettingsRef.current = s;
-        setCategoryRoles(s.category_roles ?? {});
         setLanguageLong(s.language_long ?? {});
       })
       .catch(() => {
-        if (!cancelled) setCategoryRoles({});
+        if (!cancelled) setLanguageLong({});
       });
     return () => {
       cancelled = true;
@@ -3378,7 +3354,6 @@ function MainApp({
     getSettings()
       .then((settings) => {
         termSettingsRef.current = settings;
-        setCategoryRoles(settings.category_roles ?? {});
         setTermMenuSettings(settings);
         setTermMenu(open);
       })
@@ -3684,17 +3659,7 @@ function MainApp({
   ]);
 
   const inPView = selection !== null;
-  const displayMatrix = useMemo(() => {
-    if (!matrix) return null;
-    return {
-      ...matrix,
-      categories: visibleMatrixCategories(matrix, categoryRoles, loginName),
-    };
-  }, [matrix, categoryRoles, loginName]);
-  const roleListed = useMemo(
-    () => loginHasUsernameRole(categoryRoles, loginName),
-    [categoryRoles, loginName]
-  );
+  const displayMatrix = matrix;
 
   const sidebarTitle = (() => {
     const title = brandName;
@@ -3764,7 +3729,6 @@ function MainApp({
               }
               onPick={selectCell}
             />
-            {roleListed ? <ResultaatPreviewTable year={year} dataRev={dataRev} /> : null}
           </>
         )}
         {inPView && !detail && !error && <p>Loading…</p>}
@@ -4778,6 +4742,40 @@ function ResultaatPreviewTable({
           </table>
         );
       })}
+    </div>
+  );
+}
+
+function MonthlyDrilldownApp({ year, dataRev }: { year: string; dataRev: number }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!isPlainAlt(e)) return;
+      if (e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        openView("main");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="winbar">
+          <div className="sidebar-field">
+            <span className="sidebar-field-legend" aria-hidden="true">
+              {"\u00a0"}
+            </span>
+            <button type="button" className="sidebar-knob" onClick={() => openView("main")}>
+              Matrix (Alt+M)
+            </button>
+          </div>
+        </div>
+      </aside>
+      <main className="content">
+        <ResultaatPreviewTable year={year} dataRev={dataRev} />
+      </main>
     </div>
   );
 }

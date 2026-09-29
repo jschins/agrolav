@@ -81,6 +81,13 @@ WHERE NOT EXISTS (
 );
 GO
 
+INSERT INTO dbo.menu_item (menu_id, country, center, person, unit)
+SELECT N'monthly-drilldown', 0, 0, 1, 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.menu_item WHERE menu_id = N'monthly-drilldown'
+);
+GO
+
 -- Unit logins open Edit Terms (Alt+T). G-terms stay read-only on that screen.
 UPDATE dbo.menu_item SET unit = 1 WHERE menu_id = N'terms';
 GO
