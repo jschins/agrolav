@@ -812,6 +812,18 @@ th {
   padding: 0.4rem;
 }
 
+.terms-cell-locked {
+  background: #f8fafc;
+}
+
+.terms-readonly .term-input:disabled {
+  color: #94a3b8;
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  cursor: default;
+  opacity: 1;
+}
+
 .terms-empty {
   color: #64748b;
   font-size: 0.8rem;
@@ -1461,6 +1473,10 @@ textarea.cell-edit {
 .term-context-gp input[type="checkbox"]:disabled {
   cursor: default;
   opacity: 0.5;
+}
+
+.term-context-gp.locked {
+  background: #f1f5f9;
 }
 
 .term-context-items {

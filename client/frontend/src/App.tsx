@@ -3815,6 +3815,7 @@ function MainApp({
             personName={detail?.person || selection?.person_name || loginName}
             personScope={loginPerson}
             showCenters={!loginPerson && (loginAccess === "local" || loginAccess === "country")}
+            generalEditable={loginAccess.trim().toLowerCase() === "country"}
             bankIban={bankView !== "consolidated" ? bankView : undefined}
             x={termMenu.x}
             y={termMenu.y}
@@ -3833,6 +3834,7 @@ function TermsApp() {
   const [loginName, setLoginName] = useState("");
   const [personScope, setPersonScope] = useState("");
   const [centerName, setCenterName] = useState("");
+  const [generalEditable, setGeneralEditable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
 
@@ -3845,6 +3847,7 @@ function TermsApp() {
           setSettings(data);
           setPersonScope((status?.person || "").trim());
           setCenterName((status?.center || "").trim());
+          setGeneralEditable((status?.access || "").trim().toLowerCase() === "country");
           setLoginName(
             (
               (status?.access || "").trim().toLowerCase() === "unit"
@@ -4042,6 +4045,7 @@ function TermsApp() {
             loginName={loginName}
             personScope={personScope}
             centerName={centerName}
+            generalEditable={generalEditable}
             onUpdate={updateTerms}
             onUpdateMany={updateTermsMany}
             onUpdateCenter={applyCenterAccountTerms}
@@ -5870,6 +5874,7 @@ function TermContextMenu({
   personScope,
   showCenters,
   bankIban,
+  generalEditable = true,
   x,
   y,
   onClose,
@@ -5881,6 +5886,8 @@ function TermContextMenu({
   personScope?: string;
   showCenters?: boolean;
   bankIban?: string;
+  /** Country login only. Other logins see the G column greyed out. */
+  generalEditable?: boolean;
   x: number;
   y: number;
   onClose: () => void;
@@ -5945,6 +5952,7 @@ function TermContextMenu({
   function pick(category: string, general: boolean) {
     const cleaned = term.trim();
     if (!cleaned || saving) return;
+    if (general && !generalEditable) return;
     setSaving(true);
     Promise.resolve(
       onPickCategory(
@@ -6048,11 +6056,11 @@ function TermContextMenu({
               {categories.map((name) => (
                 <tr key={name}>
                   <td className="term-context-cat">{displayCategoryName(name)}</td>
-                  <td className="term-context-gp">
+                  <td className={generalEditable ? "term-context-gp" : "term-context-gp locked"}>
                     <input
                       type="checkbox"
                       aria-label={`${name} general`}
-                      disabled={saving || !term.trim()}
+                      disabled={saving || !term.trim() || !generalEditable}
                       onChange={() => pick(name, true)}
                     />
                   </td>
@@ -6236,6 +6244,7 @@ function TermsTables({
   loginName,
   personScope,
   centerName,
+  generalEditable = true,
   onUpdate,
   onUpdateMany,
   onUpdateCenter,
@@ -6244,6 +6253,8 @@ function TermsTables({
   loginName?: string;
   personScope?: string;
   centerName?: string;
+  /** Country login only. Other logins see G-terms greyed out. */
+  generalEditable?: boolean;
   onUpdate: (group: string, category: string, terms: string[]) => void;
   onUpdateMany?: (
     items: { group: string; category: string; terms: string[] }[]
@@ -6369,10 +6380,11 @@ function TermsTables({
           <h2 className="terms-panel-label">
             {tableHeaderTerm(settings.table_header_terms, "General")}
           </h2>
-          <div className="terms-cell">
+          <div className={generalEditable ? "terms-cell" : "terms-cell terms-cell-locked"}>
             {selectedCategory ? (
               <EditableCell
                 terms={gTerms}
+                readOnly={!generalEditable}
                 onCommit={(t) => onUpdate("general", selectedCategory, t)}
               />
             ) : (
@@ -6487,9 +6499,11 @@ function sortTerms(values: string[]): string[] {
 
 function EditableCell({
   terms,
+  readOnly = false,
   onCommit,
 }: {
   terms: string[];
+  readOnly?: boolean;
   onCommit: (terms: string[]) => void;
 }) {
   const [draft, setDraft] = useState<string[]>(() => sortTerms(terms));
@@ -6528,13 +6542,16 @@ function EditableCell({
   }
 
   return (
-    <div className="terms">
+    <div className={readOnly ? "terms terms-readonly" : "terms"}>
       {draft.map((term, i) => (
         <div key={i} className="term-row">
           <input
             className="term-input"
             value={term}
+            readOnly={readOnly}
+            disabled={readOnly}
             onChange={(e) => {
+              if (readOnly) return;
               const value = e.target.value;
               setDraft((d) => {
                 const next = d.map((t, idx) => (idx === i ? value : t));
@@ -6542,31 +6559,37 @@ function EditableCell({
                 return next;
               });
             }}
-            onBlur={() => commit(draftRef.current)}
+            onBlur={() => {
+              if (!readOnly) commit(draftRef.current);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
             }}
           />
-          <button
-            type="button"
-            className="term-delete"
-            title="Delete term"
-            onClick={() => removeAt(i)}
-          >
-            ×
-          </button>
+          {readOnly ? null : (
+            <button
+              type="button"
+              className="term-delete"
+              title="Delete term"
+              onClick={() => removeAt(i)}
+            >
+              ×
+            </button>
+          )}
         </div>
       ))}
-      <input
-        className="term-input add"
-        value={add}
-        placeholder="+ term"
-        onChange={(e) => setAdd(e.target.value)}
-        onBlur={commitAdd}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commitAdd();
-        }}
-      />
+      {readOnly ? null : (
+        <input
+          className="term-input add"
+          value={add}
+          placeholder="+ term"
+          onChange={(e) => setAdd(e.target.value)}
+          onBlur={commitAdd}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitAdd();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -41,6 +41,48 @@ def deduce_access(
     return ACCESS_CENTER
 
 
+def can_edit_general_terms(access: str) -> bool:
+    """Only a country login may add, change, or delete G-terms.
+
+    Unit, person, and center logins may see G-terms. They may change P-terms only.
+    """
+    return str(access or "").strip().lower() == ACCESS_COUNTRY
+
+
+def _compact_account(value: object) -> str:
+    return "".join(str(value or "").split()).upper()
+
+
+def unit_may_edit_account(
+    *,
+    access: str,
+    login_account: str,
+    account_key: str,
+    groups: list[dict[str, Any]] | None = None,
+) -> bool:
+    """A unit login may change P-terms only on its own account.
+
+    Person, center, and country are not limited here. Their write scope is the
+    set of accounts already visible to that login.
+    """
+    if str(access or "").strip().lower() != ACCESS_UNIT:
+        return True
+    key = str(account_key or "").strip()
+    wanted = _compact_account(login_account)
+    if not key or not wanted:
+        return False
+    if _compact_account(key) == wanted:
+        return True
+    for group in groups or []:
+        if not isinstance(group, dict):
+            continue
+        if str(group.get("account_key") or "").strip() != key:
+            continue
+        if _compact_account(group.get("iban")) == wanted:
+            return True
+    return False
+
+
 def enrich_user_record(user: dict[str, Any]) -> dict[str, Any]:
     """Add derived ``access`` and parsed ``centers`` list to a user dict.
 

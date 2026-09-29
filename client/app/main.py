@@ -1465,10 +1465,48 @@ def _is_account_group(group: str) -> bool:
     return False
 
 
+def _require_general_term_edit() -> None:
+    """G-term writes are country-only. The screen greys them out for every other login."""
+    from app.centrale_sync import load_config
+    from shared.user_access import can_edit_general_terms
+
+    if can_edit_general_terms(load_config().access):
+        return
+    raise PermissionError("Only a country login can change general terms.")
+
+
+def _require_unit_term_account(account_key: str) -> None:
+    """A unit login may change P-terms only on the account it logged in with."""
+    from app.centrale_sync import load_config
+    from shared.user_access import ACCESS_UNIT, unit_may_edit_account
+
+    cfg = load_config()
+    if cfg.access != ACCESS_UNIT:
+        return
+    try:
+        groups = _settings_with_country_accounts().get("account_groups") or []
+    except Exception:
+        groups = []
+    if unit_may_edit_account(
+        access=cfg.access,
+        login_account=cfg.account,
+        account_key=account_key,
+        groups=groups if isinstance(groups, list) else [],
+    ):
+        return
+    raise PermissionError(
+        "A unit login can change personal terms only on its own account."
+    )
+
+
 def _hub_update_settings(group: str, category: str, body: SettingsTermsRequest) -> dict[str, Any]:
     from app.centrale_sync import hub_put, hub_request, load_config, person_allowed, require_person, scope_matrix, scope_settings
     import urllib.parse
 
+    if group == "general":
+        _require_general_term_edit()
+    else:
+        _require_unit_term_account(group)
     if group not in ("general", "shared", "categories"):
         if not person_allowed(group) and not _is_account_group(group):
             require_person(group)
@@ -1519,14 +1557,18 @@ def api_update_center_account_terms(body: CenterAccountTermsRequest) -> dict[str
     from shared.user_access import ACCESS_PERSON, ACCESS_UNIT
 
     try:
+        cfg = load_config()
+        if cfg.access == ACCESS_UNIT:
+            raise PermissionError(
+                "A unit login can change personal terms only on its own account."
+            )
         payload: dict[str, Any] = {
             "category": body.category,
             "add": body.add,
             "remove": body.remove,
             "source": _source(),
         }
-        cfg = load_config()
-        if cfg.access in (ACCESS_PERSON, ACCESS_UNIT):
+        if cfg.access == ACCESS_PERSON:
             person = configured_person()
             if person:
                 payload["person"] = person
@@ -1584,8 +1626,12 @@ def api_add_term(body: AddTermRequest) -> dict[str, Any]:
     from app.centrale_sync import hub_post, require_person, scope_matrix, scope_settings
 
     try:
-        if not body.general and body.person:
-            require_person(body.person)
+        if body.general:
+            _require_general_term_edit()
+        else:
+            if body.person:
+                require_person(body.person)
+            _require_unit_term_account(body.account or "")
         result = hub_post(
             "/settings/add-term",
             {

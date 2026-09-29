@@ -81,6 +81,10 @@ WHERE NOT EXISTS (
 );
 GO
 
+-- Unit logins open Edit Terms (Alt+T). G-terms stay read-only on that screen.
+UPDATE dbo.menu_item SET unit = 1 WHERE menu_id = N'terms';
+GO
+
 SELECT menu_id, country, center, person, unit
 FROM dbo.menu_item
 ORDER BY menu_id;
