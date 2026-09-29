@@ -525,7 +525,15 @@ def update_center_account_terms(
     """Apply one add/remove set to every account in the center, then recategorize."""
     from app.matrix import build_matrix
     from app.sql_catalog import apply_center_account_term_delta
+    from shared.handset_debug import handset_debug
 
+    handset_debug(
+        "update_center_account_terms",
+        center=center,
+        category=category_name,
+        add=add,
+        person=person,
+    )
     added = [str(item).strip() for item in (add or []) if str(item or "").strip()]
     removed = [str(item).strip() for item in (remove or []) if str(item or "").strip()]
     with _center_scope(center) as ws:

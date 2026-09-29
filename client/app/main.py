@@ -1653,10 +1653,38 @@ def api_flush_rescore() -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+class HandsetDebugRequest(BaseModel):
+    procedure: str = ""
+    fields: dict[str, Any] = Field(default_factory=dict)
+    stack: list[str] = Field(default_factory=list)
+
+
+@app.post("/api/debug-handset")
+def api_debug_handset(body: HandsetDebugRequest) -> dict[str, bool]:
+    """Browser click trace. Shows up in ``journalctl -u agrolav-client``."""
+    from shared.handset_debug import handset_debug
+
+    handset_debug(
+        body.procedure or "browser",
+        browser_stack=body.stack,
+        **body.fields,
+    )
+    return {"ok": True}
+
+
 @app.post("/api/settings/add-term")
 def api_add_term(body: AddTermRequest) -> dict[str, Any]:
     from app.centrale_sync import hub_post, require_person, scope_matrix, scope_settings
+    from shared.handset_debug import handset_debug
 
+    handset_debug(
+        "client.api_add_term",
+        category=body.category_name,
+        term=body.term,
+        general=body.general,
+        person=body.person,
+        account=body.account,
+    )
     try:
         if body.general:
             _require_general_term_edit()

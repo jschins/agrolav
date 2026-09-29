@@ -1,4 +1,25 @@
 import type { BalanceSheet } from "../../../balance/frontend/src/types.ts";
+
+/** Posted to the client log. Grep HANDSET-DEBUG on the droplet. */
+export function handsetDebug(procedure: string, fields: Record<string, unknown> = {}): void {
+  const stack = (new Error().stack || "")
+    .split("\n")
+    .slice(2, 14)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const detail = Object.entries(fields)
+    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+    .join(" ");
+  console.log(`HANDSET-DEBUG ${procedure} ${detail}`.trim());
+  for (const frame of stack) console.log(`HANDSET-DEBUG stack ${procedure} ${frame}`);
+  void fetch("/api/debug-handset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ procedure, fields, stack }),
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
 import type {
   AddTermResponse,
   CatalogCategory,
@@ -418,6 +439,7 @@ export function updateCenterAccountTerms(body: {
   removed: string[];
   accounts: number;
 }> {
+  handsetDebug("updateCenterAccountTerms", body);
   return sendJson("/api/settings-center-accounts", "PUT", body);
 }
 
@@ -432,6 +454,7 @@ export function addCategoryTerm(body: {
   person?: string;
   account?: string;
 }): Promise<AddTermResponse> {
+  handsetDebug("addCategoryTerm", body);
   return sendJson("/api/settings/add-term", "POST", body);
 }
 
@@ -439,6 +462,13 @@ export function recordModification(
   person_name: string,
   transaction: Transaction
 ): Promise<ModificationResponse> {
+  handsetDebug("recordModification", {
+    person_name,
+    id: transaction.id,
+    category: transaction.category,
+    modification: transaction.modification,
+    name: transaction.name,
+  });
   return sendJson(`/api/transactions/${encodeURIComponent(person_name)}/modification`, "PUT", {
     transaction,
   });

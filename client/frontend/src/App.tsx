@@ -4,6 +4,7 @@ import {
   ackCentralWinsRefusal,
   askHelp,
   addCategoryTerm,
+  handsetDebug,
   getAuthMe,
   getCentralWinsRefusals,
   getCentraleNotifications,
@@ -3402,6 +3403,7 @@ function MainApp({
     account?: string,
     transactionId?: string
   ) {
+    handsetDebug("saveTermMenu", { term, targetCategory, general, account, transactionId });
     const centerTarget = centerNameFromKey(account || "");
     if (centerTarget) {
       const sel = selectionRef.current;
@@ -5962,6 +5964,12 @@ function PTable({
           extraCodes={[...validCategoryCodes]}
           bankIban={bank}
           onPick={(code) => {
+            handsetDebug("categoryPicker.onPick", {
+              code,
+              id: picker.id,
+              name: picker.name,
+              modification: 2,
+            });
             setPicker(null);
             onCategoryError?.(null);
             onModify({ ...picker, category: code, modification: 2 });
@@ -6053,6 +6061,7 @@ function TermContextMenu({
 
   function pick(category: string, general: boolean) {
     const cleaned = term.trim();
+    handsetDebug("termContext.pick", { category, general, term: cleaned });
     if (!cleaned || saving) return;
     if (general && !generalEditable) return;
     setSaving(true);

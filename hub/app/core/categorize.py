@@ -1476,6 +1476,15 @@ def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
     Either change is a hand edit and stores ``modification`` 2. A later hand
     edit writes 2 again. Terms and cross-postings leave that row alone.
     """
+    from shared.handset_debug import handset_debug
+
+    handset_debug(
+        "record_modification",
+        id=transaction.get("id"),
+        category=transaction.get("category"),
+        modification=transaction.get("modification"),
+        name=transaction.get("name"),
+    )
     data = _load_categorized_store()
     if not data:
         data = {"transactions": []}

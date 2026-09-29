@@ -1514,7 +1514,17 @@ def api_add_term(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app import center_api
+    from shared.handset_debug import handset_debug
 
+    handset_debug(
+        "hub.api_add_term",
+        center=center,
+        category=body.category_name,
+        term=body.term,
+        general=body.general,
+        person=body.person,
+        account=body.account,
+    )
     try:
         return center_api.add_term(
             center,

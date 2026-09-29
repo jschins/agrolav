@@ -1858,7 +1858,16 @@ def save_category_terms(
     (account-modality / balance countries); the scope lives in
     ``dbo.category_term.account_id``.
     """
+    from shared.handset_debug import handset_debug
+
     label = (category_name or "").strip()
+    handset_debug(
+        "save_category_terms",
+        category=label,
+        terms=terms,
+        person=person,
+        account=account,
+    )
     if not label or not _sql_ready():
         return
     cleaned = [str(item).strip().lower() for item in terms if str(item or "").strip()]
@@ -2098,7 +2107,17 @@ def append_category_term_sql(
     Does not use the process calc scope, so it can run while a rescore holds
     ``CALC_LOCK``.
     """
+    from shared.handset_debug import handset_debug
+
     cleaned = str(term or "").strip().lower()
+    handset_debug(
+        "append_category_term_sql",
+        country=country,
+        category=category_name,
+        term=cleaned,
+        person=person,
+        account=account,
+    )
     if not cleaned:
         raise ValueError("term must not be empty")
     name = (country or "").strip()
