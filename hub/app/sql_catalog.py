@@ -751,9 +751,6 @@ def clear_bookings(
 
             forget_wiped_statements(cursor, country_id, table, where_sql, where_params)
         if categorizations:
-            from app.category_hand import capture_before_wipe
-
-            capture_before_wipe(cursor, country_id, table, where_sql, where_params)
             remainder_id, _remainder_code = require_remainder_row(country_id, cursor)
             hand_kept = "modification < 2"
             if where_sql:

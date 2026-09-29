@@ -1,4 +1,4 @@
-# modification
+# Modification parameter
 
 `dbo.transaction_*.modification` records how a booking got its category and description.
 
@@ -30,4 +30,12 @@ In contrast to menu-ordered runs, the automatic runs after a fresh download of b
 
 - start out with crosspostings EXCLUSIVELY affecting -1, and
 - finish with terms EXCLUSIVELY affecting -1.
+
+
+
+# Amount splitting
+
+Upon left-clicking an amount in the category-totals view, a new window opens, in which the user can split up that amount in several parts, each one with its own description and category.
+
+
 

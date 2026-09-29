@@ -1161,7 +1161,8 @@ td.clickable:hover {
   color: #ec2323;
 }
 
-tr.modified td:not(.amount) {
+.p-table td.description-modified,
+.p-table td.description-modified .editable {
   color: #2563eb;
 }
 

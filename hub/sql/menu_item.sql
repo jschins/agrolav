@@ -41,7 +41,6 @@ SELECT v.menu_id, v.country, v.center, v.person
 FROM (VALUES
     ('add-person',              0, 0, 0),
     ('afschrijvingen',          1, 1, 1),
-    ('apply-hand-categorizations', 1, 1, 1),
     ('back-to-matrix',          1, 1, 1),
     ('calculate-opening-balance', 1, 1, 1),
     ('categories',              0, 0, 0),

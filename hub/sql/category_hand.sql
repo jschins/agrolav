@@ -1,5 +1,5 @@
--- Hand-made booking categories. A categorization wipe does not delete these
--- rows. Run this file in SSMS on database agrolav before using the menu item.
+-- Bookings whose category was set by hand. Used to print that category bold.
+-- A categorization wipe leaves modification >= 2 bookings in place.
 
 USE agrolav;
 GO

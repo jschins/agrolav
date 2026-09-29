@@ -972,19 +972,6 @@ def api_cross_postings(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@app.post("/api/local/{center}/hand-categorizations")
-def api_hand_categorizations(
-    center: str,
-    _: None = Depends(require_api_key),
-) -> dict[str, Any]:
-    from app.category_hand import apply_hand_categorizations
-
-    try:
-        return apply_hand_categorizations(center)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
 @app.post("/api/local/{center}/wipe-year")
 def api_wipe_year(
     center: str,

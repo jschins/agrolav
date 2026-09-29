@@ -1071,16 +1071,6 @@ def api_cross_postings() -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
-@app.post("/api/hand-categorizations")
-def api_hand_categorizations() -> dict[str, Any]:
-    from app.centrale_sync import hub_post
-
-    try:
-        return hub_post("/hand-categorizations", {}, timeout=600.0)
-    except Exception as exc:
-        raise _hub_error(exc) from exc
-
-
 @app.post("/api/wipe-year")
 def api_wipe_year(body: WipeYearRequest) -> dict[str, Any]:
     from app.centrale_sync import configured_person, hub_post, load_config, require_person, scope_matrix

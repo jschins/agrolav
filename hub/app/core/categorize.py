@@ -1202,8 +1202,30 @@ def _public_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
     return _canonical_transaction(transaction)
 
 
+def style_flags_for_row(
+    item: dict[str, Any], hand_ids: set[str] | None
+) -> tuple[bool, bool]:
+    """Return ``(description_blue, category_bold)`` for one booking.
+
+    A hand category is bold and leaves the other cells alone. A hand
+    description is blue on that cell only. ``modification`` 3 is both.
+    ``hand_ids is None`` means the hand-category table is missing, and a
+    hand row keeps both marks.
+    """
+    flag = _modification_of(item)
+    if flag < MOD_HAND:
+        return False, False
+    if hand_ids is None:
+        return True, True
+    in_hand = str(item.get("id")) in hand_ids
+    excel = _is_excel_row(item)
+    category_bold = in_hand or excel
+    description_blue = flag >= MOD_BOTH or (not in_hand and not excel)
+    return description_blue, category_bold
+
+
 def modification_style_ids(payload: dict[str, Any] | None = None) -> tuple[list[str], list[str]]:
-    """Return (description_modified_ids, category_modified_ids) from ``modification`` flags."""
+    """Return (description_modified_ids, category_modified_ids)."""
     data = payload if payload is not None else _load_categorized_store()
     data = _migrate_categorized_store(
         {
@@ -1217,15 +1239,19 @@ def modification_style_ids(payload: dict[str, Any] | None = None) -> tuple[list[
             else [],
         }
     )
+    from app.category_hand import hand_source_ids
+
+    hands = hand_source_ids()
     description_ids: list[str] = []
     category_ids: list[str] = []
     for item in data.get("transactions") or []:
         if not isinstance(item, dict) or item.get("id") is None:
             continue
         tid = str(item.get("id"))
-        flag = _modification_of(item)
-        if flag >= MOD_HAND:
+        description_blue, category_bold = style_flags_for_row(item, hands)
+        if description_blue:
             description_ids.append(tid)
+        if category_bold:
             category_ids.append(tid)
     return description_ids, category_ids
 
@@ -1512,15 +1538,32 @@ def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
     desc_changed = "description" in submitted and not _values_equal(
         "description", submitted.get("description"), base.get("description")
     )
-    hand_set = _modification_of(submitted) == MOD_HAND and "category" in submitted
+    prior = _modification_of(base)
+    hand_set = (
+        _modification_of(submitted) == MOD_HAND
+        and "category" in submitted
+        and not desc_changed
+    )
     if cat_changed:
         stored["category"] = submitted["category"]
     if desc_changed:
         stored["description"] = submitted["description"]
+    from app.category_hand import hand_source_ids
+
+    hands = hand_source_ids()
+    in_hand = hands is not None and transaction_id in hands
+    excel = _is_excel_row(base)
+    description_hand = desc_changed or prior >= MOD_BOTH or (
+        prior >= MOD_HAND and not in_hand and not excel
+    )
+    category_hand = cat_changed or hand_set or in_hand or excel
     if cat_changed or desc_changed or hand_set:
-        stored["modification"] = MOD_HAND
+        if category_hand and description_hand and not excel:
+            stored["modification"] = MOD_BOTH
+        else:
+            stored["modification"] = MOD_HAND
     else:
-        stored["modification"] = _modification_of(base)
+        stored["modification"] = prior
 
     from app.sql_replica import sync_bound_transactions
 
