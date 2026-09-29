@@ -9,6 +9,7 @@ from app.cross_postings import (
     PairLegs,
     _IBAN_NL46,
     _IBAN_NL84,
+    _load_candidates,
     between_registered_accounts,
     category_id_for_local_code,
     category_id_offset,
@@ -329,6 +330,35 @@ class CrossPostingMatchTests(unittest.TestCase):
     def test_dim_category_row_supplies_the_stored_id(self) -> None:
         self.assertEqual(stored_category_id(1100, {1100: 11100}), 11100)
         self.assertEqual(stored_category_id(1100, {}), 11100)
+
+
+class LoadCandidatesSqlTests(unittest.TestCase):
+    def test_accounts_without_categories_omit_the_empty_in_list(self) -> None:
+        class Cursor:
+            def __init__(self) -> None:
+                self.sql = ""
+                self.params: tuple = ()
+
+            def execute(self, sql: str, params: object) -> None:
+                self.sql = sql
+                self.params = tuple(params)
+
+            def fetchall(self) -> list:
+                return []
+
+        cursor = Cursor()
+        self.assertEqual(_load_candidates(cursor, "dbo.transaction_nederland", {18}, set()), [])
+        self.assertNotIn("IN ()", cursor.sql)
+        self.assertIn("WHERE t.account_id IN (?)", cursor.sql)
+        self.assertNotIn("category_id IN", cursor.sql)
+        self.assertEqual(cursor.params, (18,))
+
+    def test_no_accounts_and_no_categories_runs_no_sql(self) -> None:
+        class Cursor:
+            def execute(self, sql: str, params: object) -> None:
+                raise AssertionError(sql)
+
+        self.assertEqual(_load_candidates(Cursor(), "dbo.transaction_nederland", set(), set()), [])
 
 
 if __name__ == "__main__":

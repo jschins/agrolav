@@ -833,14 +833,19 @@ def _load_candidates(
     cursor: Any, table: str, bank_ids: set[int], category_ids: set[int]
 ) -> list[Any]:
     ids = sorted(category_ids)
-    id_marks = ",".join("?" * len(ids))
+    clauses: list[str] = []
+    params: list[Any] = []
     if bank_ids:
         marks = ",".join("?" * len(bank_ids))
-        where = f"t.account_id IN ({marks}) OR t.category_id IN ({id_marks})"
-        params: list[Any] = [*sorted(bank_ids), *ids]
-    else:
-        where = f"t.category_id IN ({id_marks})"
-        params = list(ids)
+        clauses.append(f"t.account_id IN ({marks})")
+        params.extend(sorted(bank_ids))
+    if ids:
+        id_marks = ",".join("?" * len(ids))
+        clauses.append(f"t.category_id IN ({id_marks})")
+        params.extend(ids)
+    if not clauses:
+        return []
+    where = " OR ".join(clauses)
     cursor.execute(
         f"""
         SELECT t.transaction_id, t.person_id, t.year, t.account_id, t.booked_on,
