@@ -24,7 +24,8 @@ stichting, sectie, deel en werkeenheid.
 
 ---
 
-
+<!-- {en:levels[5],foundation,section,part,unit,balance} -->
+<!-- {nl:niveaus[5],stichting,sectie,deel,eenheid,balans} -->
 
 ## Stichting Instudo
 
@@ -98,7 +99,8 @@ Van die 19 zijn er 18 rekeningen van evenzoveel werkeenheden, en 1 van SVOa. SVO
 
 ---
 
-
+<!-- {en:foundation[5],instudo[5],section,part,unit,work-unit} -->
+<!-- {nl:stichting[5],instudo[5],sectie,deel,eenheid,werkeenheid} -->
 
 ## Resultaat en balans per inlogniveau
 
@@ -122,7 +124,8 @@ overzicht van de stichting: 19 bestanden.
 
 ---
 
-
+<!-- {en:result[5],balance[5],login-level[5],overview} -->
+<!-- {nl:resultaat[5],balans[5],inlogniveau[5],overzicht} -->
 
 # Dubbele login
 
@@ -132,7 +135,8 @@ een sms-code voor eenmalig gebruik met tweestaps verificatie.
 
 ---
 
-
+<!-- {en:double[5],password,hash,scrypt} -->
+<!-- {nl:dubbele[5],wachtwoord,hash,scrypt} -->
 
 ## SMS en IP-gate per inlogniveau
 
@@ -156,7 +160,8 @@ ook bij een directe aanroep.
 
 ---
 
-
+<!-- {en:sms[5],ip[5],gate[5],login-level[5],phone,address} -->
+<!-- {nl:sms[5],ip[5],poort[5],inlogniveau[5],telefoon,adres} -->
 
 ## Login request path and scrypt hash
 
@@ -180,7 +185,8 @@ formula password, so they can log in until they set their own.
 
 ---
 
-
+<!-- {en:request[5],path[5],scrypt[5],hash[5],password} -->
+<!-- {nl:verzoek[5],pad[5],scrypt[5],hash[5],wachtwoord} -->
 
 ## Set password
 
@@ -192,7 +198,8 @@ Rejects if new ≠ confirm, or if new is empty.
 
 ---
 
-
+<!-- {en:set[5],password[5],mobile,save,menu} -->
+<!-- {nl:instellen[5],wachtwoord[5],mobiel,opslaan,menu} -->
 
 ## SMS one-time code
 
@@ -207,7 +214,8 @@ Country and center never take this path.
 
 ---
 
-
+<!-- {en:sms[5],one-time[5],code[5],twilio,otp} -->
+<!-- {nl:sms[5],eenmalig[5],code[5],twilio,otp} -->
 
 ## password_hash and mobile_phone on dbo.person
 
@@ -224,7 +232,8 @@ On `dbo.person`:
 
 ---
 
-
+<!-- {en:password_hash[5],mobile_phone[5],person[5],scrypt,sms} -->
+<!-- {nl:password_hash[5],mobile_phone[5],persoon[5],scrypt,sms} -->
 
 ## Where login and OTP are implemented
 
@@ -237,4 +246,5 @@ On `dbo.person`:
 | Set password UI   | `client/frontend/src/App.tsx`                      |
 | Add-person mobile | hub wizard `_ADD_PERSON_HTML`                      |
 
-
+<!-- {en:otp[5],implemented[5],passwords,hub,client} -->
+<!-- {nl:otp[5],geimplementeerd[5],wachtwoorden,hub,client} -->

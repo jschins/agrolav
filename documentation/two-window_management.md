@@ -10,6 +10,9 @@ windows. Three rules:
 The shape is right. The weak spots are browser-window facts, not missing
 product rules.
 
+<!-- {en:two-window[5],management[5],balance,sheet,client} -->
+<!-- {nl:twee-venster[5],beheer[5],balans,blad,client} -->
+
 ## 1. Never a second balance window
 
 `openBalanceSheetWindow` (client `App.tsx`) keeps a module handle and opens
@@ -30,6 +33,9 @@ That is as singleton as a browser allows.
 - Two different browsers, or a sheet opened from a bookmark, can still
   produce a second window. That cannot be stopped.
 
+<!-- {en:never[5],second[5],balance[5],window[5]} -->
+<!-- {nl:nooit[5],tweede[5],balans[5],venster[5]} -->
+
 ## 2. Close on logout
 
 `onLogout` calls `closeBalanceSheetWindow()` before `POST /api/logout`: post
@@ -41,6 +47,9 @@ stayed open, `balanceSheetWindow` is `null` and logout does not close that
 sheet. The cookies are gone, but the already-rendered numbers stay on screen
 until the user closes it. A named-window reopen-and-close, or a
 `BroadcastChannel` ping, would cover that.
+
+<!-- {en:close[5],logout[5],window,balance} -->
+<!-- {nl:sluiten[5],uitloggen[5],venster,balans} -->
 
 ## 3. Escape: sheet → client
 
@@ -57,6 +66,9 @@ user gesture, so it often works, but Chrome can still refuse to raise the
 client. If opener was lost (reload, or the sheet was not opened from the
 client), Escape cannot transfer focus. That is expected.
 
+<!-- {en:escape[5],sheet[5],client[5],drill-down} -->
+<!-- {nl:escape[5],blad[5],client[5],doorklik} -->
+
 ## postMessage types between client and balance sheet
 
 | type | from → to | meaning |
@@ -68,3 +80,6 @@ client), Escape cannot transfer focus. That is expected.
 
 `postMessage` currently uses `"*"`. Same-site that is fine; checking origin
 would be the only hardening worth adding.
+
+<!-- {en:postmessage[5],types[5],client[5],balance[5],sheet[5]} -->
+<!-- {nl:postmessage[5],typen[5],client[5],balans[5],blad[5]} -->

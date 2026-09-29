@@ -11,7 +11,7 @@ meals **O M A L P** cycle ◯ ↔ ⬤. Default is ◯. A person login can
 edit only its own row.
 
 Weeks run Sunday–Saturday. Terms in the UI are Dutch.
-<!-- {en:maaltijden[5],matrix,login,passphrase,admin,extra,mark,marks,empty,circle,full,week,weeks,sunday,O,M,A,L,P} -->
+<!-- {en:meals[5],matrix,login,passphrase,admin,extra,mark,marks,empty,circle,full,week,weeks,sunday,O,M,A,L,P} -->
 <!-- {nl:maaltijden[5],matrix,inloggen,wachtwoord,beheer,extra,markering,markeringen,leeg,cirkel,vol,week,weken,zondag,O,M,A,L,P} -->
 
 

@@ -1,6 +1,11 @@
 AGENDA
 
 
+3. notificatie van gebruik
+4. in aparte tabel alle directe categorisaties bijhouden ivm reset
+
+
+
 NL46INGB0001726568	Centrale SIb
 NL93INGB0003150749	Den Eker
 NL22INGB0004005627	Jan Luijken
@@ -23,20 +28,6 @@ NL97INGB0114425876	HD Hogeland
 NL84INGB0002801129	Centrale SIa
 
 
-
-
-3. notificatie van gebruik
-4. in aparte tabel alle directe categorisaties bijhouden ivm reset
-
-
-new rule set
-
-From all bookings between registered accounts within the country:
-+ for all transactions between Centrale SIa and Centrale SIb: write those of Centrale Sib to 11200 kruisposten, and those of Centrale Sia to 11100
-+ for all transactions between Centrale SIa and a unitxxxx belonging to SIa: write those of Centrale SIa to 1xxxx, and those of the unit to 11126
-+ for all transactions between Centrale SIb and a unitxxxx belonging to SIb: write those of Centrale SIb to 1xxxx, and those of the unit to 11125
-+ for all transactions between a unitxx0x and its sibling: write those of the unit to 1xx1x, and those of its sibling to 11200
-in all cases check explicitly that sign-opposed amounts are always written in pairs
 
 
 213.127.164.130	KG218

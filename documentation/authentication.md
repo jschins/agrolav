@@ -5,6 +5,9 @@ the application private key live on `dbo.enable_connection`, not on disk.
 
 ---
 
+<!-- {en:enable[5],banking[5],person[5],pem[5],consent[5],download[5],application,key} -->
+<!-- {nl:enable[5],banking[5],persoon[5],pem[5],toestemming[5],downloaden[5],applicatie,sleutel} -->
+
 ## 1. Add person
 
 From the client menu, **Add person** opens the hub page
@@ -19,6 +22,9 @@ Create goes to `POST /api/local/{center}/people/create` → a row in
 
 ---
 
+<!-- {en:add[5],person[5],menu,center,wizard} -->
+<!-- {nl:toevoegen[5],persoon[5],menu,centrum,assistent} -->
+
 ## 2. Application PEM
 
 Bank login is certificate-based. The private key authenticates the hub to
@@ -30,6 +36,9 @@ downloads the PEM from the Enable Banking control panel, the wizard
 uploads it onto the connection row for that `person_id`.
 
 ---
+
+<!-- {en:application[5],pem[5],certificate,key,bank} -->
+<!-- {nl:applicatie[5],pem[5],certificaat,sleutel,bank} -->
 
 ## 3. Consent
 
@@ -77,6 +86,9 @@ returns an authorization URL instead.
 
 ---
 
+<!-- {en:consent[5],authorization,callback,redirect,session} -->
+<!-- {nl:toestemming[5],autorisatie,callback,omleiding,sessie} -->
+
 ## 4. Download statements
 
 Once the connection has a live session:
@@ -91,6 +103,9 @@ single download does not mix with the rest of the center.
 
 ---
 
+<!-- {en:download[5],statements[5],accounts,bookings} -->
+<!-- {nl:downloaden[5],afschriften[5],rekeningen,boekingen} -->
+
 ## Add person, PEM, consent, then download
 
 1. Open **Add person**.
@@ -99,3 +114,6 @@ single download does not mix with the rest of the center.
 4. Complete Enable Banking consent; session lands on the same row.
 5. **Download transactions** pulls bookings into SQL.
 6. If consent expires, the same download action starts a new authorization.
+
+<!-- {en:add[5],person[5],pem[5],consent[5],download[5],sequence,connection} -->
+<!-- {nl:toevoegen[5],persoon[5],pem[5],toestemming[5],downloaden[5],volgorde,verbinding} -->

@@ -16,6 +16,9 @@ nothing is copied as raw `.mdf`/`.ldf` files.
 
 ---
 
+<!-- {en:sql[5],server[5],volume[5],migration[5],runbook[5],backup} -->
+<!-- {nl:sql[5],server[5],volume[5],migratie[5],draaiboek[5],reservekopie} -->
+
 ## A named volume survives container removal
 
 - Docker `stop`/`start` keeps the same container → data stays.
@@ -33,6 +36,9 @@ The target state: `MSSQL2022` runs with `mssql-data:/var/opt/mssql` (live data)
 **and** `/opt/sql_backups:/var/opt/mssql/backup` (backups) mounted.
 
 ---
+
+<!-- {en:named[5],volume[5],survives[5],container[5],removal[5],docker} -->
+<!-- {nl:benoemd[5],volume[5],overleeft[5],container[5],verwijdering[5],docker} -->
 
 ## Phase 0 — Safety-net backup (no downtime)
 
@@ -66,10 +72,16 @@ scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/agrolav.bak C:/SQLBackups/rem
 
 ---
 
+<!-- {en:safety-net[5],backup[5],downtime[5],bak,container} -->
+<!-- {nl:vangnet[5],reservekopie[5],stilstand[5],bak,container} -->
+
 ## Phase 1 — Server-side project env + compose file
 
 All files here live on the server only (`/root/sqlserver/`, root-owned); they
 are **not** in the git repo.
+
+<!-- {en:server[5],env[5],compose[5],file[5],sqlserver} -->
+<!-- {nl:server[5],env[5],compose[5],bestand[5],sqlserver} -->
 
 ### 1a. `/root/sqlserver/.env`
 
@@ -84,6 +96,9 @@ Keep the **current** password for the migration — a fresh container reads this
 at first init, and hub/balance only connect after Phase 3 with the credentials
 from `/opt/agrolav/.env` ([`passwords.md`](passwords.md)). Rotating is a
 separate follow-up (see Phase 6).
+
+<!-- {en:sqlserver[5],env[5],password,root} -->
+<!-- {nl:sqlserver[5],env[5],wachtwoord,root} -->
 
 ### 1b. `/root/sqlserver/docker-compose.yml`
 
@@ -125,6 +140,9 @@ Notes:
 
 ---
 
+<!-- {en:docker-compose[5],yml[5],volume,image} -->
+<!-- {nl:docker-compose[5],yml[5],volume,installatiekopie} -->
+
 ## Phase 2 — Downtime: swap the container
 
 This is the only downtime window. Stop the apps that hold the DB open, remove
@@ -146,6 +164,10 @@ seeds the system databases). Watch the log until you see the canonical line:
 
 ```bash
 sudo docker logs --tail 50 MSSQL2022
+
+<!-- {en:downtime[5],swap[5],container[5],stop,volume} -->
+<!-- {nl:stilstand[5],wisselen[5],container[5],stoppen,volume} -->
+
 # ... "Recovery is complete. This is an informational message only."
 ```
 
@@ -169,6 +191,9 @@ Test-NetConnection 209.38.39.105 -Port 1433
 ```
 
 ---
+
+<!-- {en:recovery[5],complete[5],informational[5],sqlcmd} -->
+<!-- {nl:herstel[5],voltooid[5],informatief[5],sqlcmd} -->
 
 ## Phase 3 — Restore `agrolav` into the new container
 
@@ -232,6 +257,9 @@ balance 8100).
 
 ---
 
+<!-- {en:restore[5],container[5],bak,agrolav} -->
+<!-- {nl:terugzetten[5],container[5],bak,agrolav} -->
+
 ## Phase 4 — Verify the data really lives on the volume
 
 ```bash
@@ -257,6 +285,9 @@ Only after Phase 4 do you no longer need to keep the Phase 0 `.bak` on hand.
 
 ---
 
+<!-- {en:verify[5],data[5],volume[5],inspect,mounts} -->
+<!-- {nl:controleren[5],gegevens[5],volume[5],bekijken,koppelingen} -->
+
 ## Phase 5 — Rollback
 
 If Phase 3 fails or the app smoke test is broken:
@@ -270,6 +301,9 @@ If Phase 3 fails or the app smoke test is broken:
 You lose nothing: the `.bak` is the source of truth in both directions.
 
 ---
+
+<!-- {en:rollback[5],restore,compose} -->
+<!-- {nl:terugdraaien[5],herstel,compose} -->
 
 ## Phase 6 — Follow-ups (recommended, not part of this migration)
 
@@ -304,6 +338,9 @@ You lose nothing: the `.bak` is the source of truth in both directions.
 
 ---
 
+<!-- {en:follow-ups[5],migration[5],password,rotate} -->
+<!-- {nl:vervolg[5],migratie[5],wachtwoord,roteren} -->
+
 ## Server paths for the SQL volume
 
 | thing | location |
@@ -315,3 +352,6 @@ You lose nothing: the `.bak` is the source of truth in both directions.
 | SSMS endpoint | `209.38.39.105,1433`, login `sa`, DB `agrolav` |
 | restore sources | [`DATABASE.md`](DATABASE.md) |
 | password policies | [`passwords.md`](passwords.md) |
+
+<!-- {en:server[5],paths[5],sql[5],volume[5],compose} -->
+<!-- {nl:server[5],paden[5],sql[5],volume[5],compose} -->

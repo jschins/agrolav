@@ -1,5 +1,8 @@
 # Passwords — where they live and how to change them
 
+<!-- {en:passwords[5],env,change,server} -->
+<!-- {nl:wachtwoorden[5],env,wijzigen,server} -->
+
 ## Service secrets live in one .env file
 
 The services do not read passwords from a database, a config UI, or a login
@@ -21,6 +24,9 @@ Caddy unit gets it through `EnvironmentFile=/opt/agrolav/.env`). Because every
 consumer reads the same file, a change is always made in exactly one place.
 
 ---
+
+<!-- {en:service[5],secrets[5],env[5],file[5],database} -->
+<!-- {nl:dienst[5],geheimen[5],env[5],bestand[5],database} -->
 
 ## Password requirements (length + symbols)
 
@@ -48,7 +54,13 @@ passwords (`PREFIX + username`) also skip this rule set on purpose.
 
 ---
 
+<!-- {en:password[5],requirements[5],length[5],symbols[5],env} -->
+<!-- {nl:wachtwoord[5],eisen[5],lengte[5],tekens[5],env} -->
+
 ## sa, API key, session secret, and SSH
+
+<!-- {en:sa[5],api[5],key[5],session[5],secret[5],ssh[5]} -->
+<!-- {nl:sa[5],api[5],sleutel[5],sessie[5],geheim[5],ssh[5]} -->
 
 ### 1. SQL Server `sa` password
 
@@ -69,6 +81,9 @@ the file first, then restart.
 SSMS: connect to `127.0.0.1,1433` (server) / `127.0.0.1,1433` (local Docker)
 as `sa` with `MSSQL_SA_PASSWORD` from the root `.env`, database `agrolav`,
 Encryption *Mandatory* + *Trust server certificate*.
+
+<!-- {en:sql[5],server[5],sa[5],password[5],env} -->
+<!-- {nl:sql[5],server[5],sa[5],wachtwoord[5],env} -->
 
 ### 2. `CENTRALE_API_KEY`
 
@@ -104,6 +119,9 @@ Change it:
 If it is left empty, `require_api_key` is a no-op and the hub accepts
 unkeyed calls.
 
+<!-- {en:centrale_api_key[5],api,key,hub} -->
+<!-- {nl:centrale_api_key[5],api,sleutel,hub} -->
+
 ### 3. `CLIENT_SESSION_SECRET`
 
 Signs the browser session cookie of the client BFF and of maaltijden.
@@ -114,6 +132,9 @@ Change it:
 2. `sudo systemctl restart agrolav-client agrolav-maaltijden`.
 
 Existing browser sessions are invalidated; everyone logs in again.
+
+<!-- {en:client_session_secret[5],session,secret,cookie} -->
+<!-- {nl:client_session_secret[5],sessie,geheim,cookie} -->
 
 ### 4. SSH login (the `agrolav` user)
 
@@ -135,6 +156,9 @@ notes are historical only.
 
 ---
 
+<!-- {en:ssh[5],user[5],agrolav,server} -->
+<!-- {nl:ssh[5],gebruiker[5],agrolav,server} -->
+
 ## OTP and Twilio secrets in the root .env
 
 `HUB_OTP_SECRET`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`
@@ -142,6 +166,9 @@ notes are historical only.
 changed there, then `sudo systemctl restart agrolav-hub`.
 
 ---
+
+<!-- {en:otp[5],twilio[5],secrets[5],env[5],sms} -->
+<!-- {nl:otp[5],twilio[5],geheimen[5],env[5],sms} -->
 
 ## Docker (local SQL Server)
 
@@ -168,6 +195,9 @@ variable at first initialization, so to change an already-running instance
 you still run `ALTER LOGIN [sa] WITH PASSWORD = …` and update `/.env`
 together — see the `sa` section above.)
 
+<!-- {en:docker[5],local[5],sql[5],server[5],container} -->
+<!-- {nl:docker[5],lokaal[5],sql[5],server[5],container} -->
+
 ### Why Docker Desktop shows two entries
 
 Every container runs in its own **PID namespace**: inside the container its
@@ -184,6 +214,9 @@ stack. `docker compose ls` reports `agrolav running(1)`, i.e. one single
 container.
 
 ---
+
+<!-- {en:docker[5],desktop[5],entries[5],container,namespace} -->
+<!-- {nl:docker[5],bureaublad[5],regels[5],container,naamruimte} -->
 
 ## User login passwords (initial value and storage)
 
@@ -217,6 +250,9 @@ set-password API rejects country/center sessions even when called directly.
 
 ---
 
+<!-- {en:passwords[5],initial[5],storage[5],username,formula} -->
+<!-- {nl:wachtwoorden[5],eerste[5],opslag[5],gebruikersnaam,formule} -->
+
 ## Passwords stay in the root .env
 
 - All passwords live only in the root `.env` (local) / `/opt/agrolav/.env`
@@ -229,6 +265,9 @@ set-password API rejects country/center sessions even when called directly.
   (`.tmp_terms.py`, `.tmp_schema.py`, `notes.md`) were scrubbed; do not repeat
   them.
 - Do not paste a real password into a doc, a script, or a commit message.
+
+<!-- {en:passwords[5],root[5],env[5],server,disk} -->
+<!-- {nl:wachtwoorden[5],root[5],env[5],server,schijf} -->
 
 ## Start the hub on this PC
 
@@ -245,6 +284,9 @@ loopback and writes nothing to `dbo.visitor_ip`. Never set it on the server.
 
 
 ---
+
+<!-- {en:start[5],hub[5],pc[5],powershell} -->
+<!-- {nl:starten[5],hub[5],pc[5],powershell} -->
 
 ## .env on disk versus printing it in the terminal
 
@@ -286,6 +328,9 @@ or session transcripts.
 
 ---
 
+<!-- {en:env[5],disk[5],printing[5],terminal[5],secrets} -->
+<!-- {nl:env[5],schijf[5],afdrukken[5],terminal[5],geheimen} -->
+
 # Root password of the server
 ```
 ssh -p 4523 root@209.38.39.105
@@ -295,3 +340,6 @@ or
 ssh -p 4523 root@expenses.apsurt.nl
 ```
 logs in as the root account on that Droplet. The root password is whatever was set when the Droplet was created (hosting provider default, or changed since). If you don't know it, you can reset it from your hosting provider's control panel — or just keep using agrolav with sudo.
+
+<!-- {en:root[5],password[5],server[5],ssh} -->
+<!-- {nl:root[5],wachtwoord[5],server[5],ssh} -->

@@ -25,6 +25,9 @@ the same unit.
 
 ---
 
+<!-- {en:meals[5],matrix,meal,week,household} -->
+<!-- {nl:maaltijden[5],matrix,maaltijd,week,huishouden} -->
+
 ## Week menu, Weergave, and Uitloggen
 
 After login, a bar sits above a horizontal rule:
@@ -35,9 +38,15 @@ After login, a bar sits above a horizontal rule:
 - **Weergave** — **Dag** (default: only today), **Week**, or **Reserveren**.
 - **Uitloggen**
 
+<!-- {en:week[5],menu[5],view[5],logout[5],sunday} -->
+<!-- {nl:week[5],menu[5],weergave[5],uitloggen[5],zondag} -->
+
 ### Dag
 
 Same people and meals as **Week**, but only the present calendar day.
+
+<!-- {en:day[5],meals,week} -->
+<!-- {nl:dag[5],maaltijden,week} -->
 
 ### Week
 
@@ -58,6 +67,9 @@ week only; at the first request after a new Sunday the extra rows are set
 back to zero. Only **`admin`** can edit extra, and only while viewing this
 week. Other logins see the numbers but cannot change them.
 
+<!-- {en:week[5],rows,people} -->
+<!-- {nl:week[5],rijen,personen} -->
+
 ### Reserveren
 
 Only the logged-in person’s marks. Six columns: **Dag**, **O**, **M**,
@@ -70,6 +82,9 @@ available with a personal login. For **`admin`** this view is the extra
 editor (seven days), not a personal mark row.
 
 ---
+
+<!-- {en:reserve[5],mark,columns} -->
+<!-- {nl:reserveren[5],markering,kolommen} -->
 
 ## Meal mark x or v
 
@@ -85,11 +100,17 @@ A person login may change only the row whose `user_login` matches.
 
 ---
 
+<!-- {en:meal[5],mark[5],x[5],v[5],cell,click} -->
+<!-- {nl:maaltijd[5],markering[5],x[5],v[5],cel,klik} -->
+
 ## Storage
 
 Two tables in database **agrolav**. The app does **not** create them. Run
 [`maaltijden/sql/maaltijden.sql`](../maaltijden/sql/maaltijden.sql) in
 SSMS, then insert the people.
+
+<!-- {en:storage[5],tables,database,sql} -->
+<!-- {nl:opslag[5],tabellen,database,sql} -->
 
 ### `dbo.maaltijden_users`
 
@@ -111,6 +132,9 @@ Adding or removing a matrix person, or changing that order, moves bit
 slots. Do that only together with rewriting every `code` in
 `maaltijden_data`. Changing only the `admin` row does not.
 
+<!-- {en:maaltijden_users[5],table,login,column} -->
+<!-- {nl:maaltijden_users[5],tabel,inloggen,kolom} -->
+
 ### `dbo.maaltijden_data`
 
 One row per day of a **365-day** year. There is no year column, so 15 maart
@@ -127,6 +151,9 @@ shift back by one so 31 december is still 365.
 The week menu never lists a Sunday before this week.
 
 ---
+
+<!-- {en:maaltijden_data[5],table,code,column} -->
+<!-- {nl:maaltijden_data[5],tabel,code,kolom} -->
 
 ## Bit layout of `code`
 
@@ -154,6 +181,9 @@ writes the bigint back.
 
 ---
 
+<!-- {en:bit[5],layout[5],code[5],matrix,meals} -->
+<!-- {nl:bit[5],indeling[5],code[5],matrix,maaltijden} -->
+
 ## Maaltijden routes, modules, and env
 
 ```text
@@ -176,6 +206,9 @@ Non-secret env: `HOST`, `PORT` (8400), `SERVER_URL` (hub), optional
 [`environment.md`](environment.md) §2.4.
 
 ---
+
+<!-- {en:meals[5],routes[5],modules[5],env[5],caddy} -->
+<!-- {nl:maaltijden[5],paden[5],onderdelen[5],env[5],caddy} -->
 
 ## First start on the server
 
@@ -251,3 +284,6 @@ npm ci
 npm run build
 sudo systemctl restart agrolav-maaltijden
 ```
+
+<!-- {en:start[5],server[5],systemctl,meals} -->
+<!-- {nl:starten[5],server[5],systemctl,maaltijden} -->

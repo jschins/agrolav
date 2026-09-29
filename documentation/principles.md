@@ -21,6 +21,9 @@ number.
 
 ---
 
+<!-- {en:booking[5],principles[5],balance,sheet,signed} -->
+<!-- {nl:boeking[5],principes[5],balans,blad,getekend} -->
+
 ## 1. 2000 is not a booking category
 
 Eigen vermogen is never a HIT target and never a journal FROM or TO.
@@ -33,6 +36,9 @@ It is computed after every other post:
 Passiva except 2000 includes 2050, 2055, 2100, 2500, and any other 2001–2999.
 
 ---
+
+<!-- {en:2000[5],booking[5],category[5],equity,capital} -->
+<!-- {nl:2000[5],boeking[5],categorie[5],eigen,vermogen} -->
 
 ## 2. 2000 never changes
 
@@ -56,6 +62,9 @@ above is written so 2000 does not move; if the plug is not still the opening
 amount, a sign or an extra leg is wrong. 2000 itself is never booked.
 
 ---
+
+<!-- {en:2000[5],never[5],changes[5],equity,capital} -->
+<!-- {nl:2000[5],nooit[5],wijzigt[5],eigen,vermogen} -->
 
 ## 3. Bank accounts 1051–1056
 
@@ -112,6 +121,9 @@ hardcoded local codes.
 
 ---
 
+<!-- {en:bank[5],accounts[5],1051,1056} -->
+<!-- {nl:bank[5],rekeningen[5],1051,1056} -->
+
 ## 4. Bank bookings (HIT)
 
 A transaction on a live bank account (typically 1051) of signed amount X
@@ -127,6 +139,9 @@ The HIT category is the counterpart:
 HITS may not involve 1051, 1053–1056 (`bank` and `source`) nor 2000 (`equity`): not the bank accounts, because their values are overwritten by the automatic downloads, nor equity, which is overwritten by the difference of Activa (Assets) and Passiva (Liabilities)
 
 ---
+
+<!-- {en:bank[5],bookings[5],hit[5],category} -->
+<!-- {nl:bank[5],boekingen[5],hit[5],categorie} -->
 
 ## 5. Journal mutations (signed amount X)
 
@@ -146,6 +161,9 @@ The table is FROM's sign; TO is `+X` in every cell.
 
 ---
 
+<!-- {en:journal[5],mutations[5],signed[5],amount[5]} -->
+<!-- {nl:journaal[5],mutaties[5],getekend[5],bedrag[5]} -->
+
 ## Why eigen vermogen 2000 does not move
 
 Bank HIT of X on 1051 still keeps ΔA = ΔP_other (P_other includes 2100):
@@ -157,3 +175,6 @@ Bank HIT of X on 1051 still keeps ΔA = ΔP_other (P_other includes 2100):
 Journals follow §5 (TO `+X`, FROM = minus APR product).
 
 1051 → 1052 transfer of X > 0: 1051 −X, 1052 +X.
+
+<!-- {en:equity[5],capital[5],2000[5],move[5],plug} -->
+<!-- {nl:eigen[5],vermogen[5],2000[5],beweegt[5],sluitpost} -->

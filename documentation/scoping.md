@@ -14,6 +14,9 @@ from the query string the client puts on those window URLs.
 Access strings are `country`, `local` (center), `personal` (person), and
 `unit`. They come from `deduce_access` in `shared/shared/user_access.py`.
 
+<!-- {en:scoping[5],terms,bookings,categories,visibility} -->
+<!-- {nl:bereik[5],termen,boekingen,categorieën,zichtbaarheid} -->
+
 ## Who may change terms
 
 Only a country login may add, change, or delete G-terms. Unit, person, and
@@ -39,6 +42,9 @@ The menu row did not, because `dbo.menu_item` for `terms` had `unit = 0`.
 `hub/sql/menu_item.sql` sets `unit = 1` on that row. G-terms on that
 screen stay read-only.
 
+<!-- {en:change[5],terms[5],g-term,country,unit} -->
+<!-- {nl:wijzigen[5],termen[5],g-term,land,eenheid} -->
+
 ## Whose bookings each login sees
 
 - An HD unit sees only its own bookings. That was already in place.
@@ -48,6 +54,9 @@ screen stay read-only.
   An HD login does not fold the work-unit in.
 - A person, center, or country login inspects and changes every account
   already in that login’s scope.
+
+<!-- {en:bookings[5],sees[5],unit,account,scope} -->
+<!-- {nl:boekingen[5],ziet[5],eenheid,rekening,bereik} -->
 
 ## Category visibility
 
@@ -101,6 +110,9 @@ The balance window URL now carries the same scope query as the result
 window (`center`, `person`, or `unit=1` plus the account, and `login`),
 so the standalone sheet filters too.
 
+<!-- {en:category[5],visibility[5],dim_category,rank} -->
+<!-- {nl:categorie[5],zichtbaarheid[5],dim_category,rang} -->
+
 ## Center rows in the term lists
 
 The red center row is unchanged. In the right-click P-column dropdown,
@@ -113,6 +125,9 @@ per center. A center login gets that one center.
 A person login does not get the red center row. The list is that
 person’s own accounts. A unit login does not get the red row on
 right-click, and a center-wide write from a unit login is refused.
+
+<!-- {en:center[5],rows[5],term[5],lists[5],red} -->
+<!-- {nl:centrum[5],rijen[5],term[5],lijsten[5],rood} -->
 
 ## Files that enforce login scope
 
@@ -133,6 +148,9 @@ right-click, and a center-wide write from a unit login is refused.
 `hub/tests/test_term_scope.py` covers who may edit G-terms, which account
 a unit may edit, and the visibility ranks.
 
+<!-- {en:files[5],enforce[5],scope[5],g-term,account} -->
+<!-- {nl:bestanden[5],afdwingen[5],bereik[5],g-term,rekening} -->
+
 ## SQL scripts and restarts after a scope change
 
 Run `hub/sql/menu_item.sql` on a database that does not yet show Edit
@@ -146,3 +164,6 @@ picks that up once the client process is serving the new `dist`.
 
 Until a visibility value below 5 is stored, every login still sees
 every category.
+
+<!-- {en:sql[5],scripts[5],restarts[5],scope[5],menu_item} -->
+<!-- {nl:sql[5],scriptbestanden[5],herstarts[5],bereik[5],menu_item} -->

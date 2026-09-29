@@ -22,6 +22,9 @@ appear in `dbo.egress_ip` or in that login's own `egress_ip` column,
 and an empty column admits nobody. Person logins are not IP-gated.
 Attempted public addresses land in `dbo.visitor_ip`.
 
+<!-- {en:agrolav[5],overview[5],hub,client,port} -->
+<!-- {nl:agrolav[5],overzicht[5],hub,client,poort} -->
+
 ## Hub, client, balance, and result
 
 | Process | Port | What the browser sees |
@@ -53,6 +56,9 @@ person, or that unit account. The menu link is `RESULT_URL`, otherwise
 origin and proxy `/result*` to port 8500. The process is
 `uvicorn app.result_main:app` from the balance directory.
 
+<!-- {en:hub[5],client[5],balance[5],result[5],port,caddy} -->
+<!-- {nl:hub[5],client[5],balans[5],resultaat[5],poort,caddy} -->
+
 ## Hub logic, the client BFF, and the SQL tables
 
 The hub owns domain logic: login, IP allowlists, bank refresh (Enable
@@ -70,6 +76,9 @@ person has accounts; bookings sit in a per-country table
 as "12 Vervoer". Keyword terms and matrix footer labels live in dimension
 tables. See `DATABASE.md`.
 
+<!-- {en:hub[5],logic[5],client[5],bff[5],sql[5],tables[5]} -->
+<!-- {nl:hub[5],logica[5],client[5],bff[5],sql[5],tabellen[5]} -->
+
 ### Enable Banking and Excel or CSV upload
 
 **Enable Banking**
@@ -84,6 +93,9 @@ People paste a spreadsheet or a bank CSV. The hub parses the bytes,
 categorizes rows (remainder until keywords match), records the filename on
 `dbo.uploaded_files`, and writes the rows on `dbo.transaction_*`.
 
+<!-- {en:enable[5],banking[5],excel[5],csv[5],upload[5],consent} -->
+<!-- {nl:enable[5],banking[5],excel[5],csv[5],uploaden[5],toestemming} -->
+
 ## Matrix, booking list, refresh, and upload
 
 | Surface | Role |
@@ -96,3 +108,6 @@ categorizes rows (remainder until keywords match), records the filename on
 
 The frontend user guide is the root `README.md`. Operator setup is
 `deployment_tech.md`. The meal sheet is `maaltijden.md`.
+
+<!-- {en:matrix[5],booking[5],list[5],refresh[5],upload[5],year} -->
+<!-- {nl:matrix[5],boeking[5],lijst[5],verversen[5],uploaden[5],jaar} -->

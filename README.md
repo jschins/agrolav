@@ -3,10 +3,10 @@
 
 # Agrolav
 
-Agrolav is household bookkeeping in the browser. After you log in you see a
-**matrix of totals**: categories down the left, people across the top. Click a
-number to open the bookings behind it. Categories are assigned from keywords
-(terms) in the name and description.
+Agrolav is the bookkeeping of a stichting in the browser. After you log in you
+see a **matrix of totals**: categories down the left, accounts across the top.
+Click a number to open the bookings behind it. Categories are assigned from
+keywords (terms) in the name and description.
 
 This page has two uses. It is the description of what you can do in the app,
 and the question box reads it together with every other markdown file in the
@@ -36,20 +36,22 @@ answer to that in the README.”
 Open the client (locally `http://127.0.0.1:8300`). Enter your **username** and
 **password**.
 
-There are three kinds of login. The username is the login name of that row:
+There are four kinds of login. The username is the login name of that row:
 
 | Login | What you see |
 |---|---|
-| **Country** | Every center in that country. Switch centers from the top bar. |
-| **Center** | Everyone in that one center. |
-| **Person** | Your own column only. |
+| **Stichting** | Alle rekeningen. |
+| **Sectie** | `instudo_sia` versus `instudo_sib`. |
+| **Deel** | Geconsolideerde werkeenheden versus geconsolideerde huishoudelijke diensten. |
+| **Eenheid** | Een werkeenheid of een huishoudelijke dienst. |
 
-If a mobile number is stored on a person login, the next step is a **6-digit
-SMS code**. Enter it, or use **Resend**. Country and center logins are allowed
-only from listed IP addresses; from anywhere else you get *This login is not
-allowed from your IP address*. Person logins are not IP-gated.
-<!-- {en:log in[5],login[3],username,usernames,password[3],passwords,country,countries,center,centers,person,people,kind,kinds,sms,code,codes,resend,mobile,mobiles,number,numbers,ip,address,addresses,phone,phones} -->
-<!-- {nl:log in[5],inloggen[3],gebruikersnaam,gebruikersnamen,wachtwoord[3],wachtwoorden,land,landen,centrum,centra,persoon,personen,soort,soorten,sms,code,codes,opnieuw,mobiel,mobielen,nummer,nummers,ip,adres,adressen,telefoon,telefoons} -->
+If a mobile number is stored on a deel or eenheid login, the next step is a
+**6-digit SMS code**. Enter it, or use **Resend**. Stichting and sectie logins
+are allowed only from listed IP addresses; from anywhere else you get *This
+login is not allowed from your IP address*. Deel and eenheid logins are not
+IP-gated.
+<!-- {en:log in[5],login[3],username,usernames,password[3],passwords,foundation,section,part,unit,work-unit,household,kind,kinds,sms,code,codes,resend,mobile,mobiles,number,numbers,ip,address,addresses,phone,phones} -->
+<!-- {nl:aanmelden[5],inloggen[3],gebruikersnaam,gebruikersnamen,wachtwoord[3],wachtwoorden,stichting,sectie,deel,eenheid,werkeenheid,huishoudelijke,soort,soorten,sms,code,codes,opnieuw,mobiel,mobielen,nummer,nummers,ip,adres,adressen,telefoon,telefoons} -->
 
 ---
 
@@ -57,24 +59,27 @@ allowed from your IP address*. Person logins are not IP-gated.
 
 On the overview these controls sit in the strip above the matrix:
 
-- **Center** — country login only. Pick which center’s people to show.
+- **Sectie** — stichting login only. Pick `instudo_sia` or `instudo_sib`.
 - **Year** — which booking year the matrix uses.
 - **Bank** — `consolidated` (all banks together) or one bank, when more than
   one bank exists.
 - **menu** — actions for this login (see below).
 - **Question** — the box to the right of menu. Type a question about using
   the program and press Enter. The answer is taken from the later sections
-  of this page.
+  of this page and from every other markdown file whose name does not end
+  in `_tech`.
 
 The left sidebar shows the title of whoever logged in. After you open a
-category, it also shows that person’s column and a **← Matrix** knob to go
-back.
-<!-- {en:top[5],bar[5],overview,center,centers,switch[3],year[3],years,booking,bookings,bank,banks,consolidated,menu,question,questions,answer,answers,box,help,sidebar,title,titles,matrix,knob} -->
-<!-- {nl:boven[5],balk[5],overzicht,centrum,centra,kiezen[3],jaar[3],jaren,boeking,boekingen,bank,banken,consolidatie,menu,vraag,vragen,antwoord,antwoorden,vak,hulp,zijbalk,titel,titels,matrix,knop} -->
+category, it also shows that column and a **← Matrix** knob to go back.
+<!-- {en:top[5],bar[5],overview,foundation,section,switch[3],year[3],years,booking,bookings,bank,banks,consolidated,menu,question,questions,answer,answers,box,help,sidebar,title,titles,matrix,knob} -->
+<!-- {nl:boven[5],balk[5],overzicht,stichting,sectie,kiezen[3],jaar[3],jaren,boeking,boekingen,bank,banken,consolidatie,menu,vraag,vragen,antwoord,antwoorden,vak,hulp,zijbalk,titel,titels,matrix,knop} -->
 
 ---
 
 ## The menu
+
+<!-- {en:menu[5]} -->
+<!-- {nl:menu[5]} -->
 
 ### Menu items on every login
 
@@ -87,22 +92,26 @@ Opens the term window: keywords that assign bookings to categories. See
 
 **Recalculate categories**  
 Reassigns bookings from the terms, for every year in reach, and only the
-bookings in this login. A unit login covers its own account. A person login
-covers that person. A center login covers that center. A country login covers
-the whole country, which is where G-terms are written. A category you set by
-hand, and a row that came from Excel, stay. Use this after you change terms
-or the category list.
+bookings in this login. An eenheid login covers that werkeenheid or that
+huishoudelijke dienst. A deel login covers geconsolideerde werkeenheden or
+geconsolideerde huishoudelijke diensten. A sectie login covers `instudo_sia`
+or `instudo_sib`. A stichting login covers alle rekeningen, which is where
+G-terms are written. A category you set by hand, and a row that came from
+Excel, stay. Use this after you change terms or the category list.
 
 **Download transactions**  
-Fetches new bank bookings (Enable Banking). A person login fetches that
-person. A country or center login fetches every person in the selected
-center who has bank consent. People who upload a file are skipped. Someone
-who still needs consent is sent to the bank in a new tab; after consent,
-download continues. Shown only when this center has a bank connection.
+Fetches new bank bookings (Enable Banking). An eenheid login fetches that
+werkeenheid or huishoudelijke dienst. A deel login fetches its consolidated
+werkeenheden or its consolidated huishoudelijke diensten. A stichting or
+sectie login fetches every account in the selected sectie (`instudo_sia` or
+`instudo_sib`) that has bank consent. Accounts that upload a file are
+skipped. Someone who still needs consent is sent to the bank in a new tab;
+after consent, download continues. Shown only when this sectie has a bank
+connection.
 
 **Add person**  
-Opens the hub page to create a person in the current center. Not shown on a
-personal login.
+Opens the hub page to create a deel in the current sectie. Not shown on a
+deel or eenheid login.
 
 **Upload**  
 Opens the upload page for a spreadsheet or bank CSV. Shown when this login may
@@ -110,18 +119,18 @@ upload files.
 
 **Logout**  
 Ends the browser session and returns to the login card.
-<!-- {en:item[5],items[5],menu,edit,term,terms,alt+t,window,recalculate[3],person,people,center,centers,download,statement,statements,transaction,transactions,consent,consents,add[3],upload,csv,spreadsheet,spreadsheets,logout[3],log,out} -->
-<!-- {nl:onderdeel[5],onderdelen[5],menu,bewerken,term,termen,alt+t,termvenster,herberekenen[3],persoon,personen,centrum,centra,uitlezen,bankafschrift,bankafschriften,transactie,transacties,toestemming,toestemmingen,toevoegen[3],uploaden,csv,rekenblad,rekenbladen,uitloggen[3],log,uit} -->
+<!-- {en:item[5],items[5],menu,edit,term,terms,alt+t,window,recalculate[3],foundation,section,part,unit,download,statement,statements,transaction,transactions,consent,consents,add[3],upload,csv,spreadsheet,spreadsheets,logout[3],log,out} -->
+<!-- {nl:onderdeel[5],onderdelen[5],menu,bewerken,term,termen,alt+t,termvenster,herberekenen[3],stichting,sectie,deel,eenheid,uitlezen,bankafschrift,bankafschriften,transactie,transacties,toestemming,toestemmingen,toevoegen[3],uploaden,csv,rekenblad,rekenbladen,uitloggen[3],loggen,uit} -->
 **Prepare consent**  
-Country or center login, when this center has a bank connection. Asks which
-person, then opens the bank so that person can grant consent.
+Stichting or sectie login, when this sectie has a bank connection. Asks which
+deel, then opens the bank so that deel can grant consent.
 
 **Invalidate consent**  
-Same logins. Asks which person, asks you to confirm, then removes that
-person’s bank consent.
+Same logins. Asks which deel, asks you to confirm, then removes that
+deel’s bank consent.
 
 **Download YTD**  
-Same logins. Asks which person, then fetches that person’s statements from
+Same logins. Asks which deel, then fetches that deel’s statements from
 1 January of this year through today. If the bank will not give that range,
 you are told to renew consent first.
 <!-- {en:prepare[3],consent[5],consents[5],invalidate[3],remove,download,ytd[5],year,january,renew} -->
@@ -131,7 +140,7 @@ Shown when this login has a balance sheet. Pairs internal transfers and
 writes their categories. A category set this way counts as set by hand.
 
 **Smaller expenses**  
-Country, center, or person login. Asks for a maximum amount and a category.
+Stichting, sectie, or deel login. Asks for a maximum amount and a category.
 Remainder bookings whose expense is smaller than that amount take the chosen
 category, and count as set by hand. **Cancel** does nothing.
 
@@ -148,11 +157,11 @@ page).
 ### Edit categories and the IP allowlist
 
 **Edit categories**  
-Change the country’s category codes and labels. See
+Change the stichting’s category codes and labels. See
 [Edit categories](#edit-categories).
 
 **Restrict IP access**  
-Allowlist of client IPs for country and center logins. See
+Allowlist of client IPs for stichting and sectie logins. See
 [Restrict IP access](#restrict-ip-access).
 <!-- {en:edit,category,categories,restrict[3],ip,access,allowlist,allowlists} -->
 <!-- {nl:bewerken,categorie,categorieën,beperken[3],ip,toegang,toegangslijst,toegangslijsten} -->
@@ -163,13 +172,13 @@ Asks for a four-digit year, then asks you to confirm. Deletes that year’s
 bookings, and removes uploaded filenames for the accounts involved. This
 cannot be undone.
 
-- Country login: every account in the center now selected.
-- Center login: the person you name.
-- Person login: the account selected under **Bank**. Pick one account;
-  consolidated does not wipe.
-<!-- {en:wipe[5],year[5],years[5],delete,person,people,center,centers,account,accounts} -->
-<!-- {nl:wissen[5],jaar[5],jaren[5],verwijderen,persoon,personen,centrum,centra,rekening,rekeningen} -->
-### Set password on a person login
+- Stichting-niveau login: alle rekeningen.
+- Sectie-niveau login: `instudo_sia` versus `instudo_sib`.
+- Deel-niveau login: geconsolideerde werkeenheden versus geconsolideerde huishoudelijke diensten.
+- Eenheid-niveau login: werkeenheid of huishoudelijke dienst.
+<!-- {en:wipe[5],year[5],years[5],delete,foundation,section,part,unit,work-unit,household,account,accounts} -->
+<!-- {nl:wissen[5],jaar[5],jaren[5],verwijderen,stichting,sectie,deel,eenheid,werkeenheid,huishoudelijke,rekening,rekeningen} -->
+### Set password on a deel or eenheid login
 
 **Set password**  
 Change your password and optional mobile number. See
@@ -182,10 +191,10 @@ Change your password and optional mobile number. See
 
 ## The matrix
 
-Each cell is that person’s total in that category for the selected year (and
+Each cell is that account’s total in that category for the selected year (and
 bank view).
 
-- **Click a non-empty amount** to open the booking list for that person and
+- **Click a non-empty amount** to open the booking list for that account and
   category.
 - Empty cells and the two **footer rows** (balance and last booked date) are
   not clickable.
@@ -233,8 +242,8 @@ on that word (you can edit the phrase in the box at the top).
 
 Tick **G** (general) or **P** (personal) on a category row:
 
-- **G** — the term applies to everyone in this country/center.
-- **P** — the term applies only to this person.
+- **G** — the term applies to every account in this stichting or sectie.
+- **P** — the term applies only to this deel or eenheid.
 
 The word is saved at once. **cancel** or click outside the menu to close it
 without assigning. Other bookings keep their category until the next menu
@@ -259,26 +268,28 @@ take are not listed. The terms in the other columns belong to the category
 you click.
 
 **General**  
-Keywords for the selected category. They apply to every person in the
-country, in every center. A personal term beats a general one.
+Keywords for the selected category. They apply to alle rekeningen of the
+stichting, in both secties. A personal term beats a general one.
 
-**Person**, or **Account** when terms are stored per account  
-Who the personal terms belong to. A person login lists only you. A country
-or center login lists the people in the center now selected. When the
-heading is Account, each row is one account, and the center name is the
-first row, marked center. The fourth column then shows every personal term
-on any of those accounts. A term you add is written on each of them. A term
-you delete is removed from each of them.
+**Deel**, or **Account** when terms are stored per account  
+Who the personal terms belong to. An eenheid login lists only that
+werkeenheid or huishoudelijke dienst. A deel login lists its consolidated
+werkeenheden or its consolidated huishoudelijke diensten. A stichting or
+sectie login lists the accounts in the sectie now selected (`instudo_sia`
+or `instudo_sib`). When the heading is Account, each row is one account,
+and the sectie name is the first row, marked sectie. The fourth column then
+shows every personal term on any of those accounts. A term you add is
+written on each of them. A term you delete is removed from each of them.
 
 **Personal**  
-Keywords for the selected category and for the person or account selected
+Keywords for the selected category and for the deel or account selected
 in the third column. They apply only there.
 
 - Type in **+ term** and press Enter (or leave the field) to add a keyword.
 - Edit an existing term and leave the field to save.
 - **×** deletes that term.
-<!-- {en:edit[5],term[5],terms[5],page,alt+t,ctrl+tab,window,background,four,column[5],columns[5],category,categories,general,person,people,account,accounts,center,centers,personal,add,plus,delete,change} -->
-<!-- {nl:bewerken[5],term[5],termen[5],pagina,alt+t,ctrl+tab,termvenster,achtergrond,vier,kolom[5],kolommen[5],categorie,categorieën,gemeenschappelijk,persoon,personen,rekening,rekeningen,centrum,centra,persoonlijk,toevoegen,plus,verwijderen,wijzig} -->
+<!-- {en:edit[5],term[5],terms[5],page,alt+t,ctrl+tab,window,background,four,column[5],columns[5],category,categories,general,foundation,section,part,unit,account,accounts,personal,add,plus,delete,change} -->
+<!-- {nl:bewerken[5],term[5],termen[5],pagina,alt+t,ctrl+tab,termvenster,achtergrond,vier,kolom[5],kolommen[5],categorie,categorieën,gemeenschappelijk,stichting,sectie,deel,eenheid,rekening,rekeningen,persoonlijk,toevoegen,plus,verwijderen,wijzig} -->
 ### How terms match
 
 A term matches a whole word in the booking’s name and description. A word
@@ -307,8 +318,8 @@ Priority, highest first:
 
 The stored hit is `P:` plus the term, or `G:` plus the term. If nothing
 matches, the booking stays in the remainder category and the hit is empty.
-<!-- {en:terms[5],word,dash,dot,hash,wildcard,asterisk,&&,heijn,machtiging,both,phrases,priority,hit,P,G,remainder,match[5],rules,activa,passiva,lasten,baten,prioriteit} -->
-<!-- {nl:termen[5],woord,streepje,punt,hekje,jokerteken,sterretje,&&,heijn,machtiging,beide,frasen,voorrang,treffer,P,G,restcategorie,overeenkomen[5],voorrangsregels,activa,passiva,lasten,baten,prioriteit} -->
+<!-- {en:terms[5],word,dash,dot,hash,wildcard,asterisk,&&,heijn,direct-debit,both,phrases,priority,hit,P,G,remainder,match[5],rules,assets,liabilities,costs,revenues,rank} -->
+<!-- {nl:termen[5],woord,streepje,punt,hekje,jokerteken,sterretje,&&,heijn,machtiging,beide,zinnen,voorrang,treffer,P,G,restcategorie,overeenkomen[5],voorrangsregels,activa,passiva,lasten,baten,prioriteit} -->
 
 ### Term definition strategy
 
@@ -324,23 +335,23 @@ Define terms in this order.
    term. If that word also sits in a description next to a general term, the
    booking leaves the category the general term had given it. Restrict the
    personal term to one account when you can. It then touches fewer
-   statements than the same term on every account of a center.
-4. When a personal term should apply to every account of a center, write it
-   on the center row. It is copied onto each account of that center. Deleting
-   it from the center row removes it from those accounts.
+   statements than the same term on every account of a sectie.
+4. When a personal term should apply to every account of a sectie, write it
+   on the sectie row. It is copied onto each account of that sectie. Deleting
+   it from the sectie row removes it from those accounts.
 5. Last, run **Smaller expenses** and **Smaller income**. Each asks for a
    maximum and a category. Remainder bookings smaller than that maximum take
    the chosen category and count as set by hand. The categories you still
    review then hold the larger amounts. The smaller ones, which move the
    result less, are already stored, so the balance sheet is faster to prepare.
-<!-- {en:strategy[5],order,first,cross-postings[5],general[5],precedence,&&,personal[5],particular,account,center,restrict,smaller[5],expenses,income,balance,sheet,maximum,remainder} -->
-<!-- {nl:strategie[5],volgorde,eerst,kruisposten[5],bereken,gemeenschappelijk[5],voorrang,&&,persoonlijk[5],bijzonder,rekening,centrum,beperken,kleinere[5],uitgaven,inkomsten,balans,blad,maximaal,restcategorie} -->
+<!-- {en:strategy[5],order,first,cross-postings[5],general[5],precedence,&&,personal[5],particular,account,section,restrict,smaller[5],expenses,income,balance,sheet,maximum,remainder} -->
+<!-- {nl:strategie[5],volgorde,eerst,kruisposten[5],gemeenschappelijk[5],voorrang,&&,persoonlijk[5],bijzonder,rekening,sectie,beperken,kleinere[5],uitgaven,inkomsten,balans,blad,maximaal,restcategorie} -->
 
 ---
 
 ## Edit categories
 
-**menu → Edit categories** (country or center login). **Matrix (Alt+M)** goes
+**menu → Edit categories** (stichting or sectie login). **Matrix (Alt+M)** goes
 back.
 
 Each row is a booking category: **code**, **label**, and which row is
@@ -354,16 +365,16 @@ and moves leftover bookings to unclassified. **Submit** writes the list.
 
 ## Restrict IP access
 
-**menu → Restrict IP access** (country or center login). Person logins are
-never IP-gated.
+**menu → Restrict IP access** (stichting or sectie login). Deel and eenheid
+logins are never IP-gated.
 
-Pick a **Login** (a country or a center), type an IPv4 or IPv6 address,
+Pick a **Login** (the stichting or a sectie), type an IPv4 or IPv6 address,
 **Add IP**. The table lists current addresses; remove one with its button.
 
 An empty list on this page means **no** address is allowed for that login,
 unless the same address is also on the egress_ip list (edited in SSMS,
 not here). The allowed set is the sum of the two lists. If both are empty,
-no country or center login works at all.
+no stichting or sectie login works at all.
 <!-- {en:restrict[5],page,add,ipv4,ipv6,remove,empty,list,administrator,ssms,ip[5]} -->
 <!-- {nl:beperken[5],pagina,toevoegen,ipv4,ipv6,verwijderen,leeg,lijst,beheerder,ssms,ip[5]} -->
 
@@ -371,7 +382,7 @@ no country or center login works at all.
 
 ## Set password
 
-**menu → Set password** (person login).
+**menu → Set password** (deel or eenheid login).
 
 Enter the current password, the new password twice, and optionally a **mobile
 phone** (`+316…` or `06…`). A mobile number turns on SMS two-step login.
@@ -385,12 +396,13 @@ matrix without saving.
 
 ## Upload and download
 
-**Upload** is for people who paste a bank CSV or spreadsheet rather than
+**Upload** is for a login that pastes a bank CSV or spreadsheet rather than
 connecting a bank. Pick the year and format on the upload page.
 
-**Download transactions** pulls from the bank when consent is in place. A
-person login fetches that person. A country or center login fetches every
-person in the selected center who has consent. The first time, the bank
+**Download transactions** pulls from the bank when consent is in place. An
+eenheid login fetches that werkeenheid or huishoudelijke dienst. A deel
+login fetches its consolidated group. A stichting or sectie login fetches
+every account in the selected sectie that has consent. The first time, the bank
 site may open for authorization; after you approve, Agrolav fetches the
 range and fills the matrix.
 <!-- {en:upload[5],page,bank,csv,download[5],from,authorization,authorisation,consent,give} -->
@@ -420,37 +432,38 @@ command runs only after the pass succeeds. Several terms saved in a burst are
 one pass. The terms window itself waits for the pass before it returns.
 
 This pass is not **Recalculate**. Recalculate clears hits and scores again
-for every year: that person on a person login, or every person in the
-selected center on a country or center login. The pass after a term edit
+for every year: that eenheid on an eenheid login, that deel’s consolidated
+werkeenheden or huishoudelijke diensten on a deel login, or every account in
+the selected sectie on a stichting or sectie login. The pass after a term edit
 leaves a category you set by hand (shown **bold**) where it is, leaves Excel
-rows where they are, and walks only each person’s latest booking year. A
+rows where they are, and walks only each account’s latest booking year. A
 description you edited (shown **blue**) is still scored; the description
 stays.
 
-A personal term rescores that person, or that account when terms are stored
-per account. A general term rescores every person in every center. One
-general term in a burst widens the whole burst to that scope. Earlier years
+A personal term rescores that deel or eenheid, or that account when terms are
+stored per account. A general term rescores alle rekeningen of the stichting.
+One general term in a burst widens the whole burst to that scope. Earlier years
 are not touched.
-<!-- {en:background,procedure,please,wait,queued,menu,click,recalculate,difference,bold,category,blue,description,excel,latest,year,personal,scope,general,every,person,everyone} -->
-<!-- {nl:achtergrond,procedure,alstublieft,wachten,wachtrij,menu,klik,herberekenen,verschil,vet,categorie,blauw,omschrijving,excel,laatste,jaar,persoonlijk,bereik,gemeenschappelijk,iedere,persoon,iedereen} -->
+<!-- {en:background,procedure,please,wait,queued,menu,click,recalculate,difference,bold,category,blue,description,excel,latest,year,personal,scope,general,foundation,section,part,unit} -->
+<!-- {nl:achtergrond,procedure,alstublieft,wachten,wachtrij,menu,klik,herberekenen,verschil,vet,categorie,blauw,omschrijving,excel,laatste,jaar,persoonlijk,bereik,gemeenschappelijk,stichting,sectie,deel,eenheid} -->
 ## Categories a booking cannot take
 
 A booking cannot be assigned to eigen vermogen, or to a live checking
 account. Those amounts are computed, or they come from the bank. A
 spaarrekening (mirror) can take a term. The remainder category receives a
 booking that no term matches.
-<!-- {en:cannot[5],assign,bank,account,mirror,no,hit,eigen,vermogen} -->
-<!-- {nl:cannot[5],toewijzen,bank,rekening,spaarrekening,geen,treffer,eigen,vermogen} -->
+<!-- {en:cannot[5],assign,bank,account,mirror,no,hit,equity,capital} -->
+<!-- {nl:onmogelijk[5],toewijzen,bank,rekening,spaarrekening,geen,treffer,eigen,vermogen} -->
 ## The name in the left panel
 
-The heading is the title stored for the login: the person, the center, or
-the country. It is not the username.
+The heading is the title stored for the login: the eenheid, the deel, the
+sectie, or the stichting. It is not the username.
 
-A personal login with two or more accounts gets a second line. On
+An eenheid login with two or more accounts gets a second line. On
 **Consolidated** that line is the word Consolidatie (or Consolidated). On
-one account it is that account’s name. One account, or a center or country
-login, shows the title only. The browser tab uses the title without the
-second line.
+one account it is that account’s name. One account, or a deel, sectie, or
+stichting login, shows the title only. The browser tab uses the title without
+the second line.
 <!-- {en:sidebar,title,subtitle,account,name[5],several,accounts,consolidated} -->
 <!-- {nl:zijbalk,titel,ondertitel,rekening,naam[5],meerdere,rekeningen,consolidatie} -->
 ## The balance sheet window
@@ -466,8 +479,8 @@ year’s opening amount, and **bold red** when it does not.
 Where the menu offers them, **Manual journal posts** and **Automatic journal
 posts** open from the same menu. **Export balance sheet** downloads the
 workbook.
-<!-- {en:balance[5],sheet[5],escape,logout,window[5],bold,black,red,opening,manual,journal,automatic,export,eigen,vermogen} -->
-<!-- {nl:balans[5],blad[5],escape,uitloggen,balansvenster[5],vet,zwart,rood,beginstand,handmatig,journaal,automatisch,export,eigen,vermogen} -->
+<!-- {en:balance[5],sheet[5],escape,logout,window[5],bold,black,red,opening,manual,journal,automatic,export,equity,capital} -->
+<!-- {nl:balans[5],blad[5],escape,uitloggen,balansvenster[5],vet,zwart,rood,beginstand,handmatig,journaal,automatisch,exporteren,eigen,vermogen} -->
 ## Meals
 
 The meal sheet is a separate page, not part of this matrix:

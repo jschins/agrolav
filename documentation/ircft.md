@@ -8,6 +8,9 @@ It is not Recalculate. Recalculate clears hits and scores the rows again from
 scratch. iRCfT leaves hand-set categories and Excel rows where they are, and
 it only walks each person’s latest booking year.
 
+<!-- {en:ircft[5],rescore,term,bookings} -->
+<!-- {nl:ircft[5],herscoren,term,boekingen} -->
+
 ## Right-click queues the rescore until a menu click
 
 A right-click in the transactions view only saves the word and queues a pass.
@@ -18,6 +21,9 @@ terms is one pass, not one pass per word. A term saved while that pass is
 already walking is included in one follow-up before the menu click returns.
 
 The terms editor runs iRCfT in the request and waits for it.
+
+<!-- {en:right-click[5],queues[5],rescore[5],menu[5],click[5],term} -->
+<!-- {nl:rechtsklik[5],wachtrij[5],herscoren[5],menu[5],klik[5],term} -->
 
 ## Personal term versus general term scope
 
@@ -31,6 +37,9 @@ general term in a burst widens the whole burst to that scope.
 For each person in scope, the walk loads that person’s latest year. Earlier
 years are not touched.
 
+<!-- {en:personal[5],term[5],general[5],scope[5],account} -->
+<!-- {nl:persoonlijk[5],term[5],gemeenschappelijk[5],bereik[5],rekening} -->
+
 ## Removals first, then one addition walk
 
 1. Load the general term list and, for a personal edit, that person’s list
@@ -42,6 +51,9 @@ years are not touched.
    for the year.
 5. On a queued pass, publish the change event after those writes. The client
    then reloads the matrix and the open category.
+
+<!-- {en:removals[5],addition[5],walk[5],term,rescore} -->
+<!-- {nl:verwijderingen[5],toevoeging[5],ronde[5],term,herscoren} -->
 
 ## Which modification values are rescored
 
@@ -61,6 +73,9 @@ the row is not scored again.
 
 An unlocked row is scored on remove when its hit is the deleted term, or when
 it has no hit. Other unlocked rows are left on remove.
+
+<!-- {en:modification[5],values[5],rescored[5],hand,excel} -->
+<!-- {nl:modificatie[5],waarden[5],herscoord[5],hand,excel} -->
 
 ## Whole-word match and term priority
 
@@ -93,3 +108,6 @@ The row’s `hit` is `P:` plus the term, or `G:` plus the term.
 
 If no keyword matches, the row goes to the remainder category and `hit` is
 left empty.
+
+<!-- {en:whole-word[5],match[5],term[5],priority[5],description} -->
+<!-- {nl:heel-woord[5],overeenkomst[5],term[5],prioriteit[5],omschrijving} -->

@@ -37,6 +37,9 @@ as `agrolav`, so a restore needs `chown 10001` first.
 
 ---
 
+<!-- {en:database[5],sql,server,bookings,categories} -->
+<!-- {nl:database[5],sql,server,boekingen,categorieën} -->
+
 ## 1. The remote database
 
 Container `MSSQL2022`, host mount `/opt/sql_backups` →
@@ -70,6 +73,9 @@ sudo chown 10001:10001 /opt/sql_backups/remote_backups
 sudo chmod 775 /opt/sql_backups/remote_backups
 ```
 
+<!-- {en:remote[5],database[5],container,backup,droplet} -->
+<!-- {nl:extern[5],database[5],container,reservekopie,droplet} -->
+
 ### 1.1–1.2 Remote backup and copy to this PC
 
 From Windows, one script writes `agrolav.bak` on the droplet, `scp`s it to
@@ -89,6 +95,9 @@ password before the next attempt. The `sa` password is read on the server from
 `/root/sqlserver/.env` or `/opt/agrolav/.env` (never typed into the script).
 
 What the script runs is the same as the two steps below.
+
+<!-- {en:remote[5],backup[5],copy[5],pc[5],bak,scp} -->
+<!-- {nl:extern[5],reservekopie[5],kopie[5],pc[5],bak,scp} -->
 
 ### 1.1 SQL to write the database to disk
 
@@ -115,6 +124,9 @@ sudo chown agrolav:agrolav /opt/sql_backups/remote_backups/agrolav.bak
 sudo ls -lh /opt/sql_backups/remote_backups/agrolav.bak
 ```
 
+<!-- {en:sql[5],write[5],database[5],disk[5],backup,bak} -->
+<!-- {nl:sql[5],schrijven[5],database[5],schijf[5],reservekopie,bak} -->
+
 ### 1.2 scp from the remote system to the local disk
 
 From Windows into the folder that holds **copies of the remote** database:
@@ -130,6 +142,9 @@ copied from `/var/opt/mssql/backup/remote_backups/agrolav.bak` inside
 ```bash
 sudo rm -f /opt/sql_backups/remote_backups/agrolav.bak
 ```
+
+<!-- {en:scp[5],remote[5],local[5],disk[5],copy,bak} -->
+<!-- {nl:scp[5],extern[5],lokaal[5],schijf[5],kopie,bak} -->
 
 ### 1.3 SQL for restoring a local backup
 
@@ -323,6 +338,9 @@ nobody). See [Logins](#logins).
 
 ---
 
+<!-- {en:sql[5],restoring[5],local[5],backup[5],restore,bak} -->
+<!-- {nl:sql[5],terugzetten[5],lokaal[5],reservekopie[5],herstel,bak} -->
+
 ## 2. The local database
 
 Container `agrolav-sql` (`docker-compose.sqlserver.yml`). Host mount
@@ -332,6 +350,9 @@ Container `agrolav-sql` (`docker-compose.sqlserver.yml`). Host mount
 C:\SQLBackups\local_backups\    =  /var/opt/mssql/backup/local_backups/
 C:\SQLBackups\remote_backups\   =  /var/opt/mssql/backup/remote_backups/
 ```
+
+<!-- {en:local[5],database[5],docker,container} -->
+<!-- {nl:lokaal[5],database[5],docker,container} -->
 
 ### 2.1 SQL to write the database to disk
 
@@ -350,6 +371,9 @@ WITH
 Host file: `C:\SQLBackups\local_backups\agrolav.bak`. That is the file §1.3
 copies to `/opt/sql_backups/local_backups/`.
 
+<!-- {en:sql[5],write[5],database[5],disk[5],backup,bak} -->
+<!-- {nl:sql[5],schrijven[5],database[5],schijf[5],reservekopie,bak} -->
+
 ### 2.2 scp from the remote system to the local disk
 
 Same copy as §1.2: take the file the remote instance just wrote, store it
@@ -358,6 +382,9 @@ under `remote_backups` on the PC.
 ```powershell
 scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolav.bak
 ```
+
+<!-- {en:scp[5],remote[5],local[5],disk[5],copy,bak} -->
+<!-- {nl:scp[5],extern[5],lokaal[5],schijf[5],kopie,bak} -->
 
 ### 2.3 SQL for restoring a local backup
 
@@ -408,6 +435,8 @@ Then the same table check and `visitor_ip.sql` / `egress_ip.sql` as
 
 ---
 
+<!-- {en:sql[5],restoring[5],local[5],backup[5],restore,bak} -->
+<!-- {nl:sql[5],terugzetten[5],lokaal[5],reservekopie[5],herstel,bak} -->
 
 ## Category IDs
 
@@ -456,7 +485,13 @@ A user override overwrites that same `category_id` and sets `modification` to
 
 ---
 
+<!-- {en:category[5],ids[5],surrogate,dim_category,stable} -->
+<!-- {nl:categorie[5],nummers[5],surrogaat,dim_category,stabiel} -->
+
 ## Tables
+
+<!-- {en:tables[5],schema,columns} -->
+<!-- {nl:tabellen[5],schema,kolommen} -->
 
 ### `country`
 
@@ -469,6 +504,9 @@ A user override overwrites that same `category_id` and sets `modification` to
 | `egress_ip` | `VARCHAR(256)` NULL | comma-separated allowlist; empty or NULL admits nobody |
 | `digits` | `INT` | category-code width in the UI (default 2; 4 on some countries) |
 | `language_id` | `INT` NOT NULL | `1` = `dbo.language.term_lang1` (English); `2` = `term_lang2` (Dutch); unknown id → English |
+
+<!-- {en:country[5],table,login,column} -->
+<!-- {nl:land[5],tabel,inloggen,kolom} -->
 
 ### `dim_category`
 
@@ -488,6 +526,9 @@ Country-specific catalog. One row per (country, local code).
 Unique: `(country_id, local_code)` (`UQ_category_country_code`). Label is not unique.
 Footer rows have empty `category_term` lists and must not be assigned to
 transactions.
+
+<!-- {en:dim_category[5],table,category,column} -->
+<!-- {nl:dim_category[5],tabel,categorie,kolom} -->
 
 #### `parent` — structure of the "Export balans" workbook
 
@@ -514,6 +555,9 @@ fonts) is discontinued and no longer read; drop it when convenient:
 DROP TABLE dbo.condensed_balance;
 ```
 
+<!-- {en:parent[5],structure[5],export[5],balance[5],workbook[5]} -->
+<!-- {nl:ouder[5],structuur[5],exporteren[5],balans[5],werkmap[5]} -->
+
 ### `category_term`
 
 Keyword lists that assign bookings to categories.
@@ -525,9 +569,15 @@ Keyword lists that assign bookings to categories.
 | `term` | `NVARCHAR(256)` | as stored, including `#` and `&&` |
 | `sort_order` | `INT` | file order |
 
+<!-- {en:category_term[5],table,term,column} -->
+<!-- {nl:category_term[5],tabel,term,kolom} -->
+
 ### `type_abbreviation`
 
 Bank-type abbreviations (Betaalautomaat → BA). Per country.
+
+<!-- {en:type_abbreviation[5],table,abbreviation,column} -->
+<!-- {nl:type_abbreviation[5],tabel,afkorting,kolom} -->
 
 ### `language`
 
@@ -536,12 +586,18 @@ Each of those columns holds at most 64 characters. Further languages are extra
 `term_lang{N}` columns, same limit. Country picks a column via
 `country.language_id`. A `language_id` with no matching column uses `term_lang1`.
 
+<!-- {en:language[5],table,label,column} -->
+<!-- {nl:taal[5],tabel,bijschrift,kolom} -->
+
 ### `language_long`
 
 Long UI texts, such as the priority-rules popup. `term_key` is the English
 lookup (`NVARCHAR(64)`). `term_lang1` is the English body and `term_lang2` the
 Dutch body, both `NVARCHAR(MAX)`. The country `language_id` picks the column
 the same way as `dbo.language`. Created by `hub/sql/language_long.sql`.
+
+<!-- {en:language_long[5],table,label,column} -->
+<!-- {nl:language_long[5],tabel,bijschrift,kolom} -->
 
 ### `center`
 
@@ -552,6 +608,9 @@ the same way as `dbo.language`. Created by `hub/sql/language_long.sql`.
 | `username` | `NVARCHAR(64)` unique | `dkg`, `gph`, … — the center login |
 | `title` | `NVARCHAR(256)` | display name |
 | `egress_ip` | `VARCHAR(256)` NULL | comma-separated allowlist; empty or NULL admits nobody |
+
+<!-- {en:center[5],table,login,column} -->
+<!-- {nl:centrum[5],tabel,inloggen,kolom} -->
 
 ### `person`
 
@@ -566,6 +625,9 @@ the same way as `dbo.language`. Created by `hub/sql/language_long.sql`.
 | `mobile_phone` | `NVARCHAR(32)` NULL | E.164; SMS second step when set |
 
 Country is `person → center → country`. Account count is `COUNT(*) FROM dbo.account WHERE person_id = person.id`.
+
+<!-- {en:person[5],table,login,column} -->
+<!-- {nl:persoon[5],tabel,inloggen,kolom} -->
 
 ### `account`
 
@@ -588,6 +650,9 @@ row for a multi-account person. `iban` is unique per person.
 Unique: `(person_id, iban)`. A person-column matrix cell is the **sum** of
 `balance` and the **max** of `last_booked` across that person’s accounts.
 
+<!-- {en:account[5],table,iban,column} -->
+<!-- {nl:rekening[5],tabel,iban,kolom} -->
+
 ### `bank`
 
 Lookup of bank processors. `bank_id` is assigned from 1 (no `IDENTITY`).
@@ -598,9 +663,15 @@ Lookup of bank processors. `bank_id` is assigned from 1 (no `IDENTITY`).
 | `bank_name_official` | `NVARCHAR(64)` NOT NULL | `"Bank of Scotland"` |
 | `file_format` | `NVARCHAR(64)` NOT NULL | `"csv"` or `"excel"` |
 
+<!-- {en:bank[5],table,name,column} -->
+<!-- {nl:bank[5],tabel,naam,kolom} -->
+
 ### `bank_modality`
 
 Maps an upload folder name to a `bank_id`.
+
+<!-- {en:bank_modality[5],table,modality,column} -->
+<!-- {nl:bank_modality[5],tabel,modaliteit,kolom} -->
 
 ### `enable_connection`
 
@@ -616,14 +687,23 @@ Enable Banking credentials and session for a person.
 | `created_at` | `DATETIME2` | |
 | `pem` | `NVARCHAR(MAX)` | application private key |
 
+<!-- {en:enable_connection[5],table,consent,column} -->
+<!-- {nl:enable_connection[5],tabel,toestemming,kolom} -->
+
 ### `enable_redirect`
 
 Last Enable Banking redirect payload per person.
+
+<!-- {en:enable_redirect[5],table,redirect,column} -->
+<!-- {nl:enable_redirect[5],tabel,omleiding,kolom} -->
 
 ### `consent_pending`
 
 Short-lived callback tokens while a bank consent is in flight. Create this
 table in SSMS if it is missing; the hub does not create it.
+
+<!-- {en:consent_pending[5],table,consent,column} -->
+<!-- {nl:consent_pending[5],tabel,toestemming,kolom} -->
 
 ### `transaction_nederland` / `transaction_uk` / …
 
@@ -675,6 +755,9 @@ Unique `(person_id, year, bank_id, source_id)` with a filtered unique for
 `counterparty_iban` is the payee / payer. It is not the person’s own account;
 that is `account_id` → `account.iban`.
 
+<!-- {en:transaction[5],bookings,table,country} -->
+<!-- {nl:transactie[5],boekingen,tabel,land} -->
+
 ### `category_total`
 
 Snapshot of category amounts per person/year (and optional bank).
@@ -684,6 +767,9 @@ Snapshot of category amounts per person/year (and optional bank).
 | `person_id`, `year`, `bank_id` NULL | same grain as files |
 | `category_id` | INT FK (104, not the label) |
 | `amount` | `DECIMAL(18,2)` |
+
+<!-- {en:category_total[5],table,total,column} -->
+<!-- {nl:category_total[5],tabel,totaal,kolom} -->
 
 ### `uploaded_files`
 
@@ -696,6 +782,9 @@ One row per spreadsheet or bank CSV taken in for an account.
 | `file_name` | `NVARCHAR(256)` | as uploaded |
 | `format` | `NVARCHAR(64)` NULL | parser that read it |
 
+<!-- {en:uploaded_files[5],table,upload,column} -->
+<!-- {nl:uploaded_files[5],tabel,uploaden,kolom} -->
+
 ### `egress_ip`
 
 Egress addresses allowed for **every** country and center. Hand-edited in
@@ -704,6 +793,9 @@ SSMS; there is no UI for it. See `hub/sql/egress_ip.sql`.
 | column | type | notes |
 |:-------|:-----|:------|
 | `egress_ip` | `VARCHAR(45)` PK | one address per row, IPv4 or IPv6 |
+
+<!-- {en:egress_ip[5],table,ip,column} -->
+<!-- {nl:egress_ip[5],tabel,ip,kolom} -->
 
 ### `visitor_ip`
 
@@ -729,6 +821,9 @@ Not recorded: loopback and LAN addresses, anything listed in
 `dbo.egress_ip`, static `/assets` files, and — on a development hub
 (`HUB_DEV_LOGIN`) — nothing at all.
 
+<!-- {en:visitor_ip[5],table,ip,column} -->
+<!-- {nl:visitor_ip[5],tabel,ip,kolom} -->
+
 ### `maaltijden_users`
 
 Ordered list of meal logins (`/maaltijden`, port 8400). Login **`admin`**
@@ -743,6 +838,9 @@ in `BIGINT`. See `maaltijden/sql/maaltijden.sql`.
 | `id` | `INT` PK | convenient as 1, 2, …; gaps allowed |
 | `user_login` | `VARCHAR(32)` | login name; **`admin`** is excluded from the matrix. Display title comes from `dbo.person` when it matches |
 | `passphrase` | `VARCHAR(64)` NULL | login password, **plain text**. `NULL` = no password required |
+
+<!-- {en:maaltijden_users[5],table,login,column} -->
+<!-- {nl:maaltijden_users[5],tabel,inloggen,kolom} -->
 
 ### `maaltijden_data`
 
@@ -768,6 +866,9 @@ Default `code` is 0 (every mark `x`).
 | `id` | `INT` PK | day of year, 1–365 |
 | `code` | `BIGINT` | `5 × N` bits, `N` = matrix people (not `admin`) |
 
+<!-- {en:maaltijden_data[5],table,mark,column} -->
+<!-- {nl:maaltijden_data[5],tabel,markering,kolom} -->
+
 ### `maaltijden_extra`
 
 Seven rows, `id` 1 = zondag … 7 = zaterdag. Guest/extra counts for the
@@ -785,6 +886,9 @@ change these numbers; other users see them in the extra row. See
 | `laat` | `INT` | extra count for meal L |
 | `pakket` | `INT` | extra count for meal P |
 
+<!-- {en:maaltijden_extra[5],table,extra,column} -->
+<!-- {nl:maaltijden_extra[5],tabel,extra,kolom} -->
+
 ### `maaltijden_extra_week`
 
 One row. `week_start` is the Sunday the extra numbers belong to. When today
@@ -795,6 +899,9 @@ is in a later week, extras are reset to 0.
 | `week_start` | `DATE` | Sunday of the extra week |
 
 ---
+
+<!-- {en:maaltijden_extra_week[5],table,week,column} -->
+<!-- {nl:maaltijden_extra_week[5],tabel,week,kolom} -->
 
 ## Person, center, and country login rows
 
@@ -820,6 +927,9 @@ share one machine and no public address exists to list. Never set that flag
 on the server.
 
 ---
+
+<!-- {en:person[5],center[5],country[5],login[5],rows[5],access} -->
+<!-- {nl:persoon[5],centrum[5],land[5],inloggen[5],rijen[5],toegang} -->
 
 ## Report labels from dim_category
 
@@ -859,6 +969,9 @@ WHERE country_id = @country_id AND category_role IN ('balance', 'last_booked');
 
 ---
 
+<!-- {en:report[5],labels[5],dim_category[5],category[5],amount} -->
+<!-- {nl:rapport[5],bijschriften[5],dim_category[5],categorie[5],bedrag} -->
+
 ## Occasional DDL (run in SSMS; keep local and remote identical)
 
 ```sql
@@ -877,3 +990,6 @@ SET label = SUBSTRING(label, 4, LEN(label))
 WHERE category_role IS NULL
   AND label LIKE '[0-9][0-9][0-9][0-9] %';
 ```
+
+<!-- {en:ddl[5],ssms[5],local[5],remote[5],identical[5],constraint} -->
+<!-- {nl:ddl[5],ssms[5],lokaal[5],extern[5],identiek[5],beperking} -->

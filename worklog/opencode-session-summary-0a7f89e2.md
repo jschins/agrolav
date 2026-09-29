@@ -1,11 +1,17 @@
 # opencode session summary (auto)
 
+<!-- {en:opencode[5],session[5],summary[5]} -->
+<!-- {nl:opencode[5],sessie[5],samenvatting[5]} -->
+
 ## Objective
 - Fix balance-having-country issues in agrolav dashboards (client 8100 / hub 8200 / balance 8300).
 - Balance frontend 401 already fixed.
 - Active requirement: client matrix for balance-having countries must show ALL categories 1000-4999 as rows; "saldo" footer stays sum of 3000-4999 ONLY (== balance-sheet 2100 Verlies, must remain).
 - NEW pending feature: clicking an amount in a newly added 1000-2999 matrix row must show all transactions associated with that category.
 - Also: commit/push/deploy the uncommitted 403 account-modality fix in client/app/main.py.
+
+<!-- {en:objective[5],matrix,categories,sum,balance} -->
+<!-- {nl:doel[5],matrix,categorieën,saldo,balans} -->
 
 ## Important Details
 - User answered clarifying questions:
@@ -22,24 +28,43 @@
 - Client frontend App.tsx: isBookingCategoryName /^\d{4}/ (line 63), terms menu filter (line 3275), matrix renders matrix.categories/cells generically, CSV matrixToProfitLossCsv uses matrix.categories. Transactions render: detail.transactions (line 125, 3081-3220), ptableColumns (3762).
 - Operationally: service ports 8100 client / 8200 hub / 8300 balance. CENTRALE_API_KEY with $ chars handled via interpolate=False; Caddy /balance* injects Bearer header. Secrets in single .env. Branch sqlserver. Server: MSSQL2022 container; deployed a5d8037 via manual git pull + systemctl restart caddy (user deploys manually - SSH lost).
 
+<!-- {en:details[5],matrix,opening,journal,mirror} -->
+<!-- {nl:bijzonderheden[5],matrix,begin,journaal,spiegel} -->
+
 ## Work State
+
+<!-- {en:work[5],state[5],session} -->
+<!-- {nl:werk[5],stand[5],sessie} -->
+
 ### Completed
 - Balance 401 fix deployed (a5d8037).
 - 403 root cause fixed locally (client/app/main.py _is_account_group guard), NOT committed.
 - documentation/passwords.md security section added.
 - User answered all clarifying questions for the matrix change.
 
+<!-- {en:completed[5],matrix,categories} -->
+<!-- {nl:afgerond[5],matrix,categorieën} -->
+
 ### Active
 - Matrix all-categories change design (no code written yet). Investigating hub-side data source for 1000-2999 per-person balance values.
+
+<!-- {en:active[5],matrix,categories} -->
+<!-- {nl:actief[5],matrix,categorieën} -->
 
 ### Blocked
 - SSH to server lost; manual deploys by user.
 - 403 fix uncommitted/undeployed.
 
+<!-- {en:blocked[5],deploy} -->
+<!-- {nl:geblokkeerd[5],uitrol} -->
+
 ## Next Move
 1. Design matrix all-categories change per user clarifications.
 2. Commit/push 403 fix + matrix change; remind manual deploy.
 3. NEW: drill-down feature for 1000-2999 row amounts -> transaction list for that category.
+
+<!-- {en:next[5],move[5],matrix,transactions} -->
+<!-- {nl:volgende[5],stap[5],matrix,transacties} -->
 
 ## Relevant Files
 - hub/app/matrix.py - build_matrix (~212-300), _resultaat_categories, _RESULTAAT_MATRIX_COUNTRIES={4}
@@ -49,3 +74,6 @@
 - balance/app/sql_layout.py - _seed_system_categories (Balance 98 / Updated 99), balance table DDL
 - client/frontend/src/App.tsx - matrix render/filters/CSV; detail.transactions render (~3081-3220, 3762)
 - balance/app/db.py - pyodbc connect, HUB_DATABASE_URL, load_dotenv(interpolate=False)
+
+<!-- {en:relevant[5],files[5],client,balance} -->
+<!-- {nl:relevant[5],bestanden[5],client,balans} -->

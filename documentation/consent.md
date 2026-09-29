@@ -18,6 +18,9 @@ Bank posts 1021–1025 stay country-level. The live sheet is
 
 ---
 
+<!-- {en:foundation[5],instudo[5],country[5],accounts,groups} -->
+<!-- {nl:stichting[5],instudo[5],land[5],rekeningen,groepen} -->
+
 ## 1. One person per account, two centers — not a `has_balance` rewrite
 
 **Idea.** Instudo has two groups of accounts. Some logins should see only
@@ -92,6 +95,9 @@ build center-level journals/openings.
 
 ---
 
+<!-- {en:person[5],account[5],centers[5],groups,has_balance} -->
+<!-- {nl:persoon[5],rekening[5],centra[5],groepen,has_balance} -->
+
 ## 2. Same PEM for different persons
 
 Yes for the **application key**. No for treating that as one shared **bank
@@ -124,6 +130,9 @@ person 24’s `session_id` as the way to share the key.
 
 ---
 
+<!-- {en:pem[5],persons[5],shared,key,session} -->
+<!-- {nl:pem[5],personen[5],gedeeld,sleutel,sessie} -->
+
 ## 3. `dbo.consent_pending`
 
 Short-lived map from an Enable Banking OAuth `state` token to **which
@@ -155,6 +164,9 @@ person, for the next half hour.”
 
 ---
 
+<!-- {en:consent_pending[5],state,oauth,callback,person} -->
+<!-- {nl:consent_pending[5],state,oauth,callback,persoon} -->
+
 ## 4. Balance sheet: already one country sheet
 
 There are not three balances. There is **one** sheet per `has_balance`
@@ -179,3 +191,6 @@ person should not necessarily see every other IBAN on the country sheet.
 Center-level sheets would be the opposite of “country only”: a second
 grain, only if you add `center_id` on journal/opening. Until then there is
 nothing to reduce.
+
+<!-- {en:balance[5],sheet[5],country[5],has_balance,administration} -->
+<!-- {nl:balans[5],blad[5],land[5],has_balance,beheer} -->

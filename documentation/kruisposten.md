@@ -13,6 +13,9 @@ not take a block. A `dbo.dim_category` row for that local code supplies
 the id when one exists. Otherwise the formula is used. A matched row whose `modification` is -1 or 0 is
 written with `modification = 1`. A row at 2 is not written.
 
+<!-- {en:cross-postings[5],pair,transfer,category} -->
+<!-- {nl:kruisposten[5],paar,overboeking,categorie} -->
+
 ## Which statements form a pair
 
 Every account in the country that has an IBAN in `dbo.account` is read.
@@ -31,21 +34,33 @@ IBAN comparison strips spaces and ignores case. The center of an account is
 
 Money in stays positive and money out stays negative.
 
+<!-- {en:statements[5],pair[5],iban,amount,date} -->
+<!-- {nl:afschriften[5],paar[5],iban,bedrag,datum} -->
+
 ## Centrale SIa and Centrale SIb
 
 `1020` Bank Centrale SIb is `NL46INGB0001726568`. `1010` Bank Centrale SIa is `NL84INGB0002801129`.
 
 A pair between those two accounts writes SIb to the category whose `category_role` is `cp` (Kruisposten, local 1200) and SIa to the category whose `category_role` is `siasib` (local 1100). The two amounts must be opposite. Both roles keep the statement sign, so the pair cancels on the balance sheet. `siasib` is not rekening courant: Calculate opening balance leaves it at its year-end amount.
 
+<!-- {en:centrale[5],sia[5],sib[5],pair,accounts} -->
+<!-- {nl:centrale[5],sia[5],sib[5],paar,rekeningen} -->
+
 ## Centrale SIa and a SIa unit
 
 A pair between Centrale SIa and a `unitxxxx` account in center SIa writes SIa to local xxxx (category 1xxxx) and the unit to the category whose `category_role` is `sia`. `unit1108` writes SIa to category 11108.
+
+<!-- {en:centrale[5],sia[5],unit[5],pair,center} -->
+<!-- {nl:centrale[5],sia[5],eenheid[5],paar,centrum} -->
 
 ## Centrale SIb and a SIb unit
 
 A pair between Centrale SIb and a `unitxxxx` account in center SIb writes SIb to local xxxx (category 1xxxx) and the unit to the category whose `category_role` is `sib`.
 
 The `cp`, `siasib`, `sia` and `sib` rows are read from `dbo.dim_category` on every run. `sia` and `sib` count as rekening courant: Calculate opening balance sets them to zero and adds them to `cp`, and bookings on them keep the statement sign. A country without a row for a role leaves that leg uncategorized.
+
+<!-- {en:centrale[5],sib[5],unit[5],pair,center} -->
+<!-- {nl:centrale[5],sib[5],eenheid[5],paar,centrum} -->
 
 ## Unit and its sibling
 
@@ -54,6 +69,9 @@ The `cp`, `siasib`, `sia` and `sib` rows are read from `dbo.dim_category` on eve
 The unit's bookings go to local xx1x, the same four digits plus 10, which country 5 stores as category 1xx1x. The sibling's bookings go to the `cp` row. That sum only chooses the local code. A category is rc when `dbo.dim_category.category_role` is `rc`, and the opening balance and the statement sign read that role.
 
 `unit1102` through `unit1109` write the unit to categories 11112 through 11119. `unit1108` writes the unit to 11118 and the sibling to the `cp` row.
+
+<!-- {en:unit[5],sibling[5],pair,center,account} -->
+<!-- {nl:eenheid[5],zuster[5],paar,centrum,rekening} -->
 
 ## Pairs that match no cross-posting rule
 
@@ -87,3 +105,5 @@ From all bookings between registered accounts within the country:
 
 In all cases: explicitly check that all amounts are always written in sign-opposed pairs
 
+<!-- {en:pairs[5],match[5],cross-posting[5],rule[5],category} -->
+<!-- {nl:paren[5],overeenkomst[5],kruispost[5],regel[5],categorie} -->

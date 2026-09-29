@@ -14,7 +14,7 @@ class HelpAgentTests(unittest.TestCase):
 
     def test_dutch_logout_question_hits_readme(self) -> None:
         out = answer_question("hoe log ik uit?")
-        self.assertEqual(out["sources"], ["README.md"])
+        self.assertIn("README.md", out["sources"])
         self.assertIn("logout", str(out["answer"]).lower())
 
     def test_body_words_and_other_files_do_not_count(self) -> None:

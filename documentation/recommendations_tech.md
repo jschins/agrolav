@@ -5,16 +5,22 @@ what the repo already claims to be.
 
 ---
 
+
+
 ## 1. Login strength for country and center
 
 Person passwords are hashed. Country and center still use a derived formula,
 so they depend entirely on the egress-IP allowlist. That is acceptable only
 while those lists stay short and `HUB_DEV_LOGIN` stays off the server.
 
+
+
 ## 2. Encrypt database backups
 
 `dbo.enable_connection.pem` travels with every `.bak`. Encrypt before the
 file leaves the box. See `SAFETY.md`.
+
+
 
 ## 3. One booking table
 
@@ -25,6 +31,8 @@ country. Category hundred-blocks already isolate catalogs. Wait until there
 is no dual-write path left.
 
 ---
+
+
 
 ## Hostname, secrets, and a matching schema
 
@@ -38,3 +46,5 @@ is no dual-write path left.
 
 *Sources: DATABASE.md, deployment_tech.md, SAFETY.md, double_login.md, and the
 hub/client Python + React tree.*
+
+
