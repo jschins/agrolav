@@ -1229,6 +1229,7 @@ def ingest_bound_transactions(
             """
         params: list[tuple[Any, ...]] = []
         inserted_uids: list[str] = []
+        new_source_ids: list[str] = []
         for item in records:
             if not isinstance(item, dict):
                 continue
@@ -1277,24 +1278,23 @@ def ingest_bound_transactions(
             )
             existing.add(source_id)
             inserted_uids.append(str(item.get("account_uid") or "").strip())
-            if inserted_source_ids is not None:
-                inserted_source_ids.append(source_id)
+            new_source_ids.append(source_id)
         if not params:
             return 0
-        bound.cursor.fast_executemany = True
-        bound.cursor.executemany(sql, params)
-        bound.cursor.fast_executemany = False
-        bound.conn.commit()
+        # fast_executemany rejects NVARCHAR(MAX) description on ODBC Driver 18.
+        _executemany_commit(bound.conn, bound.cursor, sql, params)
         if inserted_by_uid is not None:
             for uid in inserted_uids:
                 if not uid:
                     continue
                 inserted_by_uid[uid] = inserted_by_uid.get(uid, 0) + 1
+        if inserted_source_ids is not None:
+            inserted_source_ids.extend(new_source_ids)
         sync_person_category_totals(bound)
         return len(params)
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to insert bookings: {exc}")
-        return 0
+        raise
 
 
 def _money(value: Any) -> Decimal:
