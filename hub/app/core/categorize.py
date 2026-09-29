@@ -525,11 +525,14 @@ def simplify_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
 
 MOD_UNCALCULATED = -1
 MOD_NONE = 0
-MOD_CATEGORY = 1
-MOD_DESCRIPTION = 2
+MOD_CROSS = 1
+MOD_HAND = 2
+# Stored values from the old bit pair. 1 was the category bit (hand or
+# cross-posting). 2 was the description bit. 3 was both. New writes use
+# 0 for terms, 1 for cross-postings, and 2 for any hand edit.
+MOD_CATEGORY = MOD_CROSS
+MOD_DESCRIPTION = MOD_HAND
 MOD_BOTH = 3
-MOD_CATEGORY_BIT = 1
-MOD_DESCRIPTION_BIT = 2
 
 _MODIFICATION_FIELDS = frozenset({"category", "description"})
 
@@ -556,31 +559,28 @@ def _modification_of(transaction: dict[str, Any]) -> int:
     return value
 
 
-def _user_set_category(flag: int) -> bool:
-    return flag >= 0 and bool(flag & MOD_CATEGORY_BIT)
+def _open_for_calculation(flag: int) -> bool:
+    """Terms and cross-postings only rewrite a row at -1 or 0."""
+    return flag in (MOD_UNCALCULATED, MOD_NONE)
 
 
 def _scored_modification(flag: int, hit: Any) -> int:
-    """Hit → 0. No hit and no description edit → -1.
+    """A term hit writes 0. A miss on an open row writes -1.
 
-    A hand-set or kruisposten category is ``1`` and is not passed here.
-    A description edit keeps its bit (2, or 3 when the category is also hand-set).
+    Callers only pass rows at -1 or 0. A hand row (2) and a cross-posting
+    (1) are not scored.
     """
-    desc = flag >= 0 and bool(flag & MOD_DESCRIPTION_BIT)
+    del flag
     if hit:
-        return MOD_DESCRIPTION if desc else MOD_NONE
-    if desc:
-        return MOD_DESCRIPTION
+        return MOD_NONE
     return MOD_UNCALCULATED
 
 
 def _with_mod_bits(current: int, *, category: bool = False, description: bool = False) -> int:
-    value = MOD_NONE if current < 0 else current
-    if category:
-        value |= MOD_CATEGORY_BIT
-    if description:
-        value |= MOD_DESCRIPTION_BIT
-    return value
+    """A hand edit of the category or the description writes 2."""
+    if category or description:
+        return MOD_HAND
+    return MOD_NONE if current < 0 else current
 
 
 def _canonical_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
@@ -633,7 +633,10 @@ def _values_equal(key: str, left: Any, right: Any) -> bool:
 
 
 def _migrate_modifications(data: dict[str, Any]) -> dict[str, Any]:
-    """Fold legacy ``modifications[]`` onto each row; store ``modification`` -1..3."""
+    """Fold legacy ``modifications[]`` onto each row.
+
+    An overlaid category or description is a hand edit and stores 2.
+    """
     mods_by_id = _modifications_by_id(data)
     rows = data.get("transactions")
     if isinstance(rows, list):
@@ -735,10 +738,10 @@ def _categorize_transactions(
         if only_uncalculated and flag != MOD_UNCALCULATED:
             categorized.append(updated)
             continue
-        if disregard_positive_modification and flag > 0:
+        if disregard_positive_modification and not _open_for_calculation(flag):
             categorized.append(updated)
             continue
-        if not _user_set_category(flag) and not _is_excel_row(source):
+        if _open_for_calculation(flag) and not _is_excel_row(source):
             effective_personal = personal
             if personal_maps is not None:
                 effective_personal = _personal_map_for_account(source, personal_maps)
@@ -866,16 +869,15 @@ def _raw_simplified_by_id() -> dict[Any, dict[str, Any]]:
 def recategorize_transactions(
     *, from_scratch: bool = False, only_uncalculated: bool = False
 ) -> dict[str, str]:
-    """Re-categorize rows that the user has not locked with a category edit.
+    """Re-categorize rows whose category still comes from the bank or from terms.
 
-    ``modification`` 1 or 3 keeps ``category`` (hand-set or kruisposten).
-    A term hit sets ``modification`` to 0. No hit and no edit leaves it at -1.
-    Description stays on the row (already overwritten if M is 2/3).
+    Only ``modification`` -1 and 0 are rewritten. A hit writes 0. A miss
+    writes -1. A cross-posting (1) and a hand row (2, and a legacy 3) keep
+    their category, description, and flag.
 
-    ``from_scratch`` is Recalculate. Rows with ``modification`` > 0 are left
-    as they are. The others lose their hit and return to -1, then a new hit
-    sets ``modification`` to 0 and a miss stays at -1. Excel rows stay at
-    ``modification`` 1.
+    ``from_scratch`` is Recalculate. Open rows lose their hit and return to
+    -1, then a new hit writes 0. An Excel row that is still open is marked
+    hand (2) and keeps the sheet category.
     """
     general = _category_map(_categories_file())
     data = _load_categorized_store()
@@ -890,11 +892,11 @@ def recategorize_transactions(
     if from_scratch:
         for record in records:
             flag = _modification_of(record)
-            if flag > 0:
+            if not _open_for_calculation(flag):
                 continue
             if _is_excel_row(record):
                 record["hit"] = None
-                record["modification"] = MOD_CATEGORY
+                record["modification"] = MOD_HAND
                 continue
             record["hit"] = None
             record["modification"] = MOD_UNCALCULATED
@@ -941,9 +943,10 @@ def ircft_add_term(
     """Re-score unlocked rows that match a newly saved term.
 
     A booking that does not contain any added term cannot change category.
-    Unlocked means ``modification`` 0, -1, or 2. ``1`` and ``3`` stay put, as
-    do Excel rows. In account modality a personal term is applied only on
-    ``account``. A matching row is scored against the full term lists.
+    Only ``modification`` -1 and 0 are rescored. A cross-posting (1), a hand
+    row (2 or a legacy 3), and an Excel row stay put. In account modality a
+    personal term is applied only on ``account``. A matching row is scored
+    against the full term lists.
     """
     del category_name
     needles: list[str] = []
@@ -969,7 +972,7 @@ def ircft_add_term(
             effective_personal = _personal_map_for_account(canonical, personal_maps)
         else:
             effective_personal = personal_map or {}
-        if _user_set_category(flag) or _is_excel_row(canonical):
+        if not _open_for_calculation(flag) or _is_excel_row(canonical):
             continue
         if (
             personal
@@ -1016,7 +1019,7 @@ def ircft_remove_term(
 
     Unlocked keyword rows with no ``hit`` (legacy JSON) are also fully
     categorized, because the deleted term may have been their winner.
-    ``modification`` 1 or 3 keeps ``category`` and only clears a stale hit.
+    A cross-posting (1) and a hand row (2 or a legacy 3) are left as they are.
     In account modality ``personal_maps`` supplies per-account maps and
     ``account`` restricts the undo to a single account.
     """
@@ -1050,10 +1053,7 @@ def ircft_remove_term(
         parsed = parse_hit(canonical.get("hit"))
         stored = format_hit(parsed[1], personal=parsed[0]) if parsed else None
 
-        if _user_set_category(flag):
-            if stored == expected:
-                canonical["hit"] = None
-                changed_rows.append(canonical)
+        if not _open_for_calculation(flag):
             continue
 
         if stored != expected and parsed is not None:
@@ -1224,9 +1224,8 @@ def modification_style_ids(payload: dict[str, Any] | None = None) -> tuple[list[
             continue
         tid = str(item.get("id"))
         flag = _modification_of(item)
-        if flag in (MOD_DESCRIPTION, MOD_BOTH):
+        if flag >= MOD_HAND:
             description_ids.append(tid)
-        if flag in (MOD_CATEGORY, MOD_BOTH):
             category_ids.append(tid)
     return description_ids, category_ids
 
@@ -1472,10 +1471,10 @@ def _source_transaction_by_id(
 
 
 def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
-    """Overwrite category and/or description on the row; update ``modification``.
+    """Overwrite category and/or description on the row.
 
-    ``transaction`` is the edited row from the UI.  M bits: 1 = category, 2 =
-    description, 3 = both. Recalc will not replace a user-set category.
+    Either change is a hand edit and stores ``modification`` 2. A later hand
+    edit writes 2 again. Terms and cross-postings leave that row alone.
     """
     data = _load_categorized_store()
     if not data:

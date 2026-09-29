@@ -472,16 +472,25 @@ def managed_category_ids(
 
 
 def apply_cross_postings(
-    center: str, *, source_ids: set[str] | None = None
+    center: str,
+    *,
+    source_ids: set[str] | None = None,
+    only_uncalculated: bool = False,
 ) -> dict[str, int]:
     """Write category ids and ``modification`` 1 on matched pairs.
+
+    A menu run writes rows at -1 or 0. A download run (``only_uncalculated``)
+    writes only -1. A hand row (``modification`` 2, and a legacy 3) is left
+    as it is, category and description included. A row already at 1 is left
+    as it is.
 
     The country is the one that owns ``center``. Countries without
     ``has_balance`` are left unchanged.
 
     When ``source_ids`` is set, only pairs that include one of those newly
-    stored statements are written. The other leg of such a pair is written
-    too. Statements outside those pairs are left as they are.
+    stored statements are considered. The other leg is written only when its
+    own ``modification`` is open for this run. Statements outside those pairs
+    are left as they are.
     """
     from app import user_store
     from app.sql_catalog import coerce_center, country_for_center
@@ -612,10 +621,17 @@ def apply_cross_postings(
         tid = int(transaction_id)
         current = int(category_id or 0)
         person_year = (int(person_id), int(year))
+        try:
+            flag = int(modification)
+        except (TypeError, ValueError):
+            flag = -1
+        open_flags = (-1,) if only_uncalculated else (-1, 0)
+        if flag not in open_flags:
+            continue
         if tid in category_of:
             target = category_of[tid]
             by_category.setdefault(target, []).append(tid)
-            if current != target or int(modification or 0) != 1:
+            if current != target or flag != 1:
                 changed_persons.add(person_year)
             continue
         if scoped:

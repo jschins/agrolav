@@ -702,8 +702,9 @@ def clear_bookings(
     ``whole_country`` updates every row of ``dbo.transaction_{country}``.
     Otherwise the rows are limited to ``account``, ``person``, or ``center``.
     Terms (``dbo.category_term``) are not touched. Category reset sets
-    ``modification = -1`` and ``category_id`` to ``category_role = remainder``,
-    as two updates. ``journal`` deletes every ``dbo.journal`` row for this
+    ``modification = -1`` and ``category_id`` to ``category_role = remainder``
+    on every row except a hand row (``modification`` 2, and a legacy 3).
+    Those keep their category and their description. ``journal`` deletes every ``dbo.journal`` row for this
     country. ``afschrijvingen`` deletes every ``dbo.afschrijvingen`` row for
     this country. Those tables are country-wide, not person or account.
     """
@@ -754,12 +755,17 @@ def clear_bookings(
 
             capture_before_wipe(cursor, country_id, table, where_sql, where_params)
             remainder_id, _remainder_code = require_remainder_row(country_id, cursor)
+            hand_kept = "modification < 2"
+            if where_sql:
+                kept_sql = f"{where_sql} AND {hand_kept}"
+            else:
+                kept_sql = f" WHERE {hand_kept}"
             cursor.execute(
-                f"UPDATE {table} SET modification = -1{where_sql}",
+                f"UPDATE {table} SET modification = -1{kept_sql}",
                 where_params,
             )
             cursor.execute(
-                f"UPDATE {table} SET category_id = ?{where_sql}",
+                f"UPDATE {table} SET category_id = ?{kept_sql}",
                 (remainder_id, *where_params),
             )
         if statements:
@@ -829,12 +835,11 @@ def assign_small_expenses(
     whole_country: bool = False,
     income: bool = False,
 ) -> dict[str, Any]:
-    """Set remainder bookings to ``category_id`` when the amount is below ``maximum``.
+    """Set uncategorized remainder bookings to ``category_id`` when the amount is below ``maximum``.
 
-    An expense is a negative amount (``ABS(amount) < maximum``). An income is
-    a positive amount (``amount < maximum``). Either write sets
-    ``modification`` to 1. The remainder row is ``category_role = remainder``,
-    not a fixed id.
+    An expense is a negative amount. An income is a positive amount. Only rows
+    at ``modification`` -1 are updated, and the write sets ``modification`` to 2.
+    The remainder row is ``category_role = remainder``, not a fixed id.
     """
     from app import user_store
     from app.sql_replica import _transaction_table
@@ -895,8 +900,9 @@ def assign_small_expenses(
         cursor.execute(
             f"""
             UPDATE {table}
-            SET category_id = ?, modification = 1
+            SET category_id = ?, modification = 2
             {where_sql}{joiner}category_id = ?
+              AND modification = -1
               {amount_sql}
             """,
             (target, *where_params, int(remainder_id), cap),

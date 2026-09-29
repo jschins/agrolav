@@ -1398,12 +1398,10 @@ def load_bound_split(source_id: str) -> dict[str, Any]:
 
 
 def _mod_bits(current: int, *, category: bool = False, description: bool = False) -> int:
-    value = 0 if current < 0 else int(current)
-    if category:
-        value |= 1
-    if description:
-        value |= 2
-    return value
+    """A hand edit of the category or the description stores 2."""
+    if category or description:
+        return 2
+    return 0 if current < 0 else int(current)
 
 
 def save_bound_split(
@@ -1534,7 +1532,7 @@ def save_bound_split(
             child_id = fresh_ids[fresh_i]
             fresh_i += 1
         keep.add(child_id)
-        child_flag = _mod_bits(1, description=bool(str(line_desc or "").strip()))
+        child_flag = 2
         if child_id in existing:
             bound.cursor.execute(
                 update_sql,

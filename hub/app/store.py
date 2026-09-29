@@ -508,7 +508,7 @@ def recalculate_from_scratch_all(
 ) -> dict[str, Any]:
     """Re-categorize the logged-in scope from scratch, keeping user-set locks.
 
-    Rows with ``modification`` > 0 are left untouched. Hits (0) and
+    Rows at 1 (cross-posting) and 2 (hand) are left untouched. Hits (0) and
     uncalculated rows (-1) are reset and re-derived. Excel rows stay.
 
     ``person`` set → that person only. Otherwise every person in ``center``.

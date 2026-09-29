@@ -3,15 +3,15 @@
 Bereken kruisposten writes categories on internal transfers for the logged-in country when `dbo.country.has_balance` is set.
 The entry point is `apply_cross_postings` in `hub/app/cross_postings.py`.
 The menu calls `POST /api/cross-postings`.
-Uitlezen bankafschriften runs the same pairing after the download, and only on pairs that include a statement just stored. The other leg of that pair is written as well. Statements outside those pairs stay as they are. It then categorizes every remaining statement with `modification` -1. Rows already at 0, 1, 2, or 3 are left as they are.
+Uitlezen bankafschriften, and a one-person or year-to-date fetch, run the same pairing after the download, and only on pairs that include a statement just stored. On that run a row is written only when its `modification` is -1, so the other leg is written only when that leg is also -1. A row at 0 is left as it is. Statements outside those pairs stay as they are. The fetch then runs terms, and those terms also rewrite only rows still at `modification` -1. A menu run of Bereken kruisposten still writes -1 and 0. A hand row (`modification` 2) keeps its category and its description.
 
 Balance countries (`dbo.country.has_balance`) are taken in `country_id`
 order. The first stores the local code. Each later one adds 10000, so
 country 5 stores `category_id = local_code + 10000` and the next balance
 country stores `local_code + 20000`. A country without `has_balance` does
 not take a block. A `dbo.dim_category` row for that local code supplies
-the id when one exists. Otherwise the formula is used. A matched row is
-written with `modification = 1`.
+the id when one exists. Otherwise the formula is used. A matched row whose `modification` is -1 or 0 is
+written with `modification = 1`. A row at 2 is not written.
 
 ## Which rows are considered
 
@@ -63,9 +63,9 @@ category.
 A later run releases a statement that this run does not assign and whose
 current category is one this routine writes (the `cp`, `siasib`, `sia` and
 `sib` rows, or a four-digit code, including the HD-sibling codes 1112
-through 1119). Release sets the remainder category
-and `modification = -1`. A statement on any other category is left as it
-is. A four-digit local code that is itself a live bank category in
+through 1119) and whose `modification` is -1 or 0. Release sets the remainder category
+and `modification = -1`. A hand row (`modification` 2) is left as it
+is, as is a statement on any other category. A four-digit local code that is itself a live bank category in
 `dbo.mapping_banks` is not treated as a cross-posting category on that
 release.
 

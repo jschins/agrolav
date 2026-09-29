@@ -500,7 +500,7 @@ def recalculate_all(person_folders: list[str] | None = None) -> dict[str, Any]:
 def recalculate_pack_from_scratch(pack: PersonScope) -> None:
     """Re-categorize from scratch every SQL year for ``pack``.
 
-    Rows with ``modification`` > 0 are left untouched. Hits (0) and
+    Rows at 1 (cross-posting) and 2 (hand) are left untouched. Hits (0) and
     uncalculated rows (-1) are reset and re-derived. Excel rows stay.
     """
     from dataclasses import replace
@@ -832,6 +832,31 @@ def _recategorize_uncalculated(packs: list[PersonScope], source_ids: list[str]) 
                 recategorize_transactions(only_uncalculated=True)
 
 
+def _categorize_fresh_downloads(
+    packs: list[PersonScope],
+    inserted: list[str],
+    warnings: list[str],
+) -> None:
+    """Cross-post, then term. Both passes rewrite only modification -1."""
+    if not inserted:
+        return
+    from app.cross_postings import apply_cross_postings
+    from app.runtime import active_center
+
+    center = active_center()
+    if center:
+        try:
+            apply_cross_postings(
+                center, source_ids=set(inserted), only_uncalculated=True
+            )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"cross-postings: {exc}")
+    try:
+        _recategorize_uncalculated(packs, inserted)
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"recategorize: {exc}")
+
+
 def refresh_all(
     date_from: str | None = None,
     date_to: str | None = None,
@@ -864,20 +889,7 @@ def refresh_all(
             for source_id in (result.get("inserted_source_ids") or [])
             if str(source_id).strip()
         ]
-        if inserted:
-            from app.cross_postings import apply_cross_postings
-            from app.runtime import active_center
-
-            center = active_center()
-            if center:
-                try:
-                    apply_cross_postings(center, source_ids=set(inserted))
-                except Exception as exc:  # noqa: BLE001
-                    warnings.append(f"cross-postings: {exc}")
-            try:
-                _recategorize_uncalculated(packs, inserted)
-            except Exception as exc:  # noqa: BLE001
-                warnings.append(f"recategorize: {exc}")
+        _categorize_fresh_downloads(packs, inserted, warnings)
 
         matrix = build_matrix(packs)
         return {"matrix": matrix, "results": results, "warnings": warnings}
@@ -890,7 +902,11 @@ def refresh_person(
     date_to: str | None = None,
     new_year: bool = False,
 ) -> dict[str, Any]:
-    """Refresh one person (bank fetch or Excel conversion)."""
+    """Refresh one person (bank fetch or Excel conversion).
+
+    A bank fetch stores new statements at modification -1, then runs
+    cross-postings and terms. Both passes rewrite only rows still at -1.
+    """
     from app.runtime import CALC_LOCK
 
     with CALC_LOCK:
@@ -901,10 +917,21 @@ def refresh_person(
 
         with bind_scope(pack):
             result, extra = _refresh_one_person(
-                pack, date_from=date_from, date_to=date_to, new_year=new_year
+                pack,
+                date_from=date_from,
+                date_to=date_to,
+                new_year=new_year,
+                categorize=False,
             )
             results.append(result)
             warnings.extend(extra)
+
+        inserted = [
+            str(source_id)
+            for source_id in (result.get("inserted_source_ids") or [])
+            if str(source_id).strip()
+        ]
+        _categorize_fresh_downloads([pack], inserted, warnings)
 
         matrix = build_matrix(packs)
         return {"matrix": matrix, "results": results, "warnings": warnings}

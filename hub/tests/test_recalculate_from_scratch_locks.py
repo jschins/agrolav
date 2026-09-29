@@ -69,7 +69,7 @@ class RecalculateFromScratchLocksTests(unittest.TestCase):
         self.assertEqual(by_id["lock-both"]["hit"], "some-rule")
 
         self.assertEqual(by_id["excel"]["category"], 1005)
-        self.assertEqual(by_id["excel"]["modification"], categorize.MOD_CATEGORY)
+        self.assertEqual(by_id["excel"]["modification"], categorize.MOD_HAND)
 
         self.assertEqual(by_id["auto"]["modification"], categorize.MOD_UNCALCULATED)
         self.assertEqual(by_id["uncalc"]["modification"], categorize.MOD_UNCALCULATED)
@@ -81,6 +81,7 @@ class RecalculateFromScratchLocksTests(unittest.TestCase):
         store = {
             "transactions": [
                 _row("lock-cat", modification=categorize.MOD_CATEGORY, category=1005),
+                _row("lock-hand", modification=categorize.MOD_HAND, category=1800),
                 _row("auto", modification=categorize.MOD_NONE, category=1800),
             ]
         }
@@ -97,6 +98,9 @@ class RecalculateFromScratchLocksTests(unittest.TestCase):
         by_id = {t["id"]: t for t in persisted[-1]["transactions"]}
         self.assertEqual(by_id["lock-cat"]["category"], 1005)
         self.assertEqual(by_id["lock-cat"]["modification"], categorize.MOD_CATEGORY)
+        self.assertEqual(by_id["lock-hand"]["category"], 1800)
+        self.assertEqual(by_id["lock-hand"]["modification"], categorize.MOD_HAND)
+        self.assertEqual(by_id["lock-hand"]["hit"], "some-rule")
 
     def test_hit_is_zero_and_miss_stays_uncalculated(self):
         store = {

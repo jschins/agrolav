@@ -105,9 +105,10 @@ def capture_before_wipe(
     where_sql: str,
     where_params: tuple[Any, ...],
 ) -> None:
-    """Copy current hand-set bookings into ``dbo.category_hand`` before a reset.
+    """Copy current hand bookings into ``dbo.category_hand`` before a reset.
 
-    Rows already stored are left as they are. Categories with
+    A hand row is ``modification`` 2 (and a legacy 3). A cross-posting (1) is
+    not stored here. Rows already stored are left as they are. Categories with
     ``category_role`` ``rc``, ``sia``, ``sib``, ``siasib`` or ``cp`` are
     skipped: those are rebuilt by Calculate cross-postings, not by this log.
     """
@@ -129,7 +130,7 @@ def capture_before_wipe(
         JOIN dbo.dim_category d
           ON d.category_id = t.category_id AND d.country_id = ?
         WHERE t.bank_id IS NULL
-          AND t.modification IN (1, 3)
+          AND t.modification >= 2
           AND (
             d.category_role IS NULL
             OR LOWER(LTRIM(RTRIM(d.category_role))) NOT IN
@@ -238,10 +239,7 @@ def apply_hand_categorizations(center: str) -> dict[str, int]:
         UPDATE t
         SET t.category_id = h.category_id,
             t.hit = NULL,
-            t.modification = CASE
-                WHEN t.modification < 0 THEN 1
-                ELSE t.modification | 1
-            END
+            t.modification = 2
         FROM {table} t
         JOIN dbo.category_hand h
           ON h.country_id = ?
