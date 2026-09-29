@@ -855,6 +855,15 @@ function bookingLeavesCategory(row: Transaction, term: string, rowId?: string): 
   return bookingContainsTerm(row, term);
 }
 
+function handModification(prior: number, change: "category" | "description"): number {
+  const categoryHand = change === "category" || prior === 2 || prior === 4;
+  const descriptionHand = change === "description" || prior === 3 || prior === 4;
+  if (categoryHand && descriptionHand) return 4;
+  if (descriptionHand) return 3;
+  if (categoryHand) return 2;
+  return prior;
+}
+
 function patchDetail(
   detail: TransactionsResponse,
   patch: {
@@ -3324,14 +3333,21 @@ function MainApp({
       const descriptionChanged =
         existing != null &&
         String(existing.description ?? "") !== String(modified.description ?? "");
+      const prior = Number(existing?.modification);
+      const priorFlag = Number.isFinite(prior) ? prior : -1;
+      const categoryClick = !descriptionChanged && Number(modified.modification) === 2;
       if (categoryChanged && currentCode != null && nextCode !== currentCode) {
         return patchDetail(prev, { removeId: id });
       }
       if (descriptionChanged) {
-        return patchDetail(prev, { update: modified, blueId: id });
+        return patchDetail(prev, {
+          update: { ...modified, modification: handModification(priorFlag, "description") },
+        });
       }
-      if (categoryChanged) {
-        return patchDetail(prev, { update: modified, boldId: id });
+      if (categoryChanged || categoryClick) {
+        return patchDetail(prev, {
+          update: { ...modified, modification: handModification(priorFlag, "category") },
+        });
       }
       return prev;
     });
@@ -5719,8 +5735,6 @@ function PTable({
   const transactions = Array.isArray(detail.transactions) ? detail.transactions : [];
   const keywords = Array.isArray(detail.keywords) ? detail.keywords : [];
   const validCategoryCodes = new Set(detail.valid_category_codes ?? []);
-  const descriptionModified = new Set(detail.description_modified_ids ?? []);
-  const categoryModified = new Set(detail.category_modified_ids ?? []);
   const columns = categoryBeforeDescription(
     stripHiddenColumns(
       Array.isArray(detail.columns) && detail.columns.length > 0
@@ -5796,7 +5810,8 @@ function PTable({
     }
     if (column === "description") {
       const text = formatCell(t.description);
-      const descModified = descriptionModified.has(String(t.id));
+      const flag = Number(t.modification);
+      const descModified = flag === 3 || flag === 4;
       return (
         <td
           key={column}
@@ -5814,7 +5829,8 @@ function PTable({
       );
     }
     if (column === "category") {
-      const catModified = categoryModified.has(String(t.id));
+      const flag = Number(t.modification);
+      const catModified = flag === 2 || flag === 4;
       return (
         <td
           key={column}

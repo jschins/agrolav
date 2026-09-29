@@ -703,7 +703,7 @@ def clear_bookings(
     Otherwise the rows are limited to ``account``, ``person``, or ``center``.
     Terms (``dbo.category_term``) are not touched. Category reset sets
     ``modification = -1`` and ``category_id`` to ``category_role = remainder``
-    on every row except a hand row (``modification`` 2, and a legacy 3).
+    on every row except a hand row (``modification`` 2, 3, or 4).
     Those keep their category and their description. ``journal`` deletes every ``dbo.journal`` row for this
     country. ``afschrijvingen`` deletes every ``dbo.afschrijvingen`` row for
     this country. Those tables are country-wide, not person or account.

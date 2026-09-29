@@ -480,7 +480,7 @@ def apply_cross_postings(
     """Write category ids and ``modification`` 1 on matched pairs.
 
     A menu run writes rows at -1 or 0. A download run (``only_uncalculated``)
-    writes only -1. A hand row (``modification`` 2, and a legacy 3) is left
+    writes only -1. A hand row (``modification`` 2, 3, or 4) is left
     as it is, category and description included. A row already at 1 is left
     as it is.
 

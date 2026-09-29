@@ -1161,9 +1161,19 @@ td.clickable:hover {
   color: #ec2323;
 }
 
+/* modification 2: bold category, black description.
+   modification 3: blue description.
+   modification 4: bold category and blue description. */
+.p-table td.desc:not(.description-modified),
+.p-table td.desc:not(.description-modified) .editable {
+  color: #1a1a1a;
+  font-weight: 400;
+}
+
 .p-table td.description-modified,
 .p-table td.description-modified .editable {
   color: #2563eb;
+  font-weight: 400;
 }
 
 .p-table td.category-modified,

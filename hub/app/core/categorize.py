@@ -527,12 +527,11 @@ MOD_UNCALCULATED = -1
 MOD_NONE = 0
 MOD_CROSS = 1
 MOD_HAND = 2
-# Stored values from the old bit pair. 1 was the category bit (hand or
-# cross-posting). 2 was the description bit. 3 was both. New writes use
-# 0 for terms, 1 for cross-postings, and 2 for any hand edit.
+MOD_DESCRIPTION = 3
+MOD_BOTH = 4
+# 1 is a cross-posting. 2 is a hand category (or Smaller-amounts, or Excel).
+# 3 is a hand description. 4 is both a hand category and a hand description.
 MOD_CATEGORY = MOD_CROSS
-MOD_DESCRIPTION = MOD_HAND
-MOD_BOTH = 3
 
 _MODIFICATION_FIELDS = frozenset({"category", "description"})
 
@@ -576,11 +575,30 @@ def _scored_modification(flag: int, hit: Any) -> int:
     return MOD_UNCALCULATED
 
 
-def _with_mod_bits(current: int, *, category: bool = False, description: bool = False) -> int:
-    """A hand edit of the category or the description writes 2."""
-    if category or description:
+def _combine_hand_flags(prior: int, *, category: bool = False, description: bool = False) -> int:
+    """Fold a hand edit onto the flags already stored on the booking.
+
+    2 is a hand category, 3 a hand description, 4 both. A later edit keeps
+    the flag it does not touch.
+    """
+    category_hand = category or prior in (MOD_HAND, MOD_BOTH)
+    description_hand = description or prior in (MOD_DESCRIPTION, MOD_BOTH)
+    if category_hand and description_hand:
+        return MOD_BOTH
+    if description_hand:
+        return MOD_DESCRIPTION
+    if category_hand:
         return MOD_HAND
-    return MOD_NONE if current < 0 else current
+    return prior
+
+
+def _with_mod_bits(current: int, *, category: bool = False, description: bool = False) -> int:
+    """A hand category writes 2, a hand description 3, and both 4."""
+    return _combine_hand_flags(
+        current if current >= 0 else MOD_NONE,
+        category=category,
+        description=description,
+    )
 
 
 def _canonical_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
@@ -635,7 +653,7 @@ def _values_equal(key: str, left: Any, right: Any) -> bool:
 def _migrate_modifications(data: dict[str, Any]) -> dict[str, Any]:
     """Fold legacy ``modifications[]`` onto each row.
 
-    An overlaid category or description is a hand edit and stores 2.
+    An overlaid category stores 2, an overlaid description stores 3, and both store 4.
     """
     mods_by_id = _modifications_by_id(data)
     rows = data.get("transactions")
@@ -872,7 +890,7 @@ def recategorize_transactions(
     """Re-categorize rows whose category still comes from the bank or from terms.
 
     Only ``modification`` -1 and 0 are rewritten. A hit writes 0. A miss
-    writes -1. A cross-posting (1) and a hand row (2, and a legacy 3) keep
+    writes -1. A cross-posting (1) and a hand row (2, 3, or 4) keep
     their category, description, and flag.
 
     ``from_scratch`` is Recalculate. Open rows lose their hit and return to
@@ -944,7 +962,7 @@ def ircft_add_term(
 
     A booking that does not contain any added term cannot change category.
     Only ``modification`` -1 and 0 are rescored. A cross-posting (1), a hand
-    row (2 or a legacy 3), and an Excel row stay put. In account modality a
+    row (2, 3, or 4), and an Excel row stay put. In account modality a
     personal term is applied only on ``account``. A matching row is scored
     against the full term lists.
     """
@@ -1019,7 +1037,7 @@ def ircft_remove_term(
 
     Unlocked keyword rows with no ``hit`` (legacy JSON) are also fully
     categorized, because the deleted term may have been their winner.
-    A cross-posting (1) and a hand row (2 or a legacy 3) are left as they are.
+    A cross-posting (1) and a hand row (2, 3, or 4) are left as they are.
     In account modality ``personal_maps`` supplies per-account maps and
     ``account`` restricts the undo to a single account.
     """
@@ -1202,26 +1220,14 @@ def _public_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
     return _canonical_transaction(transaction)
 
 
-def style_flags_for_row(
-    item: dict[str, Any], hand_ids: set[str] | None
-) -> tuple[bool, bool]:
+def style_flags_for_row(item: dict[str, Any]) -> tuple[bool, bool]:
     """Return ``(description_blue, category_bold)`` for one booking.
 
-    A hand category is bold and leaves the other cells alone. A hand
-    description is blue on that cell only. ``modification`` 3 is both.
-    ``hand_ids is None`` means the hand-category table is missing, and a
-    hand row keeps both marks.
+    2 and 4 print the category bold. 3 and 4 print the description blue.
+    A 2 leaves the description black.
     """
     flag = _modification_of(item)
-    if flag < MOD_HAND:
-        return False, False
-    if hand_ids is None:
-        return True, True
-    in_hand = str(item.get("id")) in hand_ids
-    excel = _is_excel_row(item)
-    category_bold = in_hand or excel
-    description_blue = flag >= MOD_BOTH or (not in_hand and not excel)
-    return description_blue, category_bold
+    return flag in (MOD_DESCRIPTION, MOD_BOTH), flag in (MOD_HAND, MOD_BOTH)
 
 
 def modification_style_ids(payload: dict[str, Any] | None = None) -> tuple[list[str], list[str]]:
@@ -1239,16 +1245,13 @@ def modification_style_ids(payload: dict[str, Any] | None = None) -> tuple[list[
             else [],
         }
     )
-    from app.category_hand import hand_source_ids
-
-    hands = hand_source_ids()
     description_ids: list[str] = []
     category_ids: list[str] = []
     for item in data.get("transactions") or []:
         if not isinstance(item, dict) or item.get("id") is None:
             continue
         tid = str(item.get("id"))
-        description_blue, category_bold = style_flags_for_row(item, hands)
+        description_blue, category_bold = style_flags_for_row(item)
         if description_blue:
             description_ids.append(tid)
         if category_bold:
@@ -1499,8 +1502,9 @@ def _source_transaction_by_id(
 def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
     """Overwrite category and/or description on the row.
 
-    Either change is a hand edit and stores ``modification`` 2. A later hand
-    edit writes 2 again. Terms and cross-postings leave that row alone.
+    A hand category stores 2, a hand description stores 3, and both store 4.
+    A later hand edit keeps the flag it does not touch. Terms and
+    cross-postings leave 2, 3, and 4 alone.
     """
     from shared.handset_debug import handset_debug
 
@@ -1548,20 +1552,12 @@ def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
         stored["category"] = submitted["category"]
     if desc_changed:
         stored["description"] = submitted["description"]
-    from app.category_hand import hand_source_ids
-
-    hands = hand_source_ids()
-    in_hand = hands is not None and transaction_id in hands
-    excel = _is_excel_row(base)
-    description_hand = desc_changed or prior >= MOD_BOTH or (
-        prior >= MOD_HAND and not in_hand and not excel
-    )
-    category_hand = cat_changed or hand_set or in_hand or excel
     if cat_changed or desc_changed or hand_set:
-        if category_hand and description_hand and not excel:
-            stored["modification"] = MOD_BOTH
-        else:
-            stored["modification"] = MOD_HAND
+        stored["modification"] = _combine_hand_flags(
+            prior,
+            category=cat_changed or hand_set,
+            description=desc_changed,
+        )
     else:
         stored["modification"] = prior
 
