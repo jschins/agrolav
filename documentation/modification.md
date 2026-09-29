@@ -13,6 +13,8 @@
 
 A 2 is replaced only by a later hand edit, which writes 2 again. A term run, a cross-posting run, a fresh download of that same booking, and a categorization wipe leave a 2 in place, including its category and its description.
 
+A hand left-click on a category writes that category onto the booking and sets `modification` to 2.
+
 The Smaller-amounts (income/expenses) menu items affect only -1, and write 2.
 The Terms and Cross-postings menu items affect both -1 and 0.
 The Terms menu item writes 0, cross-postings 1.

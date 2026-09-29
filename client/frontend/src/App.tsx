@@ -3767,9 +3767,6 @@ function MainApp({
             onModify={modifyTransaction}
             onCategoryError={setError}
             onTermContextMenu={openTermMenu}
-            onAssignTerm={(term, categoryName, general, account, transactionId) =>
-              saveTermMenu(term, categoryName, general, account, transactionId)
-            }
           />
         )}
         {termMenu && termMenuSettings && (
@@ -5253,24 +5250,14 @@ function categoryPickerItems(
 function CategoryPickerPopup({
   currentCode,
   extraCodes,
-  term,
   bankIban,
   onPick,
-  onAssignTerm,
   onClose,
 }: {
   currentCode: number | null;
   extraCodes: number[];
-  /** Counterparty text used when a G or P box adds a term. */
-  term: string;
   bankIban?: string;
   onPick: (code: number) => void;
-  onAssignTerm?: (
-    term: string,
-    categoryName: string,
-    general: boolean,
-    account?: string
-  ) => void | Promise<void>;
   onClose: () => void;
 }) {
   const [items, setItems] = useState<{ code: number; label: string; name: string }[] | null>(null);
@@ -5278,7 +5265,6 @@ function CategoryPickerPopup({
   const [access, setAccess] = useState("");
   const [personScope, setPersonScope] = useState("");
   const [accountKey, setAccountKey] = useState("");
-  const [saving, setSaving] = useState(false);
   const extraKey = extraCodes.join(",");
 
   useEffect(() => {
@@ -5339,16 +5325,6 @@ function CategoryPickerPopup({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  function assign(categoryName: string, general: boolean) {
-    const cleaned = term.trim();
-    if (!cleaned || !categoryName || saving || !onAssignTerm) return;
-    if (general && !showGeneral) return;
-    setSaving(true);
-    Promise.resolve(
-      onAssignTerm(cleaned, categoryName, general, general ? undefined : accountKey || undefined)
-    ).finally(() => setSaving(false));
-  }
-
   return (
     <div className="category-picker-backdrop" onClick={onClose}>
       <div
@@ -5386,7 +5362,6 @@ function CategoryPickerPopup({
                       }
                       value={accountKey}
                       title={tableHeaderTerm(settings?.table_header_terms, "Personal")}
-                      disabled={saving}
                       onChange={(e) => setAccountKey(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -5432,8 +5407,8 @@ function CategoryPickerPopup({
                       <input
                         type="checkbox"
                         aria-label={`${item.label || item.code} general`}
-                        disabled={saving || !term.trim() || !item.name}
-                        onChange={() => assign(item.name, true)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => onPick(item.code)}
                       />
                     </td>
                   ) : null}
@@ -5445,8 +5420,8 @@ function CategoryPickerPopup({
                     <input
                       type="checkbox"
                       aria-label={`${item.label || item.code} personal`}
-                      disabled={saving || !term.trim() || !item.name}
-                      onChange={() => assign(item.name, false)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => onPick(item.code)}
                     />
                   </td>
                 </tr>
@@ -5754,7 +5729,6 @@ function PTable({
   onModify,
   onCategoryError,
   onTermContextMenu,
-  onAssignTerm,
 }: {
   categoryName: string;
   detail: TransactionsResponse;
@@ -5764,13 +5738,6 @@ function PTable({
   onModify: (transaction: Transaction) => void;
   onCategoryError?: (message: string | null) => void;
   onTermContextMenu?: (e: MouseEvent, cellText: string, transactionId: string) => void;
-  onAssignTerm?: (
-    term: string,
-    categoryName: string,
-    general: boolean,
-    account: string | undefined,
-    transactionId: string
-  ) => void | Promise<void>;
 }) {
   const [picker, setPicker] = useState<Transaction | null>(null);
   const [signOpen, setSignOpen] = useState(false);
@@ -5993,18 +5960,11 @@ function PTable({
         <CategoryPickerPopup
           currentCode={Number(picker.category)}
           extraCodes={[...validCategoryCodes]}
-          term={formatCell(picker.name).trim() || formatCell(picker.description).trim()}
           bankIban={bank}
           onPick={(code) => {
-            const current = Number(picker.category);
             setPicker(null);
             onCategoryError?.(null);
-            if (code !== current) onModify({ ...picker, category: code });
-          }}
-          onAssignTerm={(term, categoryName, general, account) => {
-            const id = String(picker.id ?? "");
-            setPicker(null);
-            return onAssignTerm?.(term, categoryName, general, account, id);
+            onModify({ ...picker, category: code, modification: 2 });
           }}
           onClose={() => setPicker(null)}
         />

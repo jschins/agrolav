@@ -1503,23 +1503,20 @@ def record_modification(transaction: dict[str, Any]) -> dict[str, Any]:
     desc_changed = "description" in submitted and not _values_equal(
         "description", submitted.get("description"), base.get("description")
     )
+    hand_set = _modification_of(submitted) == MOD_HAND and "category" in submitted
     if cat_changed:
         stored["category"] = submitted["category"]
     if desc_changed:
         stored["description"] = submitted["description"]
-    if cat_changed or desc_changed:
-        stored["modification"] = _with_mod_bits(
-            _modification_of(base),
-            category=cat_changed,
-            description=desc_changed,
-        )
+    if cat_changed or desc_changed or hand_set:
+        stored["modification"] = MOD_HAND
     else:
         stored["modification"] = _modification_of(base)
 
     from app.sql_replica import sync_bound_transactions
 
     sync_bound_transactions([stored])
-    if cat_changed:
+    if cat_changed or hand_set:
         from app.category_hand import remember_hand_category
 
         remember_hand_category(transaction_id, stored.get("category"))
