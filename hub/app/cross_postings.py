@@ -770,18 +770,12 @@ def _pair_legs(cursor: Any, country_id: int) -> PairLegs:
         if role is None or local_code is None:
             continue
         found[str(role)] = int(local_code)
-    legs = PairLegs(
+    return PairLegs(
         cp=found.get("cp"),
         siasib=found.get("siasib"),
         sia=found.get("sia"),
         sib=found.get("sib"),
     )
-    print(
-        f"rc pair legs country={int(country_id)} cp={legs.cp} siasib={legs.siasib} "
-        f"sia={legs.sia} sib={legs.sib}",
-        flush=True,
-    )
-    return legs
 
 
 def _category_ids_by_local_code(cursor: Any, country_id: int) -> dict[int, int]:

@@ -25,13 +25,6 @@ from typing import Any
 
 _log = logging.getLogger("balance.sheet")
 
-
-def _rc_debug(message: str, *args: object) -> None:
-    """Hub/result console line for the rc/cp lookup. Leave these in place."""
-    text = message % args if args else message
-    _log.warning("%s", text)
-    print(text, flush=True)
-
 SPAAR_MARKER = "[spaar-mirror]"
 AFSCHRIJVING_MARKER = "[afschrijving]"
 
@@ -963,54 +956,6 @@ def category_roles(country_id: int, cursor: object) -> dict[int, str]:
     }
 
 
-def _log_rc_categories(country_id: int, cursor: object) -> None:
-    """Print every ``rc`` / ``cp`` row, and the stored roles when none match."""
-    cursor.execute(
-        f"""
-        SELECT category_id, local_code, category_role
-        FROM dbo.dim_category
-        WHERE country_id = ?
-          AND category_role IS NOT NULL
-          AND {cross_posting_role_sql("category_role")}
-        ORDER BY local_code, category_id
-        """,
-        (int(country_id),),
-    )
-    rows = list(cursor.fetchall())
-    _rc_debug("rc scan country=%s exact rc/cp rows=%s", int(country_id), len(rows))
-    for cat_id, local_code, role in rows:
-        local = None if local_code is None else int(local_code)
-        in_roles = local is not None and 1000 <= local <= 4999
-        in_bookings = local is not None and 1000 <= local <= 2999
-        _rc_debug(
-            "rc scan cat=%s local=%s role=%r canonical=%s "
-            "seen_by_opening=%s seen_by_bookings=%s",
-            cat_id,
-            local,
-            str(role),
-            category_role_canonical(role),
-            in_roles,
-            in_bookings,
-        )
-    if rows:
-        return
-    cursor.execute(
-        """
-        SELECT DISTINCT category_role
-        FROM dbo.dim_category
-        WHERE country_id = ? AND category_role IS NOT NULL
-        ORDER BY category_role
-        """,
-        (int(country_id),),
-    )
-    stored = [str(item[0]) for item in cursor.fetchall() if item[0] is not None]
-    _rc_debug(
-        "rc scan country=%s stored category_role values=%s",
-        int(country_id),
-        stored,
-    )
-
-
 def category_map(
     country_id: int, cursor: object
 ) -> dict[int, tuple[str, int | None]]:
@@ -1121,13 +1066,8 @@ def opening_amounts_from_year_end(
     ``result_sum`` is added to the previous year's Eigen vermogen opening
     (``category_role=equity``). Every category with ``category_role=rc``
     is set to zero, and their total is added to ``category_role=cp``
-    (local 1200 when that row is present), so the activa total is unchanged.
+    (local 1200 when that row is present),     so the activa total is unchanged.
     """
-    _rc_debug(
-        "rc close enter year_end=%s roles=%s",
-        len(year_end),
-        len(roles),
-    )
     profit_ids = {
         cat_id
         for cat_id, role in roles.items()
@@ -1163,12 +1103,6 @@ def opening_amounts_from_year_end(
         if is_rc_role(role)
     }
     cp_id = _cp_category_id(roles, local_codes)
-    _rc_debug(
-        "rc close candidates=%s cp=%s local=%s",
-        len(rc_ids),
-        cp_id,
-        None if cp_id is None else local_codes.get(cp_id, cp_id),
-    )
     if rc_ids and cp_id is None:
         raise CatalogError("No category with category_role=cp")
 
@@ -1188,22 +1122,7 @@ def opening_amounts_from_year_end(
             amount = assigned(cat_id)
             rc_total += amount
             written[cat_id] = Decimal("0.00")
-            _rc_debug(
-                "rc close cat=%s local=%s role=%r amount=%s",
-                cat_id,
-                local_codes.get(cat_id, cat_id),
-                roles.get(cat_id),
-                amount,
-            )
         written[cp_id] = _money(assigned(cp_id) + rc_total)
-        _rc_debug(
-            "rc close cp cat=%s local=%s amount=%s",
-            cp_id,
-            local_codes.get(cp_id, cp_id),
-            written[cp_id],
-        )
-    elif not rc_ids:
-        _rc_debug("rc close no category_role=rc in the sheet role list")
     return written
 
 
@@ -1501,11 +1420,9 @@ def opening_sheet_breakdown(
     target = int(year)
     previous = target - 1
     if _opening_year_count(country_id, previous, cursor) == 0:
-        _rc_debug("rc close skipped year=%s no opening for %s", target, previous)
         return None
     equity_id = eigen_vermogen_id(country_id, cursor)
     if equity_id is None:
-        _rc_debug("rc close skipped year=%s no equity role", target)
         return None
     roles = category_roles(country_id, cursor)
     codes = category_local_codes(country_id, cursor)
@@ -1527,10 +1444,8 @@ def opening_sheet_breakdown(
             _resultaat_sum(country_id, previous, cursor, balance_ids),
             include_live_banks=_opening_year_count(country_id, target, cursor) > 0,
         )
-    except CatalogError as exc:
-        _rc_debug("rc close skipped year=%s %s", target, exc)
+    except CatalogError:
         return None
-    _rc_debug("rc close sheet year=%s categories=%s", target, len(amounts))
     return {
         int(cat_id): (_to_cents(amount), "opening")
         for cat_id, amount in amounts.items()
@@ -1547,7 +1462,6 @@ def calculate_opening_balance(country_id: int, year: int, cursor: object) -> dic
     """
     target = int(year)
     previous = target - 1
-    _rc_debug("rc close calculate country=%s year=%s", int(country_id), target)
     exists = _opening_year_count(country_id, target, cursor) > 0
     if _opening_year_count(country_id, previous, cursor) == 0:
         raise CatalogError(f"No opening balance for {previous}")
@@ -1727,7 +1641,6 @@ def _booking_balances(
     q += " GROUP BY t.category_id, d.local_code, d.category_role"
     cursor.execute(q, tuple(p))
     result: dict[int, Decimal] = {}
-    saw_rc = False
     for item in cursor.fetchall():
         if item is None or len(item) < 3:
             continue
@@ -1740,49 +1653,9 @@ def _booking_balances(
             _decimal(amount),
             role,
         )
-        if is_cross_posting_role(role):
-            saw_rc = True
-            _rc_debug(
-                "rc booking cat=%s local=%s role=%r raw=%s signed=%s",
-                category_id,
-                local_code,
-                str(role or ""),
-                amount,
-                signed,
-            )
         if signed is None:
             continue
         result[int(category_id)] = signed
-    if not saw_rc:
-        cursor.execute(
-            f"SELECT d.category_id, d.local_code, d.category_role, "
-            f"COUNT(*), SUM(t.amount) FROM {table} t "
-            "JOIN dbo.person p ON p.id = t.person_id "
-            "JOIN dbo.center n ON n.center_id = p.center_id "
-            "JOIN dbo.dim_category d ON d.category_id = t.category_id "
-            "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
-            f"AND {cross_posting_role_sql('d.category_role')} "
-            "GROUP BY d.category_id, d.local_code, d.category_role",
-            (int(country_id), int(year)),
-        )
-        missed = list(cursor.fetchall())
-        if missed:
-            for cat_id, local_code, role, count, total in missed:
-                _rc_debug(
-                    "rc booking missed by overlay cat=%s local=%s role=%r "
-                    "rows=%s raw=%s",
-                    cat_id,
-                    local_code,
-                    str(role or ""),
-                    count,
-                    total,
-                )
-        else:
-            _rc_debug(
-                "rc booking country=%s year=%s no consolidated rows on rc/cp",
-                int(country_id),
-                int(year),
-            )
     return result
 
 
@@ -1867,7 +1740,6 @@ def balance_category_breakdown(
         if trace:
             _log.warning(message, *args)
 
-    _log_rc_categories(country_id, cursor)
     roles = category_roles(country_id, cursor)
     result_id = verlies_id(country_id, cursor)
     balance_id = eigen_vermogen_id(country_id, cursor)

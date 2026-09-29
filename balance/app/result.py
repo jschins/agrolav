@@ -847,11 +847,6 @@ def _fold_cash_extras(
         buckets[label] += amount
 
     for local_code, label, amount, role in rows:
-        kind = category_role_canonical(role)
-        print(
-            f"rc cash local={local_code} role={role!r} canonical={kind} amount={amount}",
-            flush=True,
-        )
         if amount == 0:
             continue
         code = int(local_code) if local_code is not None else None
