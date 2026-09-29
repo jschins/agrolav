@@ -138,6 +138,8 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
         "person": person,
         "account": account,
     }
+    if access == ACCESS_UNIT:
+        profile["hd"] = bool(user.get("hd")) or username.lower().startswith("hd_")
     if user.get("administrator"):
         profile["administrator"] = True
     return profile

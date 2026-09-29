@@ -3,12 +3,12 @@
 `dbo.transaction_*.modification` records how a booking got its category and description.
 
 
-| value of the modification field | meaning                                                                                             |
-| ------------------------------- | --------------------------------------------------------------------------------------------------- |
-| -1                              | Just downloaded from the bank. Not categorized.                                                     |
-| 0                               | Category came from the term calculation.                                                            |
-| 1                               | Category came from the cross-posting calculation.                                                   |
-| 2                               | Category was set + either by hand + or by the Smaller-amounts menu item Description was set by hand |
+| value of the modification field | meaning                                                                                        |
+| ------------------------------- | ---------------------------------------------------------------------------------------------- |
+| -1                              | Just downloaded from the bank. Not categorized.                                                |
+| 0                               | Category came from the term calculation.                                                       |
+| 1                               | Category came from the cross-posting calculation.                                              |
+| 2                               | 1. Category was set by hand or by the Smaller-amounts menu item 2. Description was set by hand |
 
 
 A 2 is replaced only by a later hand edit, which writes 2 again. A term run, a cross-posting run, a fresh download of that same booking, and a categorization wipe leave a 2 in place, including its category and its description.

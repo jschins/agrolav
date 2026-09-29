@@ -98,6 +98,32 @@ def _scope_sql(person: str, center: str, account: str) -> tuple[str, list[object
     return "".join(clauses), params
 
 
+def scope_visibility_rank(
+    country_id: int,
+    *,
+    person: str = "",
+    center: str = "",
+    account: str = "",
+    unit: str = "",
+    login: str = "",
+) -> int:
+    """1–5 rank for ``dbo.dim_category.visibility`` on this result or balance login."""
+    from shared.user_access import visibility_rank_for_scope
+
+    unit_level = _is_unit_level(unit, account)
+    hd = False
+    if unit_level:
+        accounts = _load_accounts(country_id)
+        login_account = _resolve_unit_account(accounts, login, account)
+        hd = _unit_kind(login_account, login) == "hd"
+    return visibility_rank_for_scope(
+        person=person,
+        center="" if person else center,
+        unit=unit_level,
+        hd=hd,
+    )
+
+
 def _categories(country_id: int) -> list[tuple[int, int, str]]:
     with connect() as conn:
         cur = conn.cursor()
@@ -978,9 +1004,26 @@ def result_sheet(
                 )
                 for cat_id, extra_amount in extra.items():
                     amounts[cat_id] = amounts.get(cat_id, Decimal("0")) + extra_amount
+    from shared.balance_values import category_visibility
+    from shared.user_access import category_visible_to_rank, visibility_rank_for_scope
+
+    rank = visibility_rank_for_scope(
+        person=person,
+        center="" if person else center,
+        unit=unit_level,
+        hd=kind == "hd",
+    )
+    with connect() as conn:
+        visible = category_visibility(country_id, conn.cursor())
     kosten: list[dict[str, Any]] = []
     opbrengsten: list[dict[str, Any]] = []
     for cat_id, local_code, label in _categories(country_id):
+        if (
+            visible is not None
+            and rank > 1
+            and not category_visible_to_rank(visible.get(cat_id), rank)
+        ):
+            continue
         amount = amounts.get(cat_id, Decimal("0"))
         if amount == 0:
             continue

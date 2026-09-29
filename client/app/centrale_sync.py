@@ -137,10 +137,21 @@ def _balance_url(cfg: HubConfig) -> str:
         if not slug:
             return ""
         url = f"{_balance_base_url()}/balance/{urllib.parse.quote(slug)}"
+        params: dict[str, str] = {}
+        if cfg.access == ACCESS_CENTER and str(cfg.center or "").strip():
+            params["center"] = str(cfg.center).strip()
+        elif cfg.access == ACCESS_PERSON and str(cfg.person or "").strip():
+            params["person"] = str(cfg.person).strip()
+        elif cfg.access == ACCESS_UNIT:
+            params["unit"] = "1"
+            account = "".join(str(cfg.account or "").split()).upper()
+            if account:
+                params["account"] = account
         login = str(cfg.username or "").strip()
         if login:
-            url += "?" + urllib.parse.urlencode({"login": login})
-        return url
+            params["login"] = login
+        query = urllib.parse.urlencode(params)
+        return f"{url}?{query}" if query else url
     except Exception:  # noqa: BLE001
         return ""
 
@@ -440,6 +451,10 @@ def apply_session_profile(session: dict[str, Any]) -> HubConfig:
         centers_allowlist = [str(w).strip() for w in centers_raw if str(w).strip()]
     center_key = ",".join(centers_allowlist) if centers_allowlist else ""
     country = str(session.get("country") or "").strip()
+    from app.runtime import set_unit_hd
+
+    hd = bool(session.get("hd")) or username.lower().startswith("hd_")
+    set_unit_hd(hd if access == ACCESS_UNIT else False)
     return _build_hub_config(
         url=str(base["url"]),
         api_key=str(base["api_key"]),
@@ -541,12 +556,115 @@ def _person_matrix_keep_row(name: str) -> bool:
     return not is_balance_sheet_code(int(match.group(1)))
 
 
+def _login_visibility_rank() -> int:
+    from shared.user_access import visibility_rank
+    from app.runtime import unit_is_hd
+
+    cfg = load_config()
+    hd = unit_is_hd() if cfg.access == ACCESS_UNIT else False
+    return visibility_rank(cfg.access, hd=hd)
+
+
+def _name_visible(name: str, vis: dict[str, Any], rank: int) -> bool:
+    from shared.user_access import category_visible_to_rank
+
+    if name not in vis:
+        return True
+    return category_visible_to_rank(vis.get(name), rank)
+
+
+def _filter_term_map(bucket: Any, vis: dict[str, Any], rank: int) -> Any:
+    if not isinstance(bucket, dict):
+        return bucket
+    return {key: value for key, value in bucket.items() if _name_visible(str(key), vis, rank)}
+
+
+def _filter_visible_categories(payload: dict[str, Any]) -> dict[str, Any]:
+    """Drop categories this login's visibility rank may not see."""
+    vis = payload.get("category_visibility")
+    if not isinstance(vis, dict) or not vis:
+        return payload
+    rank = _login_visibility_rank()
+    if rank <= 1:
+        return payload
+    out = dict(payload)
+    cats = out.get("categories")
+    if isinstance(cats, list):
+        out["categories"] = [cat for cat in cats if _name_visible(str(cat), vis, rank)]
+    cells = out.get("cells")
+    if isinstance(cells, dict):
+        out["cells"] = {
+            key: value for key, value in cells.items() if _name_visible(str(key), vis, rank)
+        }
+    used = out.get("used")
+    if isinstance(used, dict):
+        out["used"] = {
+            key: value for key, value in used.items() if _name_visible(str(key), vis, rank)
+        }
+    entries = out.get("entries")
+    if isinstance(entries, list):
+        out["entries"] = [entry for entry in entries if _name_visible(str(entry), vis, rank)]
+    return out
+
+
+def _filter_visible_settings(payload: dict[str, Any]) -> dict[str, Any]:
+    vis = payload.get("category_visibility")
+    by_code = payload.get("visibility_by_code")
+    rank = _login_visibility_rank()
+    if rank <= 1:
+        return payload
+    name_vis = vis if isinstance(vis, dict) else {}
+    code_vis = by_code if isinstance(by_code, dict) else {}
+    if not name_vis and not code_vis:
+        return payload
+    out = dict(payload)
+    if name_vis:
+        cats = out.get("categories")
+        if isinstance(cats, list):
+            out["categories"] = [cat for cat in cats if _name_visible(str(cat), name_vis, rank)]
+        out["general"] = _filter_term_map(out.get("general"), name_vis, rank)
+        personal = out.get("personal")
+        if isinstance(personal, dict):
+            out["personal"] = {
+                person: _filter_term_map(terms, name_vis, rank)
+                for person, terms in personal.items()
+            }
+        groups = out.get("account_groups")
+        if isinstance(groups, list):
+            filtered_groups = []
+            for group in groups:
+                if not isinstance(group, dict):
+                    filtered_groups.append(group)
+                    continue
+                filtered_groups.append(
+                    {
+                        **group,
+                        "categories": _filter_term_map(group.get("categories"), name_vis, rank),
+                    }
+                )
+            out["account_groups"] = filtered_groups
+    codes = out.get("valid_category_codes")
+    if isinstance(codes, list) and code_vis:
+        from shared.user_access import category_visible_to_rank
+
+        kept_codes = []
+        for code in codes:
+            level = code_vis.get(str(code))
+            if level is None:
+                level = code_vis.get(code)
+            if level is None or category_visible_to_rank(level, rank):
+                kept_codes.append(code)
+        out["valid_category_codes"] = kept_codes
+    return out
+
+
 def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
     """Keep matrix categories but only the configured person column when scoped.
 
     Person login also drops activa/passiva rows (local_code 1000–2999) so both
     matrix views show profit-and-loss categories plus the saldo/datum footers.
     """
+    payload = _filter_visible_categories(payload)
     scope = configured_person()
     if not scope:
         return payload
@@ -606,6 +724,7 @@ def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def scope_settings(payload: dict[str, Any]) -> dict[str, Any]:
+    payload = _filter_visible_settings(payload)
     scope = configured_person()
     if not scope:
         return payload

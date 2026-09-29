@@ -41,6 +41,51 @@ def deduce_access(
     return ACCESS_CENTER
 
 
+def visibility_rank(access: str, *, hd: bool = False) -> int:
+    """How far down the login sits on ``dbo.dim_category.visibility``.
+
+    1 country, 2 center, 3 person, 4 work-unit, 5 HD.
+    A category is visible when its number is at least this rank.
+    """
+    mode = str(access or "").strip().lower()
+    if mode == ACCESS_UNIT:
+        return 5 if hd else 4
+    if mode == ACCESS_PERSON:
+        return 3
+    if mode == ACCESS_CENTER:
+        return 2
+    return 1
+
+
+def visibility_rank_for_scope(
+    *, person: str = "", center: str = "", unit: bool = False, hd: bool = False
+) -> int:
+    """Same scale as ``visibility_rank``, from a result or balance query."""
+    if unit:
+        return 5 if hd else 4
+    if str(person or "").strip():
+        return 3
+    if str(center or "").strip():
+        return 2
+    return 1
+
+
+def normalize_visibility(value: object) -> int:
+    """1–5. A missing or out-of-range value stays visible to every login."""
+    try:
+        level = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 5
+    if 1 <= level <= 5:
+        return level
+    return 5
+
+
+def category_visible_to_rank(visibility: object, rank: int) -> bool:
+    """True when this login's rank may see a category with ``visibility``."""
+    return normalize_visibility(visibility) >= int(rank)
+
+
 def can_edit_general_terms(access: str) -> bool:
     """Only a country login may add, change, or delete G-terms.
 

@@ -1263,16 +1263,29 @@ def categories_payload(country: str) -> dict[str, Any]:
         )
 
         ensure_category_role_booking_rules(cursor)
+        cursor.execute("SELECT COL_LENGTH(N'dbo.dim_category', N'visibility')")
+        vis_row = cursor.fetchone()
+        has_visibility = bool(vis_row and vis_row[0] is not None)
+        vis_col = ", visibility" if has_visibility else ""
         cursor.execute(
-            """
-            SELECT category_id, local_code, label, category_role
+            f"""
+            SELECT category_id, local_code, label, category_role{vis_col}
             FROM dbo.dim_category
             WHERE country_id = ?
             ORDER BY local_code, label
             """,
             (country_id,),
         )
-        for category_id, code, label, role in cursor.fetchall():
+        from shared.user_access import normalize_visibility
+
+        category_visibility: dict[str, int] = {}
+        visibility_by_code: dict[str, int] = {}
+        for fetched in cursor.fetchall():
+            if has_visibility:
+                category_id, code, label, role, vis = fetched
+            else:
+                category_id, code, label, role = fetched
+                vis = 5
             cat_name = category_display_name(label, code, role)
             if not cat_name:
                 continue
@@ -1281,6 +1294,10 @@ def categories_payload(country: str) -> dict[str, Any]:
             role_text = str(role or "").strip()
             if role_text:
                 category_roles[cat_name] = role_text
+            level = normalize_visibility(vis)
+            category_visibility[cat_name] = level
+            if code is not None:
+                visibility_by_code[str(int(code))] = level
 
         cursor.execute(
             """
@@ -1306,6 +1323,8 @@ def categories_payload(country: str) -> dict[str, Any]:
             "table_header_terms": headers,
             "language_long": long_texts,
             "category_roles": category_roles,
+            "category_visibility": category_visibility,
+            "visibility_by_code": visibility_by_code,
         }
 
     payload = _sql_retry(_run)

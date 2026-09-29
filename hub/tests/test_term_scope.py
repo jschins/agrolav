@@ -7,7 +7,9 @@ from shared.user_access import (
     ACCESS_PERSON,
     ACCESS_UNIT,
     can_edit_general_terms,
+    category_visible_to_rank,
     unit_may_edit_account,
+    visibility_rank,
 )
 
 _OWN = "NL00BANK0000000001"
@@ -84,3 +86,20 @@ class UnitAccountTermTests(unittest.TestCase):
                 groups=_GROUPS,
             )
         )
+
+
+class CategoryVisibilityTests(unittest.TestCase):
+    def test_rank_follows_the_login(self):
+        self.assertEqual(visibility_rank(ACCESS_COUNTRY), 1)
+        self.assertEqual(visibility_rank(ACCESS_CENTER), 2)
+        self.assertEqual(visibility_rank(ACCESS_PERSON), 3)
+        self.assertEqual(visibility_rank(ACCESS_UNIT), 4)
+        self.assertEqual(visibility_rank(ACCESS_UNIT, hd=True), 5)
+
+    def test_higher_number_is_visible_further_down(self):
+        self.assertTrue(category_visible_to_rank(1, 1))
+        self.assertFalse(category_visible_to_rank(1, 2))
+        self.assertTrue(category_visible_to_rank(4, 4))
+        self.assertFalse(category_visible_to_rank(4, 5))
+        self.assertTrue(category_visible_to_rank(5, 5))
+        self.assertTrue(category_visible_to_rank(None, 5))

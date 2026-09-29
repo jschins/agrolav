@@ -205,6 +205,7 @@ def transactions(
                 "table_header_terms": cat_data["table_header_terms"],
                 "valid_category_codes": sorted(category_code_set()),
                 "remainder_category": remainder_category_name(),
+                "visibility_by_code": cat_data.get("visibility_by_code") or {},
             }
 
 
@@ -390,6 +391,8 @@ def settings(center: str) -> dict[str, Any]:
             "valid_category_codes": codes,
             "remainder_category": remainder,
             "category_roles": category_roles,
+            "category_visibility": general_file.get("category_visibility") or {},
+            "visibility_by_code": general_file.get("visibility_by_code") or {},
             "table_header_terms": table_header_terms(people_list),
             "language_long": general_file.get("language_long") or {},
         }

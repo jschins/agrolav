@@ -230,16 +230,31 @@ def result_balance_sheet(
     slug: str,
     year: int,
     date: str | None = None,
+    person: str = "",
+    center: str = "",
+    account: str = "",
+    unit: str = "",
+    login: str = "",
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
     """The balance-window sheet, shown under Resultaat."""
     from app.balance import _country_has_balance
     from app.balance import balance_sheet as compute
+    from app.result import scope_visibility_rank
 
     country_id = resolve_country(slug)
     if not _country_has_balance(country_id):
         raise HTTPException(status_code=404, detail="no balance sheet")
-    return compute(country_id, year, as_of=date)
+    who = _scope(person, center, account)
+    rank = scope_visibility_rank(
+        country_id,
+        person=who[0],
+        center=who[1],
+        account=who[2],
+        unit=unit,
+        login=login,
+    )
+    return compute(country_id, year, as_of=date, visibility_rank=rank)
 
 
 @app.get("/result/{slug}/api/balance/{year}")
@@ -276,6 +291,8 @@ def result_sheet(
         from app.result import opening_year_to_offer
 
         if _country_has_balance(country_id):
+            from app.result import scope_visibility_rank
+
             opening_year = opening_year_to_offer(
                 country_id,
                 person=who[0],
@@ -283,10 +300,22 @@ def result_sheet(
                 account=who[2],
                 unit=unit,
             )
+            rank = scope_visibility_rank(
+                country_id,
+                person=who[0],
+                center=who[1],
+                account=who[2],
+                unit=unit,
+                login=login,
+            )
             if opening_year is not None and opening_year == year:
-                payload["balance"] = opening_balance_sheet(country_id, year)
+                payload["balance"] = opening_balance_sheet(
+                    country_id, year, visibility_rank=rank
+                )
             else:
-                payload["balance"] = balance_compute(country_id, year, as_of=date)
+                payload["balance"] = balance_compute(
+                    country_id, year, as_of=date, visibility_rank=rank
+                )
     except Exception as exc:  # noqa: BLE001
         payload["balance_error"] = str(exc)
     return payload

@@ -71,7 +71,15 @@ SELECT
     c.username COLLATE Latin1_General_CI_AI AS country,
     n.username COLLATE Latin1_General_CI_AI AS center,
     p.username COLLATE Latin1_General_CI_AI AS person,
-    a.iban COLLATE Latin1_General_CI_AI AS account
+    a.iban COLLATE Latin1_General_CI_AI AS account,
+    CASE WHEN EXISTS (
+        SELECT 1
+        FROM dbo.mapping_banks m
+        JOIN dbo.dim_category d
+          ON d.category_id = m.category_id AND d.country_id = c.country_id
+        WHERE m.account_id = a.account_id
+          AND LOWER(LTRIM(RTRIM(ISNULL(d.category_role, N'')))) = N'hd'
+    ) THEN 1 ELSE 0 END AS hd
 FROM dbo.unit u
 INNER JOIN dbo.center n ON n.center_id = u.center_id
 INNER JOIN dbo.country c ON c.country_id = u.country_id
@@ -440,6 +448,11 @@ def _row_to_user(row: Any) -> dict[str, Any]:
         out["account"] = account
         out["unit"] = username
         out["title"] = display_title(username)
+        hd_raw = _cell(row, "hd")
+        if hd_raw is None:
+            out["hd"] = username.lower().startswith("hd_")
+        else:
+            out["hd"] = bool(int(hd_raw or 0))
     return out
 
 

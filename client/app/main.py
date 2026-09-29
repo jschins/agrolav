@@ -1248,7 +1248,12 @@ def _hub_transactions(
     if view and cfg.access in (ACCESS_PERSON, ACCESS_UNIT):
         params.append(f"bank={urllib.parse.quote(view)}")
     suffix = f"/transactions/{urllib.parse.quote(person_name)}?{'&'.join(params)}"
-    return hub_get(suffix)
+    payload = hub_get(suffix)
+    if isinstance(payload, dict):
+        from app.centrale_sync import _filter_visible_settings
+
+        payload = _filter_visible_settings(payload)
+    return payload
 
 
 def _booking_search_query() -> dict[str, str]:

@@ -473,6 +473,9 @@ def build_matrix(
         "footers": {"balance": balance_name, "last_booked": date_name},
         "table_header_terms": table_header_terms(packs),
     }
+    vis = load_general_file(packs).get("category_visibility")
+    if isinstance(vis, dict) and vis:
+        payload["category_visibility"] = vis
     ws = active_center()
     if ws:
         payload["center"] = ws

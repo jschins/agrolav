@@ -942,6 +942,28 @@ def resolve_category_id(codes: dict[int, int], key: int) -> int:
     return wanted
 
 
+def category_visibility(country_id: int, cursor: object) -> dict[int, int] | None:
+    """category_id → ``dim_category.visibility`` (1–5).
+
+    ``None`` when the column is not on this database yet.
+    """
+    cursor.execute("SELECT COL_LENGTH(N'dbo.dim_category', N'visibility')")
+    row = cursor.fetchone()
+    if not row or row[0] is None:
+        return None
+    cursor.execute(
+        "SELECT category_id, visibility FROM dbo.dim_category WHERE country_id = ?",
+        (int(country_id),),
+    )
+    from shared.user_access import normalize_visibility
+
+    return {
+        int(item[0]): normalize_visibility(item[1])
+        for item in cursor.fetchall()
+        if item[0] is not None
+    }
+
+
 def category_roles(country_id: int, cursor: object) -> dict[int, str]:
     """category_id → ``category_role`` text (empty string when NULL)."""
     cursor.execute(

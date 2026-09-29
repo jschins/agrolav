@@ -23,6 +23,7 @@ _cv_center_key: ContextVar[str | None] = ContextVar("center_key", default=None)
 _cv_person_key: ContextVar[str | None] = ContextVar("person_key", default=None)
 _cv_country: ContextVar[str | None] = ContextVar("country", default=None)
 _cv_account: ContextVar[str | None] = ContextVar("account", default=None)
+_cv_unit_hd: ContextVar[bool | None] = ContextVar("unit_hd", default=None)
 
 
 def is_frozen() -> bool:
@@ -176,6 +177,19 @@ def request_country() -> str | None:
 
 def request_account() -> str | None:
     return _cv_account.get()
+
+
+def set_unit_hd(value: bool | None) -> None:
+    """Whether the current unit login is a huishoudelijke dienst."""
+    _cv_unit_hd.set(value)
+
+
+def unit_is_hd() -> bool:
+    """HD when the session says so, otherwise when the username starts with ``hd_``."""
+    flag = _cv_unit_hd.get()
+    if flag is not None:
+        return flag
+    return str(current_username() or "").strip().lower().startswith("hd_")
 
 
 def access_mode() -> str:
