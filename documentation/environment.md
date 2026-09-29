@@ -135,7 +135,7 @@ caddy              EnvironmentFile=/opt/agrolav/.env            ExecStart=/usr/b
 
 ---
 
-## 4. How this configuration gets lost
+## 4. How a clone, git clean, or reimage drops env files
 
 1. **Fresh clone / new machine.** `git clone` brings code but **zero** env
    files. The repo ships only `hub/.env.example` + this document + the

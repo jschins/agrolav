@@ -20,12 +20,12 @@ Each login may edit only its own row. Login **`admin`** is not a matrix
 row: it can only change the **extra** counts for the current week.
 
 The UI language is Dutch. Table columns are in [`DATABASE.md`](DATABASE.md).
-First-start commands are below; [`deployment.md`](deployment.md) §12a is
+First-start commands are below; [`deployment_tech.md`](deployment_tech.md) §12a is
 the same unit.
 
 ---
 
-## What you see
+## Week menu, Weergave, and Uitloggen
 
 After login, a bar sits above a horizontal rule:
 
@@ -71,7 +71,7 @@ editor (seven days), not a personal mark row.
 
 ---
 
-## Marks
+## Meal mark x or v
 
 Each cell is a letter, not a native checkbox. Missing data displays as
 **x**.
@@ -154,7 +154,7 @@ writes the bigint back.
 
 ---
 
-## How the pieces connect
+## Maaltijden routes, modules, and env
 
 ```text
 browser  →  Caddy  →  :8400  /maaltijden

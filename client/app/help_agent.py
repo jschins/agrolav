@@ -1,4 +1,4 @@
-"""Answer questions about using Agrolav from hit terms in the root README."""
+"""Answer questions from hit terms in the root README and documentation pages."""
 from __future__ import annotations
 
 import re
@@ -51,25 +51,70 @@ def answer_question(question: str, root: Path | None = None) -> dict[str, object
     return _answer_from_brackets(text, root) or _miss()
 
 
+def _is_help_page(path: Path) -> bool:
+    """Help pages are markdown files whose names do not end in ``_tech``."""
+    return path.suffix.lower() == ".md" and not path.name.lower().endswith("_tech.md")
+
+
+_SKIP_DIRS = frozenset({".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", "dist"})
+
+
+def _help_pages(root: Path) -> list[tuple[str, str]]:
+    """Every markdown file under the repo whose name does not end in ``_tech``.
+
+    The language of a page does not matter. Only ``{en:}`` and ``{nl:}`` lines
+    are scored.
+    """
+    candidates: list[Path] = []
+    for path in sorted(root.rglob("*.md")):
+        if not _is_help_page(path):
+            continue
+        parts = path.relative_to(root).parts
+        if any(part.lower() in _SKIP_DIRS or part.startswith(".") for part in parts[:-1]):
+            continue
+        candidates.append(path)
+    pages: list[tuple[str, str]] = []
+    for path in candidates:
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        try:
+            source = path.relative_to(root).as_posix()
+        except ValueError:
+            source = path.name
+        pages.append((source, raw))
+    return pages
+
+
 def _answer_from_brackets(question: str, root: Path) -> dict[str, object] | None:
-    """Score only `{hit, terms}` lines in the root README. Show the whole section."""
-    path = root / "README.md"
-    if not path.is_file():
+    """Score `{en:}` and `{nl:}` lines. Show each matching section in full."""
+    pages = _help_pages(root)
+    if not pages:
         return None
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    question = _strip_discards(question, _discard_phrases(raw))
-    scored: list[tuple[int, str]] = []
-    for body, terms in _bracket_entries(raw):
-        score = _bracket_score(question, terms)
-        if score > 0:
-            scored.append((score, body))
+    discards: list[str] = []
+    for _source, raw in pages:
+        discards.extend(_discard_phrases(raw))
+    discards = list(dict.fromkeys(discards))
+    discards.sort(key=len, reverse=True)
+    question = _strip_discards(question, discards)
+    scored: list[tuple[int, str, str]] = []
+    for source, raw in pages:
+        for body, terms in _bracket_entries(raw):
+            score = _bracket_score(question, terms)
+            if score > 0:
+                scored.append((score, body, source))
     if not scored:
         return None
     scored.sort(key=lambda item: item[0], reverse=True)
-    return {"answer": "\n\n".join(body for _, body in scored), "sources": ["README.md"]}
+    sources: list[str] = []
+    for _score, _body, source in scored:
+        if source not in sources:
+            sources.append(source)
+    return {
+        "answer": "\n\n".join(body for _score, body, _source in scored),
+        "sources": sources,
+    }
 
 
 def _bracket_entries(text: str) -> list[tuple[str, list[str]]]:

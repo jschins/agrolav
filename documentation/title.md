@@ -56,7 +56,7 @@ The two lines are one `h1`: title, then a line break and the subtitle in
 
 ---
 
-## 3. Decision sequence
+## 3. Order that picks the sidebar title
 
 ```text
 access?
@@ -77,7 +77,7 @@ personal login AND more than one account?
 
 ---
 
-## 4. What this is not
+## 4. Browser tab, menu labels, and display_title
 
 - The browser tab uses the same title string (`document.title`), without the
   account subtitle.

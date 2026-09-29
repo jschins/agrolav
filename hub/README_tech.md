@@ -2,7 +2,7 @@
 
 Always-on hub; all data lives in SQL Server (agrolav-sql), not folders. See
 [`../README.md`](../README.md) for the frontend and
-[`../documentation/deployment.md`](../documentation/deployment.md) for
+[`../documentation/deployment_tech.md`](../documentation/deployment_tech.md) for
 production.
 
 **Centers and persons** are SQL Server rows (`dbo.center`, `dbo.person`);

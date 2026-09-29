@@ -53,7 +53,7 @@ person, or that unit account. The menu link is `RESULT_URL`, otherwise
 origin and proxy `/result*` to port 8500. The process is
 `uvicorn app.result_main:app` from the balance directory.
 
-## How it is put together
+## Hub logic, the client BFF, and the SQL tables
 
 The hub owns domain logic: login, IP allowlists, bank refresh (Enable
 Banking), Excel/CSV upload, categorization, and recalculation. The client
@@ -70,7 +70,7 @@ person has accounts; bookings sit in a per-country table
 as "12 Vervoer". Keyword terms and matrix footer labels live in dimension
 tables. See `DATABASE.md`.
 
-### Two ways money enters
+### Enable Banking and Excel or CSV upload
 
 **Enable Banking**
 
@@ -84,7 +84,7 @@ People paste a spreadsheet or a bank CSV. The hub parses the bytes,
 categorizes rows (remainder until keywords match), records the filename on
 `dbo.uploaded_files`, and writes the rows on `dbo.transaction_*`.
 
-## What users actually do
+## Matrix, booking list, refresh, and upload
 
 | Surface | Role |
 |---------|------|
@@ -95,4 +95,4 @@ categorizes rows (remainder until keywords match), records the filename on
 | Admin on :8200 | Add person, create country/center |
 
 The frontend user guide is the root `README.md`. Operator setup is
-`deployment.md`. The meal sheet is `maaltijden.md`.
+`deployment_tech.md`. The meal sheet is `maaltijden.md`.

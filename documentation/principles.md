@@ -146,7 +146,7 @@ The table is FROM's sign; TO is `+X` in every cell.
 
 ---
 
-## Why 2000 stays still (sketch)
+## Why eigen vermogen 2000 does not move
 
 Bank HIT of X on 1051 still keeps ΔA = ΔP_other (P_other includes 2100):
 

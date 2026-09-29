@@ -113,7 +113,7 @@ Do not `cat` `.env` into a terminal, chat, or pastebin. Inspect with
 
 ---
 
-## Shape of the public hop
+## Caddy forwards to localhost ports
 
 ```text
 Browser → https://expenses.apsurt.nl
@@ -132,7 +132,7 @@ Do not open 8100/8200/8300/8400. Do not proxy 1433 through Caddy.
 
 ---
 
-## Do not
+## Do not commit secrets or open ports
 
 - Commit `*.env`, `*.pem`, or connection strings
 - Put a password anywhere except the single secret file

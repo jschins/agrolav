@@ -91,7 +91,7 @@ single download does not mix with the rest of the center.
 
 ---
 
-## Sequence
+## Add person, PEM, consent, then download
 
 1. Open **Add person**.
 2. Create the `dbo.person` row (and optional mobile).

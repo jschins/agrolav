@@ -39,7 +39,7 @@ The menu row did not, because `dbo.menu_item` for `terms` had `unit = 0`.
 `hub/sql/menu_item.sql` sets `unit = 1` on that row. G-terms on that
 screen stay read-only.
 
-## Bookings
+## Whose bookings each login sees
 
 - An HD unit sees only its own bookings. That was already in place.
 - A work-unit’s booking list is its own account. Writes of a booking are
@@ -114,7 +114,7 @@ A person login does not get the red center row. The list is that
 person’s own accounts. A unit login does not get the red row on
 right-click, and a center-wide write from a unit login is refused.
 
-## Where it lives
+## Files that enforce login scope
 
 | Rule | Code |
 | --- | --- |
@@ -133,7 +133,7 @@ right-click, and a center-wide write from a unit login is refused.
 `hub/tests/test_term_scope.py` covers who may edit G-terms, which account
 a unit may edit, and the visibility ranks.
 
-## After deploy
+## SQL scripts and restarts after a scope change
 
 Run `hub/sql/menu_item.sql` on a database that does not yet show Edit
 Terms to a unit login. Run `hub/sql/category_visibility.sql` on the

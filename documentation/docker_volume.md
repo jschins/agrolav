@@ -16,7 +16,7 @@ nothing is copied as raw `.mdf`/`.ldf` files.
 
 ---
 
-## Why a named volume
+## A named volume survives container removal
 
 - Docker `stop`/`start` keeps the same container → data stays.
 - `docker compose down` + `up` **removes the container** and throws away its
@@ -304,7 +304,7 @@ You lose nothing: the `.bak` is the source of truth in both directions.
 
 ---
 
-## Reference
+## Server paths for the SQL volume
 
 | thing | location |
 |---|---|

@@ -2,7 +2,7 @@
 
 Thin BFF + frontend. All data comes from the hub (no local center copies).
 Frontend user guide: [`../README.md`](../README.md). Production:
-[`../documentation/deployment.md`](../documentation/deployment.md).
+[`../documentation/deployment_tech.md`](../documentation/deployment_tech.md).
 
 ## Configuration (no config file)
 

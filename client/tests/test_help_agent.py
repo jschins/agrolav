@@ -124,6 +124,34 @@ class HelpAgentTests(unittest.TestCase):
             self.assertNotIn("{", answer)
             self.assertNotIn("matrix", answer.lower())
 
+    def test_documentation_hit_list_is_searched_in_either_language(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text(
+                "## Log in\n\nEnter the password.\n{en:password}\n",
+                encoding="utf-8",
+            )
+            docs = root / "documentation"
+            docs.mkdir()
+            (docs / "login.md").write_text(
+                "## SMS\n\nEen sms-code na het wachtwoord.\n"
+                "{nl:sms,code}\n",
+                encoding="utf-8",
+            )
+            (docs / "deployment.md").write_text(
+                "# Deploy\n\nFILELISTONLY is an operator switch.\n",
+                encoding="utf-8",
+            )
+            (docs / "legacy_removal_agenda_tech.md").write_text(
+                "## Leftover\n\nDrop the folders.\n{en:folders}\n",
+                encoding="utf-8",
+            )
+            dutch = answer_question("sms code", root)
+            self.assertIn("sms-code", str(dutch["answer"]))
+            self.assertEqual(dutch["sources"], ["documentation/login.md"])
+            skipped = answer_question("FILELISTONLY folders", root)
+            self.assertEqual(skipped["sources"], [])
+
     def test_unknown_question_says_so(self) -> None:
         out = answer_question("quantum flux capacitor calibration")
         self.assertEqual(out["sources"], [])

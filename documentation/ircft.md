@@ -8,7 +8,7 @@ It is not Recalculate. Recalculate clears hits and scores the rows again from
 scratch. iRCfT leaves hand-set categories and Excel rows where they are, and
 it only walks each person’s latest booking year.
 
-## When a pass runs
+## Right-click queues the rescore until a menu click
 
 A right-click in the transactions view only saves the word and queues a pass.
 Repeated right-clicks in that view do the same. The pass runs when a menu item
@@ -19,7 +19,7 @@ already walking is included in one follow-up before the menu click returns.
 
 The terms editor runs iRCfT in the request and waits for it.
 
-## Scope
+## Personal term versus general term scope
 
 A personal term rescores that person. Where terms are stored per account, it
 rescores that account only. Several personal terms in one burst rescore every
@@ -31,7 +31,7 @@ general term in a burst widens the whole burst to that scope.
 For each person in scope, the walk loads that person’s latest year. Earlier
 years are not touched.
 
-## One pass
+## Removals first, then one addition walk
 
 1. Load the general term list and, for a personal edit, that person’s list
    (per account, when the country stores terms that way).
@@ -43,7 +43,7 @@ years are not touched.
 5. On a queued pass, publish the change event after those writes. The client
    then reloads the matrix and the open category.
 
-## Which rows move
+## Which modification values are rescored
 
 | `modification` | meaning | iRCfT |
 |---------------:|:--------|:------|
@@ -62,7 +62,7 @@ the row is not scored again.
 An unlocked row is scored on remove when its hit is the deleted term, or when
 it has no hit. Other unlocked rows are left on remove.
 
-## How one row is scored
+## Whole-word match and term priority
 
 The haystack is the booking’s name and description, lowercased. A term matches
 a whole word. A word ends at a space, a dot, a dash, or other punctuation

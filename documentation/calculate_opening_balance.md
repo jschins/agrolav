@@ -4,7 +4,7 @@ Bereken beginbalans writes `dbo.balance_opening` for the logged-in country and a
 
 Who sees the item is `dbo.menu_item` row `calculate-opening-balance`. The screen offers it when the country has a balance sheet.
 
-## Rows for year Y
+## Copy opening rows from year Y−1
 
 Y−1 must already have opening rows for this country. Otherwise the procedure stops with “No opening balance for Y−1”.
 
@@ -12,7 +12,7 @@ When Y has no rows, every opening row of Y−1 is copied (category and amount). 
 
 Afschrijving journals are rebuilt before the year-end amounts are read, so Y−1 includes the current depreciation rules.
 
-## Amounts
+## Year-end amounts, profit, and rekening courant
 
 The starting figure for each post is its year-end amount on the balance sheet of Y−1: opening of Y−1, plus that year’s journal, spaar-mirror, and bookings. A live bank post uses the account balance on that sheet.
 

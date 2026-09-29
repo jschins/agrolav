@@ -57,7 +57,7 @@ user gesture, so it often works, but Chrome can still refuse to raise the
 client. If opener was lost (reload, or the sheet was not opened from the
 client), Escape cannot transfer focus. That is expected.
 
-## Messages
+## postMessage types between client and balance sheet
 
 | type | from → to | meaning |
 |:-----|:----------|:--------|

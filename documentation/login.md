@@ -11,12 +11,15 @@ Voor de gebruiker heten die vier niveaus, in een land met balans,
 stichting, sectie, deel en werkeenheid.
 
 
-| Niveau  | Tabel         | Stichting   |
-| ------- | ------------- | ----------- |
-| country | `dbo.country` | stichting   |
-| center  | `dbo.center`  | sectie      |
-| person  | `dbo.person`  | deel        |
-| unit    | `dbo.unit`    | werkeenheid |
+
+| Niveau  | Tabel         | Gebruiker                                        |
+| ------- | ------------- | ------------------------------------------------ |
+| country | `dbo.country` | *Stichting*                                      |
+| center  | `dbo.center`  | *Sectie*                                         |
+| person  | `dbo.person`  | *Deel*                                           |
+| unit    | `dbo.unit`    | *Eenheid*: |
+|||+ Werkeenheid |
+|||+ Huishoudelijke Dienst|
 
 
 ---
@@ -25,17 +28,65 @@ stichting, sectie, deel en werkeenheid.
 
 ## Stichting Instudo
 
+<!-- NOTE: this formatting automatically disppears upon editing in Preview -->
 
-| Niveau      | Login-namen      |                |               |                  |
-| ----------- | ---------------- | -------------- | ------------- | ---------------- |
-| Stichting   | `beheer_instudo` |                |               |                  |
-| Sectie      | `instudo_sia`    | `instudo_sib`  |               |                  |
-| Deel        | `sia`            | `hd_sia`       | `sib`         | `hd_sib`         |
-| Werkeenheid | `aenstal`        |                | `leidenhoven` | `hd_leidenhoven` |
-|             | `hogeland`       | `hd_hogeland`  | `den_eker`    | `hd_den_eker`    |
-|             | `de_stade`       | `hd_de_stade`  | `lepelenburg` | `hd_lepelenburg` |
-|             | `de_borcht`      | `hd_de_borcht` | `jan_luijken` | `hd_jan_luijken` |
-|             | `concertgebouw`  |                |               |                  |
+<table>
+  <tr>
+    <td>Niveau</td>
+    <td colspan="4">Login-namen</td>
+  </tr>
+  <tr>
+    <td>Stichting</td>
+    <td colspan="4"><code>beheer_instudo</code></td>
+  </tr>
+  <tr>
+    <td>Sectie</td>
+    <td colspan="2"><code>instudo_sia</code></td>
+    <td colspan="2"><code>instudo_sib</code></td>
+  </tr>
+  <tr>
+    <td>Deel</td>
+    <td><code>sia</code></td>
+    <td><code>hd_sia</code></td>
+    <td><code>sib</code></td>
+    <td><code>hd_sib</code></td>
+  </tr>
+  <tr>
+    <td>Werkeenheid</td>
+    <td><code>aenstal</code></td>
+    <td></td>
+    <td><code>leidenhoven</code></td>
+    <td><code>hd_leidenhoven</code></td>
+  </tr>
+  <tr>
+    <td></td>
+    <td><code>hogeland</code></td>
+    <td><code>hd_hogeland</code></td>
+    <td><code>den_eker</code></td>
+    <td><code>hd_den_eker</code></td>
+  </tr>
+  <tr>
+    <td></td>
+    <td><code>de_stade</code></td>
+    <td><code>hd_de_stade</code></td>
+    <td><code>lepelenburg</code></td>
+    <td><code>hd_lepelenburg</code></td>
+  </tr>
+  <tr>
+    <td></td>
+    <td><code>de_borcht</code></td>
+    <td><code>hd_de_borcht</code></td>
+    <td><code>jan_luijken</code></td>
+    <td><code>hd_jan_luijken</code></td>
+  </tr>
+  <tr>
+    <td></td>
+    <td><code>concertgebouw</code></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+</table>
 
 
 Het sia-deel van sectie `instudo_sia` heeft 5 werkeenheden. Drie daarvan hebben een bijbehorende huishoudelijke dienst: Hogeland, De Stade en De Borcht. Aenstal en Concertgebouw hebben die niet.
@@ -49,24 +100,23 @@ Van die 19 zijn er 18 rekeningen van evenzoveel werkeenheden, en 1 van SVOa. SVO
 
 
 
-## Overzicht
+## Resultaat en balans per inlogniveau
 
-Op elk van de vier inlogniveaus zijn resultaat en balans in te zien. Die
-twee samen heten voorlopig **overzicht**.
+Op elk van de vier inlogniveaus zijn resultaat en balans in te zien, hieronder samen *overzicht*  genoemd.
 
-- Op werkeenheid-niveau ziet elke huishoudelijke dienst het eigen overzicht.
-Elk centrum ziet de consolidatie van het eigen overzicht met dat van de
-bijbehorende huishoudelijke dienst. Die consolidatie heet voorlopig
-**hd_sibling-consolidatie**.
-- Op deel-niveau zijn de overzichten van de centra en van hun
+- Op eenheid-inlogniveau ziet elke huishoudelijke dienst het eigen overzicht.
+Elke werkeenheid ziet de consolidatie van het eigen overzicht met dat van de
+bijbehorende huishoudelijke dienst.
+- Op sectie- en deel-inlogniveau zijn de overzichten van de werkeenheid en geassocieerde
 huishoudelijke dienst apart zichtbaar.
-- Op sectie-niveau eveneens.
-- Op stichting-niveau vindt hd_sibling-consolidatie plaats.
+- Op stichting-niveau wordt weer geconsolideerd.
 
 Het overzicht kan op elk inlogniveau lokaal worden gedownload met de knop
 **Export** in het Resultaat-venster.
 
-Op stichting-niveau staat er een extra menu-item, **Export zip**. Dat
+Op eenheid- en deel-inlogniveaus is er een extra menuknop met maandelijkse overzichten beschikbaar.
+
+Op stichting-niveau staat er een extra menuknop, **Export zip**. Dat
 levert een zip-bestand met de 18 overzichten van de werkeenheden en het
 overzicht van de stichting: 19 bestanden.
 
@@ -78,13 +128,13 @@ overzicht van de stichting: 19 bestanden.
 
 Alle vier niveaus bewaren een scrypt-wachtwoordhash. Person- en unit-logins
 kunnen ook een mobiel nummer instellen en de login daarna bevestigen met
-een sms-code voor eenmalig gebruik.
+een sms-code voor eenmalig gebruik met tweestaps verificatie.
 
 ---
 
 
 
-## Vier-niveaus-inlogschema
+## SMS en IP-gate per inlogniveau
 
 SMS: inloggen in twee stappen wanneer `mobile_phone` is gezet.
 
@@ -108,7 +158,7 @@ ook bij een directe aanroep.
 
 
 
-## Browser path
+## Login request path and scrypt hash
 
 ```text
 Browser → client POST /api/login
@@ -159,7 +209,7 @@ Country and center never take this path.
 
 
 
-## Schema
+## password_hash and mobile_phone on dbo.person
 
 On `dbo.person`:
 
@@ -176,7 +226,7 @@ On `dbo.person`:
 
 
 
-## Files
+## Where login and OTP are implemented
 
 
 | Area              | Where                                              |

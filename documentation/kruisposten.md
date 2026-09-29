@@ -13,7 +13,7 @@ not take a block. A `dbo.dim_category` row for that local code supplies
 the id when one exists. Otherwise the formula is used. A matched row whose `modification` is -1 or 0 is
 written with `modification = 1`. A row at 2 is not written.
 
-## Which rows are considered
+## Which statements form a pair
 
 Every account in the country that has an IBAN in `dbo.account` is read.
 Two statements form a pair when all of the following hold:
@@ -55,7 +55,7 @@ The unit's bookings go to local xx1x, the same four digits plus 10, which countr
 
 `unit1102` through `unit1109` write the unit to categories 11112 through 11119. `unit1108` writes the unit to 11118 and the sibling to the `cp` row.
 
-## Everything else
+## Pairs that match no cross-posting rule
 
 A pair that matches none of the rules above is not given a cross-posting
 category.

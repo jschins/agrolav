@@ -26,7 +26,7 @@ is no dual-write path left.
 
 ---
 
-## Hygiene
+## Hostname, secrets, and a matching schema
 
 | Item | Why |
 |------|-----|
@@ -36,5 +36,5 @@ is no dual-write path left.
 
 ---
 
-*Sources: DATABASE.md, deployment.md, SAFETY.md, double_login.md, and the
+*Sources: DATABASE.md, deployment_tech.md, SAFETY.md, double_login.md, and the
 hub/client Python + React tree.*

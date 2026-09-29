@@ -1,6 +1,6 @@
 # Passwords — where they live and how to change them
 
-## The notion of "the password" here
+## Service secrets live in one .env file
 
 The services do not read passwords from a database, a config UI, or a login
 table. Every credential a machine needs at runtime is read from **environment
@@ -48,7 +48,7 @@ passwords (`PREFIX + username`) also skip this rule set on purpose.
 
 ---
 
-## The four passwords
+## sa, API key, session secret, and SSH
 
 ### 1. SQL Server `sa` password
 
@@ -135,7 +135,7 @@ notes are historical only.
 
 ---
 
-## Other secrets in the same file
+## OTP and Twilio secrets in the root .env
 
 `HUB_OTP_SECRET`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`
 (person SMS login) follow the same pattern: single line in the root `.env`,
@@ -217,7 +217,7 @@ set-password API rejects country/center sessions even when called directly.
 
 ---
 
-## The rules
+## Passwords stay in the root .env
 
 - All passwords live only in the root `.env` (local) / `/opt/agrolav/.env`
   (server). No password anywhere else.
@@ -230,7 +230,7 @@ set-password API rejects country/center sessions even when called directly.
   them.
 - Do not paste a real password into a doc, a script, or a commit message.
 
-## Local start
+## Start the hub on this PC
 
 ```powershell
 cd C:\Coding\agrolav\hub
@@ -246,7 +246,7 @@ loopback and writes nothing to `dbo.visitor_ip`. Never set it on the server.
 
 ---
 
-## Exposure: disk vs terminal
+## .env on disk versus printing it in the terminal
 
 **Disk storage is the safer of the two places these secrets live.**
 

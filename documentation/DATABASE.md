@@ -2,7 +2,7 @@
 
 SQL Server database **agrolav** is the source of truth. Logins, bookings,
 categories, bank connections, and IP allowlists all live here. Backup and
-restore for both instances are in this file, not in `deployment.md`.
+restore for both instances are in this file, not in `deployment_tech.md`.
 
 Schema sources in the repo:
 
@@ -796,7 +796,7 @@ is in a later week, extras are reset to 0.
 
 ---
 
-## Logins
+## Person, center, and country login rows
 
 A login is a row in one of three tables, and which one it is decides the
 access level:
@@ -821,7 +821,7 @@ on the server.
 
 ---
 
-## Reports
+## Report labels from dim_category
 
 UI labels always go through `dim_category` on the **effective** category:
 

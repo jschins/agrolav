@@ -25,3 +25,5 @@ that scope.
 
 The terms editor and "Recalculate" still run their own rescore in the request
 and wait for it.
+<!-- {en:rescore[5],right-click[5],edits[5],term,terms,menu,matrix,queue,personal,general,account,person,center,excel,locked,recalculate} -->
+<!-- {nl:herscoren[5],rechtsklik[5],bewerkingen[5],term,termen,menu,matrix,wachtrij,persoonlijk,gemeenschappelijk,rekening,persoon,centrum,excel,vergrendeld,herberekenen} -->

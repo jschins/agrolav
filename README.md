@@ -9,8 +9,9 @@ number to open the bookings behind it. Categories are assigned from keywords
 (terms) in the name and description.
 
 This page has two uses. It is the description of what you can do in the app,
-and it is the only page the question box reads. Operator setup lives in
-`documentation/deployment.md`.
+and the question box reads it together with every other markdown file in the
+repo whose name does not end in `_tech`. The language of those pages does not matter.
+Operator setup lives in `documentation/deployment_tech.md`.
 
 Each later section ends with one `{en: …}` line and one `{nl: …}` line. Those
 lines are hidden in the preview. The question box counts only those terms, not
@@ -75,7 +76,7 @@ back.
 
 ## The menu
 
-### Always (when the item exists)
+### Menu items on every login
 
 Open **menu**. What you see depends on the login. Items that do not apply are
 not listed.
@@ -144,7 +145,7 @@ matrix menu (not on Terms, categories, IP, password, split, or a journal
 page).
 <!-- {en:back[5],summary[5],matrix,return,overview} -->
 <!-- {nl:terug[5],overzicht[5],matrix,terugkeren,samenvatting} -->
-### Country and center logins
+### Edit categories and the IP allowlist
 
 **Edit categories**  
 Change the country’s category codes and labels. See
@@ -168,7 +169,7 @@ cannot be undone.
   consolidated does not wipe.
 <!-- {en:wipe[5],year[5],years[5],delete,person,people,center,centers,account,accounts} -->
 <!-- {nl:wissen[5],jaar[5],jaren[5],verwijderen,persoon,personen,centrum,centra,rekening,rekeningen} -->
-### Person login only
+### Set password on a person login
 
 **Set password**  
 Change your password and optional mobile number. See
@@ -410,7 +411,7 @@ range and fills the matrix.
 
 ---
 
-## When a saved term is applied
+## Background rescore after saving a term
 
 A right-click in the booking list only saves the word and queues a pass.
 Repeated right-clicks do the same. The pass runs when you click a menu item.
