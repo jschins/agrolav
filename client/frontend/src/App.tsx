@@ -634,6 +634,8 @@ function resultaatSections(data: ExportResultaatData): {
   title: string;
   header: (string | number)[];
   body: (string | number)[][];
+  /** Month columns whose three Resultaat lines do not add up to Banksaldo. */
+  mismatch?: boolean[];
 }[] {
   const monthCount = resultaatVisibleMonthCount(data.year, data.month_count);
   const monthNames = RESULTAAT_MONTHS.slice(0, monthCount);
@@ -647,6 +649,7 @@ function resultaatSections(data: ExportResultaatData): {
     title: string;
     header: (string | number)[];
     body: (string | number)[][];
+    mismatch?: boolean[];
   }[] = [];
 
   const categoryBody: (string | number)[][] = [];
@@ -670,28 +673,30 @@ function resultaatSections(data: ExportResultaatData): {
     ...saldoMonths.map((n) => euro2(n)),
     euro2(saldoCumul),
   ]);
-  sections.push({ title: "Totalen per categorie", header, body: categoryBody });
+  sections.push({ title: "Resultaat", header, body: categoryBody });
 
   if (data.cashflow_1053) {
-    const cashBody: (string | number)[][] = [];
-    const cashLine = (line: ExportExcelLine, cumulMode: "sum" | "none") => {
-      const parts = padMonths(line.months);
-      const monthSum = parts.reduce((sum, n) => sum + n, 0);
-      const cumul =
-        cumulMode === "none"
-          ? ""
-          : parts.some((n) => n !== 0)
-            ? euro2(monthSum)
-            : euro2(line.amount);
-      cashBody.push(["", line.label, ...parts.map((n) => euro2(n)), cumul]);
-    };
-    cashLine(data.cashflow_1053.stichting, "sum");
-    cashLine(data.cashflow_1053.inkomsten, "sum");
-    cashLine(data.cashflow_1053.uitgaven, "sum");
-    cashLine(data.cashflow_1053.resultaat, "sum");
-    cashBody.push([]);
-    cashLine(data.cashflow_1053.banksaldo, "none");
-    sections.push({ title: "Resultaat", header, body: cashBody });
+    const opening = padMonths(data.cashflow_1053.opening?.months);
+    const other = padMonths(data.cashflow_1053.other?.months);
+    const closing = padMonths(data.cashflow_1053.banksaldo?.months);
+    const cents = (n: number) => Math.round((n + Number.EPSILON) * 100);
+    const mismatch = saldoMonths.map(
+      (total, i) => cents(opening[i] + other[i] + total) !== cents(closing[i])
+    );
+    const balanceHeader: (string | number)[] = ["Code", "Post", ...monthNames];
+    const cashBody: (string | number)[][] = [
+      ["", "Beginsaldo", ...opening.map((n) => euro2(n))],
+      ["", "Overige mutaties", ...other.map((n) => euro2(n))],
+      ["", "Resultaat", ...saldoMonths.map((n) => euro2(n))],
+      [],
+      ["", "Banksaldo einde maand", ...closing.map((n) => euro2(n))],
+    ];
+    sections.push({
+      title: "Balans",
+      header: balanceHeader,
+      body: cashBody,
+      mismatch,
+    });
   }
   if (data.maaltijden) {
     const ont = padMonths(data.maaltijden.ontbijten);
@@ -2846,7 +2851,15 @@ export default function App() {
         ) : isSearch ? (
           <SearchStatementsApp key={wsEpoch} terms={menuTerms} />
         ) : isMonthly ? (
-          <MonthlyDrilldownApp key={wsEpoch} year={year} dataRev={dataRev} />
+          <MonthlyDrilldownApp
+            key={wsEpoch}
+            brandName={brandName}
+            year={year}
+            bankView={bankView}
+            dataRev={dataRev}
+            bankOptions={bankOptions}
+            menuTerms={menuTerms}
+          />
         ) : (
           <MainApp
             key={wsEpoch}
@@ -3020,6 +3033,23 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
       </form>
     </div>
   );
+}
+
+function accountSidebarTitle(
+  brandName: string,
+  bankView: string,
+  bankOptions: BankAccount[] | undefined,
+  terms: Record<string, string> | undefined
+): string {
+  const title = brandName;
+  const accountCount = bankOptions?.length ?? 0;
+  if (accountCount <= 1) return title;
+  const subtitle =
+    bankView === "consolidated"
+      ? tableHeaderTerm(terms, "Consolidated")
+      : bankOptions?.find((a) => a.iban === bankView)?.account_name?.trim() || "";
+  if (!subtitle) return title;
+  return `${title}\n${subtitle}`;
 }
 
 function FitSidebarTitle({ text }: { text: string }) {
@@ -3661,17 +3691,12 @@ function MainApp({
   const inPView = selection !== null;
   const displayMatrix = matrix;
 
-  const sidebarTitle = (() => {
-    const title = brandName;
-    const accountCount = bankOptions?.length ?? 0;
-    if (accountCount <= 1) return title;
-    const subtitle =
-      bankView === "consolidated"
-        ? tableHeaderTerm(matrix?.table_header_terms ?? menuTerms, "Consolidated")
-        : bankOptions?.find((a) => a.iban === bankView)?.account_name?.trim() || "";
-    if (!subtitle) return title;
-    return `${title}\n${subtitle}`;
-  })();
+  const sidebarTitle = accountSidebarTitle(
+    brandName,
+    bankView,
+    bankOptions,
+    matrix?.table_header_terms ?? menuTerms
+  );
 
   return (
     <div className="app">
@@ -4645,16 +4670,18 @@ function formatResultaatEuro2Cell(cell: string | number | undefined): string {
 function ResultaatPreviewTable({
   year,
   dataRev,
+  account,
 }: {
   year: string;
   dataRev: number;
+  account?: string;
 }) {
   const [data, setData] = useState<ExportResultaatData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    getExportResultaat(year)
+    getExportResultaat(year, account)
       .then((payload) => {
         if (cancelled) return;
         setData(payload);
@@ -4668,31 +4695,32 @@ function ResultaatPreviewTable({
     return () => {
       cancelled = true;
     };
-  }, [year, dataRev]);
+  }, [year, dataRev, account]);
 
   if (error) return <p className="error">{error}</p>;
   if (!data) return null;
   const sections = resultaatSections(data);
   if (sections.length === 0) return null;
-  const strongLabels = new Set(["Totaal", "Resultaat", "Banksaldo einde maand"]);
-  const numCols = Math.max(0, (sections[0]?.header.length ?? 2) - 2);
+  const strongLabels = new Set(["Totaal", "Banksaldo einde maand"]);
   return (
-    <div
-      className="resultaat-preview"
-      style={{ ["--resultaat-num-cols" as string]: String(numCols) }}
-    >
+    <div className="resultaat-preview">
       {sections.map((section) => {
         const colCount = section.header.length;
-        const monthCols = Math.max(0, colCount - 3);
+        const hasCumul = section.header[colCount - 1] === "Cumulatief";
+        const monthCols = Math.max(0, colCount - 2 - (hasCumul ? 1 : 0));
         return (
-          <table key={section.title} className="totals-table resultaat-preview-table">
+          <table
+            key={section.title}
+            className="totals-table resultaat-preview-table"
+            style={{ ["--resultaat-num-cols" as string]: String(Math.max(0, colCount - 2)) }}
+          >
             <colgroup>
               <col className="col-code" />
               <col className="col-post" />
               {Array.from({ length: monthCols }, (_, i) => (
                 <col key={i} className="col-month" />
               ))}
-              <col className="col-cumul" />
+              {hasCumul ? <col className="col-cumul" /> : null}
             </colgroup>
             <thead>
               <tr>
@@ -4722,10 +4750,21 @@ function ResultaatPreviewTable({
                     {Array.from({ length: colCount }, (_, i) => {
                       const cell = row[i];
                       const isNum = i >= 2;
+                      const isCumul = hasCumul && i === colCount - 1;
+                      const off =
+                        isNum && !isCumul && section.mismatch?.[i - 2] === true;
                       return (
                         <td
                           key={i}
-                          className={isNum ? "num" : i === 0 ? "code" : "cat"}
+                          className={
+                            isNum
+                              ? off
+                                ? "num resultaat-mismatch"
+                                : "num"
+                              : i === 0
+                                ? "code"
+                                : "cat"
+                          }
                         >
                           {isNum
                             ? twoDecimals
@@ -4746,7 +4785,21 @@ function ResultaatPreviewTable({
   );
 }
 
-function MonthlyDrilldownApp({ year, dataRev }: { year: string; dataRev: number }) {
+function MonthlyDrilldownApp({
+  brandName,
+  year,
+  bankView,
+  dataRev,
+  bankOptions,
+  menuTerms,
+}: {
+  brandName: string;
+  year: string;
+  bankView: string;
+  dataRev: number;
+  bankOptions: BankAccount[];
+  menuTerms: Record<string, string>;
+}) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!isPlainAlt(e)) return;
@@ -4759,9 +4812,12 @@ function MonthlyDrilldownApp({ year, dataRev }: { year: string; dataRev: number 
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const sidebarTitle = accountSidebarTitle(brandName, bankView, bankOptions, menuTerms);
+
   return (
     <div className="app">
       <aside className="sidebar">
+        {sidebarTitle ? <FitSidebarTitle text={sidebarTitle} /> : null}
         <div className="winbar">
           <div className="sidebar-field">
             <span className="sidebar-field-legend" aria-hidden="true">
@@ -4774,7 +4830,7 @@ function MonthlyDrilldownApp({ year, dataRev }: { year: string; dataRev: number 
         </div>
       </aside>
       <main className="content">
-        <ResultaatPreviewTable year={year} dataRev={dataRev} />
+        <ResultaatPreviewTable year={year} dataRev={dataRev} account={bankView} />
       </main>
     </div>
   );

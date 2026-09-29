@@ -940,14 +940,27 @@ def unit_result_sheet(year: int, *, login: str, account: str) -> dict[str, Any]:
     return payload
 
 
-def export_resultaat_excel_data(year: int) -> dict[str, Any]:
-    """P&L workbook for the current login scope (person / center / country)."""
+def export_resultaat_excel_data(year: int, account: str | None = None) -> dict[str, Any]:
+    """P&L workbook for the current login scope (person / center / country).
+
+    A unit login is always its own account. A person login may pass the
+    bank-switcher IBAN; consolidated leaves ``account`` empty.
+    """
     cfg = load_config()
     qs = [f"year={int(year)}"]
     if cfg.access in (ACCESS_PERSON, ACCESS_UNIT) and cfg.person:
         qs.append(f"person={urllib.parse.quote(cfg.person)}")
     elif cfg.access == ACCESS_CENTER and cfg.center:
         qs.append(f"center_name={urllib.parse.quote(cfg.center)}")
+    iban = ""
+    if cfg.access == ACCESS_UNIT:
+        iban = "".join(str(cfg.account or "").split()).upper()
+    elif cfg.access == ACCESS_PERSON:
+        raw = "".join(str(account or "").split()).upper()
+        if raw and raw != "CONSOLIDATED":
+            iban = raw
+    if iban:
+        qs.append(f"account={urllib.parse.quote(iban)}")
     return hub_get(f"/export-resultaat?{'&'.join(qs)}", timeout=90.0)
 
 

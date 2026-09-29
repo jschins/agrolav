@@ -110,10 +110,11 @@ export interface ExportResultaatAccount {
 }
 
 export interface ExportResultaatCashflow {
-  stichting: ExportExcelLine;
-  inkomsten: ExportExcelLine;
-  uitgaven: ExportExcelLine;
-  resultaat: ExportExcelLine;
+  /** Balance of the scoped accounts at the start of each month. */
+  opening: ExportExcelLine;
+  /** Account movements that are not in the category-totals rows. */
+  other: ExportExcelLine;
+  /** Balance of the scoped accounts at the end of each month. */
   banksaldo: ExportExcelLine;
 }
 
@@ -220,9 +221,13 @@ export interface ExportResultaatData {
   cashflow_1053?: ExportResultaatCashflow | null;
 }
 
-export function getExportResultaat(year?: string): Promise<ExportResultaatData> {
-  const q = year ? `?year=${encodeURIComponent(year)}` : "";
-  return getJson(`/api/export-resultaat${q}`);
+export function getExportResultaat(year?: string, account?: string): Promise<ExportResultaatData> {
+  const q = new URLSearchParams();
+  if (year) q.set("year", year);
+  const iban = (account || "").trim();
+  if (iban && iban !== "consolidated") q.set("account", iban);
+  const text = q.toString();
+  return getJson(`/api/export-resultaat${text ? `?${text}` : ""}`);
 }
 
 export function recalculate(): Promise<MatrixResponse> {

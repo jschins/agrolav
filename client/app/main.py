@@ -776,14 +776,18 @@ def api_unit_result_sheet(
 
 
 @app.get("/api/export-resultaat")
-def api_export_resultaat(year: int | None = Query(default=None)) -> dict[str, Any]:
+def api_export_resultaat(
+    year: int | None = Query(default=None),
+    account: str | None = Query(default=None),
+) -> dict[str, Any]:
     import datetime
 
     from app.centrale_sync import export_resultaat_excel_data
 
     try:
         return export_resultaat_excel_data(
-            int(year) if year else int(datetime.date.today().year)
+            int(year) if year else int(datetime.date.today().year),
+            account=(account or "").strip() or None,
         )
     except Exception as exc:
         raise _hub_error(exc) from exc

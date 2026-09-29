@@ -927,6 +927,10 @@ th {
   overflow: hidden;
 }
 
+.resultaat-preview-table td.num.resultaat-mismatch {
+  color: #b91c1c;
+}
+
 .resultaat-preview-table tr.resultaat-spacer-row td {
   border-left: none;
   border-right: none;
