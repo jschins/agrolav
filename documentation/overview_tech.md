@@ -4,8 +4,7 @@
 |-----------|------|------|
 | Hub | :8200 | FastAPI data API |
 | Client | :8300 | BFF + React UI |
-| Balance | :8100 | Balance sheets under `/balance/{slug}` |
-| Result | :8500 | Profit/loss under `/result/{slug}` |
+| Balance | :8500 | Profit/loss under `/result/{slug}` |
 | Maaltijden | :8400 | Meal matrix for `nl_dkg` at `/maaltijden` |
 | SQL Server | :1433 | Authoritative store |
 | Caddy | 80/443 | Public HTTPS; hub and apps stay on loopback |
@@ -22,60 +21,50 @@ appear in `dbo.egress_ip` or in that login's own `egress_ip` column,
 and an empty column admits nobody. Person logins are not IP-gated.
 Attempted public addresses land in `dbo.visitor_ip`.
 
-## Hub, client, balance, and result
+## Hub, client, and balance
 
 | Process | Port | What the browser sees |
 |---------|------|------------------------|
 | Hub | 8200 | Nothing of its own. Caddy forwards selected `/api/local/*` calls. |
 | Client | 8300 | The site: login, matrix, menu. |
-| Balance | 8100 | `/balance/{slug}/` — the balance sheet. |
-| Result | 8500 | `/result/{slug}/` — profit/loss (Resultaat). |
+| Balance | 8500 | `/result/{slug}/` — profit/loss (Resultaat). |
 
-All four bind to `127.0.0.1`. `slug` is `dbo.country.username`.
+All three bind to `127.0.0.1`. `slug` is `dbo.country.username`.
 
 The hub is the data API: login, bookings, categories, bank refresh, and
 upload. SQL Server is the only store. The client is the BFF and the React
 UI. The browser session stays on the client, and the client calls the hub.
 
-Balance and Result are separate windows opened from the client menu. Escape
-on the sheet, or logout on the menu page, closes that window. Both are
-served from the balance app and its frontend build (`balance/frontend/dist`).
+Balance is a window opened from the client menu. Escape on the sheet, or
+logout on the menu page, closes that window. It is served from the balance
+app and its frontend build (`balance/frontend/dist`).
 
-Balance shows local codes 1000–2999, and only for a country with
-`dbo.country.has_balance = 1`. The amounts are the whole country. The menu
-link is `BALANCE_URL`, otherwise `PUBLIC_HUB_URL`, otherwise
-`http://127.0.0.1:8100`. Caddy proxies `/balance*` to port 8100.
-
-Result shows local codes 3000–4999: kosten 3000–3999 and opbrengsten
+Balance shows local codes 3000–4999: kosten 3000–3999 and opbrengsten
 4000–4999. The amounts follow the login — the country, that center, that
 person, or that unit account. The menu link is `RESULT_URL`, otherwise
 `http://127.0.0.1:8500`. On the public site set `RESULT_URL` to the site
 origin and proxy `/result*` to port 8500. The process is
 `uvicorn app.result_main:app` from the balance directory.
 
-### Starting Balance and Result locally
+### Starting Balance locally
 
-Both commands run from the `balance` directory. That directory is one Python
-project (`balance/pyproject.toml`, one `.venv`). It publishes two console
-scripts:
+The command runs from the `balance` directory. That directory is one Python
+project (`balance/pyproject.toml`, one `.venv`). It publishes one console
+script:
 
 | Command | Calls | Port |
 |---------|--------|------|
-| `uv run balance` | `app.main:run` | 8100 |
-| `uv run result` | `app.result_main:run` | 8500 |
+| `uv run balance` | `app.result_main:run` | 8500 |
 
-`uv run balance` starts the balance sheet. `uv run result` starts the
-profit/loss window. The module form
+`uv run balance` starts the profit/loss window. The module form
 `.\.venv\Scripts\python.exe -m app.result_main` calls the same
-`app.result_main:run` function as `uv run result`. `uv run` looks the name
+`app.result_main:run` function as `uv run balance`. `uv run` looks the name
 up in `[project.scripts]` and runs it with the project virtualenv;
 `python -m` loads that module with the virtualenv interpreter directly.
 
-There is no `result` directory and no separate `uv run result` project.
-Result shares the balance virtualenv, dependencies, and
-`balance/frontend/dist`. Hub, client, and balance each have their own
-directory and `pyproject.toml`. Result is the second process of the balance
-project.
+There is no `result` directory. Balance uses that project's virtualenv,
+dependencies, and `balance/frontend/dist`. Hub, client, and balance each
+have their own directory and `pyproject.toml`.
 
 ## Hub logic, the client BFF, and the SQL tables
 

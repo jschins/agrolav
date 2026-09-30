@@ -67,7 +67,7 @@ _SQL_UNIT_SELECT = """
 SELECT
     u.unit_id AS id,
     u.username COLLATE Latin1_General_CI_AI AS username,
-    u.username COLLATE Latin1_General_CI_AI AS title,
+    u.title AS title,
     c.username COLLATE Latin1_General_CI_AI AS country,
     n.username COLLATE Latin1_General_CI_AI AS center,
     p.username COLLATE Latin1_General_CI_AI AS person,
@@ -447,7 +447,6 @@ def _row_to_user(row: Any) -> dict[str, Any]:
     if account:
         out["account"] = account
         out["unit"] = username
-        out["title"] = display_title(username)
         hd_raw = _cell(row, "hd")
         if hd_raw is None:
             out["hd"] = username.lower().startswith("hd_")
@@ -680,6 +679,26 @@ def _ensure_login_titles(cursor) -> None:
             )
 
 
+def _ensure_unit_title(cursor) -> None:
+    """``dbo.unit.title`` is the unit heading. Copy it from the account name once."""
+    cursor.execute("SELECT OBJECT_ID(N'dbo.unit', N'U')")
+    if cursor.fetchone()[0] is None:
+        return
+    cursor.execute("SELECT COL_LENGTH(N'dbo.unit', N'title')")
+    if cursor.fetchone()[0] is None:
+        cursor.execute("ALTER TABLE dbo.unit ADD title NVARCHAR(256) NULL")
+    cursor.execute(
+        """
+        UPDATE u
+        SET title = a.account_name
+        FROM dbo.unit u
+        INNER JOIN dbo.account a ON a.account_id = u.unit_id
+        WHERE (u.title IS NULL OR LTRIM(RTRIM(u.title)) = N'')
+          AND LTRIM(RTRIM(ISNULL(a.account_name, N''))) <> N''
+        """
+    )
+
+
 def _require_consent_pending(cursor) -> None:
     """``dbo.consent_pending`` must already exist (SSMS)."""
     cursor.execute("SELECT OBJECT_ID(N'dbo.consent_pending', N'U')")
@@ -709,6 +728,7 @@ def init_user_store() -> str:
                 "already has this table (fresh empty DB: load_phase_c.py)."
             )
         _ensure_login_titles(cursor)
+        _ensure_unit_title(cursor)
         _require_consent_pending(cursor)
         conn.commit()
         _STORE_READY = True

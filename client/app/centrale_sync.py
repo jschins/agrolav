@@ -108,7 +108,7 @@ def _result_url(cfg: HubConfig) -> str:
         account = "".join(str(cfg.account or "").split()).upper()
         if account:
             params["account"] = account
-    label = str(cfg.title or "").strip()
+    label = sidebar_title_from_config(cfg)
     if label:
         params["label"] = label
     login = str(cfg.username or "").strip()
@@ -1073,7 +1073,7 @@ def _hub_user_title(username: str) -> str:
 
 
 def sidebar_title(*, username: str = "", access: str = "", center: str = "", country: str = "", fallback: str = "") -> str:
-    """Left-pane heading from the login row: person, center, or country title."""
+    """Left-pane heading: unit, person, center, or country title from that login's table."""
     access_n = _coerce_access(access) if access else ""
     if access_n == ACCESS_COUNTRY:
         return (

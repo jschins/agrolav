@@ -124,10 +124,10 @@ button.export-knob:disabled { opacity: 0.55; cursor: default; }
 .toolbar .balance-badge { font-size: 0.9rem; }
 .balance-badge.ok { color: #1a7f37; font-weight: 600; }
 .balance-badge.bad { color: #b42318; font-weight: 600; }
-.error { color: #b42318; background: #fdecea; border: 1px solid #f5c6c2; padding: 10px 12px; border-radius: 6px; margin-bottom: 16px; white-space: pre-wrap; }
-.sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .balance-below { margin-top: 28px; }
 .balance-below > h2 { margin: 0 0 12px; font-size: 1.25rem; }
+.error { color: #b42318; background: #fdecea; border: 1px solid #f5c6c2; padding: 10px 12px; border-radius: 6px; margin-bottom: 16px; white-space: pre-wrap; }
+.sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .sheet .column { background: #fff; border: 1px solid #e0e3e8; border-radius: 8px; overflow: hidden; }
 .sheet .column h2 { margin: 0; padding: 10px 14px; font-size: 1rem; background: #ffecbc; border-bottom: 1px solid #e0e3e8; }
 .sheet table { width: 100%; border-collapse: collapse; }

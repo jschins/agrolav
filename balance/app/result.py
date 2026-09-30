@@ -1046,28 +1046,35 @@ def result_sheet(
     inkomsten = total(opbrengsten)
     if kind == "hd":
         inkomsten = -inkomsten
+    scope_banks = bool(person.strip() or center.strip()) and not unit_level
     cash = None
-    if unit_level:
+    if unit_level or scope_banks:
         opening_day = date(year, 1, 1)
         present_day = _present_day(year, cutoff)
-        if named_banks and login_account is not None and sibling is not None:
+        if unit_level and named_banks and login_account is not None and sibling is not None:
             bank_rows = [login_account, sibling]
-        elif login_account is not None:
+            named = True
+            rc_center = login_account.center
+        elif unit_level and login_account is not None:
             bank_rows = [login_account]
+            named = False
+            rc_center = login_account.center
         else:
             bank_rows = _scoped_accounts(
                 accounts, person=person, center=center, account=account
             )
+            named = not unit_level and len(bank_rows) > 1
+            rc_center = center or (bank_rows[0].center if bank_rows else "")
         rc_lines = _cross_cash_lines(
             country_id,
             [item.account_id for item in bank_rows],
             opening_day,
             present_day,
-            center=login_account.center if login_account is not None else center,
+            center=rc_center,
         )
         cash = build_cash_table(
             _balances_at(country_id, bank_rows, opening_day, present_day),
-            named=named_banks,
+            named=named,
             inkomsten=inkomsten,
             uitgaven=uitgaven,
             opening_day=opening_day,

@@ -20,9 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-balance = "app.main:run"
-balance-hub = "app.main:run"
-result = "app.result_main:run"
+balance = "app.result_main:run"
 
 [dependency-groups]
 build = ["pyinstaller>=6.0"]

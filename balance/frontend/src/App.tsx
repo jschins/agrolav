@@ -683,7 +683,7 @@ export default function App() {
         </div>
       )}
 
-      {resultView && sheet?.balance ? (
+      {resultView && isCountryLogin() && sheet?.balance ? (
         <section className="balance-below">
           <h2>Balans</h2>
           <div className="sheet">
@@ -706,7 +706,7 @@ export default function App() {
           </div>
         </section>
       ) : null}
-      {resultView && sheet?.balance_error ? (
+      {resultView && isCountryLogin() && sheet?.balance_error ? (
         <div className="error">{sheet.balance_error}</div>
       ) : null}
 

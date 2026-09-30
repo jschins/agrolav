@@ -3382,8 +3382,6 @@ def export_zip_manifest(country: str) -> dict[str, Any]:
         raise ValueError("country is required")
 
     def _run() -> dict[str, Any]:
-        from app.user_store import display_title
-
         cursor = _cursor()
         country_id = _country_id_for(cursor, name)
         if country_id is None:
@@ -3435,6 +3433,7 @@ def export_zip_manifest(country: str) -> dict[str, Any]:
             """
             SELECT
                 u.username,
+                u.title,
                 a.iban
             FROM dbo.unit u
             INNER JOIN dbo.account a ON a.account_id = (
@@ -3467,8 +3466,8 @@ def export_zip_manifest(country: str) -> dict[str, Any]:
             units.append(
                 {
                     "username": username,
-                    "title": display_title(username),
-                    "account": "".join(str(item[1] or "").split()).upper(),
+                    "title": str(item[1] or "").strip(),
+                    "account": "".join(str(item[2] or "").split()).upper(),
                 }
             )
         return {

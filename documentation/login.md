@@ -11,83 +11,33 @@ Voor de gebruiker heten die vier niveaus, in een land met balans,
 stichting, sectie, deel en werkeenheid.
 
 
-
-| Niveau  | Tabel         | Gebruiker                                        |
-| ------- | ------------- | ------------------------------------------------ |
-| country | `dbo.country` | *Stichting*                                      |
-| center  | `dbo.center`  | *Sectie*                                         |
-| person  | `dbo.person`  | *Deel*                                           |
-| unit    | `dbo.unit`    | *Eenheid*: |
-|||+ Werkeenheid |
-|||+ Huishoudelijke Dienst|
+| Niveau  | Tabel         | Gebruiker               |
+| ------- | ------------- | ----------------------- |
+| country | `dbo.country` | *Stichting*             |
+| center  | `dbo.center`  | *Sectie*                |
+| person  | `dbo.person`  | *Deel*                  |
+| unit    | `dbo.unit`    | *Eenheid*:              |
+|         |               | + Werkeenheid           |
+|         |               | + Huishoudelijke Dienst |
 
 
 ---
 
-<!-- {en:levels[5],foundation,section,part,unit,balance} -->
-<!-- {nl:niveaus[5],stichting,sectie,deel,eenheid,balans} -->
+
 
 ## Stichting Instudo
 
-<!-- NOTE: this formatting automatically disppears upon editing in Preview -->
 
-<table>
-  <tr>
-    <td>Niveau</td>
-    <td colspan="4">Login-namen</td>
-  </tr>
-  <tr>
-    <td>Stichting</td>
-    <td colspan="4"><code>beheer_instudo</code></td>
-  </tr>
-  <tr>
-    <td>Sectie</td>
-    <td colspan="2"><code>instudo_sia</code></td>
-    <td colspan="2"><code>instudo_sib</code></td>
-  </tr>
-  <tr>
-    <td>Deel</td>
-    <td><code>sia</code></td>
-    <td><code>hd_sia</code></td>
-    <td><code>sib</code></td>
-    <td><code>hd_sib</code></td>
-  </tr>
-  <tr>
-    <td>Werkeenheid</td>
-    <td><code>aenstal</code></td>
-    <td></td>
-    <td><code>leidenhoven</code></td>
-    <td><code>hd_leidenhoven</code></td>
-  </tr>
-  <tr>
-    <td></td>
-    <td><code>hogeland</code></td>
-    <td><code>hd_hogeland</code></td>
-    <td><code>den_eker</code></td>
-    <td><code>hd_den_eker</code></td>
-  </tr>
-  <tr>
-    <td></td>
-    <td><code>de_stade</code></td>
-    <td><code>hd_de_stade</code></td>
-    <td><code>lepelenburg</code></td>
-    <td><code>hd_lepelenburg</code></td>
-  </tr>
-  <tr>
-    <td></td>
-    <td><code>de_borcht</code></td>
-    <td><code>hd_de_borcht</code></td>
-    <td><code>jan_luijken</code></td>
-    <td><code>hd_jan_luijken</code></td>
-  </tr>
-  <tr>
-    <td></td>
-    <td><code>concertgebouw</code></td>
-    <td></td>
-    <td></td>
-    <td></td>
-  </tr>
-</table>
+| Niveau    | Inlognamen       |                |               |                  |
+| --------- | ---------------- | -------------- | ------------- | ---------------- |
+| Stichting | `beheer_instudo` |                |               |                  |
+| Sectie    | `instudo_sia`    |                | `instudo_sib` |                  |
+| Deel      | `sia`            | `hd_sia`       | `sib`         | `hd_sib`         |
+| Eenheid   | `aenstal`        |                | `leidenhoven` | `hd_leidenhoven` |
+|           | `hogeland`       | `hd_hogeland`  | `den_eker`    | `hd_den_eker`    |
+|           | `de_stade`       | `hd_de_stade`  | `lepelenburg` | `hd_lepelenburg` |
+|           | `de_borcht`      | `hd_de_borcht` | `jan_luijken` | `hd_jan_luijken` |
+|           | `concertgebouw`  |                |               |                  |
 
 
 Het sia-deel van sectie `instudo_sia` heeft 5 werkeenheden. Drie daarvan hebben een bijbehorende huishoudelijke dienst: Hogeland, De Stade en De Borcht. Aenstal en Concertgebouw hebben die niet.
@@ -99,8 +49,7 @@ Van die 19 zijn er 18 rekeningen van evenzoveel werkeenheden, en 1 van SVOa. SVO
 
 ---
 
-<!-- {en:foundation[5],instudo[5],section,part,unit,work-unit,login[5],levels[5]} -->
-<!-- {nl:stichting[5],instudo[5],sectie,deel,eenheid,werkeenheid,inlogniveaus[5],inloggen[5]} -->
+
 
 ## Resultaat en balans per inlogniveau
 
@@ -124,8 +73,7 @@ overzicht van de stichting: 19 bestanden.
 
 ---
 
-<!-- {en:result[5],balance[5],login-level[5],overview} -->
-<!-- {nl:resultaat[5],balans[5],inlogniveau[5],overzicht} -->
+
 
 # Dubbele login
 
@@ -135,8 +83,7 @@ een sms-code voor eenmalig gebruik met tweestaps verificatie.
 
 ---
 
-<!-- {en:double[5],password,hash,scrypt} -->
-<!-- {nl:dubbele[5],wachtwoord,hash,scrypt} -->
+
 
 ## SMS en IP-gate per inlogniveau
 
@@ -160,8 +107,7 @@ ook bij een directe aanroep.
 
 ---
 
-<!-- {en:sms[5],ip[5],gate[5],login-level[5],phone,address} -->
-<!-- {nl:sms[5],ip[5],poort[5],inlogniveau[5],telefoon,adres} -->
+
 
 ## Login request path and scrypt hash
 
@@ -185,8 +131,7 @@ formula password, so they can log in until they set their own.
 
 ---
 
-<!-- {en:request[5],path[5],scrypt[5],hash[5],password} -->
-<!-- {nl:verzoek[5],pad[5],scrypt[5],hash[5],wachtwoord} -->
+
 
 ## Set password
 
@@ -198,8 +143,7 @@ Rejects if new ≠ confirm, or if new is empty.
 
 ---
 
-<!-- {en:set[5],password[5],mobile,save,menu} -->
-<!-- {nl:instellen[5],wachtwoord[5],mobiel,opslaan,menu} -->
+
 
 ## SMS one-time code
 
@@ -214,8 +158,7 @@ Country and center never take this path.
 
 ---
 
-<!-- {en:sms[5],one-time[5],code[5],twilio,otp} -->
-<!-- {nl:sms[5],eenmalig[5],code[5],twilio,otp} -->
+
 
 ## password_hash and mobile_phone on dbo.person
 
@@ -228,12 +171,9 @@ On `dbo.person`:
 | `mobile_phone`  | `NVARCHAR(32) NULL`  | E.164                   |
 
 
-
-
 ---
 
-<!-- {en:password_hash[5],mobile_phone[5],person[5],scrypt,sms} -->
-<!-- {nl:password_hash[5],mobile_phone[5],persoon[5],scrypt,sms} -->
+
 
 ## Where login and OTP are implemented
 
@@ -246,5 +186,4 @@ On `dbo.person`:
 | Set password UI   | `client/frontend/src/App.tsx`                      |
 | Add-person mobile | hub wizard `_ADD_PERSON_HTML`                      |
 
-<!-- {en:otp[5],implemented[5],passwords,hub,client} -->
-<!-- {nl:otp[5],geimplementeerd[5],wachtwoorden,hub,client} -->
+

@@ -270,6 +270,7 @@ def result_sheet(
     login: str = "",
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
+    from app.result import _is_unit_level
     from app.result import result_sheet as compute
 
     who = _scope(person, center, account)
@@ -284,6 +285,8 @@ def result_sheet(
         login=login,
         as_of=date,
     )
+    if _is_unit_level(unit, account) or who[0] or who[1]:
+        return payload
     try:
         from app.balance import _country_has_balance
         from app.balance import balance_sheet as balance_compute
