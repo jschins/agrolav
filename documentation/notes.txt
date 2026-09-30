@@ -545,3 +545,19 @@ INSERT INTO dbo.language VALUES
 DROP TABLE dbo.translation;
 
 ====================================
+
+insert into dbo.dim_category values
+(21100, 6, 1100, 'Inventaris', NULL, 'Activa/Vaste activa', 3),
+(21200, 6, 1200, 'Voorraden', NULL, 'Activa/Vlottende activa', 3),
+(21300, 6, 1300, 'Liquide middelen', NULL, 'Activa/Vlottende activa', 3),
+(22100, 6, 2100, 'Eigen vermogen', 'equity', 'Passiva/Kapitaal', 3),
+(22200, 6, 2200, 'Ontvanger omzetbelasting', NULL, 'Passiva/Kortlopende schulden', 3),
+(22300, 6, 2300, 'Leveranciers', NULL, 'Passiva/Kortlopende schulden', 3),
+(22400, 6, 2400, 'Overlopende passiva', NULL, 'Passiva/Kortlopende schulden', 3),
+(23100, 6, 3100, 'Afschrijvingen', NULL, 'Kosten', 3),
+(23200, 6, 3200, 'Onderhoud/Kleine aanschaffingen', NULL, 'Kosten', 3),
+(23300, 6, 3300, 'Verkoopkosten', NULL, 'Kosten', 3),
+(24100, 6, 4100, 'Omzet', NULL, 'Opbrengsten', 3),
+(24200, 6, 4200, 'Inkoopwaarde', NULL, 'Opbrengsten', 3),
+(24300, 6, 4300, 'Overige opbrengsten', NULL, 'Opbrengsten', 3);
+
