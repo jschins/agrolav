@@ -99,8 +99,8 @@ Van die 19 zijn er 18 rekeningen van evenzoveel werkeenheden, en 1 van SVOa. SVO
 
 ---
 
-<!-- {en:foundation[5],instudo[5],section,part,unit,work-unit} -->
-<!-- {nl:stichting[5],instudo[5],sectie,deel,eenheid,werkeenheid} -->
+<!-- {en:foundation[5],instudo[5],section,part,unit,work-unit,login[5],levels[5]} -->
+<!-- {nl:stichting[5],instudo[5],sectie,deel,eenheid,werkeenheid,inlogniveaus[5],inloggen[5]} -->
 
 ## Resultaat en balans per inlogniveau
 

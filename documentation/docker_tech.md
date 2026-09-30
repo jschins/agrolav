@@ -1,3 +1,134 @@
+# Docker
+
+The development laptop runs one container, `agrolav-sql`. Production runs a
+different container, `MSSQL2022`, with its data on a named volume. Hub,
+client, balance, and maaltijden are processes, not containers.
+
+---
+
+## The same local container on another laptop
+
+`docker-compose.sqlserver.yml` in the repo root is the local file. It starts
+container `agrolav-sql` from the public image
+`mcr.microsoft.com/mssql/server:2022-latest` and publishes `1433`.
+
+The only mount is a bind of the backup folder:
+
+```yaml
+volumes:
+  - "${AGROLAV_SQL_DISK:-C:/SQLBackups}:/var/opt/mssql/backup"
+```
+
+That folder holds `.bak` files. The live `agrolav` database sits in the
+container's writable layer. Copying Docker's volume store, or saving the
+image, does not bring the database across. A `docker compose down` on the
+laptop throws that layer away.
+
+Move the database as a backup, then start a new container on the other
+laptop.
+
+### 1. Write the backup on this laptop
+
+SSMS at `127.0.0.1,1433`, login `sa` ([`database.md`](database.md) §2.1):
+
+```sql
+BACKUP DATABASE [agrolav]
+TO DISK = N'/var/opt/mssql/backup/local_backups/agrolav.bak'
+WITH
+    INIT,
+    COMPRESSION,
+    CHECKSUM,
+    STATS = 10;
+```
+
+Host file: `C:\SQLBackups\local_backups\agrolav.bak`.
+
+### 2. What to copy
+
+- The git repo (clone it; do not copy `hub\.venv` or `node_modules`).
+- The repo-root `.env`. Compose reads `MSSQL_SA_PASSWORD` from that file, and
+  the apps read the rest of the secrets from it. A new container sets `sa`
+  from `MSSQL_SA_PASSWORD` only on first start, so the file must be in place
+  before the first `up`.
+- `C:\SQLBackups\`, including `local_backups\agrolav.bak`. If `.env` sets
+  `AGROLAV_SQL_DISK`, create that path on the new machine and put the backups
+  there instead.
+- Optional per-app files `hub/.env`, `client/.env`, `balance/.env`,
+  `maaltijden/.env` when this machine overrides a non-secret default.
+
+Do not copy the image. The other laptop pulls
+`mcr.microsoft.com/mssql/server:2022-latest`. Do not `docker save` the
+`agrolav-sql` container and do not copy raw `.mdf` / `.ldf` files out of it.
+
+### 3. Start SQL Server on the other laptop
+
+Install Docker Desktop. From the repo root, so Compose finds `/.env`:
+
+```powershell
+docker compose -f docker-compose.sqlserver.yml up -d
+```
+
+`docker compose ls` then reports project `agrolav`, one container. Docker
+Desktop shows that project and `agrolav-sql` as two rows of the same
+container. Port `1433` on the new machine must be free.
+
+Wait until SSMS at `127.0.0.1,1433` accepts `sa`.
+
+### 4. Restore `agrolav`
+
+The `.bak` is already on the bind mount. SSMS must use the container path
+([`database.md`](database.md) §2.3):
+
+```sql
+USE master;
+RESTORE FILELISTONLY
+FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav.bak';
+```
+
+```sql
+USE master;
+
+ALTER DATABASE [agrolav]
+SET SINGLE_USER
+WITH ROLLBACK IMMEDIATE;
+
+RESTORE DATABASE [agrolav]
+FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav.bak'
+WITH
+    REPLACE,
+    RECOVERY;
+
+ALTER DATABASE [agrolav]
+SET MULTI_USER;
+```
+
+On a brand-new container there is no `agrolav` database yet, so the
+`SINGLE_USER` statements are unnecessary and the restore is only:
+
+```sql
+USE master;
+RESTORE DATABASE [agrolav]
+FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav.bak'
+WITH
+    REPLACE,
+    RECOVERY;
+```
+
+If `FILELISTONLY` shows data or log paths that are not
+`/var/opt/mssql/data`, add `MOVE` for those logical names. Then run
+`hub/sql/visitor_ip.sql` and `hub/sql/egress_ip.sql`. A laptop signed in
+with `HUB_DEV_LOGIN=1` on loopback does not need the production WAN rows in
+`dbo.egress_ip`.
+
+Start hub and client from their venvs the same way as on this laptop. They
+are not part of this compose file.
+
+`client/docker-compose.yml` is a separate client-and-Caddy stack
+(`caddy_data`, `caddy_config`). It is not the SQL Server container and it
+does not hold `agrolav`.
+
+---
+
 # SQL Server data volume — migration runbook
 
 The production SQL Server (`MSSQL2022` on `expenses.apsurt.nl`) was created

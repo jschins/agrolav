@@ -903,13 +903,14 @@ is in a later week, extras are reset to 0.
 <!-- {en:maaltijden_extra_week[5],table,week,column} -->
 <!-- {nl:maaltijden_extra_week[5],tabel,week,kolom} -->
 
-## Person, center, and country login rows
+## Unit, Person, center, and country login rows
 
 A login is a row in one of three tables, and which one it is decides the
 access level:
 
 | Row in | Access | Password |
 |:-------|:-------|:---------|
+| `dbo.unit` | that unit only | scrypt hash in `password_hash`, plus an SMS code when `mobile_phone` is set |
 | `dbo.person` | that person only | scrypt hash in `password_hash`, plus an SMS code when `mobile_phone` is set |
 | `dbo.center` | that center | derived formula (prefix + username) |
 | `dbo.country` | every center in that country | derived formula (prefix + username) |
