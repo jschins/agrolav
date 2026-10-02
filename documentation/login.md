@@ -11,15 +11,17 @@ Voor de gebruiker heten die vier niveaus, in een land met balans,
 stichting, sectie, deel en werkeenheid.
 
 
-| Niveau  | Tabel         | Gebruiker               |
-| ------- | ------------- | ----------------------- |
-| country | `dbo.country` | *Stichting*             |
-| center  | `dbo.center`  | *Sectie*                |
-| person  | `dbo.person`  | *Deel*                  |
-| unit    | `dbo.unit`    | *Eenheid*:              |
-|         |               | + Werkeenheid           |
-|         |               | + Huishoudelijke Dienst |
+| Niveau  | Tabel         | Gebruiker               | HD-WE consolidatie | Eigen vermogen in balans |
+| ------- | ------------- | ----------------------- | --------------------------------------------- |
+| country | `dbo.country` | *Stichting*             | Ja                 | Ja                       |
+| center  | `dbo.center`  | *Sectie*                | Nee                | Nee                      |
+| person  | `dbo.person`  | *Deel*                  | Nee                | Nee                      |
+| unit    | `dbo.unit`    | *Eenheid*:              | Ja                 | Nee                      |
+|         |               | + Werkeenheid           |                    |                          |
+|         |               | + Huishoudelijke Dienst |                    |                          |
 
+<!-- {en:levels[5],country,center,person,unit,balance,consolidation[3],foundation,section,part} -->
+<!-- {nl:inlogniveaus[5],land,centrum,persoon,eenheid,balans,consolidatie[3],stichting,sectie,deel} -->
 
 ---
 
@@ -47,6 +49,9 @@ Het sib-deel van sectie `instudo_sib` heeft 4 werkeenheden. Alle vier hebben een
 Instudo heeft 19 automatisch gedownloade rekeningen en 2 afgeleide spaarrekeningen.  
 Van die 19 zijn er 18 rekeningen van evenzoveel werkeenheden, en 1 van SVOa. SVOa heeft geen eigen login.
 
+<!-- {en:foundation[5],instudo[5],work-unit,household,account,savings} -->
+<!-- {nl:stichting[5],instudo[5],werkeenheid,huishoudelijke,rekening,spaarrekening} -->
+
 ---
 
 
@@ -71,6 +76,9 @@ Op stichting-niveau staat er een extra menuknop, **Export zip**. Dat
 levert een zip-bestand met de 18 overzichten van de werkeenheden en het
 overzicht van de stichting: 19 bestanden.
 
+<!-- {en:result[5],balance[5],level[5],export,consolidation,overview,zip} -->
+<!-- {nl:resultaat[5],balans[5],inlogniveau[5],export,consolidatie,overzicht,zip} -->
+
 ---
 
 
@@ -80,6 +88,9 @@ overzicht van de stichting: 19 bestanden.
 Alle vier niveaus bewaren een scrypt-wachtwoordhash. Person- en unit-logins
 kunnen ook een mobiel nummer instellen en de login daarna bevestigen met
 een sms-code voor eenmalig gebruik met tweestaps verificatie.
+
+<!-- {en:double[5],login[5],password,scrypt,sms} -->
+<!-- {nl:dubbele[5],login[5],wachtwoord,scrypt,sms} -->
 
 ---
 
@@ -105,6 +116,9 @@ bij waarde 0 vindt géén IP-gating plaats.
 De API om het wachtwoord in te stellen weigert country- en center-sessies,
 ook bij een directe aanroep.
 
+<!-- {en:sms[5],ip-gate[5],level[5],egress,mobile,password} -->
+<!-- {nl:sms[5],ip-gate[5],inlogniveau[5],egress,mobiel,wachtwoord} -->
+
 ---
 
 
@@ -129,6 +143,9 @@ scrypt$16384$8$1$<urlsafe-salt>$<urlsafe-digest>
 Helpers live in `shared/`. New persons are inserted with a hash of the
 formula password, so they can log in until they set their own.
 
+<!-- {en:login[5],request[5],path[5],scrypt[5],hash[5],cookie} -->
+<!-- {nl:login[5],verzoek[5],pad[5],scrypt[5],hash[5],cookie} -->
+
 ---
 
 
@@ -140,6 +157,9 @@ the header menu is hidden on this page.
 
 APIs: client `POST /api/auth/password` → hub `POST /api/auth/password`.
 Rejects if new ≠ confirm, or if new is empty.
+
+<!-- {en:set[5],password[5],mobile,confirm,save} -->
+<!-- {nl:instellen[5],wachtwoord[5],mobiel,bevestigen,opslaan} -->
 
 ---
 
@@ -156,6 +176,9 @@ After password OK, a person or unit login with `mobile_phone` set gets
 **Resend**. Hub `POST /api/auth/otp/verify` and `POST /api/auth/otp/resend`.
 Country and center never take this path.
 
+<!-- {en:sms[5],one-time[5],code[5],otp,resend,twilio} -->
+<!-- {nl:sms[5],eenmalig[5],code[5],otp,opnieuw,twilio} -->
+
 ---
 
 
@@ -170,6 +193,8 @@ On `dbo.person`:
 | `password_hash` | `NVARCHAR(256) NULL` | scrypt; never plaintext |
 | `mobile_phone`  | `NVARCHAR(32) NULL`  | E.164                   |
 
+<!-- {en:password_hash[5],mobile_phone[5],person[5],column,scrypt} -->
+<!-- {nl:password_hash[5],mobile_phone[5],persoon[5],kolom,scrypt} -->
 
 ---
 
@@ -185,5 +210,8 @@ On `dbo.person`:
 | Login + OTP       | `hub/app/main.py`, `hub/app/person_otp.py`         |
 | Set password UI   | `client/frontend/src/App.tsx`                      |
 | Add-person mobile | hub wizard `_ADD_PERSON_HTML`                      |
+
+<!-- {en:login[5],otp[5],implemented[5],password,hub,client} -->
+<!-- {nl:login[5],otp[5],geïmplementeerd[5],wachtwoord,hub,client} -->
 
 
