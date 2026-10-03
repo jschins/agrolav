@@ -1,3 +1,16 @@
+==========================access to droplet
+
+
+PS C:\Coding\agrolav> ssh agrolav@209.38.39.105 -p 4523
+
+agrolav@agrolav:/opt/agrolav$ git fetch origin
+agrolav@agrolav:/opt/agrolav$ git reset --hard origin/sqlserver
+agrolav@agrolav:/opt/agrolav$ cd balance/frontend && npm run build
+agrolav@agrolav:/opt/agrolav$ cd ../../client/frontend && npm run build
+agrolav@agrolav:/opt/agrolav$ sudo systemctl restart agrolav-hub agrolav-client agrolav-balance
+
+===============================droplet keeps track of traffic
+
 
 See public egress IP following the output in
 

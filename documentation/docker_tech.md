@@ -248,7 +248,7 @@ services:
       - mssql-data:/var/opt/mssql
       - /opt/sql_backups:/var/opt/mssql/backup
     ports:
-      - "1433:1433"
+      - "1433:1433"   # host port; the VPC firewall admits only the authorized computer and the application computer
 
 volumes:
   mssql-data:
@@ -315,11 +315,7 @@ for i in $(seq 1 120); do
 done
 ```
 
-Connect check from Windows (optional now, SQL listens on `0.0.0.0:1433`):
-
-```powershell
-Test-NetConnection 209.38.39.105 -Port 1433
-```
+From the authorized computer, through the VPC, SQL Server answers on port 1433. A probe of the public address must fail: the firewall is closed to every other host.
 
 ---
 
@@ -480,7 +476,7 @@ You lose nothing: the `.bak` is the source of truth in both directions.
 | project env | `/root/sqlserver/.env` (server, root) |
 | data volume | `sqlserver_mssql-data` (named volume) → `/var/opt/mssql` |
 | backup mount | `/opt/sql_backups` → `/var/opt/mssql/backup` |
-| SSMS endpoint | `209.38.39.105,1433`, login `sa`, DB `agrolav` |
+| SSMS endpoint | authorized computer, through the VPC, login `sa`, DB `agrolav` |
 | restore sources | [`DATABASE.md`](DATABASE.md) |
 | password policies | [`passwords.md`](passwords.md) |
 

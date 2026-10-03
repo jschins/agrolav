@@ -38,7 +38,7 @@ is no dual-write path left.
 
 | Item | Why |
 |------|-----|
-| One public hostname | `expenses.apsurt.nl` via Caddy + systemd + Docker SQL. |
+| One public hostname | `expenses.apsurt.nl` on the application computer, via Caddy. SQL Server is behind the VPC. |
 | Secrets out of git and markdown | Connection strings, session secrets, and host passwords must not live in `.md` files. |
 | Keep local and remote schema identical | Run `hub/sql/visitor_ip.sql` and `hub/sql/egress_ip.sql` on both after a restore. |
 

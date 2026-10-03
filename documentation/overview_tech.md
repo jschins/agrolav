@@ -13,8 +13,12 @@
 Agrolav is a multi-household expense system. People in several countries
 keep bank bookings in one place: a year-by-year matrix of people against
 spending categories, with balances and last-booked dates as footer rows.
-The public site is Caddy in front of a thin client. The hub and SQL Server
-stay off the public internet.
+The public site is Caddy on the application computer, in front of a thin
+client. The database sits behind a VPC and a firewall that admits one
+authorized computer, plus the application computer through
+`HUB_DATABASE_URL`. Hub, client, balance, and maaltijden stay on loopback.
+The application computer’s firewall is closed, and the default policy is
+zero trust.
 
 Country and center logins are restricted by egress IP: the address must
 appear in `dbo.egress_ip` or in that login's own `egress_ip` column,

@@ -2,22 +2,74 @@
 
 How to deploy Agrolav to `expenses.apsurt.nl`: Git updates, Python/Node
 dependencies, frontend builds, systemd, and Caddy. SQL backup and restore
-are in [`DATABASE.md`](DATABASE.md).
+are in `[DATABASE.md](DATABASE.md)`.
 
 ---
 
 ## Architecture
 
-| piece | runs as | listens on | what it does |
-|---|---|---|---|
-| hub | systemd `agrolav-hub` | `127.0.0.1:8200` | FastAPI: login, sync, calculation, SQL Server |
-| client BFF | systemd `agrolav-client` | `127.0.0.1:8300` | Serves the frontend, proxies hub APIs, browser login |
-| balance hub | systemd `agrolav-balance` | `127.0.0.1:8100` | Balance sheets — one SPA per balance country, served under `/balance/{slug}` (slugs = `dbo.country.username` with `has_balance = 1`, e.g. `beheer`, `beheer_instudo`), API at `/balance/{slug}/api/...` |
-| maaltijden | systemd `agrolav-maaltijden` | `127.0.0.1:8400` | Meal matrix for center `nl_dkg` — login + SPA at `/maaltijden`, API at `/maaltijden/api/...` |
-| SQL Server | Docker `MSSQL2022` | `0.0.0.0:1433` | the only data store |
-| Caddy | systemd `caddy` | `80/443` | public site → client BFF; selected hub paths → hub; `/balance/*` → balance hub; `/maaltijden*` → maaltijden |
 
-There is no SQLite fallback. If `HUB_DATABASE_URL` is unset the hub refuses
+| piece       | runs as                      | listens on       | what it does                                                                                                                                                                                            |
+| ----------- | ---------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| hub         | systemd `agrolav-hub`        | `127.0.0.1:8200` | FastAPI: login, sync, calculation, SQL Server                                                                                                                                                           |
+| client BFF  | systemd `agrolav-client`     | `127.0.0.1:8300` | Serves the frontend, proxies hub APIs, browser login                                                                                                                                                    |
+| balance hub | systemd `agrolav-balance`    | `127.0.0.1:8100` | Balance sheets — one SPA per balance country, served under `/balance/{slug}` (slugs = `dbo.country.username` with `has_balance = 1`, e.g. `beheer`, `beheer_instudo`), API at `/balance/{slug}/api/...` |
+| maaltijden  | systemd `agrolav-maaltijden` | `127.0.0.1:8400` | Meal matrix for center `nl_dkg` — login + SPA at `/maaltijden`, API at `/maaltijden/api/...`                                                                                                            |
+| SQL Server  | Docker `MSSQL2022`           | VPC :1433        | the only data store; the authorized computer and this application computer                                                                                                                              |
+| Caddy       | systemd `caddy`              | `80/443`         | public site → client BFF; selected hub paths → hub; `/balance/*` → balance hub; `/maaltijden*` → maaltijden                                                                                             |
+
+
+Two computers. The database is on **A**. The website is on **B**. 
+
+**Computer A** is the authorized database computer. Docker container `MSSQL2022` runs there, and the only database is `agrolav` on port 1433. No hub, client, balance, maaltijden, or Caddy runs on A. A VPC and a firewall that is closed to every other host admit computer B, and SSMS from A itself. Backups are taken on A (`/opt/sql_backups`).
+
+**Computer B** is `expenses.apsurt.nl`. It runs the application and opens SQL Server on A through `HUB_DATABASE_URL`. Its firewall is closed, and the default policy is zero trust. Caddy is the only process on 80 and 443. SSH to B uses port 4523. The four application processes bind to `127.0.0.1` and are the code in this repo:
+
+
+| Process on B         | Code               | Role                                                                 |
+| -------------------- | ------------------ | -------------------------------------------------------------------- |
+| `agrolav-hub`        | `hub/`             | Login, bookings, categories, bank refresh. Talks to SQL Server on A. |
+| `agrolav-client`     | `client/`          | The site the browser loads, and the session cookie. Calls the hub.   |
+| `agrolav-balance`    | `balance/`         | Balance sheet and resultaat. Reads SQL Server on A.                  |
+| `agrolav-maaltijden` | `maaltijden/`      | Meal matrix. Reads SQL Server on A.                                  |
+| `caddy`              | `client/Caddyfile` | HTTPS in front of those four.                                        |
+
+
+```text
+Browser
+   │
+   │  HTTPS 443
+   │  https://expenses.apsurt.nl
+   ▼
+Computer B
+expenses.apsurt.nl
+firewall closed, zero trust by default
+Caddy :443                          the browser connection ends here
+   │  forwards on this machine
+   ├─ client       client/         127.0.0.1:8300
+   ├─ hub          hub/            127.0.0.1:8200
+   ├─ balance      balance/        127.0.0.1:8100
+   └─ maaltijden   maaltijden/     127.0.0.1:8400
+          │
+          │  HUB_DATABASE_URL
+          │  these four processes only
+          ▼
+      Port 1433
+Computer A — authorized database computer
+firewall closed, VPC admits only B
+
+container        Docker MSSQL2022
+what listens     SQL Server, inside that container
+database         agrolav
+
+
+```
+
+A visitor opens `https://expenses.apsurt.nl`. That connection ends at Caddy on B, port 443. Caddy forwards it to the client, the hub, the balance app, or maaltijden, all of which listen on `127.0.0.1` on B. Those processes are the only ones that open SQL Server.
+
+Computer A is reached by B through `HUB_DATABASE_URL` on port 1433, and by SSMS on A itself. The browser never opens that port.
+
+If `HUB_DATABASE_URL` is unset the hub refuses
 to start. Configuration lives in `/etc/agrolav/hub.env` and
 `/etc/agrolav/client.env` (systemd `EnvironmentFile`). Do not put secrets in
 git or in markdown.
@@ -31,14 +83,16 @@ Never set that flag on the server.
 
 ## Local vs production
 
-| knob | local | production (`expenses.apsurt.nl`) |
-|---|---|---|
-| `HUB_DEV_LOGIN` | `1` | unset |
-| reverse proxy | none (or Caddy on loopback) | Caddy `80/443` |
-| SQL Server | Docker on this PC | Docker `MSSQL2022` on the droplet |
-| Enable Banking callback | `ENABLEBANKING_REDIRECT_URL` in `hub/.env`, often the deoudegracht relay | `https://expenses.apsurt.nl/api/consent/callback` |
-| `HUB_CLIENT_URL` | empty → `http://127.0.0.1:8300` | `https://expenses.apsurt.nl` |
-| `CENTRALE_API_KEY` | often empty | identical in `hub.env` and `client.env` |
+
+| knob                    | local                                                                    | production (`expenses.apsurt.nl`)                                             |
+| ----------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `HUB_DEV_LOGIN`         | `1`                                                                      | unset                                                                         |
+| reverse proxy           | none (or Caddy on loopback)                                              | Caddy `80/443`                                                                |
+| SQL Server              | Docker on this PC                                                        | database host, VPC; the application computer connects with `HUB_DATABASE_URL` |
+| Enable Banking callback | `ENABLEBANKING_REDIRECT_URL` in `hub/.env`, often the deoudegracht relay | `https://expenses.apsurt.nl/api/consent/callback`                             |
+| `HUB_CLIENT_URL`        | empty → `http://127.0.0.1:8300`                                          | `https://expenses.apsurt.nl`                                                  |
+| `CENTRALE_API_KEY`      | often empty                                                              | identical in `hub.env` and `client.env`                                       |
+
 
 Caddy must forward `X-Forwarded-For` / `X-Real-IP` (see the repo
 `client/Caddyfile`). The hub then stores the caller’s **public** egress
@@ -109,7 +163,7 @@ npm run build
 ## 5. Check the SQL Server container
 
 Backup, `scp`, and restore (both directions) live in
-[`DATABASE.md`](DATABASE.md). The bind mount is `/opt/sql_backups` →
+`[DATABASE.md](DATABASE.md)`. The bind mount is `/opt/sql_backups` →
 `/var/opt/mssql/backup`; do not `docker cp` through `/tmp`.
 
 Every `docker` command on the server needs `sudo` — the `agrolav` user is not
@@ -119,7 +173,7 @@ in the `docker` group:
 sudo docker ps
 ```
 
-Expected: `MSSQL2022`, `0.0.0.0:1433->1433/tcp`. The local container is
+Expected: `MSSQL2022` on the database host. The VPC firewall admits the authorized computer and the application computer on port 1433. The local container is
 `agrolav-sql` (`docker-compose.sqlserver.yml`).
 
 ---
@@ -128,7 +182,7 @@ Expected: `MSSQL2022`, `0.0.0.0:1433->1433/tcp`. The local container is
 
 All **passwords** live in ONE file — `/opt/agrolav/.env` on the server (the
 repository root). Create it as a copy of the local single-secret file and fill
-in the real values (see [`passwords.md`](passwords.md) for what goes in it and
+in the real values (see `[passwords.md](passwords.md)` for what goes in it and
 how to change each value). It holds every secret variable
 (`HUB_DATABASE_URL`, `MSSQL_SA_PASSWORD`, `CENTRALE_API_KEY`,
 `CLIENT_SESSION_SECRET`, `HUB_OTP_SECRET`, Twilio). Hub, client, balance,
@@ -173,7 +227,7 @@ Notes:
 
 - `SERVER_URL` is how the BFF reaches the hub; it cannot be omitted.
 - Do not put any password in these per-service files — out them in
-  `/opt/agrolav/.env` instead.
+`/opt/agrolav/.env` instead.
 - Do not commit these files to Git.
 
 Verify the connection string without leaking the password:
@@ -239,7 +293,7 @@ sudo systemctl status agrolav-client --no-pager
 ## 12a. Maaltijden service
 
 The unit is not in git. Full copy-paste (Python, frontend, env, systemd,
-Caddy, health check, SQL) is in [`maaltijden.md`](maaltijden.md) — First
+Caddy, health check, SQL) is in `[maaltijden.md](maaltijden.md)` — First
 start on the server. Short form:
 
 ```bash
@@ -386,7 +440,7 @@ The repo `client/Caddyfile` injects the hub key server-side with
 sees it. Caddy resolves the placeholder from the process environment, which
 comes from the shared secret file: give the Caddy service an
 `EnvironmentFile=/opt/agrolav/.env` and then `sudo systemctl restart caddy`.
-Key rotation and where the file lives: [`passwords.md`](passwords.md).
+Key rotation and where the file lives: `[passwords.md](passwords.md)`.
 
 ### 14b. Consent — `REDIRECT_URI_NOT_ALLOWED`
 
@@ -472,8 +526,8 @@ sudo journalctl -u agrolav-hub -n 50 --no-pager
 
 - `HUB_DATABASE_URL is not set` → env not reaching the process (§11).
 - `dbo.person missing` → restore a database that contains the schema
-  ([`DATABASE.md`](DATABASE.md) §1.3; `hub/sql/phase_c.sql` is
-  wipe-and-recreate; do not run it live).
+(`[DATABASE.md](DATABASE.md)` §1.3; `hub/sql/phase_c.sql` is
+wipe-and-recreate; do not run it live).
 - `ImportError: libodbc.so.2` → §10.
 
 ## 19. Old user/country data still showing
@@ -530,10 +584,10 @@ curl -s -X POST http://127.0.0.1:8200/api/auth/login \
 Common causes:
 
 - **Inline comment in an env value.** systemd keeps `# ...` as part of the
-  value. Comments only on their own lines; restart the client.
-- **`CENTRALE_API_KEY` differs** between `hub.env` and `client.env`.
-- **`CENTRALE_SYNC=0|false|off|no`** in `client.env` — the client refuses
-  logins entirely.
+value. Comments only on their own lines; restart the client.
+- `**CENTRALE_API_KEY` differs** between `hub.env` and `client.env`.
+- `**CENTRALE_SYNC=0|false|off|no**` in `client.env` — the client refuses
+logins entirely.
 
 To copy the hub’s key into both files (from the running process):
 
@@ -564,3 +618,4 @@ cd shared && uv sync && cd ../hub && uv sync && cd ../client && uv sync
 cd /opt/agrolav/client/frontend && npm ci && npm run build
 sudo systemctl restart agrolav-hub agrolav-client
 ```
+

@@ -26,7 +26,7 @@ here, then **deletes** it (backups hold Enable Banking keys). Dated names
 | Host root | `C:\SQLBackups` | `/opt/sql_backups` |
 | Container | `agrolav-sql` | `MSSQL2022` |
 | Mount | `C:/SQLBackups` → `/var/opt/mssql/backup` | `/opt/sql_backups` → `/var/opt/mssql/backup` |
-| SSMS | `127.0.0.1,1433` | `209.38.39.105,1433` |
+| SSMS | `127.0.0.1,1433` on this PC | authorized computer, through the VPC |
 | Written here | `…/local_backups/` | `…/remote_backups/` |
 | Copy of the other side | `…/remote_backups/` | `…/local_backups/` |
 
@@ -42,9 +42,10 @@ as `agrolav`, so a restore needs `chown 10001` first.
 
 ## 1. The remote database
 
-Container `MSSQL2022`, host mount `/opt/sql_backups` →
-`/var/opt/mssql/backup`. Confirm it is up (`sudo docker ps`:
-`0.0.0.0:1433->1433/tcp`).
+Container `MSSQL2022` on the database host, mount `/opt/sql_backups` →
+`/var/opt/mssql/backup`. Confirm it is up with `sudo docker ps`. The VPC
+firewall admits the authorized computer and the application computer on
+port 1433.
 
 The host root is owned by `agrolav` (`drwxr-xr-x`). It has only the two
 mirrored folders — no `.bak` files at the root:
@@ -104,7 +105,7 @@ What the script runs is the same as the two steps below.
 The folder must already be `10001` (above). A new filename is a create, not
 an overwrite of an existing file.
 
-SSMS at `209.38.39.105,1433` (`sa`):
+SSMS from the authorized computer, through the VPC (`sa`):
 
 ```sql
 BACKUP DATABASE [agrolav]
@@ -285,7 +286,7 @@ ALTER DATABASE agrolav_0922 SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
 DROP DATABASE agrolav_0922;
 ```
 
-SSMS at `209.38.39.105,1433`:
+SSMS from the authorized computer, through the VPC:
 
 ```sql
 USE master;

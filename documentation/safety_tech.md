@@ -10,16 +10,18 @@ rough order.
 
 ---
 
-## 1. SQL Server is on the public internet
+## 1. SQL Server is limited to two hosts
 
-Docker `MSSQL2022` publishes **1433 on `0.0.0.0`**. SSMS can connect to
-`209.38.39.105,1433` as `sa`. That is the whole database: bookings, person
-hashes, country/center logins, **Enable Banking private keys**, IP
-allowlists.
+The database accepts connections from one authorized computer. A VPC and a
+firewall that is closed to every other host enforce that. The application
+computer (`expenses.apsurt.nl`) is the other host that connects; it uses
+`HUB_DATABASE_URL`. Its firewall is closed, and the default policy is zero
+trust.
 
-Anyone who guesses or leaks `sa` owns every secret in Agrolav. Firewall
-1433 to known admin IPs, or bind SQL to localhost and tunnel. Do not leave
-`sa` as the app login forever.
+That database holds bookings, person hashes, country and center logins,
+**Enable Banking private keys**, and IP allowlists. Anyone who has `sa`
+on an admitted host owns every secret in Agrolav. Do not leave `sa` as the
+app login forever. Do not open 1433 on the public address.
 
 ## 2. Enable Banking keys live in the database
 

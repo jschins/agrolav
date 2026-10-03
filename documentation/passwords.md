@@ -78,7 +78,7 @@ Change it:
 Already-open connections keep working until their service restarts, so edit
 the file first, then restart.
 
-SSMS: connect to `127.0.0.1,1433` (server) / `127.0.0.1,1433` (local Docker)
+SSMS: from the authorized computer, through the VPC (server) / `127.0.0.1,1433` (local Docker)
 as `sa` with `MSSQL_SA_PASSWORD` from the root `.env`, database `agrolav`,
 Encryption *Mandatory* + *Trust server certificate*.
 
