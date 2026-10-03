@@ -656,7 +656,9 @@ def rebuild_spaar_mirror_rows(
     """Replace generated ``dbo.transaction_mirror`` rows for every spaar pair.
 
     Each source-account keyword row becomes one stored counterpart on that
-    pair's mirror category. Returns the number of inserted rows.
+    pair's mirror category. The booking that caused the row is categorized
+    as that mirror category. Rows already at modification 1, 2, 3, or 4
+    keep their category. Returns the number of inserted rows.
     """
     pairs = spaar_mirrors(country_id, cursor)
     if not pairs:
@@ -676,6 +678,22 @@ def rebuild_spaar_mirror_rows(
         return 0
     generated = 0
     for pair in pairs:
+        target = int(pair["target_category"])
+        cursor.execute(
+            f"""
+            UPDATE {table}
+            SET category_id = ?
+            WHERE year = ? AND account_id = ?
+              AND LOWER(COALESCE(description, N'')) LIKE ?
+              AND modification IN (-1, 0)
+            """,
+            (
+                target,
+                int(year),
+                int(pair["source_account_id"]),
+                f"%{pair['keyword']}%",
+            ),
+        )
         cursor.execute(
             f"SELECT booked_on, amount, description FROM {table} "
             "WHERE year = ? AND account_id = ? "

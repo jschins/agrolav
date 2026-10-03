@@ -1,0 +1,26 @@
+{
+  "shop_name": "De Boog",
+  "seller_line": "Verkocht door een wederverkoper, met toestemming van de rechthebbende. De verkoper is niet de uitgever.",
+  "vat_rate": 0.09,
+  "vat_label": "btw 9% (digitale boeken, Nederland), inbegrepen in de prijs",
+  "books": [
+    {
+      "slug": "voorbeeld-eerste-boek",
+      "title": "Voorbeeld: Het eerste boek",
+      "author": "Voorbeeld Auteur",
+      "rights_holder": "Voorbeeld Uitgeverij",
+      "summary": "Dit is een voorbeeldpagina. Vervang deze tekst door de aankondiging van een boek dat u met toestemming mag verkopen.\n\nDe pagina is de advertentie. De knop Koop opent de afrekenpagina en daarna de betaalpagina van Mollie.",
+      "price_cents": 1250,
+      "filename": "voorbeeld-eerste-boek.txt"
+    },
+    {
+      "slug": "voorbeeld-tweede-boek",
+      "title": "Voorbeeld: Het tweede boek",
+      "author": "Voorbeeld Auteur",
+      "rights_holder": "Voorbeeld Uitgeverij",
+      "summary": "Tweede voorbeeld, zodat de winkelwagen meer dan één digitaal boek kan bevatten. Er is geen verzending: na betaling volgt een download.",
+      "price_cents": 875,
+      "filename": "voorbeeld-tweede-boek.txt"
+    }
+  ]
+}

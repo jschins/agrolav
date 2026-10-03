@@ -1,0 +1,4 @@
+Voorbeeldbestand. Dit is geen boek.
+
+Vervang dit bestand door het digitale boek dat u met toestemming van de rechthebbende verkoopt.
+De bestandsnaam moet overeenkomen met "filename" in catalog.json.

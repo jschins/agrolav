@@ -21,6 +21,7 @@ from shared.balance_values import (
     build_parent_tree,
     result_overlay_cents,
     _pair_spaar_mirrors,
+    rebuild_spaar_mirror_rows,
     spaar_mirror_posted_amount,
     spaar_mirrors,
     spaar_source_exclude_clause,
@@ -192,7 +193,61 @@ class BookingBalancesTests(unittest.TestCase):
         self.assertNotIn("not (t.account_id", cursor.sql.lower())
 
 
+class _SpaarRebuildCursor:
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+        self.params: list[tuple | list | None] = []
+        self.sql = ""
+
+    def execute(self, sql: str, params: tuple | list | None = None) -> "_SpaarRebuildCursor":
+        self.statements.append(sql)
+        self.params.append(params)
+        self.sql = sql
+        return self
+
+    def fetchone(self):
+        if "FROM dbo.country" in self.sql:
+            return ("beheer_boog",)
+        return None
+
+    def fetchall(self):
+        if "N'source'" in self.sql and "N'mirror'" in self.sql:
+            return [
+                (21300, 1300, "source", 77, 9, "deboog"),
+                (21301, 1301, "mirror", None, 9, "deboog"),
+            ]
+        if "SELECT booked_on" in self.sql:
+            return [
+                (
+                    "2026-05-16",
+                    Decimal("-40.00"),
+                    "Van Zakelijke oranje spaarrekening D85819755 overschrijving middelen",
+                )
+            ]
+        return []
+
+
 class SpaarMirrorTests(unittest.TestCase):
+    def test_rebuild_categorizes_the_causing_booking_as_the_mirror(self) -> None:
+        cursor = _SpaarRebuildCursor()
+        generated = rebuild_spaar_mirror_rows(6, 2026, cursor)
+        self.assertEqual(generated, 1)
+        update = next(
+            (sql, params)
+            for sql, params in zip(cursor.statements, cursor.params)
+            if "UPDATE" in sql
+        )
+        self.assertIn("modification IN (-1, 0)", update[0])
+        self.assertEqual(update[1][0], 21301)
+        self.assertEqual(update[1][2], 77)
+        inserted = next(
+            params
+            for sql, params in zip(cursor.statements, cursor.params)
+            if "INSERT INTO dbo.transaction_mirror" in sql
+        )
+        self.assertEqual(inserted[3], 21301)
+        self.assertTrue(str(inserted[5]).startswith("[spaar-mirror] "))
+
     def test_transfer_to_1052_posts_plus_x(self):
         # X > 0 leaves 1051 (bank amount -X); 1052 must increase by X.
         source = Decimal("-2500")

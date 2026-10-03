@@ -44,6 +44,10 @@ balance/frontend/vite.config.d.ts
 
 maaltijden/.env
 maaltijden/frontend/dist/
+
+# Shop orders are local runtime data, not the bookkeeping database.
+shop/data/*.sqlite
+shop/data/*.sqlite-journal
 maaltijden/frontend/node_modules/
 maaltijden/frontend/**/*.tsbuildinfo
 maaltijden/frontend/vite.config.js
