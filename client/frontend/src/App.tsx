@@ -5241,21 +5241,15 @@ function categoryPickerItems(
 function CategoryPickerPopup({
   currentCode,
   extraCodes,
-  bankIban,
   onPick,
   onClose,
 }: {
   currentCode: number | null;
   extraCodes: number[];
-  bankIban?: string;
   onPick: (code: number) => void;
   onClose: () => void;
 }) {
   const [items, setItems] = useState<{ code: number; label: string; name: string }[] | null>(null);
-  const [settings, setSettings] = useState<SettingsResponse | null>(null);
-  const [access, setAccess] = useState("");
-  const [personScope, setPersonScope] = useState("");
-  const [accountKey, setAccountKey] = useState("");
   const extraKey = extraCodes.join(",");
 
   useEffect(() => {
@@ -5263,12 +5257,9 @@ function CategoryPickerPopup({
     const codes = extraKey
       ? extraKey.split(",").map((part) => Number(part))
       : [];
-    Promise.all([getSettings(), getCentraleStatus().catch(() => null)])
-      .then(([loaded, status]) => {
+    getSettings()
+      .then((loaded) => {
         if (cancelled) return;
-        setSettings(loaded);
-        setAccess((status?.access || "").trim().toLowerCase());
-        setPersonScope((status?.person || "").trim());
         setItems(
           categoryPickerItems(loaded.categories, [
             ...(loaded.valid_category_codes ?? []),
@@ -5283,30 +5274,6 @@ function CategoryPickerPopup({
       cancelled = true;
     };
   }, [currentCode, extraKey]);
-
-  const accountGroups = scopedAccountGroups(settings?.account_groups, personScope);
-  const accountModality = accountGroups.length > 0;
-  const menuBlocks = accountBlocks(accountGroups, "");
-  const showCenters = Boolean(
-    !personScope &&
-      (access === "local" || access === "country") &&
-      menuBlocks.some((block) => block.center)
-  );
-  const showGeneral = access === "country";
-  const centerPicked = Boolean(centerNameFromKey(accountKey));
-  const columnCount = (showGeneral ? 1 : 0) + 2 + 1;
-
-  useEffect(() => {
-    const groups = scopedAccountGroups(settings?.account_groups, personScope);
-    const preset = bankIban
-      ? groups.find(
-          (group) =>
-            String(group.iban ?? "").trim().toUpperCase() ===
-            String(bankIban).trim().toUpperCase()
-        )
-      : undefined;
-    setAccountKey(preset?.account_key ?? groups[0]?.account_key ?? "");
-  }, [settings, personScope, bankIban]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -5330,91 +5297,22 @@ function CategoryPickerPopup({
           <table className="category-picker-table">
             <thead>
               <tr>
-                {showGeneral ? (
-                  <th
-                    className="category-picker-gp"
-                    title={tableHeaderTerm(settings?.table_header_terms, "General")}
-                  >
-                    {tableHeaderTerm(settings?.table_header_terms, "G")}
-                  </th>
-                ) : null}
                 <th className="code">Code</th>
                 <th>Post</th>
-                <th
-                  className="category-picker-scope"
-                  title={tableHeaderTerm(settings?.table_header_terms, "Personal")}
-                >
-                  {accountModality ? (
-                    <select
-                      className={
-                        centerPicked
-                          ? "term-context-account-select center-picked"
-                          : "term-context-account-select"
-                      }
-                      value={accountKey}
-                      title={tableHeaderTerm(settings?.table_header_terms, "Personal")}
-                      onChange={(e) => setAccountKey(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {(showCenters
-                        ? menuBlocks
-                        : [{ center: "", key: "", accounts: accountGroups }]
-                      ).flatMap((block) => [
-                        showCenters && block.center ? (
-                          <option
-                            key={block.key}
-                            value={block.key}
-                            style={{ color: "#b91c1c", fontWeight: 600 }}
-                          >
-                            {block.center}
-                          </option>
-                        ) : null,
-                        ...block.accounts.map((group) => (
-                          <option key={group.account_key} value={group.account_key}>
-                            {showCenters
-                              ? `\u00a0\u00a0${group.account_name || group.account_key}`
-                              : group.account_name || group.account_key}
-                          </option>
-                        )),
-                      ])}
-                    </select>
-                  ) : (
-                    tableHeaderTerm(settings?.table_header_terms, "P")
-                  )}
-                </th>
               </tr>
             </thead>
             <tbody>
               <tr className="category-picker-row category-picker-cancel" onClick={onClose}>
-                <td colSpan={columnCount}>cancel</td>
+                <td colSpan={2}>cancel</td>
               </tr>
               {items.map((item) => (
                 <tr
                   key={item.code}
                   className={`category-picker-row${item.code === currentCode ? " selected" : ""}`}
+                  onClick={() => onPick(item.code)}
                 >
-                  {showGeneral ? (
-                    <td className="category-picker-gp">
-                      <input
-                        type="checkbox"
-                        aria-label={`${item.label || item.code} general`}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() => onPick(item.code)}
-                      />
-                    </td>
-                  ) : null}
-                  <td className="code" onClick={() => onPick(item.code)}>
-                    {String(item.code).padStart(4, "0")}
-                  </td>
-                  <td onClick={() => onPick(item.code)}>{item.label}</td>
-                  <td className="category-picker-gp">
-                    <input
-                      type="checkbox"
-                      aria-label={`${item.label || item.code} personal`}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={() => onPick(item.code)}
-                    />
-                  </td>
+                  <td className="code">{String(item.code).padStart(4, "0")}</td>
+                  <td>{item.label}</td>
                 </tr>
               ))}
             </tbody>
@@ -5949,7 +5847,6 @@ function PTable({
         <CategoryPickerPopup
           currentCode={Number(picker.category)}
           extraCodes={[...validCategoryCodes]}
-          bankIban={bank}
           onPick={(code) => {
             handsetDebug("categoryPicker.onPick", {
               code,

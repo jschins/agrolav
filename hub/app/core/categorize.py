@@ -1477,13 +1477,18 @@ def remainder_category_code() -> int | None:
 
 
 def _validate_category_code(code: Any) -> int:
+    """Accept any catalog local code. A hand pick is not limited to term targets."""
     try:
         numeric = int(code)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid category code: {code!r}") from exc
-    if numeric not in category_code_set():
-        known = ", ".join(str(c) for c in sorted(category_code_set()))
-        raise ValueError(f"Unknown category code {numeric}; known codes: {known}")
+    known = {
+        parsed
+        for name in category_names()
+        if (parsed := _category_code(name)) is not None
+    }
+    if numeric not in known:
+        raise ValueError(f"Unknown category code {numeric}")
     return numeric
 
 

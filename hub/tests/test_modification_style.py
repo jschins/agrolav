@@ -2,6 +2,7 @@
 import unittest
 
 from app.core import categorize
+from app.sql_replica import stored_category_id_for_code
 
 
 def _row(row_id: str, modification: int) -> dict:
@@ -58,6 +59,20 @@ class CombineHandFlagTests(unittest.TestCase):
         self.assertEqual(
             categorize._combine_hand_flags(categorize.MOD_NONE, category=True),
             categorize.MOD_HAND,
+        )
+
+
+class HandCategoryIdTests(unittest.TestCase):
+    def test_hand_pick_stores_the_category_id_for_that_local_code(self) -> None:
+        self.assertEqual(
+            stored_category_id_for_code(1301, {}, {1301: 21301}, 18, 2),
+            21301,
+        )
+
+    def test_term_write_does_not_use_a_role_terms_cannot_hit(self) -> None:
+        self.assertEqual(
+            stored_category_id_for_code(1051, {}, {1051: 21051}, 18, 0),
+            18,
         )
 
 

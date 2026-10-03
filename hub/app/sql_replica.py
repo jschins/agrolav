@@ -54,6 +54,24 @@ def _country_id_for_username(cursor: Any, country: str) -> int | None:
     return int(row[0]) if row else None
 
 
+def stored_category_id_for_code(
+    local_code: int | None,
+    by_code: dict[int, int],
+    by_code_hand: dict[int, int],
+    remainder_id: int,
+    modification: int,
+) -> int:
+    """Map a displayed local code to ``dim_category.category_id``.
+
+    A hand category (modification 2 or 4) uses the row for that local code.
+    A term write skips roles that cannot be a hit and falls back to remainder.
+    """
+    if local_code is None:
+        return remainder_id
+    lookup = by_code_hand if modification in (2, 4) else by_code
+    return lookup.get(local_code, remainder_id)
+
+
 def _local_code(raw: Any) -> int | None:
     if raw is None or raw == "":
         return None
@@ -983,10 +1001,12 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
         from shared.balance_values import is_hit_forbidden_code, is_remainder_role
 
         by_code: dict[int, int] = {}
+        by_code_hand: dict[int, int] = {}
         remainder_id: int | None = None
         for local_code, category_id, role in bound.cursor.fetchall():
             code = int(local_code)
             cid = int(category_id)
+            by_code_hand[code] = cid
             if is_remainder_role(role):
                 remainder_id = cid
             if is_hit_forbidden_code(code, role):
@@ -1015,11 +1035,13 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
             if not source_id:
                 continue
             code = _local_code(item.get("category"))
-            category_id = by_code.get(code, remainder_id) if code is not None else remainder_id
             try:
                 modification = int(item.get("modification"))
             except (TypeError, ValueError):
                 modification = 0
+            category_id = stored_category_id_for_code(
+                code, by_code, by_code_hand, remainder_id, modification
+            )
             hit = item.get("hit")
             hit_s = str(hit)[:64] if hit not in (None, "") else None
             description = item.get("description")
