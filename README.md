@@ -199,8 +199,8 @@ bank view).
 - Empty cells and the two **footer rows** (balance and last booked date) are
   not clickable.
 - Negative amounts are shown in red.
-<!-- {en:matrix[5],cell,cells,total,totals,click,amount,amounts,open,booking,bookings,footer,footers,last,booked,empty,negative,red,balance,balances,date,dates} -->
-<!-- {nl:matrix[5],cel,cellen,totaal,totalen,klik,bedrag,bedragen,openen,boeking,boekingen,voettekst,voetteksten,laatste,geboekt,leeg,negatief,rood,saldo,saldo's,datum,datums} -->
+<!-- {en:matrix[5],cell,cells,total,totals,click,amount,amounts,open,booking,bookings,footer,footers,last,booked,empty,negative,red,balance,balances,date,dates,option,options} -->
+<!-- {nl:matrix[5],cel,cellen,totaal,totalen,klik,bedrag,bedragen,openen,boeking,boekingen,voettekst,voetteksten,laatste,geboekt,leeg,negatief,rood,saldo,saldo's,datum,optie,opties} -->
 
 ---
 
@@ -219,8 +219,8 @@ click away or press Enter. An unknown code is rejected. A category you
 overrode is shown in **bold**.
 
 Other columns (date, type, IBAN, amount) are not edited with a left-click.
-<!-- {en:booking[5],bookings[5],list[5],lists[5],highlighted,description,descriptions,blue,text,left-click,left,click,category,categories,code,codes,c,bold,date,dates,iban,amount,amounts,column[5],columns[5]} -->
-<!-- {nl:boeking[5],boekingen[5],lijst[5],lijsten[5],gemarkeerd,omschrijving,omschrijvingen,blauw,tekst,linksklik,links,klik,categorie,categorieën,code,codes,c,vet,datum,datums,iban,bedrag,bedragen,kolom[5],kolommen[5]} -->
+<!-- {en:booking[5],bookings[5],list[5],lists[5],highlighted,description,descriptions,blue,text,left-click,left,click,category,categories,code,codes,c,bold,date,dates,iban,amount,amounts,column[5],columns[5],option,options} -->
+<!-- {nl:boeking[5],boekingen[5],lijst[5],lijsten[5],gemarkeerd,omschrijving,omschrijvingen,blauw,tekst,linksklik,links,klik,categorie,categorieën,code,codes,c,vet,datum,datums,iban,bedrag,bedragen,kolom[5],kolommen[5],optie,opties} -->
 ### Right-click the amount
 
 Right-click the **amount** to **split** that booking. You leave the list and
@@ -233,8 +233,8 @@ from it, so the total never changes.
 - Edit descriptions and amounts in the table; delete a line with its button.
 - **Save** — writes the split and returns to the matrix.
 - **Matrix (Alt+M)** — leave without saving.
-<!-- {en:split,splits,right-click[5],amount[5],amounts[5],remainder,remainders,add,line,lines,delete,save,leave,alt+m} -->
-<!-- {nl:splitsen,splitsingen,rechtsklik[5],bedrag[5],bedragen[5],restbedrag,restbedragen,toevoegen,regel,regels,verwijderen,opslaan,verlaten,alt+m} -->
+<!-- {en:split,splits,right-click[5],amount[5],amounts[5],remainder,remainders,add,line,lines,delete,save,leave,alt+m,option,options} -->
+<!-- {nl:splitsen,splitsingen,rechtsklik[5],bedrag[5],bedragen[5],restbedrag,restbedragen,toevoegen,regel,regels,verwijderen,opslaan,verlaten,alt+m,optie,opties} -->
 ### Right-click a name or description
 
 Right-click a **word** in the **name** or **description**. A small menu opens
@@ -249,7 +249,7 @@ The word is saved at once. **cancel** or click outside the menu to close it
 without assigning. Other bookings keep their category until the next menu
 click.
 <!-- {en:right-click[5],word,words,menu,name[5],names[5],general,personal,cancel,term[5],terms[5],save} -->
-<!-- {nl:rechtsklik[5],woord,woorden,menu,naam[5],namen[5],gemeenschappelijk,persoonlijk,annuleren,term[5],termen[5],opslaan} -->
+<!-- {nl:klik,rechts[5],woord,woorden,menu,naam[5],namen[5],gemeenschappelijk,persoonlijk,annuleren,term[5],termen[5],opslaan} -->
 
 ---
 

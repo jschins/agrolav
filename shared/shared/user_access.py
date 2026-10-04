@@ -45,7 +45,8 @@ def visibility_rank(access: str, *, hd: bool = False) -> int:
     """How far down the login sits on ``dbo.dim_category.visibility``.
 
     1 country, 2 center, 3 person, 4 work-unit, 5 HD.
-    A category is visible when its number is at least this rank.
+    A category can be assigned when its number is at least this rank.
+    Balance and result sheets do not use this rank.
     """
     mode = str(access or "").strip().lower()
     if mode == ACCESS_UNIT:
@@ -82,7 +83,7 @@ def normalize_visibility(value: object) -> int:
 
 
 def category_visible_to_rank(visibility: object, rank: int) -> bool:
-    """True when this login's rank may see a category with ``visibility``."""
+    """True when this login may assign a category with ``visibility``."""
     return normalize_visibility(visibility) >= int(rank)
 
 

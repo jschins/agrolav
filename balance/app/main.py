@@ -314,21 +314,13 @@ def balance_sheet(
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
     from app.balance import balance_sheet as compute
-    from app.result import scope_visibility_rank, unit_login_kind
+    from app.result import unit_login_kind
 
     country_id = resolve_country(slug)
-    rank = scope_visibility_rank(
-        country_id,
-        person=person,
-        center=center,
-        account=account,
-        unit=unit,
-        login=login,
-    )
     kind = unit_login_kind(
         country_id, unit=unit, account=account, login=login
     )
-    return compute(country_id, year, as_of=date, visibility_rank=rank, kind=kind)
+    return compute(country_id, year, as_of=date, kind=kind)
 
 
 @app.get("/balance/{slug}/api/balance/{year}/result")
@@ -344,18 +336,9 @@ def balance_result_rows(
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
     from app.balance import list_result_rows
-    from app.result import scope_visibility_rank
 
     country_id = resolve_country(slug)
-    rank = scope_visibility_rank(
-        country_id,
-        person=person,
-        center=center,
-        account=account,
-        unit=unit,
-        login=login,
-    )
-    rows = list_result_rows(country_id, year, visibility_rank=rank)
+    rows = list_result_rows(country_id, year)
     return {
         "year": year,
         "rows": rows,

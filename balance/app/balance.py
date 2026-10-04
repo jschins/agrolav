@@ -307,24 +307,19 @@ def _result_overlay(country_id: int, year: int, as_of: str | None = None) -> Dec
     return Decimal(sum(overlay.values())) / 100
 
 
-def list_result_rows(
-    country_id: int, year: int, *, visibility_rank: int = 1
-) -> list[dict[str, Any]]:
+def list_result_rows(country_id: int, year: int) -> list[dict[str, Any]]:
     """Per-category Resultaat rows (3000-4999) for the Excel export.
 
     Same derivation as ``_recorded_result`` but grouped per category: the
     recorded ``dbo.category_total`` (consolidated, ``bank_id IS NULL``) plus
     the beheer journal/mirror overlay. The grand total is R, equal to passiva
-    2100.
+    2100. Every non-zero category is listed.
     """
     with connect() as conn:
         cur = conn.cursor()
         records = recorded_resultaat_totals(country_id, year, cur)
         overlay = result_overlay_cents(country_id, year, cur)
         local_codes = shared_category_local_codes(country_id, cur)
-        from shared.balance_values import category_visibility
-
-        visible = category_visibility(country_id, cur)
     labels = _category_labels(country_id)
     combined: dict[int, Decimal] = {}
     for code, amount in records.items():
@@ -333,7 +328,7 @@ def list_result_rows(
         combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
     rows = []
     for code, amount in sorted(combined.items()):
-        if not _row_visible(code, visible, visibility_rank):
+        if amount == 0:
             continue
         rows.append(
             {
@@ -568,20 +563,11 @@ def _result_amount(country_id: int, year: int, cutoff: date | None) -> Decimal:
     return total + _result_overlay(country_id, year, overlay_as_of)
 
 
-def _row_visible(cat_id: int | None, visible: dict[int, int] | None, rank: int) -> bool:
-    if visible is None or rank <= 1 or cat_id is None:
-        return True
-    from shared.user_access import category_visible_to_rank
-
-    return category_visible_to_rank(visible.get(int(cat_id)), rank)
-
-
 def balance_sheet(
     country_id: int,
     year: int,
     as_of: str | None = None,
     *,
-    visibility_rank: int = 1,
     kind: str = "",
 ) -> dict[str, Any]:
     """Return the full balance sheet for a given country and year.
@@ -608,12 +594,10 @@ def balance_sheet(
         local_codes = shared_category_local_codes(country_id, cur)
         from shared.balance_values import (
             category_roles,
-            category_visibility,
             is_cp_role,
             kruisposten_view_adjustment,
         )
 
-        visible = category_visibility(country_id, cur)
         roles = category_roles(country_id, cur) if kind in ("hd", "unit") else {}
         if balance_id is None:
             raise RuntimeError(
@@ -642,8 +626,6 @@ def balance_sheet(
         if local is None or not is_balance_sheet_code(local):
             continue
         if side not in ("activa", "passiva"):
-            continue
-        if not _row_visible(cat_id, visible, visibility_rank):
             continue
         label = labels.get(cat_id, f"cat_{cat_id}")
 
@@ -683,7 +665,7 @@ def balance_sheet(
 
     total_activa = _sum_amount(activa)
 
-    if result_id is not None and _row_visible(result_id, visible, visibility_rank):
+    if result_id is not None:
         passiva.append({
             "category_id": result_id,
             "code": display_code(result_id),
@@ -697,16 +679,15 @@ def balance_sheet(
 
     balance_amount = total_activa - total_passiva_others
     plug_unchanged = _amounts_equal(balance_amount, start_plug)
-    if _row_visible(balance_id, visible, visibility_rank):
-        passiva.append({
-            "category_id": balance_id,
-            "code": display_code(balance_id),
-            "label": labels.get(balance_id, "Eigen vermogen"),
-            "amount": float(balance_amount),
-            "source": "computed",
-            "unchanged": bool(plug_unchanged),
-            "role": "equity",
-        })
+    passiva.append({
+        "category_id": balance_id,
+        "code": display_code(balance_id),
+        "label": labels.get(balance_id, "Eigen vermogen"),
+        "amount": float(balance_amount),
+        "source": "computed",
+        "unchanged": bool(plug_unchanged),
+        "role": "equity",
+    })
 
     total_passiva = _sum_amount(passiva)
 
@@ -724,9 +705,7 @@ def balance_sheet(
     }
 
 
-def opening_balance_sheet(
-    country_id: int, year: int, *, visibility_rank: int = 1
-) -> dict[str, Any]:
+def opening_balance_sheet(country_id: int, year: int) -> dict[str, Any]:
     """Openings for one year, including the bank rows.
 
     Journals, bookings, and the live account balances stay out. When this
@@ -740,9 +719,6 @@ def opening_balance_sheet(
         balance_id = _balance_id(country_id, cur)
         result_id = _verlies_id(country_id, cur)
         local_codes = shared_category_local_codes(country_id, cur)
-        from shared.balance_values import category_visibility
-
-        visible = category_visibility(country_id, cur)
         cur.execute(
             "SELECT o.category_id, o.amount FROM dbo.balance_opening o "
             "JOIN dbo.dim_category d ON d.category_id = o.category_id "
@@ -786,8 +762,6 @@ def opening_balance_sheet(
             continue
         if side not in ("activa", "passiva"):
             continue
-        if not _row_visible(cat_id, visible, visibility_rank):
-            continue
         row = {
             "category_id": cat_id,
             "code": local,
@@ -800,7 +774,7 @@ def opening_balance_sheet(
         else:
             passiva.append(row)
 
-    if result_id is not None and _row_visible(result_id, visible, visibility_rank):
+    if result_id is not None:
         passiva.append({
             "category_id": result_id,
             "code": display_code(result_id),
@@ -809,8 +783,7 @@ def opening_balance_sheet(
             "source": "opening",
             "role": "profit",
         })
-    if _row_visible(balance_id, visible, visibility_rank):
-        passiva.append({
+    passiva.append({
             "category_id": balance_id,
             "code": display_code(balance_id),
             "label": labels.get(int(balance_id), "Eigen vermogen"),

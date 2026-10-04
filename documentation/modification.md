@@ -35,11 +35,6 @@ In contrast to menu-ordered runs, the automatic runs after a fresh download of b
 <!-- {en:modification[5],parameter[5],booking,bookings,category,categories,description,descriptions,hand,left-click,term,terms,cross-posting,cross-postings,wipe,smaller,amount,amounts,download,bank} -->
 <!-- {nl:modificatie[5],parameter[5],boeking,boekingen,categorie,categorieën,omschrijving,omschrijvingen,hand,linksklik,term,termen,kruispost,kruisposten,wissen,kleiner,bedrag,bedragen,downloaden,bank} -->
 
-# Amount splitting
-
-Upon left-clicking an amount in the category-totals view, a new window opens, in which the user can split up that amount in several parts, each one with its own description and category.
-<!-- {en:amount[5],splitting[5],split,splits,left-click,window,part,parts,description,descriptions,category,categories} -->
-<!-- {nl:bedrag[5],splitsen[5],splitsing,splitsingen,linksklik,venster,deel,delen,omschrijving,omschrijvingen,categorie,categorieën} -->
 
 
 

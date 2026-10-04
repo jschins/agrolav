@@ -579,34 +579,6 @@ def _filter_term_map(bucket: Any, vis: dict[str, Any], rank: int) -> Any:
     return {key: value for key, value in bucket.items() if _name_visible(str(key), vis, rank)}
 
 
-def _filter_visible_categories(payload: dict[str, Any]) -> dict[str, Any]:
-    """Drop categories this login's visibility rank may not see."""
-    vis = payload.get("category_visibility")
-    if not isinstance(vis, dict) or not vis:
-        return payload
-    rank = _login_visibility_rank()
-    if rank <= 1:
-        return payload
-    out = dict(payload)
-    cats = out.get("categories")
-    if isinstance(cats, list):
-        out["categories"] = [cat for cat in cats if _name_visible(str(cat), vis, rank)]
-    cells = out.get("cells")
-    if isinstance(cells, dict):
-        out["cells"] = {
-            key: value for key, value in cells.items() if _name_visible(str(key), vis, rank)
-        }
-    used = out.get("used")
-    if isinstance(used, dict):
-        out["used"] = {
-            key: value for key, value in used.items() if _name_visible(str(key), vis, rank)
-        }
-    entries = out.get("entries")
-    if isinstance(entries, list):
-        out["entries"] = [entry for entry in entries if _name_visible(str(entry), vis, rank)]
-    return out
-
-
 def _filter_visible_settings(payload: dict[str, Any]) -> dict[str, Any]:
     vis = payload.get("category_visibility")
     by_code = payload.get("visibility_by_code")
@@ -664,7 +636,6 @@ def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
     Person login also drops activa/passiva rows (local_code 1000–2999) so both
     matrix views show profit-and-loss categories plus the saldo/datum footers.
     """
-    payload = _filter_visible_categories(payload)
     scope = configured_person()
     if not scope:
         return payload
