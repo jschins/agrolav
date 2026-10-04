@@ -610,3 +610,14 @@ insert into dbo.dim_category values
 (3995,	4,	3995,	'Huishoudelijke dienst','3000',	'Lasten',	5),
 (4995,	4,	4995,	'Inkomsten residentie','4000',	'Baten',	5);
 
+==================Kas Handmatig
+
+insert into dbo.dim_category values
+(11133,	5, 1133, 'kas HD De Borcht', NULL, 'Activa/Vlottende activa/Kas HD', 5),
+(11134,	5, 1134, 'kas HD Den Eker', NULL, 'Activa/Vlottende activa/Kas HD', 5),
+(11135,	5, 1135, 'kas HD Hogeland', NULL, 'Activa/Vlottende activa/Kas HD', 5),
+(11136,	5, 1136, 'kas HD Jan Luijken', NULL, 'Activa/Vlottende activa/Kas HD', 5),
+(11137,	5, 1137, 'kas HD Leidenhoven', NULL, 'Activa/Vlottende activa/Kas HD', 5),
+(11138,	5, 1138, 'kas HD Lepelenburg', NULL, 'Activa/Vlottende activa/Kas HD', 5),
+(11139,	5, 1139, 'kas HD De Stade', NULL, 'Activa/Vlottende activa/Kas HD', 5);
+

@@ -896,7 +896,13 @@ def recategorize_transactions(
     ``from_scratch`` is Recalculate. Open rows lose their hit and return to
     -1, then a new hit writes 0. An Excel row that is still open is marked
     hand (2) and keeps the sheet category.
+
+    Geldautomaat rows are written to the cash post first, with modification
+    1, so this pass does not put them on a term category.
     """
+    from app.cash_on_hand import assign_bound_cash_on_hand
+
+    assign_bound_cash_on_hand()
     general = _category_map(_categories_file())
     data = _load_categorized_store()
 
@@ -975,6 +981,9 @@ def ircft_add_term(
     if not needles:
         return False
 
+    from app.cash_on_hand import assign_bound_cash_on_hand
+
+    assign_bound_cash_on_hand()
     payload = _load_categorized_store()
     transactions = payload.get("transactions")
     if not isinstance(transactions, list):

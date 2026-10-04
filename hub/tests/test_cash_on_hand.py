@@ -1,0 +1,100 @@
+"""Instudo cash posts are the bookings stored on that category."""
+from __future__ import annotations
+
+import unittest
+from datetime import date
+from decimal import Decimal
+from unittest.mock import patch
+
+from app.cash_on_hand import assign_cash_on_hand
+from shared.balance_values import balance_category_breakdown
+
+
+class _Cursor:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple]] = []
+        self.rowcount = 3
+
+    def execute(self, sql: str, params: tuple | None = None) -> None:
+        self.calls.append((sql, tuple(params or ())))
+
+
+class CashOnHandTests(unittest.TestCase):
+    def test_sheet_uses_the_category_not_the_bank(self) -> None:
+        mapping = {
+            11134: ("activa", None),
+            11010: ("activa", 10),
+        }
+        with patch.multiple(
+            "shared.balance_values",
+            category_roles=lambda *_a, **_k: {},
+            verlies_id=lambda *_a, **_k: None,
+            eigen_vermogen_id=lambda *_a, **_k: None,
+            spaar_mirror_targets=lambda *_a, **_k: set(),
+            category_map=lambda *_a, **_k: mapping,
+            category_local_codes=lambda *_a, **_k: {11134: 1134, 11010: 1010},
+            _opening_balances=lambda *_a, **_k: {},
+            _journal_balances=lambda *_a, **_k: {},
+            _journal_effect=lambda *_a, **_k: {},
+            _booking_balances=lambda *_a, **_k: {11134: Decimal("40")},
+            _account_balances_asof=lambda *_a, **_k: {
+                48: Decimal("4751"),
+                10: Decimal("100"),
+            },
+        ):
+            out = balance_category_breakdown(
+                5, 2026, object(), as_of=date(2025, 12, 31), trace=False
+            )
+        self.assertEqual(out[11134], (4000, "opening+bookings"))
+        self.assertEqual(out[11010], (10000, "account:10"))
+
+    def test_opening_plus_category_bookings(self) -> None:
+        mapping = {11133: ("activa", None)}
+        with patch.multiple(
+            "shared.balance_values",
+            category_roles=lambda *_a, **_k: {},
+            verlies_id=lambda *_a, **_k: None,
+            eigen_vermogen_id=lambda *_a, **_k: None,
+            spaar_mirror_targets=lambda *_a, **_k: set(),
+            category_map=lambda *_a, **_k: mapping,
+            category_local_codes=lambda *_a, **_k: {11133: 1133},
+            _opening_balances=lambda *_a, **_k: {11133: Decimal("12.50")},
+            _journal_balances=lambda *_a, **_k: {},
+            _journal_effect=lambda *_a, **_k: {},
+            _booking_balances=lambda *_a, **_k: {11133: Decimal("40")},
+            _account_balances=lambda *_a, **_k: {55: Decimal("8000")},
+        ):
+            out = balance_category_breakdown(5, 2026, object(), trace=False)
+        self.assertEqual(out[11133], (5250, "opening+bookings"))
+
+    def test_assign_writes_the_cash_category_on_open_rows(self) -> None:
+        cursor = _Cursor()
+        count = assign_cash_on_hand(
+            cursor,
+            "dbo.transaction_beheer_instudo",
+            5,
+            person_id=7,
+            year=2026,
+        )
+        self.assertEqual(count, 3 * 7)
+        self.assertEqual(len(cursor.calls), 7)
+        sql, params = cursor.calls[0]
+        self.assertIn("bank_type = ?", sql)
+        self.assertIn("modification IN (-1, 0, 1)", sql)
+        self.assertNotIn("modification IN (-1, 0, 1, 2", sql)
+        self.assertEqual(params[0], 11133)
+        self.assertEqual(params[1], 55)
+        self.assertEqual(params[2], "Geldautomaat")
+        self.assertEqual(params[3:], (7, 2026))
+
+    def test_other_countries_are_left_alone(self) -> None:
+        cursor = _Cursor()
+        self.assertEqual(
+            assign_cash_on_hand(cursor, "dbo.transaction_nederland", 1),
+            0,
+        )
+        self.assertEqual(cursor.calls, [])
+
+
+if __name__ == "__main__":
+    unittest.main()

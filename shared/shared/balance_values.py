@@ -1029,6 +1029,20 @@ def country_has_balance(country_id: int, cursor: object) -> bool:
 # SIa leg of the SIa/SIb cross-posting (local 1100); it is not a bank account.
 _OPENING_NOT_ACCOUNT_IDS = frozenset({11019, 11021, 11100})
 
+# Instudo HD cash on hand. mapping_banks still names the account, but the
+# sheet must not copy that account's balance. The post is the opening row
+# (zero when dbo.balance_opening has none) plus Geldautomaat bookings.
+CASH_ON_HAND_BANK_TYPE = "Geldautomaat"
+CASH_ON_HAND_ACCOUNT: dict[int, int] = {
+    11133: 55,
+    11134: 48,
+    11135: 57,
+    11136: 47,
+    11137: 46,
+    11138: 45,
+    11139: 56,
+}
+
 
 def account_links(country_id: int, cursor: object) -> dict[int, int]:
     """category_id → account_id from ``dbo.mapping_banks`` for a country.
@@ -1037,8 +1051,11 @@ def account_links(country_id: int, cursor: object) -> dict[int, int]:
     category (the ``source`` post is the spaar checking account).
     ``11019``, ``11021`` and ``11100`` always use ``dbo.balance_opening``. Mirror-role
     posts never ride a leftover ``mapping_banks`` row as a live account.
+    Instudo cash posts 11133–11139 are opening plus the bookings stored on
+    that category, not the mapped account’s balance.
     """
     skip = set(_OPENING_NOT_ACCOUNT_IDS)
+    skip.update(CASH_ON_HAND_ACCOUNT)
     skip.update(
         cat_id
         for cat_id, role in category_roles(country_id, cursor).items()
@@ -1915,6 +1932,8 @@ def balance_category_breakdown(
     and signed booking rows from ``dbo.transaction_{country}`` (codes 1000-2999,
     activa ``-X`` / passiva ``+X``) are added to non-bank posts. Bank-linked
     posts skip the booking sum so the live account is not counted twice.
+    Instudo cash posts 11133–11139 are not live accounts: opening plus the
+    bookings stored on that category.
     Bookings onto live-bank / spaar roles are ignored. The spaar ``mirror``
     post is always opening + stored ``transaction_mirror`` (already ``-d``),
     never a live account and never the activa booking sign. The computed

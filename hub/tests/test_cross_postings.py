@@ -349,7 +349,8 @@ class LoadCandidatesSqlTests(unittest.TestCase):
         cursor = Cursor()
         self.assertEqual(_load_candidates(cursor, "dbo.transaction_nederland", {18}, set()), [])
         self.assertNotIn("IN ()", cursor.sql)
-        self.assertIn("WHERE t.account_id IN (?)", cursor.sql)
+        self.assertIn("WHERE (t.account_id IN (?))", cursor.sql)
+        self.assertIn("t.bank_type <> N'Geldautomaat'", cursor.sql)
         self.assertNotIn("category_id IN", cursor.sql)
         self.assertEqual(cursor.params, (18,))
 

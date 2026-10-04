@@ -524,6 +524,14 @@ def apply_cross_postings(
     table = transaction_table(country_id, cursor)
     if not table:
         raise RuntimeError(f"country {country_id} has no transaction table")
+    from app.cash_on_hand import assign_cash_on_hand
+
+    assign_cash_on_hand(
+        cursor,
+        table,
+        country_id,
+        source_ids=source_ids,
+    )
     cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
     if cursor.fetchone()[0] is None:
         raise RuntimeError(f"{table} does not exist")
@@ -851,7 +859,8 @@ def _load_candidates(
         SELECT t.transaction_id, t.person_id, t.year, t.account_id, t.booked_on,
                t.amount, t.counterparty_iban, t.category_id, t.modification
         FROM {table} t
-        WHERE {where}
+        WHERE ({where})
+          AND (t.bank_type IS NULL OR t.bank_type <> N'Geldautomaat')
         """,
         params,
     )
