@@ -1,4 +1,5 @@
-INSERT INTO dbo.country VALUES (5, 'beheer_instudo', 'EUR', 'Beheer Instudo', 4, NULL);
+INSERT INTO dbo.country (country_id, username, currency_default, title, egress_ip)
+VALUES (5, 'beheer_instudo', 'EUR', 'Beheer Instudo', NULL);
 INSERT INTO dbo.center VALUES (7, 5, 'beh_instudo', 'Beheer Instudo', NULL);
 
 ALTER TABLE dbo.country ADD has_balance BIT NOT NULL

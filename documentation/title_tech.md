@@ -10,8 +10,6 @@ never invented in the React app.
 
 ---
 
-<!-- {en:left-panel[5],title[5],sidebar,subtitle} -->
-<!-- {nl:zijpaneel[5],titel[5],zijbalk,ondertitel} -->
 
 ## 1. Which login row
 
@@ -37,8 +35,6 @@ the `/api/auth/me` title from login.
 
 ---
 
-<!-- {en:login[5],row[5],person,center,country} -->
-<!-- {nl:inloggen[5],rij[5],persoon,centrum,land} -->
 
 ## 2. Subtitle — only several accounts
 
@@ -62,8 +58,7 @@ The two lines are one `h1`: title, then a line break and the subtitle in
 
 ---
 
-<!-- {en:subtitle[5],accounts[5],several[5],bank} -->
-<!-- {nl:ondertitel[5],rekeningen[5],meerdere[5],bank} -->
+
 
 ## 3. Order that picks the sidebar title
 
@@ -86,8 +81,6 @@ personal login AND more than one account?
 
 ---
 
-<!-- {en:order[5],sidebar[5],title[5],display_title} -->
-<!-- {nl:volgorde[5],zijbalk[5],titel[5],display_title} -->
 
 ## 4. Browser tab, menu labels, and display_title
 
@@ -99,5 +92,4 @@ personal login AND more than one account?
   default when **creating** a login with an empty title. It is not the
   sidebar path.
 
-<!-- {en:browser[5],tab[5],menu[5],labels[5],display_title[5]} -->
-<!-- {nl:browser[5],tabblad[5],menu[5],bijschriften[5],display_title[5]} -->
+

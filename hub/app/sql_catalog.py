@@ -4064,16 +4064,6 @@ def export_matrix_excel_data(
         raise ValueError(str(exc)) from exc
 
 
-def display_digits(rows: list[dict[str, Any]]) -> int:
-    """Frontend code-padding width for a country's local codes.
-
-    Uniform backend storage is four digits; only ``beheer_sdog`` actually uses
-    codes >= 100. This lets the frontend pad to 2 for everyone else.
-    """
-    codes = [int(row.get("local_code") or 0) for row in rows]
-    return 4 if any(code >= 100 for code in codes) else 2
-
-
 def booking_categories_payload(country: str) -> dict[str, Any]:
     """Booking rows in ``dbo.dim_category`` (excludes footers and role stamps)."""
     name = (country or "").strip()
@@ -4081,7 +4071,6 @@ def booking_categories_payload(country: str) -> dict[str, Any]:
         "country": name,
         "country_id": None,
         "remainder_id": None,
-        "digits": 2,
         "categories": [],
     }
     if not name or not _sql_ready():
@@ -4124,7 +4113,6 @@ def booking_categories_payload(country: str) -> dict[str, Any]:
             "country": name,
             "country_id": country_id,
             "remainder_id": remainder_id,
-            "digits": display_digits(rows),
             "categories": rows,
         }
 

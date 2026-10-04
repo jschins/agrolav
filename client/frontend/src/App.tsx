@@ -1439,6 +1439,15 @@ function HelpMarkdown({ text }: { text: string }) {
       {blocks.map((block, key) => {
         const trimmed = block.trim();
         if (!trimmed) return null;
+        if (/^-{3,}$/.test(trimmed)) return <hr key={key} />;
+        const docName = /^@@\s+(\S.*)$/.exec(trimmed);
+        if (docName && !trimmed.includes("\n")) {
+          return (
+            <h2 key={key} className="help-question-doc">
+              {docName[1]}
+            </h2>
+          );
+        }
         if (trimmed.startsWith("|")) return helpTable(trimmed, key);
         const heading = /^(#{1,6})\s+(\S.*)$/.exec(trimmed);
         if (heading && !trimmed.includes("\n")) {
@@ -1470,10 +1479,10 @@ function HelpMarkdown({ text }: { text: string }) {
   );
 }
 
-function HelpQuestion() {
+function HelpQuestion({ terms }: { terms?: Record<string, string> }) {
+  const prompt = tableHeaderTerm(terms, "Question about this program");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
-  const [sources, setSources] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -1504,11 +1513,9 @@ function HelpQuestion() {
     void askHelp(q)
       .then((res) => {
         setAnswer(res.answer);
-        setSources(res.sources ?? []);
       })
       .catch(() => {
         setAnswer("");
-        setSources([]);
         setError("Could not answer that just now.");
       })
       .finally(() => setBusy(false));
@@ -1520,8 +1527,8 @@ function HelpQuestion() {
         className="help-question-input"
         type="text"
         value={question}
-        placeholder="Question about this program"
-        aria-label="Question about this program"
+        placeholder={prompt}
+        aria-label={prompt}
         disabled={busy}
         onChange={(ev) => setQuestion(ev.target.value)}
         onKeyDown={(ev) => {
@@ -1534,9 +1541,6 @@ function HelpQuestion() {
       {open ? (
         <div className="help-question-answer" role="status">
           {busy ? "…" : error ? error : <HelpMarkdown text={answer} />}
-          {!busy && sources.length > 0 ? (
-            <div className="help-question-sources">{sources.join(", ")}</div>
-          ) : null}
         </div>
       ) : null}
     </div>
@@ -2253,7 +2257,7 @@ function SyncNotifyShell({
             {!passwordView ? (
               <ActionsMenu items={menuItems} onPick={runMenuItem} />
             ) : null}
-            {!passwordView ? <HelpQuestion /> : null}
+            {!passwordView ? <HelpQuestion terms={menuTerms} /> : null}
             {rescoreError ? <span> · {rescoreError}</span> : null}
             {switching ? <span className="center-switcher-busy">switching…</span> : null}
             {scratchError ? <span> · {scratchError}</span> : null}
@@ -5223,14 +5227,14 @@ function categoryPickerItems(
 ): { code: number; label: string; name: string }[] {
   const byCode = new Map<number, { label: string; name: string }>();
   for (const name of names) {
-    const match = String(name).match(/^(\d{4})\s+(.*)$/);
+    const match = String(name).match(/^(\d{2,4})(?:\s+(.*))?$/);
     if (!match) continue;
     const code = parseInt(match[1], 10);
-    if (code < 1000 || code > 4999) continue;
-    byCode.set(code, { label: match[2].trim(), name });
+    if (!Number.isFinite(code)) continue;
+    byCode.set(code, { label: (match[2] ?? "").trim(), name });
   }
   for (const code of codes) {
-    if (code < 1000 || code > 4999) continue;
+    if (!Number.isFinite(code)) continue;
     if (!byCode.has(code)) byCode.set(code, { label: "", name: "" });
   }
   return [...byCode.entries()]
@@ -5311,7 +5315,9 @@ function CategoryPickerPopup({
                   className={`category-picker-row${item.code === currentCode ? " selected" : ""}`}
                   onClick={() => onPick(item.code)}
                 >
-                  <td className="code">{String(item.code).padStart(4, "0")}</td>
+                  <td className="code">
+                    {String(item.code).padStart(item.code < 100 ? 2 : 4, "0")}
+                  </td>
                   <td>{item.label}</td>
                 </tr>
               ))}

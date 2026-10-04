@@ -32,8 +32,7 @@ In contrast to menu-ordered runs, the automatic runs after a fresh download of b
 
 - start out with crosspostings EXCLUSIVELY affecting -1, and
 - finish with terms EXCLUSIVELY affecting -1.
-<!-- {en:modification[5],parameter[5],booking,bookings,category,categories,description,descriptions,hand,left-click,term,terms,cross-posting,cross-postings,wipe,smaller,amount,amounts,download,bank} -->
-<!-- {nl:modificatie[5],parameter[5],boeking,boekingen,categorie,categorieën,omschrijving,omschrijvingen,hand,linksklik,term,termen,kruispost,kruisposten,wissen,kleiner,bedrag,bedragen,downloaden,bank} -->
+
 
 
 

@@ -148,9 +148,35 @@ class HelpAgentTests(unittest.TestCase):
             )
             dutch = answer_question("sms code", root)
             self.assertIn("sms-code", str(dutch["answer"]))
+            self.assertIn("@@ documentation/login.md", str(dutch["answer"]))
             self.assertEqual(dutch["sources"], ["documentation/login.md"])
             skipped = answer_question("FILELISTONLY folders", root)
             self.assertEqual(skipped["sources"], [])
+
+    def test_each_document_is_named_and_separated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text(
+                "## Log in\n\nEnter the password.\n{en:password}\n",
+                encoding="utf-8",
+            )
+            docs = root / "documentation"
+            docs.mkdir()
+            (docs / "login.md").write_text(
+                "## SMS\n\nEen sms-code.\n{en:password,sms}\n",
+                encoding="utf-8",
+            )
+            out = answer_question("password", root)
+            answer = str(out["answer"])
+            self.assertIn("@@ documentation/login.md", answer)
+            self.assertIn("@@ README.md", answer)
+            rule = answer.index("\n\n---\n\n")
+            names = (
+                answer.index("@@ documentation/login.md"),
+                answer.index("@@ README.md"),
+            )
+            self.assertLess(min(names), rule)
+            self.assertLess(rule, max(names))
 
     def test_unknown_question_says_so(self) -> None:
         out = answer_question("quantum flux capacitor calibration")

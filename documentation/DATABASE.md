@@ -503,7 +503,6 @@ A user override overwrites that same `category_id` and sets `modification` to
 | `title` | `NVARCHAR(256)` | display name |
 | `currency_default` | `CHAR(3)` | `EUR` / `GBP` (accounts may still differ) |
 | `egress_ip` | `VARCHAR(256)` NULL | comma-separated allowlist; empty or NULL admits nobody |
-| `digits` | `INT` | category-code width in the UI (default 2; 4 on some countries) |
 | `language_id` | `INT` NOT NULL | `1` = `dbo.language.term_lang1` (English); `2` = `term_lang2` (Dutch); unknown id → English |
 
 <!-- {en:country[5],table,login,column} -->
@@ -982,9 +981,6 @@ DROP CONSTRAINT ck_txn_beheer_cat;
 ALTER TABLE dbo.transaction_beheer
 ADD CONSTRAINT ck_txn_beheer_cat
 CHECK ([category_id] >= 1000 AND [category_id] < 10000);
-
-ALTER TABLE dbo.country ADD digits INT NOT NULL CONSTRAINT DF_num_digits DEFAULT 2;
-UPDATE dbo.country SET digits = 4 WHERE country_id = 4;
 
 UPDATE dbo.dim_category
 SET label = SUBSTRING(label, 4, LEN(label))

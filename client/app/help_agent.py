@@ -107,12 +107,18 @@ def _answer_from_brackets(question: str, root: Path) -> dict[str, object] | None
     if not scored:
         return None
     scored.sort(key=lambda item: item[0], reverse=True)
+    by_source: dict[str, list[str]] = {}
     sources: list[str] = []
-    for _score, _body, source in scored:
-        if source not in sources:
+    for _score, body, source in scored:
+        if source not in by_source:
             sources.append(source)
+            by_source[source] = []
+        by_source[source].append(body)
+    parts = [
+        f"@@ {source}\n\n" + "\n\n".join(by_source[source]) for source in sources
+    ]
     return {
-        "answer": "\n\n".join(body for _score, body, _source in scored),
+        "answer": "\n\n---\n\n".join(parts),
         "sources": sources,
     }
 

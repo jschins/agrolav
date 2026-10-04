@@ -1,4 +1,4 @@
-# Maaltijden
+# Meal sheet
 
 Household meal sheet for center `nl_dkg` (country `nederland`). It is a
 separate FastAPI app on **port 8400**, not a page of the 8300 client.

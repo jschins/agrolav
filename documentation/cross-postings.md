@@ -1,6 +1,6 @@
-# Kruisposten
+# Cross postings
 
-Bereken kruisposten writes categories on internal transfers for the logged-in country when `dbo.country.has_balance` is set.
+'Bereken kruisposten' (calculate cross postings) writes categories on internal transfers for the logged-in country when `dbo.country.has_balance` is set.
 The entry point is `apply_cross_postings` in `hub/app/cross_postings.py`.
 The menu calls `POST /api/cross-postings`.
 Uitlezen bankafschriften, and a one-person or year-to-date fetch, run the same pairing after the download, and only on pairs that include a statement just stored. On that run a row is written only when its `modification` is -1, so the other leg is written only when that leg is also -1. A row at 0 is left as it is. Statements outside those pairs stay as they are. The fetch then runs terms, and those terms also rewrite only rows still at `modification` -1. A menu run of Bereken kruisposten still writes -1 and 0. A hand row (`modification` 2) keeps its category and its description.

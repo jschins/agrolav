@@ -125,6 +125,17 @@ html.refresh-busy body::before {
   font-size: 0.95rem;
 }
 
+.help-question-answer h2.help-question-doc {
+  margin: 0 0 0.55rem;
+  font-size: 1rem;
+}
+
+.help-question-answer hr {
+  border: 0;
+  border-top: 1px solid #c5c5c8;
+  margin: 0.85rem 0;
+}
+
 .help-question-answer p {
   margin: 0.35rem 0;
 }
