@@ -3133,6 +3133,7 @@ function MainApp({
   const termSettingsRef = useRef<SettingsResponse | null>(null);
   const [loginPerson, setLoginPerson] = useState("");
   const [loginAccess, setLoginAccess] = useState("");
+  const [loginUsername, setLoginUsername] = useState("");
   const [languageLong, setLanguageLong] = useState<Record<string, string>>({});
   const selectionRef = useRef<CellSelection | null>(null);
   const dirtyRef = useRef(false);
@@ -3156,6 +3157,7 @@ function MainApp({
         const person = (s.person || "").trim();
         setLoginPerson(person);
         setLoginAccess((s.access || "").trim());
+        setLoginUsername((s.username || "").trim());
         const scope =
           scoped && ws && person ? { center: ws, person } : null;
         setRefreshScope(scope);
@@ -3356,9 +3358,8 @@ function MainApp({
       return prev;
     });
     recordModification(selection.person_name, modified)
-      .then((res) => {
-        if (res.matrix) setMatrix(res.matrix);
-      })
+      .then(() => getMatrix(year, bankQuery))
+      .then(setMatrix)
       .catch((e: Error) => setError(e.message));
   }
 
@@ -3685,6 +3686,8 @@ function MainApp({
 
   const inPView = selection !== null;
   const displayMatrix = matrix;
+  const columnLabel = (name: string) =>
+    loginAccess === "unit" && loginUsername ? loginUsername : name;
 
   const sidebarTitle = accountSidebarTitle(
     brandName,
@@ -3720,6 +3723,7 @@ function MainApp({
                 loginAccess === "personal" ||
                 loginAccess === "unit"
               }
+              columnLabel={columnLabel}
               onPick={(category) => selectCell(selection.person_name, category)}
               onPersonChange={(person_name) => selectCell(person_name, selection.category)}
             />
@@ -3747,6 +3751,7 @@ function MainApp({
                 loginAccess === "personal" ||
                 loginAccess === "unit"
               }
+              columnLabel={columnLabel}
               onPick={selectCell}
             />
           </>
@@ -4832,11 +4837,13 @@ function MatrixTable({
   matrix,
   selection,
   omitEmpty = false,
+  columnLabel,
   onPick,
 }: {
   matrix: MatrixResponse;
   selection: CellSelection | null;
   omitEmpty?: boolean;
+  columnLabel?: (person_name: string) => string;
   onPick: (person_name: string, category: string) => void;
 }) {
   const { people, cells } = matrix;
@@ -4853,7 +4860,7 @@ function MatrixTable({
           <th className="cat">{tableHeaderTerm(terms, "Category")}</th>
           {people.map((p) => (
             <th key={p.person_name} className="num">
-              {p.person_name}
+              {columnLabel ? columnLabel(p.person_name) : p.person_name}
             </th>
           ))}
         </tr>
@@ -4893,6 +4900,7 @@ function PersonColumnTable({
   person_name,
   selectedCategory,
   omitEmpty = false,
+  columnLabel,
   onPick,
   onPersonChange,
 }: {
@@ -4900,6 +4908,7 @@ function PersonColumnTable({
   person_name: string;
   selectedCategory: string | null;
   omitEmpty?: boolean;
+  columnLabel?: (person_name: string) => string;
   onPick: (category: string) => void;
   onPersonChange?: (person_name: string) => void;
 }) {
@@ -4928,12 +4937,12 @@ function PersonColumnTable({
               >
                 {scopedPeople.map((p) => (
                   <option key={p.person_name} value={p.person_name}>
-                    {p.person_name}
+                    {columnLabel ? columnLabel(p.person_name) : p.person_name}
                   </option>
                 ))}
               </select>
             ) : (
-              person_name
+              columnLabel ? columnLabel(person_name) : person_name
             )}
           </th>
         </tr>

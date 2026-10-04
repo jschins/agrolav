@@ -188,10 +188,12 @@ Ook al kan de gebruiker op eenheid-niveau de G-termen niet definiëren, loont he
 
 ### Journaal en afschrijvingen
 
-Gebruik het menu-item *Handmatige journaalposten* 
+Gebruik het menu-item *Handmatige journaalposten* voor boekingen van vaste bedragen tussen willekeurige categorieën.
+De tekenconventie is zodanig dat 
+- de *naar-categorie altijd toeneemt met het getekende bedrag* (dat betekent: toename voor positieve bedragen, afname voor negatieve bedragen)
+- de *van-categorie zich zo gedraagt dat het eigen vermogen gelijk blijft* (basisprincipe van een dubbele boekhouding)
 
-De knop voor de tekenconventie opent de uitleg. De sluitknop, een links-klik
-op de grijze rand, of Escape sluit die.
+De knop voor de tekenconventie opent de uitleg. 
 
 De eerste regel is een nieuwe post. **Save** schrijft die. Op een bestaande
 regel opent **Edit** de velden, **Save** bewaart de wijziging, en **×**
