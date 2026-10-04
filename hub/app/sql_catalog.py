@@ -2905,10 +2905,10 @@ def _add_unit_kruisposten_excel(
     rows: list[dict[str, Any]],
     total_months: list[Any],
 ) -> None:
-    """Move this unit account's kruisposten onto role 4000 or 3000.
+    """Move this unit account's kruisposten onto role 4000.
 
     The months leave Overige mutaties because they are added to the sheet
-    total. An HD account uses 4000; a work unit uses 3000.
+    total. HD and work unit both show 4995 Inkomsten residentie.
     """
     from decimal import Decimal
 

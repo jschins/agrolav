@@ -14,7 +14,7 @@ Today one person (id 24) holds five IBANs, all mapped on `dbo.mapping_banks`:
 | 43 | NL61INGB0002843544 | Lepelenburg |
 
 Bank posts 1021–1025 stay country-level. The live sheet is
-`/balance/beheer_instudo`.
+`/result/beheer_instudo`.
 
 ---
 
@@ -170,7 +170,7 @@ person, for the next half hour.”
 ## 4. Balance sheet: already one country sheet
 
 There are not three balances. There is **one** sheet per `has_balance`
-country (`/balance/beheer`, `/balance/beheer_instudo`). Country, center,
+country (`/result/beheer`, `/result/beheer_instudo`). Country, center,
 and person logins all get the same `balance_url` when the session has a
 country — which they all do (`person → center → country`). The menu is a
 shortcut to that country sheet.

@@ -2,7 +2,7 @@
 
 `balance/` is one Python project and one frontend. There is no `result/`
 directory. `agrolav-balance` serves Resultaat and Balans from
-`balance/frontend/dist` under `/balance/{slug}/` on port 8500.
+`balance/frontend/dist` under `/result/{slug}/` on port 8500.
 
 Restart the sheet with `sudo systemctl restart agrolav-balance`.
 
@@ -46,7 +46,7 @@ Activa must equal Passiva for each year.
 | React frontend | yes — same build, new routes under `/balance/` | balance-specific pages |
 | Hub on :8200 | no — untouched | |
 | Sheet process | | FastAPI in `balance/`, served by `agrolav-balance` |
-| Caddy | extends existing config | route `expenses.apsurt.nl/balance*` → port 8500 |
+| Caddy | extends existing config | route `expenses.apsurt.nl/result*` → port 8500 |
 
 The balance hub does not touch the existing matrix, transaction, or
 categorization machinery. It reads account balances and category definitions
@@ -367,7 +367,7 @@ computed by the hub so the two sides always balance.
 5. **Frontend** — balance overview page, year switcher, activa/passiva columns. ✅
    (standalone Vite+React app under `frontend/`, talks to the sheet process)
 6. **Transactions** (later) — journal entry interface, depreciation calculation.
-7. **Caddy route** — proxy `/balance*` to the sheet process.
+7. **Caddy route** — proxy `/result*` to the sheet process.
 
 ## 10. Files created
 
@@ -443,7 +443,7 @@ uv sync                           # → .venv + uv.lock
 ```bash
 cd /opt/agrolav/balance/frontend
 npm ci
-npm run build            # → dist/   (built with base /balance/)
+npm run build            # → dist/   (built with base ./)
 ```
 
 ### Resultaat (`agrolav-balance`)
@@ -454,7 +454,7 @@ The unit file is on the server and is not in this repo. It runs from `balance/` 
 /opt/agrolav/balance/.venv/bin/uvicorn app.result_main:app --host 127.0.0.1 --port 8500
 ```
 
-Caddy proxies `/balance*` to that port. Restart with `sudo systemctl restart agrolav-balance`.
+Caddy proxies `/result*` to that port. Restart with `sudo systemctl restart agrolav-balance`.
 
 `/etc/agrolav/balance.env` holds non-secret settings for that process (`HOST`, `HUB_DATABASE_URL`, optional `BALANCE_DIST`). Do not set `PORT` there to anything other than what `result_main` binds.
 
@@ -470,16 +470,16 @@ later, once the frontend has a login that can send `Authorization:
 Bearer …`. Leave it unset. The sheet listens on localhost only; Caddy is the
 public door.
 
-The process serves the frontend's `dist/` under `/balance/{slug}/` and its API at
-`/balance/{slug}/api/balance/...` — one SPA and one set of endpoints per country slug.
+The process serves the frontend's `dist/` under `/result/{slug}/` and its API at
+`/result/{slug}/api/balance/...` — one SPA and one set of endpoints per country slug.
 
 ### Caddy route
 
-Add a `handle /balance*` block to the existing site so browsers reach the
+Add a `handle /result*` block to the existing site so browsers reach the
 sheet through the public HTTPS endpoint:
 
 ```caddy
-handle /balance* {
+handle /result* {
     reverse_proxy 127.0.0.1:8500 {
         header_up X-Forwarded-For {http.request.remote.host}
         header_up X-Real-IP {http.request.remote.host}
@@ -487,9 +487,9 @@ handle /balance* {
 }
 ```
 
-Public URL: `https://expenses.apsurt.nl/balance/`.
+Public URL: `https://expenses.apsurt.nl/result/`.
 
-The `/balance*` handler must come before the catch-all client proxy.
+The `/result*` handler must come before the catch-all client proxy.
 
 ### Local dev quick start (for comparison)
 
@@ -504,8 +504,8 @@ cd C:\Coding\agrolav\balance
 ```
 
 That's the one to use for day-to-day testing: **uvicorn** (`app/result_main.py`) serves the **prebuilt** frontend from `frontend/dist/` under
-`/balance/{slug}/` — no build step, identical to production, and the
-page is `http://127.0.0.1:8500/balance/beheer/`.
+`/result/{slug}/` — no build step, identical to production, and the
+page is `http://127.0.0.1:8500/result/beheer/`.
 
 **Vite** (`npm run dev`, :5174) is a separate, *optional* dev-only server for
 live-editing the React source with hot-reload:
@@ -519,14 +519,14 @@ npm run dev                             # → localhost:5174
 | | `uv run balance` (uvicorn) | `npm run dev` (vite) |
 |---|---|---|
 | Serves | `frontend/dist/` (prebuilt) | React source dir, hot-reloaded |
-| URL (Beheer) | `http://127.0.0.1:8500/balance/beheer/` | `http://localhost:5174/balance/beheer/` |
+| URL (Beheer) | `http://127.0.0.1:8500/result/beheer/` | `http://localhost:5174/result/beheer/` |
 | Needs rebuild to update UI | yes (`npm run build`) | no (instant) |
 | Use for | using/testing the app | editing the frontend |
 
 They're independent — interrupting Vite does **not** stop the hub, and the
 hub URL keeps working from `dist/`. Only restart Vite if you're actively
 editing; for plain testing, use the uvicorn URL and ignore 5174. (The
-`vite.config.ts` proxy rewrites `/api` → `/balance/{slug}/api` so Vite can
+`vite.config.ts` proxy rewrites `/api` → `/result/{slug}/api` so Vite can
 reach the same backend on port 8500.)
 
 ## 11. Current status
@@ -549,7 +549,7 @@ against the remote database:
 
 The balance frontend (standalone Vite+React app) is built and committed under
 `frontend/`; it produces `dist/` (itself git-ignored — rebuild on deploy via
-`npm ci && npm run build`). The Caddy `/balance/` route and the transaction-edit
+`npm ci && npm run build`). The Caddy `/result/` route and the transaction-edit
 interface are not yet deployed/built; see §13 and §9.6.
 
 

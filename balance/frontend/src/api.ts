@@ -13,8 +13,8 @@ import type {
 
 function apiBase(): string {
   const p = window.location.pathname;
-  const m = p.match(/^\/balance\/([^/]+)/);
-  if (m) return `/balance/${m[1]}`;
+  const m = p.match(/^\/result\/([^/]+)/);
+  if (m) return `/result/${m[1]}`;
   return "";
 }
 

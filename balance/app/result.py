@@ -938,7 +938,7 @@ def _cross_cash_lines(
 
 
 def _unit_reserve_categories(country_id: int) -> dict[str, tuple[int, int, str]]:
-    """``role`` → ``(category_id, local_code, label)`` for roles 3000 and 4000."""
+    """``role`` → ``(category_id, local_code, label)`` for role 4000."""
     found: dict[str, tuple[int, int, str]] = {}
     with connect() as conn:
         cur = conn.cursor()
@@ -988,9 +988,10 @@ def _add_unit_kruisposten_row(
     reserves: dict[str, tuple[int, int, str]],
     cp_local: int,
 ) -> Decimal:
-    """Hand journal van 3995 or 4995, naar cp, amount minus the cp total.
+    """Hand journal van 4995, naar cp, amount minus the cp total.
 
-    The P&L line shows the effect on van. Returns that effect.
+    The P&L line shows Inkomsten residentie, opposite the van-leg. Returns
+    that shown amount.
     """
     from shared.balance_values import (
         balance_category_id,
@@ -1021,7 +1022,7 @@ def _add_unit_kruisposten_row(
         "amount": float(shown),
         "source": "journal",
     }
-    _insert_by_code(opbrengsten if kind == "hd" else kosten, row)
+    _insert_by_code(opbrengsten, row)
     return shown
 
 

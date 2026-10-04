@@ -4,7 +4,7 @@
 |-----------|------|------|
 | Hub | :8200 | FastAPI data API |
 | Client | :8300 | BFF + React UI |
-| `agrolav-balance` | :8500 | Resultaat and Balans under `/balance/{slug}` |
+| `agrolav-balance` | :8500 | Resultaat under `/result/{slug}` |
 | Maaltijden | :8400 | Meal matrix for `nl_dkg` at `/maaltijden` |
 | SQL Server | :1433 | Authoritative store |
 | Caddy | 80/443 | Public HTTPS; hub and apps stay on loopback |
@@ -31,7 +31,7 @@ Attempted public addresses land in `dbo.visitor_ip`.
 |---------|------|------------------------|
 | `agrolav-hub` | 8200 | Nothing of its own. Caddy forwards selected `/api/local/*` calls. |
 | `agrolav-client` | 8300 | The site: login, matrix, menu. |
-| `agrolav-balance` | 8500 | `/balance/{slug}/` — profit/loss and the balance sheet. |
+| `agrolav-balance` | 8500 | `/result/{slug}/` — profit/loss for this login, and the country balance sheet under it. |
 
 Each of these binds to `127.0.0.1`. `slug` is `dbo.country.username`.
 
@@ -44,12 +44,12 @@ the sheet, or logout on the menu page, closes that window.
 
 One directory, `balance/`, holds the sheet. It is one Python project
 (`balance/pyproject.toml`, one `.venv`). There is no `result` directory.
-The process serves `balance/frontend/dist` under `/balance/{slug}/`.
+The process serves `balance/frontend/dist` under `/result/{slug}/`.
 That window draws Resultaat and, for a country with a balance sheet, Balans.
 
 | Process | systemd unit | Command, from `balance/` | Sheet |
 |---------|--------------|--------------------------|--------|
-| Resultaat | `agrolav-balance` | `uvicorn app.result_main:app` on port 8500 | `/balance/{slug}/` |
+| Resultaat | `agrolav-balance` | `uvicorn app.result_main:app` on port 8500 | `/result/{slug}/` |
 
 Sheet changes load after `sudo systemctl restart agrolav-balance`.
 
@@ -57,7 +57,7 @@ Resultaat shows local codes 3000–4999: kosten 3000–3999 and opbrengsten
 4000–4999. The amounts follow the login — the country, that center, that
 person, or that unit account. The menu link is `RESULT_URL`, otherwise
 `http://127.0.0.1:8500`. On the public site set `RESULT_URL` to the site
-origin and proxy `/balance*` to port 8500.
+origin and proxy `/result*` to port 8500.
 
 ### Starting the sheets locally
 

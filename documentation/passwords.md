@@ -92,7 +92,7 @@ The Bearer token for the **hub** (`:8200`). Caddy stamps it onto
 BFF sends it when it calls the hub. Single place: the root `.env` file.
 
 This is **not** a password for the balance sheet in the browser. The
-balance SPA (`/balance/{slug}`) calls its own JSON API with no
+balance SPA (`/result/{slug}`) calls its own JSON API with no
 `Authorization` header and cannot hold this secret. If the balance
 process treats `CENTRALE_API_KEY` as required, every sheet fetch returns
 **401 Unauthorized**. Keep the key in the root `.env`; do **not** put it

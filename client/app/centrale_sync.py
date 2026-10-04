@@ -67,7 +67,7 @@ def public_hub_url() -> str:
 
 
 def _result_base_url() -> str:
-    """Browser-facing result app base for ``/balance/{slug}`` on port 8500.
+    """Browser-facing result app base for ``/result/{slug}`` on port 8500.
 
     ``RESULT_URL`` overrides. Otherwise ``http://127.0.0.1:8500``: the result
     SPA is a separate process, not the public hub origin.
@@ -79,7 +79,7 @@ def _result_base_url() -> str:
 
 
 def _result_url(cfg: HubConfig) -> str:
-    """``/balance/{country}/`` plus the login scope the sheet must apply."""
+    """``/result/{country}/`` plus the login scope the sheet must apply."""
     if not cfg.enabled or not str(cfg.country or "").strip():
         return ""
     params: dict[str, str] = {}
@@ -99,7 +99,7 @@ def _result_url(cfg: HubConfig) -> str:
     if login:
         params["login"] = login
     slug = urllib.parse.quote(str(cfg.country).strip())
-    url = f"{_result_base_url()}/balance/{slug}/"
+    url = f"{_result_base_url()}/result/{slug}/"
     query = urllib.parse.urlencode(params)
     return f"{url}?{query}" if query else url
 
@@ -862,7 +862,7 @@ def unit_result_sheet(year: int, *, login: str, account: str) -> dict[str, Any]:
         params["account"] = iban
     slug = urllib.parse.quote(str(cfg.country).strip())
     url = (
-        f"{_result_base_url()}/balance/{slug}/api/balance/{int(year)}"
+        f"{_result_base_url()}/result/{slug}/api/balance/{int(year)}"
         f"?{urllib.parse.urlencode(params)}"
     )
     req = urllib.request.Request(url, method="GET")

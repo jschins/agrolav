@@ -13,10 +13,10 @@ are in `[DATABASE.md](DATABASE.md)`.
 | ----------- | ---------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | hub         | systemd `agrolav-hub`        | `127.0.0.1:8200` | FastAPI: login, sync, calculation, SQL Server                                                                                                                                                           |
 | client BFF  | systemd `agrolav-client`     | `127.0.0.1:8300` | Serves the frontend, proxies hub APIs, browser login                                                                                                                                                    |
-| balance     | systemd `agrolav-balance`     | `127.0.0.1:8500` | Resultaat and Balans — `/balance/{slug}`, API at `/balance/{slug}/api/...`. Code and frontend live in `balance/`. |
+| balance     | systemd `agrolav-balance`     | `127.0.0.1:8500` | Resultaat — `/result/{slug}`, API at `/result/{slug}/api/balance/...`. Code and frontend live in `balance/`. |
 | maaltijden  | systemd `agrolav-maaltijden` | `127.0.0.1:8400` | Meal matrix for center `nl_dkg` — login + SPA at `/maaltijden`, API at `/maaltijden/api/...`                                                                                                            |
 | SQL Server  | Docker `MSSQL2022`           | VPC :1433        | the only data store; the authorized computer and this application computer                                                                                                                              |
-| Caddy       | systemd `caddy`              | `80/443`         | public site → client BFF; selected hub paths → hub; `/balance*` → `agrolav-balance`; `/maaltijden*` → maaltijden                                                                                             |
+| Caddy       | systemd `caddy`              | `80/443`         | public site → client BFF; selected hub paths → hub; `/result*` → `agrolav-balance`; `/maaltijden*` → maaltijden                                                                                             |
 
 
 Two computers. The database is on **A**. The website is on **B**. 
@@ -50,7 +50,7 @@ Caddy :443                          the browser connection ends here
    │  forwards on this machine
    ├─ client       client/         127.0.0.1:8300
    ├─ hub          hub/            127.0.0.1:8200
-   ├─ balance      balance/        127.0.0.1:8500   agrolav-balance   /balance/
+   ├─ balance      balance/        127.0.0.1:8500   agrolav-balance   /result/
    └─ maaltijden   maaltijden/     127.0.0.1:8400
           │
           │  HUB_DATABASE_URL

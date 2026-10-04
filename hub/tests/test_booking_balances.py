@@ -551,29 +551,20 @@ class CategoryRoleTests(unittest.TestCase):
             category_display_name("Verlies", 2100, "profit"),
             "2100 Verlies",
         )
-        self.assertTrue(is_hit_forbidden_code(3000, "3000"))
-        self.assertTrue(is_journal_forbidden_code(3000, "3000"))
         self.assertTrue(is_hit_forbidden_code(4000, "4000"))
         self.assertTrue(is_journal_forbidden_code(4000, "4000"))
         self.assertEqual(
-            category_display_name("Huishoudelijke dienst", 3000, "3000"),
-            "Huishoudelijke dienst",
+            category_display_name("Inkomsten residentie", 4000, "4000"),
+            "Inkomsten residentie",
         )
 
-    def test_implicit_journal_is_van_3995_or_4995_naar_cp_minus_the_cp_total(self):
+    def test_implicit_journal_is_van_4995_naar_cp_minus_the_cp_total(self):
         from shared.balance_values import balance_category_id
 
-        self.assertEqual(balance_category_id(6, 3995), 23995)
         self.assertEqual(balance_category_id(6, 4995), 24995)
-        self.assertEqual(balance_category_id(4, 3995), 3995)
+        self.assertEqual(balance_category_id(5, 4995), 14995)
         amount, effect_van, effect_cp = implicit_kruisposten_journal(
             4995, 1200, Decimal("80")
-        )
-        self.assertEqual(amount, Decimal("-80"))
-        self.assertEqual(effect_van, Decimal("-80"))
-        self.assertEqual(effect_cp, Decimal("-80"))
-        amount, effect_van, effect_cp = implicit_kruisposten_journal(
-            3995, 1200, Decimal("80")
         )
         self.assertEqual(amount, Decimal("-80"))
         self.assertEqual(effect_van, Decimal("-80"))
@@ -591,7 +582,7 @@ class CategoryRoleTests(unittest.TestCase):
             Decimal("80"), kind="unit", cp_local=1200
         )
         self.assertEqual(shown, Decimal("0"))
-        self.assertEqual(added, Decimal("-80"))
+        self.assertEqual(added, Decimal("80"))
         shown, added = kruisposten_view_adjustment(
             Decimal("80"), kind="", cp_local=1200
         )
@@ -607,13 +598,13 @@ class CategoryRoleTests(unittest.TestCase):
         place_unit_kruisposten_row(
             rows,
             totals,
-            code=3000,
-            label="Huishoudelijke dienst",
+            code=4995,
+            label="Inkomsten residentie",
             months=[Decimal("50")],
         )
-        self.assertEqual([row["code"] for row in rows], [3000, 3100, 4100])
+        self.assertEqual([row["code"] for row in rows], [3100, 4100, 4995])
         self.assertEqual(totals[0], Decimal("53"))
-        self.assertEqual(rows[0]["amount"], 50.0)
+        self.assertEqual(rows[2]["amount"], 50.0)
 
     def test_afschrijving_amount(self):
         self.assertEqual(

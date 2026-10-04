@@ -198,12 +198,14 @@ class KruispostenReclassTests(unittest.TestCase):
         self.assertEqual(uitgaven, Decimal("-20"))
         self.assertEqual(inkomsten, Decimal("-50"))
 
-    def test_work_unit_adds_kruisposten_on_the_loss_side(self) -> None:
+    def test_work_unit_adds_kruisposten_on_the_profit_side(self) -> None:
+        # Profit column is 100 plus Inkomsten residentie +50. Cash inkomsten
+        # gains the removed Kruisposten total of 50.
         uitgaven, inkomsten = cash_inkomsten_uitgaven(
-            "unit", Decimal("-70"), Decimal("100"), Decimal("50"), Decimal("-50")
+            "unit", Decimal("-20"), Decimal("150"), Decimal("50"), Decimal("50")
         )
-        self.assertEqual(uitgaven, Decimal("30"))
-        self.assertEqual(inkomsten, Decimal("100"))
+        self.assertEqual(uitgaven, Decimal("-20"))
+        self.assertEqual(inkomsten, Decimal("150"))
 
 
 if __name__ == "__main__":

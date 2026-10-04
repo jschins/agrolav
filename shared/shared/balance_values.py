@@ -84,15 +84,11 @@ CATEGORY_ROLE_SIA = "sia"
 CATEGORY_ROLE_SIB = "sib"
 CATEGORY_ROLE_SIASIB = "siasib"
 CATEGORY_ROLE_CP = "cp"
-CATEGORY_ROLE_UNIT_LOSS = "3000"
 CATEGORY_ROLE_UNIT_PROFIT = "4000"
-# Work-unit and HD labels for kruisposten. Present in dim_category so the
-# local codes stay reserved. Bookings and journals do not use them.
-UNIT_RESULT_RESERVE_ROLES = frozenset(
-    {CATEGORY_ROLE_UNIT_LOSS, CATEGORY_ROLE_UNIT_PROFIT}
-)
+# HD and work-unit label for kruisposten. Present in dim_category so the
+# local code stays reserved. Bookings and journals do not use it.
+UNIT_RESULT_RESERVE_ROLES = frozenset({CATEGORY_ROLE_UNIT_PROFIT})
 UNIT_KRUISPOSTEN_LABELS = {
-    CATEGORY_ROLE_UNIT_LOSS: "Huishoudelijke dienst",
     CATEGORY_ROLE_UNIT_PROFIT: "Inkomsten residentie",
 }
 KRUISPOSTEN_CASH_LABEL = "Kruisposten"
@@ -183,7 +179,7 @@ def is_hit_forbidden_role(role: object) -> bool:
 
 
 def is_unit_result_reserve_role(role: object) -> bool:
-    """``3000`` or ``4000``: a sheet label, not a category that is booked."""
+    """``4000``: a sheet label, not a category that is booked."""
     return category_role_canonical(role) in UNIT_RESULT_RESERVE_ROLES
 
 
@@ -192,20 +188,19 @@ def is_journal_forbidden_role(role: object) -> bool:
 
 
 def unit_kruisposten_role(kind: str) -> str | None:
-    """Catalog role that receives kruisposten on this unit login, or ``None``."""
-    if kind == "hd":
+    """Catalog role that receives kruisposten on this unit login, or ``None``.
+
+    HD and work unit both show role 4000 (4995, Inkomsten residentie).
+    """
+    if kind in ("hd", "unit"):
         return CATEGORY_ROLE_UNIT_PROFIT
-    if kind == "unit":
-        return CATEGORY_ROLE_UNIT_LOSS
     return None
 
 
 def unit_kruisposten_local(kind: str) -> int | None:
-    """Local code of the hand-journal ``van`` post: 4995 for HD, 3995 for a work unit."""
-    if kind == "hd":
+    """Local code of the shown kruisposten line: 4995 for HD and for a work unit."""
+    if kind in ("hd", "unit"):
         return 4995
-    if kind == "unit":
-        return 3995
     return None
 
 
@@ -220,9 +215,10 @@ def kruisposten_view_adjustment(
     """Hand journal on a category total already calculated for this view.
 
     ``cp_amount`` is the cross-posting total the view just summed. For an HD
-    or work-unit login the journal amount is minus that total, van 4995 or
-    3995, naar the cp post. Returns ``(cp total to show, amount added to the
-    result line)``. Other logins keep the cp total and add nothing.
+    or work-unit login the journal amount is minus that total, van 4995,
+    naar the cp post. The shown result line is the opposite of that van-leg,
+    so Inkomsten residentie is positive. Returns ``(cp total to show, amount
+    added to the result line)``. Other logins keep the cp total and add nothing.
     """
     van_local = unit_kruisposten_local(kind)
     if van_local is None or cp_amount == 0:
@@ -236,10 +232,10 @@ def kruisposten_view_adjustment(
 def shown_kruisposten_result(kind: str, effect_van: Decimal) -> Decimal:
     """Result-line amount for this login.
 
-    A work unit shows the van-leg, which is negative. An HD login shows
-    Inkomsten residentie with the opposite sign, so that amount is positive.
+    HD and work unit show Inkomsten residentie with the opposite sign of the
+    van-leg, so that amount is positive.
     """
-    if kind == "hd":
+    if kind in ("hd", "unit"):
         return -effect_van
     return effect_van
 
@@ -247,11 +243,11 @@ def shown_kruisposten_result(kind: str, effect_van: Decimal) -> Decimal:
 def implicit_kruisposten_journal(
     van_local: int, cp_local: int, cp_statement: Decimal
 ) -> tuple[Decimal, Decimal, Decimal]:
-    """Hand journal ``van`` the unit label, ``naar`` the cp post.
+    """Hand journal ``van`` 4995, ``naar`` the cp post.
 
     The amount is minus the cp total already calculated for this login.
-    The same minus is used for 3995 and for 4995. Nothing is written to
-    ``dbo.journal``. Returns ``(amount, effect on van, effect on cp)``.
+    Nothing is written to ``dbo.journal``. Returns ``(amount, effect on van,
+    effect on cp)``.
     """
     amount = -cp_statement
     effect_van, effect_cp = journal_deltas(int(van_local), int(cp_local), amount)
@@ -281,17 +277,17 @@ def cash_inkomsten_uitgaven(
 ) -> tuple[Decimal, Decimal]:
     """Cash-table Uitgaven and Inkomsten.
 
-    The P&L column already includes ``column_effect``, the van-leg of the
-    hand journal. Kruisposten ``kruis`` has been removed from the extras, so
-    the cash line puts that statement total back on Uitgaven or Inkomsten.
-    An HD login negates the profit column before that.
+    The P&L inkomsten already include ``column_effect``, Inkomsten residentie.
+    Kruisposten ``kruis`` has been removed from the extras, so the cash line
+    puts that statement total back on Inkomsten. An HD login negates the
+    profit column before that.
     """
     if kind == "hd":
         plain = opbrengsten_sum - column_effect
         return kosten_sum, -plain + kruis
     if kind == "unit":
-        plain = kosten_sum - column_effect
-        return plain + kruis, opbrengsten_sum
+        plain = opbrengsten_sum - column_effect
+        return kosten_sum, plain + kruis
     return kosten_sum, opbrengsten_sum
 
 

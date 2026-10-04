@@ -80,7 +80,7 @@ proxy other hub routes through Caddy.
 
 ## 6. The balance sheet has no login
 
-`/balance/{slug}` (slug = `dbo.country.username` with `has_balance = 1`)
+`/result/{slug}` (slug = `dbo.country.username` with `has_balance = 1`)
 is served to the browser with **no session and no API key**. Anyone who
 can guess `beheer_sdog` (or another slug) and reach the site can read and
 post the sheet. Treat those URLs as sensitive; do not advertise them; a
