@@ -889,7 +889,7 @@ def create_person(
         raise ValueError("mode must be 'periodic-consent' or 'manual-upload'")
     holder = (account_name or "").strip()
     display_name = (title or "").strip()
-    if mode_s == "manual-upload" and not display_name:
+    if not display_name:
         raise ValueError("Name is required")
     if mode_s == "manual-upload" and not holder:
         raise ValueError("account holder name is required")
@@ -920,7 +920,7 @@ def create_person(
                     center=ws,
                     person=person_name,
                     country=country_name,
-                    title="",
+                    title=display_name,
                     mobile_phone=mobile,
                 )
                 user_store.set_user_format(username=person_name, format=aspsp_s)

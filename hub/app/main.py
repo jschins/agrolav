@@ -2268,6 +2268,7 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
     .remind dt { color: #475569; margin: 0; }
     .remind dd { margin: 0; word-break: break-all; }
     .remind .note { margin: 0.55rem 0 0; color: #475569; font-size: 0.85rem; }
+    .field-hint { margin: 0.2rem 0 0; font-size: 0.75rem; color: #94a3b8; line-height: 1.3; }
   </style>
 </head>
 <body>
@@ -2286,9 +2287,15 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
 
     <div id="step1" class="step active">
       <table>
-        <tr><th>person name</th><td><input id="person" type="text"/></td></tr>
+        <tr><th>__LABEL_NAME__</th><td><input id="displayName" type="text"/></td></tr>
+        <tr>
+          <th>__LABEL_USERNAME__</th>
+          <td>
+            <input id="person" type="text" autocomplete="off" spellcheck="false"/>
+            <p class="field-hint">__USERNAME_HINT__</p>
+          </td>
+        </tr>
         <tr><th>mobile phone</th><td><input id="mobilePhone" type="tel" placeholder="+31612345678"/></td></tr>
-        <tr id="rowTitle"><th>Name</th><td><input id="displayName" type="text"/></td></tr>
         <tr id="rowHolder"><th>account holder name</th><td><input id="accountHolder" type="text"/></td></tr>
         <tr id="rowAccountNumber" style="display:none"><th>account number</th><td><input id="accountNumber" type="text"/></td></tr>
         <tr id="rowInitial" style="display:none"><th>initial balance</th><td><input id="initialBalance" type="text" value="0.00"/></td></tr>
@@ -2388,7 +2395,6 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
 
     function applyModeUi() {
       const manual = mode() === "manual-upload";
-      document.getElementById("rowTitle").style.display = manual ? "" : "none";
       document.getElementById("rowHolder").style.display = manual ? "" : "none";
       document.getElementById("rowAccountNumber").style.display = manual ? "" : "none";
       document.getElementById("rowInitial").style.display = manual ? "" : "none";
@@ -2430,11 +2436,11 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       const body = {
         person,
         mode: modeValue,
+        title: document.getElementById("displayName").value.trim(),
       };
       const mobile = document.getElementById("mobilePhone").value.trim();
       if (mobile) body.mobile_phone = mobile;
       if (modeValue === "manual-upload") {
-        body.title = document.getElementById("displayName").value.trim();
         body.account_name = document.getElementById("accountHolder").value.trim();
         body.initial_balance = document.getElementById("initialBalance").value;
         body.account_number = document.getElementById("accountNumber").value.trim();
@@ -2504,13 +2510,46 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
 """
 
 
+def _add_person_labels(center: str | None) -> dict[str, str]:
+    """Labels for the add-person form, from the center's country language."""
+    from html import escape
+
+    name = "Name"
+    username = "Username"
+    hint = "Username may contain only letters, digits, underscores and hyphens"
+    center_name = (center or "").strip()
+    if center_name:
+        try:
+            from app.sql_catalog import categories_payload, country_for_center
+
+            country = country_for_center(center_name)
+            if country:
+                payload = categories_payload(country)
+                headers = payload.get("table_header_terms") or {}
+                longs = payload.get("language_long") or {}
+                name = str(headers.get("Name") or name)
+                username = str(headers.get("Username") or username)
+                hint = str(longs.get("Username characters") or hint)
+        except Exception:  # noqa: BLE001
+            pass
+    return {
+        "name": escape(name),
+        "username": escape(username),
+        "hint": escape(hint),
+    }
+
+
 @app.get("/add-person", response_class=HTMLResponse)
-def add_person_page() -> str:
+def add_person_page(center: str | None = Query(default=None)) -> str:
     from app.core.single_client import default_redirect_url
 
+    labels = _add_person_labels(center)
     return (
         _ADD_PERSON_HTML.replace("__CLIENT_RETURN_URL__", client_return_url())
         .replace("__REDIRECT_URL__", default_redirect_url())
+        .replace("__LABEL_NAME__", labels["name"])
+        .replace("__LABEL_USERNAME__", labels["username"])
+        .replace("__USERNAME_HINT__", labels["hint"])
     )
 
 

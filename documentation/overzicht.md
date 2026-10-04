@@ -80,7 +80,9 @@ overzicht van de stichting: 19 bestanden.
 
 # Dubbele login
 
-Alle vier niveaus hebben een instelbaar wachtwoord. 
+Alle vier niveaus hebben een instelbaar wachtwoord.
+<!-- {en:double[5],login[5],password,level} -->
+<!-- {nl:dubbele[5],login[5],wachtwoord,niveau} -->
 
 ## SMS en IP-gate per inlogniveau
 
@@ -97,6 +99,8 @@ De drie hogere niveaus hebben geen tweestaps-verificatie, maar een controle op I
 | Eenheid   | `tweestaps`   |          |                |
 
 De privé-uitgaven App kent maar drie inlogniveaus: ook daar is het laagste niveau SMS-beschermbaar, en zijn de hogere IP-adres-beschermd.
+<!-- {en:sms[5],ip-gate[5],login[5],level[5],ip,address,two-step,verification,phone,number,unit,anywhere,blocked,expenses} -->
+<!-- {nl:sms[5],ip-gate[5],inlogniveau[5],niveau[5],ip,adres,tweestaps,verificatie,telefoon,nummer,eenheid,overal,geblokkeerd,uitgaven} -->
 
 ---
 
@@ -106,7 +110,9 @@ De privé-uitgaven App kent maar drie inlogniveaus: ook daar is het laagste nive
 Dit overzicht beschrijft de werking van links- en rechts-klikken in de verschillende vensters.
 De openingstabel toont de categorie-totalen: voor elke categorie toont het bedrag de som van alle boekingen op die categorie, voor de geselecteerde rekening(en).
 Door te links-klikken op een categorie-totaalbedrag, verschijnt de lijst van alle boekingen die aan dat totaal bijdragen.
-De eerste kolom toont het bankrekeningnummer van de rekeninghouder, waarvan het afschrift genomen is. De overige kolommen vatten de informatie van het bankafschrift samen. 
+De eerste kolom toont het bankrekeningnummer van de rekeninghouder, waarvan het afschrift genomen is. De overige kolommen vatten de informatie van het bankafschrift samen.
+<!-- {en:click[5],overview[5],left-click,right-click,window,matrix,total,category,amount,sum,booking,account,statement} -->
+<!-- {nl:klik[5],overzicht[5],links-klikken,rechts-klikken,venster,matrix,totaal,categorie,bedrag,som,boeking,rekening,afschrift} -->
 
 ### Links-klikken op een categorie-totaal in de lijst van bankafschriften
 
@@ -117,6 +123,8 @@ Negatieve bedragen staan in het rood.
 
 Wanneer de kolomkop een keuzelijst is, kiest een links-klik daar een andere
 rekening. Dat is een eenheid met meer dan één rekening.
+<!-- {en:left-click[5],category-total[5],list[5],statements[5],amount,empty,cell,footer,balance,date,heading,negative,red,column,account,unit} -->
+<!-- {nl:links-klikken[5],categorie-totaal[5],lijst[5],bankafschriften[5],bedrag,leeg,cel,voetrij,saldo,datum,opschrift,negatief,rood,kolom,rekening,eenheid} -->
 
 ### Links-klikken op een afschriftbeschrijving of op een afschriftnaam in de lijst van bankafschriften
 
@@ -135,7 +143,8 @@ Een links-klik op een rij wijst die categorie toe. De code staat daarna vet.
 
 **Tekenconventie**: De knop boven de lijst opent de uitleg. De sluitknop,
 een links-klik op de grijze rand, of Escape sluit die uitleg.
-
+<!-- {en:left-click[5],statement-description[5],statement-name[5],list[5],statements[5],description,name,bold,manual,keyword,category,matrix,blue,editable,code,post,cancel,escape,sign} -->
+<!-- {nl:links-klikken[5],afschriftbeschrijving[5],afschriftnaam[5],lijst[5],bankafschriften[5],omschrijving,naam,vet,handmatig,trefwoord,categorie,matrix,blauw,bewerkbaar,code,post,cancel,escape,teken} -->
 
 ### Rechts-klikken op een bedrag in de lijst van bankafschriften
 
@@ -149,6 +158,8 @@ van elke extra regel zijn in te vullen. **Delete** haalt die regel weg.
 
 **Naam of omschrijving.** Rechts-klikken selecteert het aangeklikte woord.
 Letters, cijfers, een underscore, `&` en een streepje horen bij het woord: een spatie, een punt en alle overige leestekens scheiden woorden.
+<!-- {en:right-click[5],amount[5],list[5],statements[5],split,part,cash,withdrawal,name,word,add-line,delete,save,matrix,alt+m} -->
+<!-- {nl:rechts-klikken[5],bedrag[5],lijst[5],bankafschriften[5],splitsen,post,kas,opname,naam,woord,regel,verwijderen,opslaan,matrix,alt+m} -->
 
 ### Termmenu
 
@@ -167,6 +178,8 @@ Het aanvinken bewaart meteen. **cancel**, een links-klik of Rechts-klikken
 buiten het menu, of Escape sluit het menu. Andere boekingen houden hun
 categorie tot de volgende menuklik. Een Rechts-klikken binnen het menu opent
 het browsermenu niet.
+<!-- {en:term[5],menu[5],G,P,word,general,personal,account,section,red,cancel,escape,foundation,unit} -->
+<!-- {nl:term[5],menu[5],G,P,woord,gemeenschappelijk,persoonlijk,rekening,sectie,rood,cancel,escape,stichting,eenheid} -->
 
 ### Termvenster
 
@@ -185,6 +198,8 @@ een links-klik op de grijze rand, of Escape sluit die uitleg. **Matrix
 (Alt+M)** of Ctrl+Tab keert terug naar de matrix.
 
 Ook al kan de gebruiker op eenheid-niveau de G-termen niet definiëren, loont het wel degelijk de moeite om te proberen te begrijpen hoe de voorrangsregels werken. Elke G/P-term draagt immers bij tot de automatisering van de categorisering. Dat merkt de gebruiker al meteen in het jaar van de definitie (dan kunnen vele bankschriften in één keer worden gecategoriseerd), maar nog veel meer in de jaren daarna: naarmate de termenlijst beter gekozen is, blijven er minder bankafschriften over die individueel moeten worden gecategoriseerd. Laat daarom vooral niet na om je voorstel voor een G-term te communiceren naar de stichting: die draagt er zorg voor dat de G- en P-termen constructief bijdragen aan een optimale automatisering van de categorisatie.
+<!-- {en:term[5],window[5],alt+t,category,keyword,priority,rules,personal,general,foundation,section,part,unit,red,enter,delete,matrix} -->
+<!-- {nl:term[5],venster[5],alt+t,categorie,trefwoord,voorrang,regels,persoonlijk,gemeenschappelijk,stichting,sectie,deel,eenheid,rood,enter,verwijderen,matrix} -->
 
 ### Journaal en afschrijvingen
 
@@ -199,6 +214,8 @@ De eerste regel is een nieuwe post. **Save** schrijft die. Op een bestaande
 regel opent **Edit** de velden, **Save** bewaart de wijziging, en **×**
 verwijdert de regel. Datum, van-categorie, naar-categorie, bedrag en
 omschrijving staan in die regel. Filters links beperken de getoonde regels.
+<!-- {en:journal[5],depreciation[5],write-off,manual,post,sign,from-category,to-category,amount,equity,save,edit,delete,date,description,filter} -->
+<!-- {nl:journaal[5],afschrijvingen[5],afschrijving,handmatig,post,teken,van-categorie,naar-categorie,bedrag,vermogen,opslaan,bewerken,verwijderen,datum,omschrijving,filter} -->
 
 ### Balans en resultaat
 
@@ -217,6 +234,8 @@ opent de kleurtoelichting. De sluitknop of een links-klik op de grijze rand
 sluit die toelichting.
 
 De maandtabel, vanuit het menu, is tekst. **Matrix (Alt+M)** keert terug.
+<!-- {en:balance[5],result[5],window,journal,subledger,amount,escape,year,date,export,zip,info,color,month,matrix} -->
+<!-- {nl:balans[5],resultaat[5],venster,journaal,subadministratie,bedrag,escape,jaar,datum,exporteren,zip,info,kleur,maand,matrix} -->
 
 ### Maaltijden
 
@@ -228,6 +247,8 @@ login `admin` wijzigt de extra aantallen van de lopende week.
 bij Reserveren, het aantal weken zitten in dezelfde balk. **Uitloggen**
 beëindigt die sessie. **Aanmelden** verstuurt gebruikersnaam en wachtwoord
 van die pagina.
+<!-- {en:meals[5],page,cell,circle,row,admin,day,week,reserve,logout,login,password} -->
+<!-- {nl:maaltijden[5],pagina,cel,cirkel,rij,admin,dag,week,reserveren,uitloggen,aanmelden,wachtwoord} -->
 
 ### Menu, balk en dialogen
 
@@ -252,3 +273,5 @@ Categorieën bewerken: **Add category** voegt een rij toe, **Delete**
 verwijdert een rij, **Submit** schrijft de lijst. IP-lijst: **Add IP** en
 de verwijderknop per adres. Wachtwoord: **Save** schrijft, **Cancel** of
 **Matrix (Alt+M)** keert terug naar de matrix.
+<!-- {en:menu[5],bar[5],dialogs[5],section,year,bank,question,enter,cancel,recalculate,incremental,wipe,smaller,expenses,income,sign-in,verify,code,resend,password,category,ip,save,back,zero} -->
+<!-- {nl:menu[5],balk[5],dialogen[5],sectie,jaar,bank,vraag,enter,annuleren,herberekenen,incrementeel,wissen,kleiner,uitgaven,inkomsten,aanmelden,verificatie,code,opnieuw,wachtwoord,categorie,ip,opslaan,terug,nul} -->
