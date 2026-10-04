@@ -13,13 +13,20 @@ from decimal import Decimal
 from typing import Any
 
 from shared.balance_values import (
+    KRUISPOSTEN_CASH_LABEL,
+    UNIT_KRUISPOSTEN_LABELS,
+    UNIT_RESULT_RESERVE_ROLES,
+    cash_inkomsten_uitgaven,
     category_labels,
+    implicit_kruisposten_journal,
     category_role_canonical,
     is_cp_role,
     is_rc_role,
     result_overlay_cents,
     spaar_source_exclude_clause,
+    split_kruisposten_extra,
     sql_ident,
+    unit_kruisposten_role,
 )
 
 _UNIT_ROLE = re.compile(r"unit(\d{4})\Z")
@@ -96,6 +103,16 @@ def _scope_sql(person: str, center: str, account: str) -> tuple[str, list[object
         clauses.append(" AND REPLACE(UPPER(a.iban), ' ', '') = ?")
         params.append(account)
     return "".join(clauses), params
+
+
+def unit_login_kind(
+    country_id: int, *, unit: str = "", account: str = "", login: str = ""
+) -> str:
+    """``hd`` or ``unit`` when this request is a unit-level login, else ``\"\"``."""
+    if not _is_unit_level(unit, account):
+        return ""
+    accounts = _load_accounts(country_id)
+    return _unit_kind(_resolve_unit_account(accounts, login, account), login)
 
 
 def scope_visibility_rank(
@@ -885,7 +902,7 @@ def _fold_cash_extras(
             name = (label or "").strip() or (str(code) if code is not None else "Overige")
             add(name, amount, code if code is not None else 99999)
     if sibling != 0:
-        add("Kruisposten", sibling, 1)
+        add(KRUISPOSTEN_CASH_LABEL, sibling, 1)
     lines: list[tuple[str, Decimal]] = []
     for _sort, label in sorted(order):
         total = buckets[label]
@@ -946,6 +963,94 @@ def _cross_cash_lines(
     return _fold_cash_extras(rows, center=center)
 
 
+def _unit_reserve_categories(country_id: int) -> dict[str, tuple[int, int, str]]:
+    """``role`` → ``(category_id, local_code, label)`` for roles 3000 and 4000."""
+    found: dict[str, tuple[int, int, str]] = {}
+    with connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT category_id, local_code, label, category_role
+            FROM dbo.dim_category
+            WHERE country_id = ?
+            """,
+            country_id,
+        )
+        for cat_id, local_code, label, role in cur.fetchall():
+            kind = category_role_canonical(role)
+            if kind not in UNIT_RESULT_RESERVE_ROLES or kind in found:
+                continue
+            if cat_id is None or local_code is None:
+                continue
+            found[kind] = (int(cat_id), int(local_code), str(label or "").strip())
+    return found
+
+
+def _insert_by_code(rows: list[dict[str, Any]], row: dict[str, Any]) -> None:
+    code = int(row["code"])
+    for index, existing in enumerate(rows):
+        if int(existing["code"]) > code:
+            rows.insert(index, row)
+            return
+    rows.append(row)
+
+
+def _cp_local(country_id: int) -> int:
+    from shared.balance_values import role_category_row
+
+    with connect() as conn:
+        row = role_category_row(country_id, "cp", conn.cursor())
+    if row is None:
+        return 1200
+    return int(row[1])
+
+
+def _add_unit_kruisposten_row(
+    country_id: int,
+    kosten: list[dict[str, Any]],
+    opbrengsten: list[dict[str, Any]],
+    kind: str,
+    kruis: Decimal,
+    reserves: dict[str, tuple[int, int, str]],
+    cp_local: int,
+) -> Decimal:
+    """Hand journal van 3995 or 4995, naar cp, amount minus the cp total.
+
+    The P&L line shows the effect on van. Returns that effect.
+    """
+    from shared.balance_values import (
+        balance_category_id,
+        shown_kruisposten_result,
+        unit_kruisposten_local,
+    )
+
+    if kruis == 0:
+        return Decimal("0")
+    local = unit_kruisposten_local(kind)
+    role = unit_kruisposten_role(kind)
+    if local is None or role is None:
+        return Decimal("0")
+    _amount, effect_van, _effect_cp = implicit_kruisposten_journal(
+        local, int(cp_local), kruis
+    )
+    shown = shown_kruisposten_result(kind, effect_van)
+    if shown == 0:
+        return Decimal("0")
+    cat_id, code, label = reserves.get(
+        role,
+        (balance_category_id(country_id, local), local, UNIT_KRUISPOSTEN_LABELS.get(role, "")),
+    )
+    row = {
+        "category_id": cat_id,
+        "code": code,
+        "label": label or UNIT_KRUISPOSTEN_LABELS.get(role, ""),
+        "amount": float(shown),
+        "source": "journal",
+    }
+    _insert_by_code(opbrengsten if kind == "hd" else kosten, row)
+    return shown
+
+
 def result_sheet(
     country_id: int,
     year: int,
@@ -988,8 +1093,8 @@ def result_sheet(
     named_banks = False
     if unit_level:
         login_account = _resolve_unit_account(accounts, login, account)
+        kind = _unit_kind(login_account, login)
         if login_account is not None:
-            kind = _unit_kind(login_account, login)
             sibling = _sibling_for(login_account, accounts, kind, login)
             # Fold the HD into the unit. An HD login keeps only its own amounts.
             if kind == "unit" and sibling is not None:
@@ -1013,11 +1118,15 @@ def result_sheet(
         unit=unit_level,
         hd=kind == "hd",
     )
+    reserves = _unit_reserve_categories(country_id)
+    reserve_ids = {item[0] for item in reserves.values()}
     with connect() as conn:
         visible = category_visibility(country_id, conn.cursor())
     kosten: list[dict[str, Any]] = []
     opbrengsten: list[dict[str, Any]] = []
     for cat_id, local_code, label in _categories(country_id):
+        if cat_id in reserve_ids:
+            continue
         if (
             visible is not None
             and rank > 1
@@ -1042,14 +1151,16 @@ def result_sheet(
     def total(rows: list[dict[str, Any]]) -> Decimal:
         return sum((Decimal(str(r["amount"])) for r in rows), Decimal("0"))
 
-    uitgaven = total(kosten)
-    inkomsten = total(opbrengsten)
-    if kind == "hd":
-        inkomsten = -inkomsten
     scope_banks = bool(person.strip() or center.strip()) and not unit_level
     cash = None
+    kruis = Decimal("0")
+    column_effect = Decimal("0")
+    rc_lines: list[tuple[str, Decimal]] = []
+    bank_rows: list[_BankAccount] = []
+    named = False
+    opening_day = date(year, 1, 1)
+    present_day = opening_day
     if unit_level or scope_banks:
-        opening_day = date(year, 1, 1)
         present_day = _present_day(year, cutoff)
         if unit_level and named_banks and login_account is not None and sibling is not None:
             bank_rows = [login_account, sibling]
@@ -1072,11 +1183,28 @@ def result_sheet(
             present_day,
             center=rc_center,
         )
+        if kind in ("hd", "unit"):
+            rc_lines, kruis = split_kruisposten_extra(rc_lines)
+            column_effect = _add_unit_kruisposten_row(
+                country_id,
+                kosten,
+                opbrengsten,
+                kind,
+                kruis,
+                reserves,
+                _cp_local(country_id),
+            )
+    uitgaven = total(kosten)
+    opbrengsten_sum = total(opbrengsten)
+    cash_uitgaven, cash_inkomsten = cash_inkomsten_uitgaven(
+        kind, uitgaven, opbrengsten_sum, kruis, column_effect
+    )
+    if bank_rows:
         cash = build_cash_table(
             _balances_at(country_id, bank_rows, opening_day, present_day),
             named=named,
-            inkomsten=inkomsten,
-            uitgaven=uitgaven,
+            inkomsten=cash_inkomsten,
+            uitgaven=cash_uitgaven,
             opening_day=opening_day,
             present_day=present_day,
             extras=rc_lines,
@@ -1089,7 +1217,7 @@ def result_sheet(
         "activa": kosten,
         "passiva": opbrengsten,
         "total_activa": float(uitgaven),
-        "total_passiva": float(total(opbrengsten)),
+        "total_passiva": float(opbrengsten_sum),
         "balanced": False,
         "subadministratie": {"local_codes": [], "rows": []},
         "afschrijvingen": {"from_codes": [], "journals": []},

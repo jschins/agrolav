@@ -582,12 +582,15 @@ def balance_sheet(
     as_of: str | None = None,
     *,
     visibility_rank: int = 1,
+    kind: str = "",
 ) -> dict[str, Any]:
     """Return the full balance sheet for a given country and year.
 
     With ``as_of`` ("initial" or YYYY-MM-DD) the Verlies post, the bank
     account balances, and the journal effects are computed up to that day; a
     date before the first transaction yields the starting balance sheet.
+    ``kind`` ``hd`` or ``unit`` applies the unstored kruisposten journal to
+    the category totals this sheet just calculated.
     """
     cutoff = _asof_cutoff(country_id, year, as_of)
     result_amount = _result_amount(country_id, year, cutoff)
@@ -603,9 +606,15 @@ def balance_sheet(
         balance_id = _balance_id(country_id, cur)
         result_id = _verlies_id(country_id, cur)
         local_codes = shared_category_local_codes(country_id, cur)
-        from shared.balance_values import category_visibility
+        from shared.balance_values import (
+            category_roles,
+            category_visibility,
+            is_cp_role,
+            kruisposten_view_adjustment,
+        )
 
         visible = category_visibility(country_id, cur)
+        roles = category_roles(country_id, cur) if kind in ("hd", "unit") else {}
         if balance_id is None:
             raise RuntimeError(
                 f"no Eigen vermogen category (category_role=equity) for country_id={country_id}"
@@ -644,6 +653,16 @@ def balance_sheet(
 
         cents, source = breakdown.get(cat_id, (0, "opening"))
         amount = cents / 100
+        if is_cp_role(roles.get(cat_id)):
+            shown, verlies_delta = kruisposten_view_adjustment(
+                Decimal(cents) / Decimal(100),
+                kind=kind,
+                cp_local=int(local),
+            )
+            amount = float(shown)
+            result_amount += verlies_delta
+            if shown == 0:
+                continue
 
         row = {
             "category_id": cat_id,

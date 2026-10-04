@@ -5,6 +5,8 @@ import unittest
 from datetime import date
 from decimal import Decimal
 
+from shared.balance_values import cash_inkomsten_uitgaven, split_kruisposten_extra
+
 from app.result import (
     _BankAccount,
     _fold_cash_extras,
@@ -179,6 +181,29 @@ class CashTableTests(unittest.TestCase):
         )
         self.assertFalse(cash["mismatch"])
         self.assertFalse(any(row["alert"] for row in cash["rows"]))
+
+
+class KruispostenReclassTests(unittest.TestCase):
+    def test_hd_cash_gains_the_removed_kruisposten_amount(self) -> None:
+        extras, kruis = split_kruisposten_extra(
+            [("Rekening courant SIb", Decimal("-10")), ("Kruisposten", Decimal("50"))]
+        )
+        self.assertEqual(extras, [("Rekening courant SIb", Decimal("-10"))])
+        self.assertEqual(kruis, Decimal("50"))
+        # Profit column is 100 plus Inkomsten residentie +50. HD cash
+        # inkomsten gains the removed Kruisposten total of 50.
+        uitgaven, inkomsten = cash_inkomsten_uitgaven(
+            "hd", Decimal("-20"), Decimal("150"), kruis, Decimal("50")
+        )
+        self.assertEqual(uitgaven, Decimal("-20"))
+        self.assertEqual(inkomsten, Decimal("-50"))
+
+    def test_work_unit_adds_kruisposten_on_the_loss_side(self) -> None:
+        uitgaven, inkomsten = cash_inkomsten_uitgaven(
+            "unit", Decimal("-70"), Decimal("100"), Decimal("50"), Decimal("-50")
+        )
+        self.assertEqual(uitgaven, Decimal("30"))
+        self.assertEqual(inkomsten, Decimal("100"))
 
 
 if __name__ == "__main__":

@@ -19,6 +19,8 @@ from shared.balance_values import (
     journal_deltas,
     journal_leg_amount,
     build_parent_tree,
+    implicit_kruisposten_journal,
+    place_unit_kruisposten_row,
     result_overlay_cents,
     _pair_spaar_mirrors,
     rebuild_spaar_mirror_rows,
@@ -549,6 +551,69 @@ class CategoryRoleTests(unittest.TestCase):
             category_display_name("Verlies", 2100, "profit"),
             "2100 Verlies",
         )
+        self.assertTrue(is_hit_forbidden_code(3000, "3000"))
+        self.assertTrue(is_journal_forbidden_code(3000, "3000"))
+        self.assertTrue(is_hit_forbidden_code(4000, "4000"))
+        self.assertTrue(is_journal_forbidden_code(4000, "4000"))
+        self.assertEqual(
+            category_display_name("Huishoudelijke dienst", 3000, "3000"),
+            "Huishoudelijke dienst",
+        )
+
+    def test_implicit_journal_is_van_3995_or_4995_naar_cp_minus_the_cp_total(self):
+        from shared.balance_values import balance_category_id
+
+        self.assertEqual(balance_category_id(6, 3995), 23995)
+        self.assertEqual(balance_category_id(6, 4995), 24995)
+        self.assertEqual(balance_category_id(4, 3995), 3995)
+        amount, effect_van, effect_cp = implicit_kruisposten_journal(
+            4995, 1200, Decimal("80")
+        )
+        self.assertEqual(amount, Decimal("-80"))
+        self.assertEqual(effect_van, Decimal("-80"))
+        self.assertEqual(effect_cp, Decimal("-80"))
+        amount, effect_van, effect_cp = implicit_kruisposten_journal(
+            3995, 1200, Decimal("80")
+        )
+        self.assertEqual(amount, Decimal("-80"))
+        self.assertEqual(effect_van, Decimal("-80"))
+        self.assertEqual(effect_cp, Decimal("-80"))
+
+    def test_view_adjustment_clears_the_cp_total_already_calculated(self):
+        from shared.balance_values import kruisposten_view_adjustment
+
+        shown, added = kruisposten_view_adjustment(
+            Decimal("80"), kind="hd", cp_local=1200
+        )
+        self.assertEqual(shown, Decimal("0"))
+        self.assertEqual(added, Decimal("80"))
+        shown, added = kruisposten_view_adjustment(
+            Decimal("80"), kind="unit", cp_local=1200
+        )
+        self.assertEqual(shown, Decimal("0"))
+        self.assertEqual(added, Decimal("-80"))
+        shown, added = kruisposten_view_adjustment(
+            Decimal("80"), kind="", cp_local=1200
+        )
+        self.assertEqual(shown, Decimal("80"))
+        self.assertEqual(added, Decimal("0"))
+
+    def test_unit_kruisposten_row_slots_in_by_code(self):
+        rows = [
+            {"code": 3100, "label": "Lonen", "months": [1.0], "amount": 1.0},
+            {"code": 4100, "label": "Giften", "months": [2.0], "amount": 2.0},
+        ]
+        totals = [Decimal("3")]
+        place_unit_kruisposten_row(
+            rows,
+            totals,
+            code=3000,
+            label="Huishoudelijke dienst",
+            months=[Decimal("50")],
+        )
+        self.assertEqual([row["code"] for row in rows], [3000, 3100, 4100])
+        self.assertEqual(totals[0], Decimal("53"))
+        self.assertEqual(rows[0]["amount"], 50.0)
 
     def test_afschrijving_amount(self):
         self.assertEqual(

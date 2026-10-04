@@ -519,7 +519,6 @@ Country-specific catalog. One row per (country, local code).
 | `country_id` | `INT` FK | |
 | `local_code` | `INT` NOT NULL | UI code (8, 9, 12, 18, …) |
 | `label` | `NVARCHAR(128)` NOT NULL | `"12 Vervoer"`; footers `"saldo"` / `"datum"` |
-| `is_remainder` | `BIT` | unused; remainder is `category_role = remainder` |
 | `category_role` | `NVARCHAR(32)` NULL | `NULL` ordinary booking; `remainder` unclassified; `balance` / `last_booked` footers; `equity` Eigen vermogen (no HIT no journal); `profit` Verlies (no HIT no journal); `bank` / `source` / `mirror` (no HIT, journals allowed). `source` and `mirror` identify the spaar pair. |
 | `parent` | `NVARCHAR` NULL | Slash-separated place of the post in the exported balance sheet, e.g. `Activa/Vlottende activa/Bank SIa`, `Passiva/Schulden`, `Passiva`. See below. |
 | `visibility` | `INT` NOT NULL | Who may see the category. `1` country, `2` country and center, `3` those plus person, `4` those plus work-unit, `5` all of those plus HD. Default `5`. |

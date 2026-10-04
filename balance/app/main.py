@@ -314,7 +314,7 @@ def balance_sheet(
     _: None = Depends(_api_key),
 ) -> dict[str, Any]:
     from app.balance import balance_sheet as compute
-    from app.result import scope_visibility_rank
+    from app.result import scope_visibility_rank, unit_login_kind
 
     country_id = resolve_country(slug)
     rank = scope_visibility_rank(
@@ -325,7 +325,10 @@ def balance_sheet(
         unit=unit,
         login=login,
     )
-    return compute(country_id, year, as_of=date, visibility_rank=rank)
+    kind = unit_login_kind(
+        country_id, unit=unit, account=account, login=login
+    )
+    return compute(country_id, year, as_of=date, visibility_rank=rank, kind=kind)
 
 
 @app.get("/balance/{slug}/api/balance/{year}/result")

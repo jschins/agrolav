@@ -240,7 +240,7 @@ def result_balance_sheet(
     """The balance-window sheet, shown under Resultaat."""
     from app.balance import _country_has_balance
     from app.balance import balance_sheet as compute
-    from app.result import scope_visibility_rank
+    from app.result import scope_visibility_rank, unit_login_kind
 
     country_id = resolve_country(slug)
     if not _country_has_balance(country_id):
@@ -254,7 +254,10 @@ def result_balance_sheet(
         unit=unit,
         login=login,
     )
-    return compute(country_id, year, as_of=date, visibility_rank=rank)
+    kind = unit_login_kind(
+        country_id, unit=unit, account=who[2], login=login
+    )
+    return compute(country_id, year, as_of=date, visibility_rank=rank, kind=kind)
 
 
 @app.get("/result/{slug}/api/balance/{year}")

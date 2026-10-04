@@ -633,6 +633,8 @@ def api_export_data(
     country: str | None = Query(default=None),
     person: str | None = Query(default=None),
     center_name: str | None = Query(default=None),
+    account: str | None = Query(default=None),
+    unit: bool = Query(default=False),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     import datetime
@@ -651,6 +653,8 @@ def api_export_data(
             int(year) if year else int(datetime.date.today().year),
             person=person_key or None,
             center=scope_center or None,
+            account=(account or "").strip() or None,
+            unit=bool(unit),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -664,6 +668,7 @@ def api_export_resultaat(
     person: str | None = Query(default=None),
     center_name: str | None = Query(default=None),
     account: str | None = Query(default=None),
+    unit: bool = Query(default=False),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     import datetime
@@ -684,6 +689,7 @@ def api_export_resultaat(
             person=person_key or None,
             center=scope_center or None,
             account=(account or "").strip() or None,
+            unit=bool(unit),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

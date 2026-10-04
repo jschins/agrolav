@@ -893,6 +893,11 @@ def export_excel_data(
         qs.append(f"person={urllib.parse.quote(cfg.person)}")
     elif cfg.access == ACCESS_CENTER and cfg.center:
         qs.append(f"center_name={urllib.parse.quote(cfg.center)}")
+    elif cfg.access == ACCESS_UNIT:
+        qs.append("unit=1")
+        iban = "".join(str(cfg.account or "").split()).upper()
+        if iban:
+            qs.append(f"account={urllib.parse.quote(iban)}")
     return hub_get(f"/export-data?{'&'.join(qs)}", timeout=90.0)
 
 
@@ -955,6 +960,7 @@ def export_resultaat_excel_data(year: int, account: str | None = None) -> dict[s
     iban = ""
     if cfg.access == ACCESS_UNIT:
         iban = "".join(str(cfg.account or "").split()).upper()
+        qs.append("unit=1")
     elif cfg.access == ACCESS_PERSON:
         raw = "".join(str(account or "").split()).upper()
         if raw and raw != "CONSOLIDATED":

@@ -58,7 +58,6 @@ CREATE TABLE dbo.dim_category (
     country_id INT NOT NULL,
     local_code INT NOT NULL,
     label NVARCHAR(128) NOT NULL,
-    is_remainder BIT NOT NULL CONSTRAINT df_dim_category_remainder DEFAULT (0),
     category_role NVARCHAR(32) NULL,
     CONSTRAINT fk_dim_category_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
     CONSTRAINT UQ_category_country_code UNIQUE (country_id, local_code)

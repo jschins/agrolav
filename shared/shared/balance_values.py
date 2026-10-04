@@ -70,6 +70,9 @@ def infer_side(cat_id: int) -> str:
 #   sia / sib       rc post that is also the unit leg of a Centrale SIa / SIb pair
 #   siasib          SIa leg of a SIa–SIb pair: keeps the statement sign, not zeroed
 #   cp              kruisposten: receives the rc total on the opening balance
+#   3000            reserved label: a work-unit login shows kruisposten here
+#   4000            reserved label: an HD login shows kruisposten here
+#                   Neither role is booked. The unit sheet calculates the line.
 CATEGORY_ROLE_REMAINDER = "remainder"
 CATEGORY_ROLE_EQUITY = "equity"
 CATEGORY_ROLE_PROFIT = "profit"
@@ -81,6 +84,18 @@ CATEGORY_ROLE_SIA = "sia"
 CATEGORY_ROLE_SIB = "sib"
 CATEGORY_ROLE_SIASIB = "siasib"
 CATEGORY_ROLE_CP = "cp"
+CATEGORY_ROLE_UNIT_LOSS = "3000"
+CATEGORY_ROLE_UNIT_PROFIT = "4000"
+# Work-unit and HD labels for kruisposten. Present in dim_category so the
+# local codes stay reserved. Bookings and journals do not use them.
+UNIT_RESULT_RESERVE_ROLES = frozenset(
+    {CATEGORY_ROLE_UNIT_LOSS, CATEGORY_ROLE_UNIT_PROFIT}
+)
+UNIT_KRUISPOSTEN_LABELS = {
+    CATEGORY_ROLE_UNIT_LOSS: "Huishoudelijke dienst",
+    CATEGORY_ROLE_UNIT_PROFIT: "Inkomsten residentie",
+}
+KRUISPOSTEN_CASH_LABEL = "Kruisposten"
 # Zeroed into cp on the opening balance.
 CATEGORY_RC_ROLES = frozenset({CATEGORY_ROLE_RC, CATEGORY_ROLE_SIA, CATEGORY_ROLE_SIB})
 # Bookings keep the statement sign. siasib is here and not in CATEGORY_RC_ROLES.
@@ -98,6 +113,7 @@ CATEGORY_HIT_FORBIDDEN_ROLES = frozenset(
         CATEGORY_ROLE_BANK,
         CATEGORY_ROLE_SOURCE,
         *CATEGORY_FOOTER_ROLES,
+        *UNIT_RESULT_RESERVE_ROLES,
     }
 )
 _ROLE_ALIASES = {
@@ -166,8 +182,149 @@ def is_hit_forbidden_role(role: object) -> bool:
     return category_role_canonical(role) in CATEGORY_HIT_FORBIDDEN_ROLES
 
 
+def is_unit_result_reserve_role(role: object) -> bool:
+    """``3000`` or ``4000``: a sheet label, not a category that is booked."""
+    return category_role_canonical(role) in UNIT_RESULT_RESERVE_ROLES
+
+
 def is_journal_forbidden_role(role: object) -> bool:
-    return is_computed_post_role(role)
+    return is_computed_post_role(role) or is_unit_result_reserve_role(role)
+
+
+def unit_kruisposten_role(kind: str) -> str | None:
+    """Catalog role that receives kruisposten on this unit login, or ``None``."""
+    if kind == "hd":
+        return CATEGORY_ROLE_UNIT_PROFIT
+    if kind == "unit":
+        return CATEGORY_ROLE_UNIT_LOSS
+    return None
+
+
+def unit_kruisposten_local(kind: str) -> int | None:
+    """Local code of the hand-journal ``van`` post: 4995 for HD, 3995 for a work unit."""
+    if kind == "hd":
+        return 4995
+    if kind == "unit":
+        return 3995
+    return None
+
+
+def balance_category_id(country_id: int, local_code: int) -> int:
+    """``category_id`` for a balance country: ``(country_id - 4) * 10000 + local_code``."""
+    return (int(country_id) - 4) * 10000 + int(local_code)
+
+
+def kruisposten_view_adjustment(
+    cp_amount: Decimal, *, kind: str, cp_local: int
+) -> tuple[Decimal, Decimal]:
+    """Hand journal on a category total already calculated for this view.
+
+    ``cp_amount`` is the cross-posting total the view just summed. For an HD
+    or work-unit login the journal amount is minus that total, van 4995 or
+    3995, naar the cp post. Returns ``(cp total to show, amount added to the
+    result line)``. Other logins keep the cp total and add nothing.
+    """
+    van_local = unit_kruisposten_local(kind)
+    if van_local is None or cp_amount == 0:
+        return cp_amount, Decimal("0")
+    _amount, effect_van, effect_cp = implicit_kruisposten_journal(
+        van_local, int(cp_local), cp_amount
+    )
+    return cp_amount + effect_cp, shown_kruisposten_result(kind, effect_van)
+
+
+def shown_kruisposten_result(kind: str, effect_van: Decimal) -> Decimal:
+    """Result-line amount for this login.
+
+    A work unit shows the van-leg, which is negative. An HD login shows
+    Inkomsten residentie with the opposite sign, so that amount is positive.
+    """
+    if kind == "hd":
+        return -effect_van
+    return effect_van
+
+
+def implicit_kruisposten_journal(
+    van_local: int, cp_local: int, cp_statement: Decimal
+) -> tuple[Decimal, Decimal, Decimal]:
+    """Hand journal ``van`` the unit label, ``naar`` the cp post.
+
+    The amount is minus the cp total already calculated for this login.
+    The same minus is used for 3995 and for 4995. Nothing is written to
+    ``dbo.journal``. Returns ``(amount, effect on van, effect on cp)``.
+    """
+    amount = -cp_statement
+    effect_van, effect_cp = journal_deltas(int(van_local), int(cp_local), amount)
+    return amount, effect_van, effect_cp
+
+
+def split_kruisposten_extra(
+    extras: list[tuple[str, Decimal]],
+) -> tuple[list[tuple[str, Decimal]], Decimal]:
+    """Take the Kruisposten line off the cash extras and return its amount."""
+    kept: list[tuple[str, Decimal]] = []
+    amount = Decimal("0")
+    for label, value in extras:
+        if label == KRUISPOSTEN_CASH_LABEL:
+            amount += value
+        else:
+            kept.append((label, value))
+    return kept, amount
+
+
+def cash_inkomsten_uitgaven(
+    kind: str,
+    kosten_sum: Decimal,
+    opbrengsten_sum: Decimal,
+    kruis: Decimal,
+    column_effect: Decimal = Decimal("0"),
+) -> tuple[Decimal, Decimal]:
+    """Cash-table Uitgaven and Inkomsten.
+
+    The P&L column already includes ``column_effect``, the van-leg of the
+    hand journal. Kruisposten ``kruis`` has been removed from the extras, so
+    the cash line puts that statement total back on Uitgaven or Inkomsten.
+    An HD login negates the profit column before that.
+    """
+    if kind == "hd":
+        plain = opbrengsten_sum - column_effect
+        return kosten_sum, -plain + kruis
+    if kind == "unit":
+        plain = kosten_sum - column_effect
+        return plain + kruis, opbrengsten_sum
+    return kosten_sum, opbrengsten_sum
+
+
+def place_unit_kruisposten_row(
+    rows: list[dict[str, Any]],
+    total_months: list[Decimal],
+    *,
+    code: int,
+    label: str,
+    months: list[Decimal],
+) -> None:
+    """Insert the calculated kruisposten line and add it to the sheet total.
+
+    A year that sums to zero is still inserted when a month is non-zero, so
+    Overige mutaties loses exactly those months.
+    """
+    shown = list(months)
+    if not any(part != 0 for part in shown):
+        return
+    for index, part in enumerate(shown):
+        if index < len(total_months):
+            total_months[index] += part
+    row = {
+        "code": int(code),
+        "label": label,
+        "months": [float(part) for part in shown],
+        "amount": float(sum(shown, Decimal("0"))),
+    }
+    for index, existing in enumerate(rows):
+        if int(existing.get("code") or 0) > int(code):
+            rows.insert(index, row)
+            return
+    rows.append(row)
 
 
 def is_hit_forbidden_code(local_code: int, role: object = None) -> bool:
@@ -189,7 +346,7 @@ def category_display_name(
     text = str(label or "").strip()
     if not text:
         return None
-    if is_footer_role(role):
+    if is_footer_role(role) or is_unit_result_reserve_role(role):
         return text
     if code is None or code == "":
         return None
@@ -197,25 +354,12 @@ def category_display_name(
 
 
 def ensure_category_role_booking_rules(cursor: object) -> None:
-    """Leave ``ck_dim_category_role`` alone (no add, no drop).
+    """Leave ``dbo.dim_category`` alone.
 
-    ``category_role`` holds system stamps *or* a login username. Schema changes
-    to that column are SSMS-only. This only copies leftover ``is_remainder``
-    onto ``category_role = remainder`` when that old column still exists.
+    ``category_role`` holds system stamps or a login username. Remainder is
+    that role, not a separate column. Schema changes stay in SSMS.
     """
-    cursor.execute(
-        "SELECT OBJECT_ID(N'dbo.dim_category', N'U')"
-    )
-    row = cursor.fetchone()
-    if row is None or row[0] is None:
-        return
-    cursor.execute("SELECT COL_LENGTH(N'dbo.dim_category', N'is_remainder')")
-    remainder_col = cursor.fetchone()
-    if remainder_col is not None and remainder_col[0] is not None:
-        cursor.execute(
-            "UPDATE dbo.dim_category SET category_role = N'remainder' "
-            "WHERE is_remainder = 1 AND (category_role IS NULL)"
-        )
+    del cursor
 
 
 def is_activa(cat_id: int) -> bool:

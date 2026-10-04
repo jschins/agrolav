@@ -2894,6 +2894,111 @@ def _pnl_per_account(
     return accounts, sums
 
 
+def _add_unit_kruisposten_excel(
+    cursor: Any,
+    table: str,
+    country_id: int,
+    account_ids: list[int],
+    year_start: Any,
+    year_end: Any,
+    month_count: int,
+    rows: list[dict[str, Any]],
+    total_months: list[Any],
+) -> None:
+    """Move this unit account's kruisposten onto role 4000 or 3000.
+
+    The months leave Overige mutaties because they are added to the sheet
+    total. An HD account uses 4000; a work unit uses 3000.
+    """
+    from decimal import Decimal
+
+    from shared.balance_values import (
+        UNIT_KRUISPOSTEN_LABELS,
+        implicit_kruisposten_journal,
+        place_unit_kruisposten_row,
+        shown_kruisposten_result,
+        role_category_row,
+        unit_kruisposten_local,
+        unit_kruisposten_role,
+    )
+
+    if not account_ids or month_count <= 0:
+        return
+    marks = ",".join("?" * len(account_ids))
+    cursor.execute(
+        f"""
+        SELECT d.category_role
+        FROM dbo.mapping_banks m
+        JOIN dbo.dim_category d
+          ON d.category_id = m.category_id AND d.country_id = m.country_id
+        WHERE m.country_id = ? AND m.account_id IN ({marks})
+        """,
+        (int(country_id), *account_ids),
+    )
+    hd = any(str(role or "").strip().lower() == "hd" for (role,) in cursor.fetchall())
+    kind = "hd" if hd else "unit"
+    role = unit_kruisposten_role(kind)
+    van_local = unit_kruisposten_local(kind)
+    if role is None or van_local is None:
+        return
+    cp_post = role_category_row(int(country_id), "cp", cursor)
+    cp_local = int(cp_post[1]) if cp_post is not None else 1200
+    cursor.execute(
+        """
+        SELECT TOP 1 local_code, label
+        FROM dbo.dim_category
+        WHERE country_id = ?
+          AND LOWER(LTRIM(RTRIM(category_role))) = ?
+        ORDER BY local_code
+        """,
+        (int(country_id), role),
+    )
+    found = cursor.fetchone()
+    if found is None:
+        code = int(van_local)
+        label = UNIT_KRUISPOSTEN_LABELS.get(role, "")
+    else:
+        code = int(found[0])
+        label = str(found[1] or "").strip() or UNIT_KRUISPOSTEN_LABELS.get(role, "")
+    cursor.execute(
+        f"""
+        SELECT MONTH(t.booked_on),
+               SUM(CAST(t.amount AS decimal(19, 2)))
+        FROM {table} t
+        LEFT JOIN dbo.dim_category d
+          ON d.category_id = t.category_id AND d.country_id = ?
+        WHERE t.account_id IN ({marks})
+          AND t.booked_on >= ?
+          AND t.booked_on < ?
+          AND LOWER(LTRIM(RTRIM(ISNULL(d.category_role, N'')))) = N'cp'
+          AND (d.local_code IS NULL OR d.local_code < 3000 OR d.local_code > 4999)
+        GROUP BY MONTH(t.booked_on)
+        """,
+        (
+            int(country_id),
+            *account_ids,
+            year_start.isoformat(),
+            year_end.isoformat(),
+        ),
+    )
+    months = [Decimal("0")] * month_count
+    for month, amount in cursor.fetchall():
+        slot = int(month)
+        if 1 <= slot <= month_count:
+            statement = Decimal(str(amount or 0))
+            _journal_amount, effect_van, _effect_cp = implicit_kruisposten_journal(
+                int(van_local), cp_local, statement
+            )
+            months[slot - 1] = shown_kruisposten_result(kind, effect_van)
+    place_unit_kruisposten_row(
+        rows,
+        total_months,
+        code=code,
+        label=label,
+        months=months,
+    )
+
+
 def export_resultaat_excel_data(
     country: str,
     year: int,
@@ -2901,6 +3006,7 @@ def export_resultaat_excel_data(
     person: str | None = None,
     center: str | None = None,
     account: str | None = None,
+    unit: bool = False,
 ) -> dict[str, Any]:
     """P&L (3000–4999) plus Saldo, scoped to the login.
 
@@ -2925,6 +3031,10 @@ def export_resultaat_excel_data(
     in that month (transfers and categories absent from the P&L rows).
     Totaal repeats the displayed P&L months. Banksaldo einde maand is the
     balance at the month's end, which is the next column's Beginsaldo.
+
+    A unit login (``unit``) moves that account's kruisposten out of Overige
+    mutaties onto role ``4000`` for an HD account and role ``3000`` for a
+    work unit. Higher logins leave kruisposten where it is.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()
@@ -3265,6 +3375,22 @@ def export_resultaat_excel_data(
                 m = int(month)
                 if 1 <= m <= month_count:
                     movement_months[m - 1] = float(amount or 0)
+            if unit and flow_ids:
+                _add_unit_kruisposten_excel(
+                    cursor,
+                    table,
+                    int(country_id),
+                    flow_ids,
+                    year_start,
+                    year_end,
+                    month_count,
+                    rows,
+                    total_months,
+                )
+                total = sum(
+                    (Decimal(str(row["amount"])) for row in rows),
+                    Decimal("0"),
+                )
             for i in range(month_count):
                 other_months[i] = movement_months[i] - float(total_months[i])
             cursor.execute(
@@ -3485,12 +3611,75 @@ def export_zip_manifest(country: str) -> dict[str, Any]:
         raise ValueError(str(exc)) from exc
 
 
+def _unit_scope_ids(
+    cursor: Any, country_id: int, iban: str
+) -> tuple[list[int], str]:
+    """Account ids for a unit login, and ``hd`` or ``unit``.
+
+    A work unit includes its HD sibling, matching the result window.
+    An HD login stays on its own account.
+    """
+    compact = "".join(str(iban or "").split()).replace("-", "").upper()
+    if not compact:
+        return [], ""
+    accounts = _load_sibling_accounts(cursor, int(country_id))
+    match = None
+    for item in accounts:
+        own = "".join(str(item.get("iban") or "").split()).replace("-", "").upper()
+        if own == compact:
+            match = item
+            break
+    if match is None:
+        return [], ""
+    kind = "hd" if str(match.get("role") or "").strip().lower() == "hd" else "unit"
+    ids = [int(match["account_id"])]
+    if kind == "unit":
+        for unit_account, hd_account in sibling_pairs(accounts):
+            if int(unit_account["account_id"]) == ids[0]:
+                ids.append(int(hd_account["account_id"]))
+                break
+    return ids, kind
+
+
+def _cp_statement_sum(
+    cursor: Any,
+    table: str,
+    country_id: int,
+    account_ids: list[int],
+    year: int,
+) -> Decimal:
+    """Kruisposten bank total on these accounts for one year."""
+    if not account_ids:
+        return Decimal("0")
+    marks = ",".join("?" * len(account_ids))
+    cursor.execute(
+        f"""
+        SELECT SUM(CAST(t.amount AS decimal(19, 2)))
+        FROM {table} t
+        LEFT JOIN dbo.dim_category d
+          ON d.category_id = t.category_id AND d.country_id = ?
+        WHERE t.account_id IN ({marks})
+          AND t.year = ?
+          AND t.bank_id IS NULL
+          AND LOWER(LTRIM(RTRIM(ISNULL(d.category_role, N'')))) = N'cp'
+          AND (d.local_code IS NULL OR d.local_code < 3000 OR d.local_code > 4999)
+        """,
+        (int(country_id), *account_ids, int(year)),
+    )
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        return Decimal("0")
+    return Decimal(str(row[0]))
+
+
 def export_matrix_excel_data(
     country: str,
     year: int,
     *,
     person: str | None = None,
     center: str | None = None,
+    account: str | None = None,
+    unit: bool = False,
 ) -> dict[str, Any]:
     """One JSON payload for the client's "Export balance sheet" workbook.
 
@@ -3560,15 +3749,28 @@ def export_matrix_excel_data(
         center_name = "" if person_name else (center or "").strip()
         scope_sql = ""
         scope_params: tuple[Any, ...] = ()
-        if person_name:
+        unit_ids: list[int] = []
+        unit_kind = ""
+        if unit and (account or "").strip():
+            unit_ids, unit_kind = _unit_scope_ids(cursor, int(country_id), account or "")
+        pnl_scope_sql = ""
+        pnl_scope_params: tuple[Any, ...] = ()
+        if unit_ids:
+            marks = ",".join("?" * len(unit_ids))
+            pnl_scope_sql = f" AND t.account_id IN ({marks})"
+            pnl_scope_params = tuple(unit_ids)
+            scoped = True
+            scoped_ids = set(unit_ids)
+        elif person_name:
             scope_sql = " AND p.username = ? COLLATE Latin1_General_CI_AI"
             scope_params = (person_name,)
         elif center_name:
             scope_sql = " AND n.username = ? COLLATE Latin1_General_CI_AI"
             scope_params = (center_name,)
-        scoped = bool(scope_sql)
-        scoped_ids: set[int] | None = None
-        if scoped:
+        if not unit_ids:
+            scoped = bool(scope_sql)
+            scoped_ids = None
+        if scoped and not unit_ids:
             cursor.execute(
                 f"""
                 SELECT a.account_id
@@ -3622,8 +3824,8 @@ def export_matrix_excel_data(
                     int(country_id),
                     int(year),
                     table,
-                    scope_sql=scope_sql,
-                    scope_params=scope_params,
+                    scope_sql=pnl_scope_sql or scope_sql,
+                    scope_params=pnl_scope_params or scope_params,
                 )
         sibling_accounts = _load_sibling_accounts(cursor, int(country_id))
         if scoped_ids is not None:
@@ -3687,6 +3889,40 @@ def export_matrix_excel_data(
             for code, cents in overlay.items():
                 combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
 
+        if unit_ids and unit_kind and table:
+            from shared.balance_values import (
+                balance_category_id,
+                implicit_kruisposten_journal,
+                role_category_row,
+                shown_kruisposten_result,
+                unit_kruisposten_local,
+                unit_kruisposten_role,
+            )
+
+            statement = _cp_statement_sum(
+                cursor, table, int(country_id), unit_ids, int(year)
+            )
+
+            van_local = unit_kruisposten_local(unit_kind)
+            role = unit_kruisposten_role(unit_kind)
+            if van_local is not None and role and statement != 0:
+                cp_post = role_category_row(int(country_id), "cp", cursor)
+                cp_local = int(cp_post[1]) if cp_post is not None else 1200
+                _amount, effect_van, _effect_cp = implicit_kruisposten_journal(
+                    van_local, cp_local, statement
+                )
+                effect_van = shown_kruisposten_result(unit_kind, effect_van)
+                target_id = balance_category_id(int(country_id), van_local)
+                stored = role_category_row(int(country_id), role, cursor)
+                if stored is not None:
+                    target_id = int(stored[0])
+                combined[int(target_id)] = (
+                    combined.get(int(target_id), Decimal("0")) + effect_van
+                )
+                by_acc = pnl_sums.setdefault(int(target_id), {})
+                slot = int(unit_ids[0])
+                by_acc[slot] = by_acc.get(slot, Decimal("0")) + effect_van
+
         def _result_columns(cat_id: int) -> list[float]:
             acc = [pnl_sums.get(cat_id, {}).get(aid, Decimal("0")) for aid in account_ids]
             return [float(v) for v in acc]
@@ -3729,6 +3965,9 @@ def export_matrix_excel_data(
 
         result_id = verlies_id(country_id, cursor)
         balance_id = eigen_vermogen_id(country_id, cursor)
+        from shared.balance_values import category_roles, is_cp_role
+
+        roles = category_roles(country_id, cursor) if unit_ids else {}
         breakdown = None
         if is_opening_sheet_year(country_id, int(year), cursor):
             breakdown = opening_sheet_breakdown(country_id, int(year), cursor)
@@ -3741,6 +3980,8 @@ def export_matrix_excel_data(
         skip_ids = {i for i in (balance_id, result_id) if i is not None}
         for cat_id in sorted(cmap, key=_local):
             if cat_id in skip_ids:
+                continue
+            if unit_ids and is_cp_role(roles.get(cat_id)):
                 continue
             side, account_id = cmap[cat_id]
             if scoped_ids is not None and (
