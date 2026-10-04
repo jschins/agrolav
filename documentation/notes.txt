@@ -81,7 +81,6 @@ CENTRALE_API_KEY=<redacted: in root .env>
 PUBLIC_HUB_URL=https://expenses.apsurt.nl
 agrolav@agrolav:/opt/agrolav$ sudo cat /etc/agrolav/balance.env
 HOST=127.0.0.1
-PORT=8100
 HUB_DATABASE_URL=DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1,1433;DATABASE=agrolav;UID=sa;PWD=<redacted: stored in /.env>;Encrypt=yes;TrustServerCertificate=yes
 agrolav@agrolav:/opt/agrolav$
 

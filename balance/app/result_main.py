@@ -1,6 +1,6 @@
 """Result hub — FastAPI app on port 8500.
 
-One SPA per country under ``/result/{slug}``, where ``slug`` is
+One SPA per country under ``/balance/{slug}``, where ``slug`` is
 ``dbo.country.username``. Amounts are limited by the ``person``, ``center``,
 and ``account`` query parameters the client menu adds for the current login.
 """
@@ -82,22 +82,22 @@ def health() -> dict[str, Any]:
     return {"ok": True, "service": "result-hub"}
 
 
-@app.get("/result/{slug}", include_in_schema=False)
+@app.get("/balance/{slug}", include_in_schema=False)
 def result_index_redirect(slug: str, request: Request) -> RedirectResponse:
     resolve_country(slug)
-    url = f"/result/{slug}/"
+    url = f"/balance/{slug}/"
     if request.url.query:
         url = f"{url}?{request.url.query}"
     return RedirectResponse(url=url, status_code=307)
 
 
-@app.get("/result/{slug}/", include_in_schema=False)
+@app.get("/balance/{slug}/", include_in_schema=False)
 def result_index(slug: str) -> Any:
     resolve_country(slug)
     return _serve_index()
 
 
-@app.get("/result/{slug}/assets/{asset_path:path}", include_in_schema=False)
+@app.get("/balance/{slug}/assets/{asset_path:path}", include_in_schema=False)
 def result_assets(slug: str, asset_path: str) -> Any:
     resolve_country(slug)
     if not asset_path:
@@ -140,7 +140,7 @@ def _present_sheet_errors(what: str):
     return decorator
 
 
-@app.get("/result/{slug}/api/balance/meta")
+@app.get("/balance/{slug}/api/balance/meta")
 @_present_sheet_errors("Result meta")
 def result_meta(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]:
     from app.balance import color_convention
@@ -158,7 +158,7 @@ def result_meta(slug: str, _: None = Depends(_api_key)) -> dict[str, Any]:
     }
 
 
-@app.get("/result/{slug}/api/balance/years")
+@app.get("/balance/{slug}/api/balance/years")
 @_present_sheet_errors("Result years")
 def result_years(
     slug: str,
@@ -181,7 +181,7 @@ def result_years(
     return {"years": years, "default_year": default_year}
 
 
-@app.get("/result/{slug}/api/balance/{year}/dates")
+@app.get("/balance/{slug}/api/balance/{year}/dates")
 @_present_sheet_errors("Result dates")
 def result_dates(
     slug: str,
@@ -202,7 +202,7 @@ def result_dates(
     }
 
 
-@app.get("/result/{slug}/api/balance/subadministratie")
+@app.get("/balance/{slug}/api/balance/subadministratie")
 def result_subadministratie(
     slug: str,
     _: None = Depends(_api_key),
@@ -210,7 +210,7 @@ def result_subadministratie(
     return {"country_id": resolve_country(slug), "rows": []}
 
 
-@app.get("/result/{slug}/api/balance/{year}/popup")
+@app.get("/balance/{slug}/api/balance/{year}/popup")
 @_present_sheet_errors("Sheet popup")
 def result_post_popup(
     slug: str,
@@ -224,7 +224,7 @@ def result_post_popup(
     return post_popup(resolve_country(slug), year, local_code, as_of=date)
 
 
-@app.get("/result/{slug}/api/balance/{year}/sheet")
+@app.get("/balance/{slug}/api/balance/{year}/sheet")
 @_present_sheet_errors("Balance sheet")
 def result_balance_sheet(
     slug: str,
@@ -252,7 +252,7 @@ def result_balance_sheet(
     return compute(country_id, year, as_of=date, kind=kind)
 
 
-@app.get("/result/{slug}/api/balance/{year}")
+@app.get("/balance/{slug}/api/balance/{year}")
 @_present_sheet_errors("Result sheet")
 def result_sheet(
     slug: str,

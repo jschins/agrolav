@@ -1,11 +1,7 @@
-"""Balance hub — FastAPI app on port 8100.
+"""Balance routes.
 
-The instance serves one SPA per balance country under ``/balance/{slug}``,
-where ``slug`` is the country's ``dbo.country.username`` (only countries with
-``has_balance = 1``).  Example: ``/balance/beheer`` (country 4) and
-``/balance/beheer_instudo`` (country 5).  Each slug resolves its own country,
-so the same built frontend and code serve every current and future balance
-country automatically.
+The listening sheet process is ``app.result_main``. This module does not
+open a port.
 """
 from __future__ import annotations
 
@@ -70,7 +66,7 @@ def resolve_country(slug: str) -> int:
 
 
 def _api_key(authorization: str | None = Header(default=None)) -> None:
-    """Optional extra lock for :8100. Do not use ``CENTRALE_API_KEY``.
+    """Optional extra lock. Do not use ``CENTRALE_API_KEY``.
 
     That value lives in the shared root ``.env`` so the hub and Caddy can
     call each other. Loading it here 401s the browser sheet, which has no
@@ -436,11 +432,7 @@ def balance_journal_put(
 
 
 def run() -> None:
-    import uvicorn
-
-    port = int(os.environ.get("PORT", "8100"))
-    host = os.environ.get("HOST", "127.0.0.1")
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    raise SystemExit("app.main does not listen. Start the sheet with app.result_main.")
 
 
 if __name__ == "__main__":

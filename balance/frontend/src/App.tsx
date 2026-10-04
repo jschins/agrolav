@@ -156,7 +156,7 @@ function SideTable({
 }
 
 function isResultView(): boolean {
-  return window.location.pathname.startsWith("/result/");
+  return window.location.pathname.startsWith("/balance/");
 }
 
 function isUnitLogin(): boolean {

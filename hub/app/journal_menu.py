@@ -1,7 +1,6 @@
 """Hand journal and automatic-journal rules for the client menu.
 
-The client on port 8300 calls these through the hub. The balance process
-on port 8100 is not involved.
+The client on port 8300 calls these through the hub.
 """
 from __future__ import annotations
 

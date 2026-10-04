@@ -122,18 +122,17 @@ Browser → https://expenses.apsurt.nl
        → Caddy (TLS)
        → 127.0.0.1:8300  client
        → 127.0.0.1:8200  hub   (localhost only)
-       → 127.0.0.1:8100  agrolav-balance   /balance/
-       → 127.0.0.1:8500  agrolav-result    /result/
+       → 127.0.0.1:8500  balance
        → 127.0.0.1:8400  maaltijden
 ```
 
-`agrolav-balance` and `agrolav-result` both run from the `balance/` directory and serve `balance/frontend/dist`. Port 8100 is Balans. Port 8500 is Resultaat.
+`agrolav-balance` runs from the `balance/` directory and serves `balance/frontend/dist`. Port 8500 is Resultaat and Balans.
 
 Caddy must forward `X-Forwarded-For` so country/center allowlists and
 `dbo.visitor_ip` see the caller’s public IP, not `127.0.0.1`. See
 `client/Caddyfile`.
 
-Do not open 8100/8200/8300/8400/8500. Do not proxy 1433 through Caddy.
+Do not open 8200/8300/8400/8500. Do not proxy 1433 through Caddy.
 
 ---
 

@@ -66,24 +66,8 @@ def public_hub_url() -> str:
     return os.environ.get("PUBLIC_HUB_URL", "").strip().rstrip("/")
 
 
-def _balance_base_url() -> str:
-    """Browser-facing balance app base for ``/balance/{slug}``.
-
-    ``BALANCE_URL`` overrides; otherwise the public hub origin (the balance SPA
-    is reverse-proxied on that same origin), with ``http://127.0.0.1:8100`` as a
-    local-machines fallback.
-    """
-    override = os.environ.get("BALANCE_URL", "").strip().rstrip("/")
-    if override:
-        return override
-    pub = public_hub_url()
-    if pub:
-        return pub
-    return "http://127.0.0.1:8100"
-
-
 def _result_base_url() -> str:
-    """Browser-facing result app base for ``/result/{slug}`` on port 8500.
+    """Browser-facing result app base for ``/balance/{slug}`` on port 8500.
 
     ``RESULT_URL`` overrides. Otherwise ``http://127.0.0.1:8500``: the result
     SPA is a separate process, not the public hub origin.
@@ -95,7 +79,7 @@ def _result_base_url() -> str:
 
 
 def _result_url(cfg: HubConfig) -> str:
-    """``/result/{country}/`` plus the login scope the sheet must apply."""
+    """``/balance/{country}/`` plus the login scope the sheet must apply."""
     if not cfg.enabled or not str(cfg.country or "").strip():
         return ""
     params: dict[str, str] = {}
@@ -115,17 +99,17 @@ def _result_url(cfg: HubConfig) -> str:
     if login:
         params["login"] = login
     slug = urllib.parse.quote(str(cfg.country).strip())
-    url = f"{_result_base_url()}/result/{slug}/"
+    url = f"{_result_base_url()}/balance/{slug}/"
     query = urllib.parse.urlencode(params)
     return f"{url}?{query}" if query else url
 
 
 def _balance_url(cfg: HubConfig) -> str:
-    """Best-effort ``/balance/{slug}`` link for the active country.
+    """Non-empty when the signed-in country has a balance sheet.
 
-    Asks the hub (``?country=`` is appended automatically to
-    ``/api/local/...`` calls); empty when the hub is unreachable, the country
-    has no balance sheet, or this client is not country-scoped.
+    The menu uses that as a flag for journal, afschrijvingen, and opening
+    balance. Those screens stay on the client. The sheet itself opens
+    through ``result_url``.
     """
     if not cfg.enabled or not cfg.country:
         return ""
@@ -133,25 +117,7 @@ def _balance_url(cfg: HubConfig) -> str:
         data = hub_get("/balance-slug", timeout=5.0)
         if not isinstance(data, dict) or not data.get("has_balance"):
             return ""
-        slug = str(data.get("slug") or "").strip()
-        if not slug:
-            return ""
-        url = f"{_balance_base_url()}/balance/{urllib.parse.quote(slug)}"
-        params: dict[str, str] = {}
-        if cfg.access == ACCESS_CENTER and str(cfg.center or "").strip():
-            params["center"] = str(cfg.center).strip()
-        elif cfg.access == ACCESS_PERSON and str(cfg.person or "").strip():
-            params["person"] = str(cfg.person).strip()
-        elif cfg.access == ACCESS_UNIT:
-            params["unit"] = "1"
-            account = "".join(str(cfg.account or "").split()).upper()
-            if account:
-                params["account"] = account
-        login = str(cfg.username or "").strip()
-        if login:
-            params["login"] = login
-        query = urllib.parse.urlencode(params)
-        return f"{url}?{query}" if query else url
+        return str(data.get("slug") or "").strip()
     except Exception:  # noqa: BLE001
         return ""
 
@@ -896,7 +862,7 @@ def unit_result_sheet(year: int, *, login: str, account: str) -> dict[str, Any]:
         params["account"] = iban
     slug = urllib.parse.quote(str(cfg.country).strip())
     url = (
-        f"{_result_base_url()}/result/{slug}/api/balance/{int(year)}"
+        f"{_result_base_url()}/balance/{slug}/api/balance/{int(year)}"
         f"?{urllib.parse.urlencode(params)}"
     )
     req = urllib.request.Request(url, method="GET")

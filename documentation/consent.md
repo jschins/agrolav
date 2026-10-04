@@ -36,7 +36,7 @@ switcher (plus Consolidated). There is no missing “account login” type.
 `has_balance` does two jobs:
 
 1. This country has a **balance sheet** (1000–4999 catalog, journals,
-   openings, 2000 plug, spaar, afschrijvingen, the `:8100` app, three-sheet
+   openings, 2000 plug, spaar, afschrijvingen, the result sheet, three-sheet
    Excel).
 2. Personal terms are **per account** (`_account_modality()` is
    `country_has_balance()`), because one person holds several IBANs with

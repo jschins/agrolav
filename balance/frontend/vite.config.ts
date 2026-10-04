@@ -8,15 +8,15 @@ export default defineConfig({
     port: 5174,
     proxy: {
       "/balance/beheer_instudo/api": {
-        target: "http://127.0.0.1:8100",
+        target: "http://127.0.0.1:8500",
         changeOrigin: true,
       },
       "/balance/beheer_sdog/api": {
-        target: "http://127.0.0.1:8100",
+        target: "http://127.0.0.1:8500",
         changeOrigin: true,
       },
       "/api": {
-        target: "http://127.0.0.1:8100",
+        target: "http://127.0.0.1:8500",
         changeOrigin: true,
         rewrite: (path) => "/balance/beheer_sdog" + path,
       },

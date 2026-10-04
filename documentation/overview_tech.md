@@ -4,8 +4,7 @@
 |-----------|------|------|
 | Hub | :8200 | FastAPI data API |
 | Client | :8300 | BFF + React UI |
-| `agrolav-balance` | :8100 | Balans under `/balance/{slug}` |
-| `agrolav-result` | :8500 | Resultaat under `/result/{slug}` |
+| `agrolav-balance` | :8500 | Resultaat and Balans under `/balance/{slug}` |
 | Maaltijden | :8400 | Meal matrix for `nl_dkg` at `/maaltijden` |
 | SQL Server | :1433 | Authoritative store |
 | Caddy | 80/443 | Public HTTPS; hub and apps stay on loopback |
@@ -32,37 +31,33 @@ Attempted public addresses land in `dbo.visitor_ip`.
 |---------|------|------------------------|
 | `agrolav-hub` | 8200 | Nothing of its own. Caddy forwards selected `/api/local/*` calls. |
 | `agrolav-client` | 8300 | The site: login, matrix, menu. |
-| `agrolav-balance` | 8100 | `/balance/{slug}/` — the balance sheet (Balans). |
-| `agrolav-result` | 8500 | `/result/{slug}/` — profit/loss (Resultaat). |
+| `agrolav-balance` | 8500 | `/balance/{slug}/` — profit/loss and the balance sheet. |
 
-All four bind to `127.0.0.1`. `slug` is `dbo.country.username`.
+Each of these binds to `127.0.0.1`. `slug` is `dbo.country.username`.
 
 The hub is the data API: login, bookings, categories, bank refresh, and
 upload. SQL Server is the only store. The client is the BFF and the React
 UI. The browser session stays on the client, and the client calls the hub.
 
-Balans and Resultaat are windows opened from the client menu. Escape on
+Profit/Loss opens that sheet from the client menu. Escape on
 the sheet, or logout on the menu page, closes that window.
 
-One directory, `balance/`, holds both processes. It is one Python project
+One directory, `balance/`, holds the sheet. It is one Python project
 (`balance/pyproject.toml`, one `.venv`). There is no `result` directory.
-Both processes serve the same frontend build, `balance/frontend/dist`.
-The page URL decides which sheet that build draws: `/balance/{slug}/` or
-`/result/{slug}/`.
+The process serves `balance/frontend/dist` under `/balance/{slug}/`.
+That window draws Resultaat and, for a country with a balance sheet, Balans.
 
 | Process | systemd unit | Command, from `balance/` | Sheet |
 |---------|--------------|--------------------------|--------|
-| Balans | `agrolav-balance` | `uvicorn app.main:app` on port 8100 | `/balance/{slug}/` |
-| Resultaat | `agrolav-result` | `uvicorn app.result_main:app` on port 8500 | `/result/{slug}/` |
+| Resultaat | `agrolav-balance` | `uvicorn app.result_main:app` on port 8500 | `/balance/{slug}/` |
 
-Restarting `agrolav-balance` reloads Balans only. Resultaat changes after
-`sudo systemctl restart agrolav-result`.
+Sheet changes load after `sudo systemctl restart agrolav-balance`.
 
 Resultaat shows local codes 3000–4999: kosten 3000–3999 and opbrengsten
 4000–4999. The amounts follow the login — the country, that center, that
 person, or that unit account. The menu link is `RESULT_URL`, otherwise
 `http://127.0.0.1:8500`. On the public site set `RESULT_URL` to the site
-origin and proxy `/result*` to port 8500.
+origin and proxy `/balance*` to port 8500.
 
 ### Starting the sheets locally
 
@@ -71,11 +66,10 @@ The commands run from the `balance` directory.
 | Command | Calls | Port |
 |---------|--------|------|
 | `uv run balance` | `app.result_main:run` | 8500 |
-| `python -m app.main` | `app.main` | 8100 |
 
-`uv run balance` starts Resultaat. The module form
+`uv run balance` starts the sheet. The module form
 `.\.venv\Scripts\python.exe -m app.result_main` calls the same
-`app.result_main:run` function. `python -m app.main` starts Balans.
+`app.result_main:run` function.
 `uv run` looks the name up in `[project.scripts]` and runs it with the
 project virtualenv; `python -m` loads that module with the virtualenv
 interpreter directly.

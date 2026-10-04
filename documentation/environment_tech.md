@@ -76,16 +76,16 @@ Read in: `hub/app/main.py`, `hub/app/core/single_client.py`,
 
 
 
-### 2.3 Balance (`balance/app`) — ports 8100 and 8500
+### 2.3 Balance (`balance/app`) — port 8500
 
-Which process serves which sheet is in `overview_tech.md`. Read in: `balance/app/db.py`, `balance/app/main.py`, `balance/app/result_main.py`.
+Which process serves the sheet is in `overview_tech.md`. Read in: `balance/app/db.py`, `balance/app/result_main.py`.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `HOST` | `127.0.0.1` | bind host |
-| `PORT` | `8100` in `main.py`, `8500` in `result_main.py` | bind port for that process |
+| `PORT` | `8500` in `result_main.py` | bind port |
 | `BALANCE_COUNTRY_ID` | empty | pin the active country when the request has no country subpath (`balance.py`) |
-| `BALANCE_DIST` | built-in path | override for the static `dist` directory, shared by both processes |
+| `BALANCE_DIST` | built-in path | override for the static `dist` directory |
 
 
 
@@ -146,8 +146,7 @@ Systemd units (what pins the non-secret config source):
 ```
 agrolav-hub        EnvironmentFile=/etc/agrolav/hub.env         ExecStart=/home/agrolav/.local/bin/uv run hub
 agrolav-client     EnvironmentFile=/etc/agrolav/client.env      ExecStart=/home/agrolav/.local/bin/uv run client
-agrolav-balance    EnvironmentFile=/etc/agrolav/balance.env     ExecStart=/opt/agrolav/balance/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100
-agrolav-result     (unit on the server, not in git)             ExecStart=/opt/agrolav/balance/.venv/bin/uvicorn app.result_main:app --host 127.0.0.1 --port 8500
+agrolav-balance     (unit on the server, not in git)             ExecStart=/opt/agrolav/balance/.venv/bin/uvicorn app.result_main:app --host 127.0.0.1 --port 8500
 agrolav-maaltijden EnvironmentFile=/etc/agrolav/maaltijden.env  ExecStart=/opt/agrolav/maaltijden/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8400
 caddy              EnvironmentFile=/opt/agrolav/.env            ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile
 ```
