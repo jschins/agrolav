@@ -4,7 +4,8 @@
 |-----------|------|------|
 | Hub | :8200 | FastAPI data API |
 | Client | :8300 | BFF + React UI |
-| Balance | :8500 | Profit/loss under `/result/{slug}` |
+| `agrolav-balance` | :8100 | Balans under `/balance/{slug}` |
+| `agrolav-result` | :8500 | Resultaat under `/result/{slug}` |
 | Maaltijden | :8400 | Meal matrix for `nl_dkg` at `/maaltijden` |
 | SQL Server | :1433 | Authoritative store |
 | Caddy | 80/443 | Public HTTPS; hub and apps stay on loopback |
@@ -25,50 +26,62 @@ appear in `dbo.egress_ip` or in that login's own `egress_ip` column,
 and an empty column admits nobody. Person logins are not IP-gated.
 Attempted public addresses land in `dbo.visitor_ip`.
 
-## Hub, client, and balance
+## Hub, client, balance, and result
 
 | Process | Port | What the browser sees |
 |---------|------|------------------------|
-| Hub | 8200 | Nothing of its own. Caddy forwards selected `/api/local/*` calls. |
-| Client | 8300 | The site: login, matrix, menu. |
-| Balance | 8500 | `/result/{slug}/` — profit/loss (Resultaat). |
+| `agrolav-hub` | 8200 | Nothing of its own. Caddy forwards selected `/api/local/*` calls. |
+| `agrolav-client` | 8300 | The site: login, matrix, menu. |
+| `agrolav-balance` | 8100 | `/balance/{slug}/` — the balance sheet (Balans). |
+| `agrolav-result` | 8500 | `/result/{slug}/` — profit/loss (Resultaat). |
 
-All three bind to `127.0.0.1`. `slug` is `dbo.country.username`.
+All four bind to `127.0.0.1`. `slug` is `dbo.country.username`.
 
 The hub is the data API: login, bookings, categories, bank refresh, and
 upload. SQL Server is the only store. The client is the BFF and the React
 UI. The browser session stays on the client, and the client calls the hub.
 
-Balance is a window opened from the client menu. Escape on the sheet, or
-logout on the menu page, closes that window. It is served from the balance
-app and its frontend build (`balance/frontend/dist`).
+Balans and Resultaat are windows opened from the client menu. Escape on
+the sheet, or logout on the menu page, closes that window.
 
-Balance shows local codes 3000–4999: kosten 3000–3999 and opbrengsten
+One directory, `balance/`, holds both processes. It is one Python project
+(`balance/pyproject.toml`, one `.venv`). There is no `result` directory.
+Both processes serve the same frontend build, `balance/frontend/dist`.
+The page URL decides which sheet that build draws: `/balance/{slug}/` or
+`/result/{slug}/`.
+
+| Process | systemd unit | Command, from `balance/` | Sheet |
+|---------|--------------|--------------------------|--------|
+| Balans | `agrolav-balance` | `uvicorn app.main:app` on port 8100 | `/balance/{slug}/` |
+| Resultaat | `agrolav-result` | `uvicorn app.result_main:app` on port 8500 | `/result/{slug}/` |
+
+Restarting `agrolav-balance` reloads Balans only. Resultaat changes after
+`sudo systemctl restart agrolav-result`.
+
+Resultaat shows local codes 3000–4999: kosten 3000–3999 and opbrengsten
 4000–4999. The amounts follow the login — the country, that center, that
 person, or that unit account. The menu link is `RESULT_URL`, otherwise
 `http://127.0.0.1:8500`. On the public site set `RESULT_URL` to the site
-origin and proxy `/result*` to port 8500. The process is
-`uvicorn app.result_main:app` from the balance directory.
+origin and proxy `/result*` to port 8500.
 
-### Starting Balance locally
+### Starting the sheets locally
 
-The command runs from the `balance` directory. That directory is one Python
-project (`balance/pyproject.toml`, one `.venv`). It publishes one console
-script:
+The commands run from the `balance` directory.
 
 | Command | Calls | Port |
 |---------|--------|------|
 | `uv run balance` | `app.result_main:run` | 8500 |
+| `python -m app.main` | `app.main` | 8100 |
 
-`uv run balance` starts the profit/loss window. The module form
+`uv run balance` starts Resultaat. The module form
 `.\.venv\Scripts\python.exe -m app.result_main` calls the same
-`app.result_main:run` function as `uv run balance`. `uv run` looks the name
-up in `[project.scripts]` and runs it with the project virtualenv;
-`python -m` loads that module with the virtualenv interpreter directly.
+`app.result_main:run` function. `python -m app.main` starts Balans.
+`uv run` looks the name up in `[project.scripts]` and runs it with the
+project virtualenv; `python -m` loads that module with the virtualenv
+interpreter directly.
 
-There is no `result` directory. Balance uses that project's virtualenv,
-dependencies, and `balance/frontend/dist`. Hub, client, and balance each
-have their own directory and `pyproject.toml`.
+Hub, client, and `balance/` each have their own directory and
+`pyproject.toml`.
 
 ## Hub logic, the client BFF, and the SQL tables
 

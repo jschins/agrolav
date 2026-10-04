@@ -965,6 +965,126 @@ def api_opening_balance(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+class JournalMenuItem(BaseModel):
+    date: str
+    category_from: int
+    category_to: int
+    amount: float = 0.0
+    description: str = ""
+
+
+class JournalMenuPayload(BaseModel):
+    items: list[JournalMenuItem] = Field(default_factory=list)
+
+
+class AfschrijvingMenuItem(BaseModel):
+    role: int = 1
+    fraction: float = 0.0
+    local_code_van: int
+    local_code_naar: int
+
+
+class AfschrijvingMenuPayload(BaseModel):
+    items: list[AfschrijvingMenuItem] = Field(default_factory=list)
+
+
+def _journal_country(center: str, country: str | None) -> int:
+    from app.journal_menu import resolve_country_id
+
+    try:
+        return resolve_country_id(center, country)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/local/{center}/journal")
+def api_journal_menu(
+    center: str,
+    year: int = Query(...),
+    country: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.journal_menu import journal_payload
+
+    if year < 1900 or year > 3000:
+        raise HTTPException(status_code=400, detail="Enter a year")
+    country_id = _journal_country(center, country)
+    try:
+        return journal_payload(country_id, year)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.put("/api/local/{center}/journal")
+def api_journal_menu_put(
+    center: str,
+    body: JournalMenuPayload,
+    year: int = Query(...),
+    country: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.journal_menu import save_journal
+
+    if year < 1900 or year > 3000:
+        raise HTTPException(status_code=400, detail="Enter a year")
+    country_id = _journal_country(center, country)
+    try:
+        return save_journal(
+            country_id, year, [item.model_dump() for item in body.items]
+        )
+    except ValueError as exc:
+        from app import user_store
+
+        user_store._sql_connect().rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        from app import user_store
+
+        user_store._sql_connect().rollback()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/local/{center}/afschrijvingen")
+def api_afschrijvingen_menu(
+    center: str,
+    country: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.journal_menu import list_afschrijvingen_rules
+
+    country_id = _journal_country(center, country)
+    try:
+        return list_afschrijvingen_rules(country_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.put("/api/local/{center}/afschrijvingen")
+def api_afschrijvingen_menu_put(
+    center: str,
+    body: AfschrijvingMenuPayload,
+    country: str | None = Query(default=None),
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app.journal_menu import save_afschrijvingen_rules
+
+    country_id = _journal_country(center, country)
+    try:
+        return save_afschrijvingen_rules(
+            country_id, [item.model_dump() for item in body.items]
+        )
+    except ValueError as exc:
+        from app import user_store
+
+        user_store._sql_connect().rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        from app import user_store
+
+        user_store._sql_connect().rollback()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/local/{center}/cross-postings")
 def api_cross_postings(
     center: str,

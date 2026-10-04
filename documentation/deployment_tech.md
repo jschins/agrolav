@@ -13,26 +13,30 @@ are in `[DATABASE.md](DATABASE.md)`.
 | ----------- | ---------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | hub         | systemd `agrolav-hub`        | `127.0.0.1:8200` | FastAPI: login, sync, calculation, SQL Server                                                                                                                                                           |
 | client BFF  | systemd `agrolav-client`     | `127.0.0.1:8300` | Serves the frontend, proxies hub APIs, browser login                                                                                                                                                    |
-| balance hub | systemd `agrolav-balance`    | `127.0.0.1:8100` | Balance sheets — one SPA per balance country, served under `/balance/{slug}` (slugs = `dbo.country.username` with `has_balance = 1`, e.g. `beheer`, `beheer_instudo`), API at `/balance/{slug}/api/...` |
+| balance     | systemd `agrolav-balance`    | `127.0.0.1:8100` | Balans — `/balance/{slug}` (slugs = `dbo.country.username` with `has_balance = 1`, e.g. `beheer`, `beheer_instudo`), API at `/balance/{slug}/api/...`. Code and frontend live in `balance/`. |
+| result      | systemd `agrolav-result`     | `127.0.0.1:8500` | Resultaat — `/result/{slug}`, API at `/result/{slug}/api/...`. Same `balance/` directory and the same `balance/frontend/dist` as `agrolav-balance`. |
 | maaltijden  | systemd `agrolav-maaltijden` | `127.0.0.1:8400` | Meal matrix for center `nl_dkg` — login + SPA at `/maaltijden`, API at `/maaltijden/api/...`                                                                                                            |
 | SQL Server  | Docker `MSSQL2022`           | VPC :1433        | the only data store; the authorized computer and this application computer                                                                                                                              |
-| Caddy       | systemd `caddy`              | `80/443`         | public site → client BFF; selected hub paths → hub; `/balance/*` → balance hub; `/maaltijden*` → maaltijden                                                                                             |
+| Caddy       | systemd `caddy`              | `80/443`         | public site → client BFF; selected hub paths → hub; `/balance/*` → `agrolav-balance`; `/result*` → `agrolav-result`; `/maaltijden*` → maaltijden                                                                                             |
 
 
 Two computers. The database is on **A**. The website is on **B**. 
 
 **Computer A** is the authorized database computer. Docker container `MSSQL2022` runs there, and the only database is `agrolav` on port 1433. No hub, client, balance, maaltijden, or Caddy runs on A. A VPC and a firewall that is closed to every other host admit computer B, and SSMS from A itself. Backups are taken on A (`/opt/sql_backups`).
 
-**Computer B** is `expenses.apsurt.nl`. It runs the application and opens SQL Server on A through `HUB_DATABASE_URL`. Its firewall is closed, and the default policy is zero trust. Caddy is the only process on 80 and 443. SSH to B uses port 4523. The four application processes bind to `127.0.0.1` and are the code in this repo:
+**Computer B** is `expenses.apsurt.nl`. It runs the application and opens SQL Server on A through `HUB_DATABASE_URL`. Its firewall is closed, and the default policy is zero trust. Caddy is the only process on 80 and 443. SSH to B uses port 4523. The application processes bind to `127.0.0.1` and are the code in this repo.
+
+`balance/` is one directory and one frontend (`balance/frontend`). Two processes run from it. `agrolav-balance` is Balans. `agrolav-result` is Resultaat. Restarting one does not reload the other.
 
 
 | Process on B         | Code               | Role                                                                 |
 | -------------------- | ------------------ | -------------------------------------------------------------------- |
 | `agrolav-hub`        | `hub/`             | Login, bookings, categories, bank refresh. Talks to SQL Server on A. |
 | `agrolav-client`     | `client/`          | The site the browser loads, and the session cookie. Calls the hub.   |
-| `agrolav-balance`    | `balance/`         | Balance sheet and resultaat. Reads SQL Server on A.                  |
+| `agrolav-balance`    | `balance/`         | Balans (`uvicorn app.main:app`, port 8100). Reads SQL Server on A.   |
+| `agrolav-result`     | `balance/`         | Resultaat (`uvicorn app.result_main:app`, port 8500). Same tree and the same `balance/frontend/dist`. Reads SQL Server on A. |
 | `agrolav-maaltijden` | `maaltijden/`      | Meal matrix. Reads SQL Server on A.                                  |
-| `caddy`              | `client/Caddyfile` | HTTPS in front of those four.                                        |
+| `caddy`              | `client/Caddyfile` | HTTPS in front of those processes.                                   |
 
 
 ```text
@@ -48,11 +52,12 @@ Caddy :443                          the browser connection ends here
    │  forwards on this machine
    ├─ client       client/         127.0.0.1:8300
    ├─ hub          hub/            127.0.0.1:8200
-   ├─ balance      balance/        127.0.0.1:8100
+   ├─ balance      balance/        127.0.0.1:8100   agrolav-balance  /balance/
+   ├─ result       balance/        127.0.0.1:8500   agrolav-result   /result/
    └─ maaltijden   maaltijden/     127.0.0.1:8400
           │
           │  HUB_DATABASE_URL
-          │  these four processes only
+          │  these processes only
           ▼
       Port 1433
 Computer A — authorized database computer

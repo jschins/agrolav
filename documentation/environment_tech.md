@@ -10,8 +10,7 @@ in the single secret file and are covered by
 
 ---
 
-<!-- {en:environment[5],variables[5],config[5],files[5],env} -->
-<!-- {nl:omgeving[5],variabelen[5],config[5],bestanden[5],env} -->
+
 
 ## 1. How each component loads configuration
 
@@ -36,16 +35,13 @@ Rules shared by all apps:
 
 ---
 
-<!-- {en:component[5],loads[5],configuration[5],env,precedence} -->
-<!-- {nl:onderdeel[5],laadt[5],configuratie[5],env,voorrang} -->
 
 ## 2. Non-secret variables
 
 Secret variables (`HUB_DATABASE_URL`, `MSSQL_SA_PASSWORD`, `CENTRALE_API_KEY`,
 `CLIENT_SESSION_SECRET`, `HUB_OTP_SECRET`, Twilio) are omitted on purpose.
 
-<!-- {en:non-secret[5],variables[5],port,host,default} -->
-<!-- {nl:niet-geheim[5],variabelen[5],poort,hostnaam,standaard} -->
+
 
 ### 2.1 Client (`client/app`) — browser-facing BFF, port 8300
 
@@ -62,8 +58,7 @@ Read in: `client/app/centrale_sync.py`, `client/app/main.py`, `client/app/auth.p
 | `CLIENT_COUNTRY` / `CLIENT_CENTER` / `CLIENT_ACCESS` / `CLIENT_PERSON` / `CLIENT_BOOTSTRAP_CENTER` | empty | bootstrap defaults for the SPA (`centrale_sync.py`) |
 | `COMPUTERNAME` / `HOSTNAME` | OS value | fallback machine label (`centrale_sync.py`) |
 
-<!-- {en:client[5],bff[5],port[5],browser,8300} -->
-<!-- {nl:client[5],bff[5],poort[5],browser,8300} -->
+
 
 ### 2.2 Hub (`hub/app`) — API + add-person wizard, port 8200
 
@@ -79,22 +74,20 @@ Read in: `hub/app/main.py`, `hub/app/core/single_client.py`,
 | `HUB_DEV_LOGIN` | `0` | dev flag: skips the country/center IP gate for loopback and writes nothing to `dbo.visitor_ip`. **Never set on the server** |
 | `AGROLAV_SQL_DISK` | process cwd | scratch-root for on-disk JSON when SQL is not configured (`runtime.py`) |
 
-<!-- {en:hub[5],api[5],wizard[5],port[5],8200} -->
-<!-- {nl:hub[5],api[5],assistent[5],poort[5],8200} -->
 
-### 2.3 Balance (`balance/app`) — okres/balance web, port 8100
 
-Read in: `balance/app/db.py`, `balance/app/main.py`, `balance/app/balance.py`.
+### 2.3 Balance (`balance/app`) — ports 8100 and 8500
+
+Which process serves which sheet is in `overview_tech.md`. Read in: `balance/app/db.py`, `balance/app/main.py`, `balance/app/result_main.py`.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `HOST` | `127.0.0.1` | bind host (`main.py`) |
-| `PORT` | `8100` | bind port (`main.py`) |
+| `HOST` | `127.0.0.1` | bind host |
+| `PORT` | `8100` in `main.py`, `8500` in `result_main.py` | bind port for that process |
 | `BALANCE_COUNTRY_ID` | empty | pin the active country when the request has no country subpath (`balance.py`) |
-| `BALANCE_DIST` | built-in path | override for the static `dist` directory (`main.py`) |
+| `BALANCE_DIST` | built-in path | override for the static `dist` directory, shared by both processes |
 
-<!-- {en:balance[5],port[5],8100,okres} -->
-<!-- {nl:balans[5],poort[5],8100,okres} -->
+
 
 ### 2.4 Maaltijden (`maaltijden/app`) — meal matrix, port 8400
 
@@ -106,8 +99,7 @@ Read in: `maaltijden/app/db.py`, `maaltijden/app/main.py`, `maaltijden/app/auth.
 | `PORT` | `8400` | bind port (`main.py`) |
 | `MAALTIJDEN_DIST` | built-in path | override for the static `dist` directory (`main.py`) |
 
-<!-- {en:meals[5],meal[5],matrix[5],port[5],8400} -->
-<!-- {nl:maaltijden[5],maaltijd[5],matrix[5],poort[5],8400} -->
+
 
 ### 2.5 Caddy
 
@@ -118,13 +110,10 @@ placeholder `header_up Authorization "Bearer {$CENTRALE_API_KEY}"` on
 
 ---
 
-<!-- {en:caddy[5],proxy,env} -->
-<!-- {nl:caddy[5],omgekeerde-proxy,env} -->
 
 ## 3. Files
 
-<!-- {en:files[5],env,git} -->
-<!-- {nl:bestanden[5],env,git} -->
+
 
 ### 3.1 Local (this repo)
 
@@ -135,8 +124,7 @@ placeholder `header_up Authorization "Bearer {$CENTRALE_API_KEY}"` on
 | `hub/.env`, `client/.env`, `balance/.env`, `maaltijden/.env` | no | non-secret machine-local settings |
 | `documentation/passwords.md` | yes | where secrets live + how to change them |
 
-<!-- {en:local[5],repo[5],env,gitignored,secrets} -->
-<!-- {nl:lokaal[5],bron[5],env,git-genegeerd,geheimen} -->
+
 
 ### 3.2 Server `agrolav@209.38.39.105` (ssh port 4523)
 
@@ -159,14 +147,14 @@ Systemd units (what pins the non-secret config source):
 agrolav-hub        EnvironmentFile=/etc/agrolav/hub.env         ExecStart=/home/agrolav/.local/bin/uv run hub
 agrolav-client     EnvironmentFile=/etc/agrolav/client.env      ExecStart=/home/agrolav/.local/bin/uv run client
 agrolav-balance    EnvironmentFile=/etc/agrolav/balance.env     ExecStart=/opt/agrolav/balance/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100
+agrolav-result     (unit on the server, not in git)             ExecStart=/opt/agrolav/balance/.venv/bin/uvicorn app.result_main:app --host 127.0.0.1 --port 8500
 agrolav-maaltijden EnvironmentFile=/etc/agrolav/maaltijden.env  ExecStart=/opt/agrolav/maaltijden/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8400
 caddy              EnvironmentFile=/opt/agrolav/.env            ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile
 ```
 
 ---
 
-<!-- {en:server[5],ssh[5],port[5],env,root} -->
-<!-- {nl:server[5],ssh[5],poort[5],env,root} -->
+
 
 ## 4. How a clone, git clean, or reimage drops env files
 
@@ -193,8 +181,7 @@ caddy              EnvironmentFile=/opt/agrolav/.env            ExecStart=/usr/b
    diff this table against the running processes
    (`systemctl show <unit> -p Environment` or `/proc/<MainPID>/environ`).
 
-<!-- {en:clone[5],git[5],clean[5],reimage[5],drops[5],env[5],files[5]} -->
-<!-- {nl:kloon[5],git[5],opschonen[5],herinstallatie[5],verliest[5],env[5],bestanden[5]} -->
+
 
 ### Restore / prevention checklist
 
@@ -206,8 +193,7 @@ caddy              EnvironmentFile=/opt/agrolav/.env            ExecStart=/usr/b
 - Never set `HUB_DEV_LOGIN` on the server.
 - Keep secrets in exactly one file per environment (see `passwords.md`).
 
-<!-- {en:restore[5],prevention[5],checklist[5],secrets,env} -->
-<!-- {nl:herstel[5],voorkomen[5],controlelijst[5],geheimen,env} -->
+
 
 # Kill a process
 Windows doesn't propagate Ctrl+C to child processes the same way Unix does — uv run spawns Python/uvicorn in a separate process group, and the signal never reaches it. Use a separate terminal:
@@ -215,5 +201,4 @@ Windows doesn't propagate Ctrl+C to child processes the same way Unix does — u
 Or kill by PID (from the "Started server process xxxxx" line):
 - taskkill /PID 16404 /F
 
-<!-- {en:kill[5],process[5],windows,ctrl+c} -->
-<!-- {nl:stoppen[5],proces[5],windows,ctrl+c} -->
+

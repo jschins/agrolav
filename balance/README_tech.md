@@ -1,9 +1,19 @@
-# Balance — Balansverklaring voor Beheer
+# Balance — Balans and Resultaat
 
-A standalone hub (port 8100) that produces a balance statement for the Beheer
-country (country_id=4). It reuses the existing `agrolav` SQL Server database and
-the React frontend, but runs its own FastAPI process with balance-specific API
-endpoints.
+`balance/` is one Python project and one frontend. Two processes run from it.
+There is no `result/` directory.
+
+| | Directory | Frontend | Process | Command | Port | URL |
+|---|---|---|---|---|---|---|
+| Balans | `balance/` | `balance/frontend/dist` | `agrolav-balance` | `uvicorn app.main:app` | 8100 | `/balance/{slug}/` |
+| Resultaat | `balance/` | `balance/frontend/dist` | `agrolav-result` | `uvicorn app.result_main:app` | 8500 | `/result/{slug}/` |
+
+The page URL selects the sheet. Restarting `agrolav-balance` reloads Balans
+only. Resultaat changes after `sudo systemctl restart agrolav-result`.
+
+`agrolav-balance` on port 8100 produces the balance sheet. It reads the
+`agrolav` SQL Server database. The sections below describe that Balans
+process.
 
 ---
 
@@ -441,6 +451,16 @@ cd /opt/agrolav/balance/frontend
 npm ci
 npm run build            # → dist/   (built with base /balance/)
 ```
+
+### Resultaat (`agrolav-result`)
+
+Same directory and the same `frontend/dist` as the Balans unit below. The unit file is on the server and is not in this repo. It runs:
+
+```text
+/opt/agrolav/balance/.venv/bin/uvicorn app.result_main:app --host 127.0.0.1 --port 8500
+```
+
+Caddy proxies `/result*` to that port. Restart with `sudo systemctl restart agrolav-result`.
 
 ### Balance hub systemd service (`/etc/systemd/system/agrolav-balance.service`)
 

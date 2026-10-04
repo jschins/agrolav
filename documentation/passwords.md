@@ -73,7 +73,7 @@ Change it:
 1. Connect with SSMS (see below) and run `ALTER LOGIN [sa] WITH PASSWORD = 'YourNewPassword';`
 2. Edit the single root `.env`: set `MSSQL_SA_PASSWORD=` **and** the `PWD=`
    inside `HUB_DATABASE_URL=` to the same new password.
-3. Restart the services that open DB connections: `sudo systemctl restart agrolav-hub agrolav-balance agrolav-maaltijden` (and re-run any SQL bootstrap/import script).
+3. Restart the services that open DB connections: `sudo systemctl restart agrolav-hub agrolav-client agrolav-balance agrolav-result agrolav-maaltijden` (and re-run any SQL bootstrap/import script).
 
 Already-open connections keep working until their service restarts, so edit
 the file first, then restart.
@@ -113,8 +113,8 @@ Change it:
 2. Replace the `CENTRALE_API_KEY=` line in the root `.env` (local) or
    `/opt/agrolav/.env` (server).
 3. Restart the readers: `sudo systemctl restart agrolav-hub agrolav-client`
-   and `sudo systemctl restart caddy` (reload is not enough). Balance
-   does not need a restart for this key.
+   and `sudo systemctl restart caddy` (reload is not enough). `agrolav-balance`
+   and `agrolav-result` do not need a restart for this key.
 
 If it is left empty, `require_api_key` is a no-op and the hub accepts
 unkeyed calls.

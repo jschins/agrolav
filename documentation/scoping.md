@@ -7,9 +7,10 @@ and `dbo.dim_category.visibility` decides which categories that login may
 see.
 
 The hub is an API-key data API and does not know the browser login. The
-client BFF refuses a write the login may not make. Result (`:8500`) and
-balance (`:8100`) read SQL themselves, so they apply category visibility
-from the query string the client puts on those window URLs.
+client BFF refuses a write the login may not make. Resultaat and Balans
+read SQL themselves. `dbo.dim_category.visibility` limits which categories
+a login may assign. The sheets list every category that has a non-zero
+amount.
 
 Access strings are `country`, `local` (center), `personal` (person), and
 `unit`. They come from `deduce_access` in `shared/shared/user_access.py`.
