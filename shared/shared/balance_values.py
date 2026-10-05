@@ -1045,41 +1045,50 @@ def cash_category_accounts(country_id: int, cursor: object) -> dict[int, int]:
     """category_id → account_id for each HD account's own cash post.
 
     An account is HD when ``mapping_banks`` points it at ``category_role``
-    ``hd``. Its cash post is the ``cash`` category mapped to that same
-    account. A ``Geldautomaat`` booking on the account is stored on that
-    cash post. The sheet does not copy the account balance onto it.
-    Country 5 keeps the known 11133–11139 pairs when those role rows are
-    not readable yet.
+    ``hd``. The cash post is the other category mapped to that same account:
+    role ``cash``, or an empty role (beheer_sdog 1057). The sheet uses that
+    post's ``dbo.balance_opening`` plus the bookings stored on it. It does
+    not copy the HD account balance. Country 5 keeps 11133–11139 when the
+    mapping rows are not readable yet.
     """
     cursor.execute(
         """
-        SELECT cash.category_id, m_cash.account_id
+        SELECT cash.category_id, m_cash.account_id, cash.category_role
         FROM dbo.mapping_banks m_hd
         JOIN dbo.dim_category hd
           ON hd.category_id = m_hd.category_id AND hd.country_id = m_hd.country_id
         JOIN dbo.mapping_banks m_cash
           ON m_cash.account_id = m_hd.account_id
          AND m_cash.country_id = m_hd.country_id
+         AND m_cash.category_id <> m_hd.category_id
         JOIN dbo.dim_category cash
           ON cash.category_id = m_cash.category_id
          AND cash.country_id = m_cash.country_id
         WHERE m_hd.country_id = ?
           AND LOWER(LTRIM(RTRIM(ISNULL(hd.category_role, N'')))) = N'hd'
-          AND LOWER(LTRIM(RTRIM(ISNULL(cash.category_role, N'')))) = N'cash'
+          AND (
+                LOWER(LTRIM(RTRIM(ISNULL(cash.category_role, N'')))) = N'cash'
+                OR cash.category_role IS NULL
+                OR LTRIM(RTRIM(cash.category_role)) = N''
+              )
         """,
         (int(country_id),),
     )
-    by_account: dict[int, int] = {}
-    for category_id, account_id in cursor.fetchall():
-        if category_id is None or account_id is None:
+    # account → (category_id, role is cash). Role cash wins over an empty role.
+    chosen: dict[int, tuple[int, bool]] = {}
+    for row in cursor.fetchall():
+        if row is None or len(row) < 2 or row[0] is None or row[1] is None:
             continue
-        account = int(account_id)
-        category = int(category_id)
-        previous = by_account.get(account)
-        if previous is None or category < previous:
-            by_account[account] = category
-    if by_account:
-        return {category: account for account, category in by_account.items()}
+        category = int(row[0])
+        account = int(row[1])
+        is_cash = category_role_canonical(row[2] if len(row) > 2 else None) == CATEGORY_ROLE_CASH
+        previous = chosen.get(account)
+        if previous is None or (is_cash and not previous[1]) or (
+            is_cash == previous[1] and category < previous[0]
+        ):
+            chosen[account] = (category, is_cash)
+    if chosen:
+        return {category: account for account, (category, _cash) in chosen.items()}
     if int(country_id) == 5:
         return dict(CASH_ON_HAND_ACCOUNT)
     return {}
@@ -1101,7 +1110,7 @@ def account_links(country_id: int, cursor: object) -> dict[int, int]:
     skip.update(
         cat_id
         for cat_id, role in category_roles(country_id, cursor).items()
-        if category_role_canonical(role) == CATEGORY_ROLE_MIRROR
+        if category_role_canonical(role) in (CATEGORY_ROLE_MIRROR, CATEGORY_ROLE_CASH)
     )
     cursor.execute(
         "SELECT category_id, account_id FROM dbo.mapping_banks WHERE country_id = ?",
@@ -1869,7 +1878,7 @@ def _booking_balances(
         "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
         "AND d.local_code BETWEEN 1000 AND 2999 "
         "AND (d.category_role IS NULL "
-        "OR LOWER(LTRIM(RTRIM(d.category_role))) IN (N'remainder', N'mirror') "
+        "OR LOWER(LTRIM(RTRIM(d.category_role))) IN (N'remainder', N'mirror', N'cash') "
         f"OR {cross_posting_role_sql('d.category_role')})"
     )
     p: list[object] = [int(country_id), int(year)]
