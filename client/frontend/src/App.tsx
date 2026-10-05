@@ -711,6 +711,7 @@ function resultaatSections(data: ExportResultaatData): {
     countRow("Aantal ontbijten", ont, ontCumul);
     countRow("Aantal koude maaltijden", koude, koudeCumul);
     countRow("Aantal warme maaltijden", warme, warmeCumul);
+    countRow("Aantal warme maaltijden hd", warmHd, warmHdCumul);
     const equivMonths = ont.map((_, i) =>
       equivalent(ont[i], koude[i], warme[i], warmHd[i])
     );
@@ -803,6 +804,7 @@ function resultaatSections(data: ExportResultaatData): {
     countRow("Aantal ontbijten", ont, ontCumul);
     countRow("Aantal koude maaltijden", koude, koudeCumul);
     countRow("Aantal warme maaltijden", warme, warmeCumul);
+    countRow("Aantal warme maaltijden hd", warmHd, warmHdCumul);
     const equivMonths = ont.map((_, i) =>
       equivalent(ont[i], koude[i], warme[i], warmHd[i])
     );

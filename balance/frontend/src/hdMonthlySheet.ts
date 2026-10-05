@@ -127,6 +127,7 @@ export async function hdMonthlySheet(year: number, label: string): Promise<XlsxS
     countRow("Aantal ontbijten", ont);
     countRow("Aantal koude maaltijden", koude);
     countRow("Aantal warme maaltijden", warme);
+    countRow("Aantal warme maaltijden hd", warmHd);
     const equivMonths = ont.map((_, i) => equivalent(ont[i], koude[i], warme[i], warmHd[i]));
     const equivCumul = equivalent(sum(ont), sum(koude), sum(warme), sum(warmHd));
     rows.push(["", "Equivalent aantal tafelgenoten", ...equivMonths.map((n) => euro2(n)), euro2(equivCumul)]);
