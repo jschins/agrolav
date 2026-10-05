@@ -12,6 +12,7 @@ from app.result import (
     _fold_cash_extras,
     _is_unit_level,
     _names_pair,
+    _release_kruis_from_rc,
     _unit_kind,
     _unit_xx0x,
     build_cash_table,
@@ -198,14 +199,29 @@ class KruispostenReclassTests(unittest.TestCase):
         self.assertEqual(uitgaven, Decimal("-20"))
         self.assertEqual(inkomsten, Decimal("-50"))
 
-    def test_work_unit_adds_kruisposten_on_the_profit_side(self) -> None:
-        # Profit column is 100 plus Inkomsten residentie +50. Cash inkomsten
-        # gains the removed Kruisposten total of 50.
+    def test_work_unit_keeps_the_resultaat_totals(self) -> None:
         uitgaven, inkomsten = cash_inkomsten_uitgaven(
-            "unit", Decimal("-20"), Decimal("150"), Decimal("50"), Decimal("50")
+            "unit", Decimal("-34180"), Decimal("59395"), Decimal("21000"), Decimal("0")
         )
-        self.assertEqual(uitgaven, Decimal("-20"))
-        self.assertEqual(inkomsten, Decimal("150"))
+        self.assertEqual(uitgaven, Decimal("-34180"))
+        self.assertEqual(inkomsten, Decimal("59395"))
+
+    def test_work_unit_takes_the_4995_amount_out_of_rekening_courant(self) -> None:
+        lines = _release_kruis_from_rc(
+            [
+                ("Rekening courant SIb", Decimal("-44286")),
+                ("Verbouwingen SIb", Decimal("10")),
+            ],
+            Decimal("21000"),
+            center="sib",
+        )
+        self.assertEqual(
+            lines,
+            [
+                ("Rekening courant SIb", Decimal("-23286")),
+                ("Verbouwingen SIb", Decimal("10")),
+            ],
+        )
 
 
 if __name__ == "__main__":

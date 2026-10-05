@@ -2905,10 +2905,10 @@ def _add_unit_kruisposten_excel(
     rows: list[dict[str, Any]],
     total_months: list[Any],
 ) -> None:
-    """Move this unit account's kruisposten onto role 4000.
+    """Move an HD account's kruisposten onto role 4000.
 
     The months leave Overige mutaties because they are added to the sheet
-    total. HD and work unit both show 4995 Inkomsten residentie.
+    total. A work unit keeps those months in Overige mutaties.
     """
     from decimal import Decimal
 
@@ -3032,9 +3032,9 @@ def export_resultaat_excel_data(
     Totaal repeats the displayed P&L months. Banksaldo einde maand is the
     balance at the month's end, which is the next column's Beginsaldo.
 
-    A unit login (``unit``) moves that account's kruisposten out of Overige
-    mutaties onto role ``4000`` for an HD account and role ``3000`` for a
-    work unit. Higher logins leave kruisposten where it is.
+    An HD login moves that account's kruisposten out of Overige mutaties
+    onto role ``4000``. A work unit and every higher login leave kruisposten
+    where it is.
     """
     name = (country or "").strip()
     person_name = (person or "").strip()

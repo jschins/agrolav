@@ -979,6 +979,34 @@ def _cp_local(country_id: int) -> int:
     return int(row[1])
 
 
+def _release_kruis_from_rc(
+    lines: list[tuple[str, Decimal]],
+    kruis: Decimal,
+    *,
+    center: str,
+) -> list[tuple[str, Decimal]]:
+    """Take the 4995 amount out of Rekening courant.
+
+    ``kruis`` is the cp statement an HD login shows as Inkomsten residentie.
+    On a work unit that opposite leg sits in Rekening courant. Adding
+    ``kruis`` removes it, and the cash totals still meet the banks.
+    """
+    if kruis == 0:
+        return lines
+    label = _rc_label(center)
+    found = False
+    adjusted: list[tuple[str, Decimal]] = []
+    for name, amount in lines:
+        if name == label or name.startswith("Rekening courant"):
+            adjusted.append((name, amount + kruis))
+            found = True
+        else:
+            adjusted.append((name, amount))
+    if not found:
+        adjusted.insert(0, (label, kruis))
+    return [(name, amount) for name, amount in adjusted if amount != 0]
+
+
 def _add_unit_kruisposten_row(
     country_id: int,
     kosten: list[dict[str, Any]],
@@ -1141,7 +1169,7 @@ def result_sheet(
             present_day,
             center=rc_center,
         )
-        if kind in ("hd", "unit"):
+        if kind == "hd":
             rc_lines, kruis = split_kruisposten_extra(rc_lines)
             column_effect = _add_unit_kruisposten_row(
                 country_id,
@@ -1152,6 +1180,10 @@ def result_sheet(
                 reserves,
                 _cp_local(country_id),
             )
+        elif kind == "unit":
+            rc_lines, kruis = split_kruisposten_extra(rc_lines)
+            rc_lines = _release_kruis_from_rc(rc_lines, kruis, center=rc_center)
+            kruis = Decimal("0")
     uitgaven = total(kosten)
     opbrengsten_sum = total(opbrengsten)
     cash_uitgaven, cash_inkomsten = cash_inkomsten_uitgaven(

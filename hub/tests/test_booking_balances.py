@@ -581,8 +581,8 @@ class CategoryRoleTests(unittest.TestCase):
         shown, added = kruisposten_view_adjustment(
             Decimal("80"), kind="unit", cp_local=1200
         )
-        self.assertEqual(shown, Decimal("0"))
-        self.assertEqual(added, Decimal("80"))
+        self.assertEqual(shown, Decimal("80"))
+        self.assertEqual(added, Decimal("0"))
         shown, added = kruisposten_view_adjustment(
             Decimal("80"), kind="", cp_local=1200
         )

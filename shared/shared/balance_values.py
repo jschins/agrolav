@@ -70,9 +70,8 @@ def infer_side(cat_id: int) -> str:
 #   sia / sib       rc post that is also the unit leg of a Centrale SIa / SIb pair
 #   siasib          SIa leg of a SIa–SIb pair: keeps the statement sign, not zeroed
 #   cp              kruisposten: receives the rc total on the opening balance
-#   3000            reserved label: a work-unit login shows kruisposten here
 #   4000            reserved label: an HD login shows kruisposten here
-#                   Neither role is booked. The unit sheet calculates the line.
+#                   The role is not booked. The HD sheet calculates the line.
 CATEGORY_ROLE_REMAINDER = "remainder"
 CATEGORY_ROLE_EQUITY = "equity"
 CATEGORY_ROLE_PROFIT = "profit"
@@ -85,8 +84,8 @@ CATEGORY_ROLE_SIB = "sib"
 CATEGORY_ROLE_SIASIB = "siasib"
 CATEGORY_ROLE_CP = "cp"
 CATEGORY_ROLE_UNIT_PROFIT = "4000"
-# HD and work-unit label for kruisposten. Present in dim_category so the
-# local code stays reserved. Bookings and journals do not use it.
+# HD label for kruisposten. Present in dim_category so the local code stays
+# reserved. Bookings and journals do not use it. A work unit does not show it.
 UNIT_RESULT_RESERVE_ROLES = frozenset({CATEGORY_ROLE_UNIT_PROFIT})
 UNIT_KRUISPOSTEN_LABELS = {
     CATEGORY_ROLE_UNIT_PROFIT: "Inkomsten residentie",
@@ -188,18 +187,19 @@ def is_journal_forbidden_role(role: object) -> bool:
 
 
 def unit_kruisposten_role(kind: str) -> str | None:
-    """Catalog role that receives kruisposten on this unit login, or ``None``.
+    """Catalog role that receives kruisposten on this login, or ``None``.
 
-    HD and work unit both show role 4000 (4995, Inkomsten residentie).
+    An HD login shows role 4000 (4995, Inkomsten residentie). A work unit
+    does not show that line.
     """
-    if kind in ("hd", "unit"):
+    if kind == "hd":
         return CATEGORY_ROLE_UNIT_PROFIT
     return None
 
 
 def unit_kruisposten_local(kind: str) -> int | None:
-    """Local code of the shown kruisposten line: 4995 for HD and for a work unit."""
-    if kind in ("hd", "unit"):
+    """Local code of the shown kruisposten line: 4995 for an HD login."""
+    if kind == "hd":
         return 4995
     return None
 
@@ -215,10 +215,11 @@ def kruisposten_view_adjustment(
     """Hand journal on a category total already calculated for this view.
 
     ``cp_amount`` is the cross-posting total the view just summed. For an HD
-    or work-unit login the journal amount is minus that total, van 4995,
-    naar the cp post. The shown result line is the opposite of that van-leg,
-    so Inkomsten residentie is positive. Returns ``(cp total to show, amount
-    added to the result line)``. Other logins keep the cp total and add nothing.
+    login the journal amount is minus that total, van 4995, naar the cp post.
+    The shown result line is the opposite of that van-leg, so Inkomsten
+    residentie is positive. Returns ``(cp total to show, amount added to the
+    result line)``. A work unit and every higher login keep the cp total and
+    add nothing.
     """
     van_local = unit_kruisposten_local(kind)
     if van_local is None or cp_amount == 0:
@@ -232,10 +233,10 @@ def kruisposten_view_adjustment(
 def shown_kruisposten_result(kind: str, effect_van: Decimal) -> Decimal:
     """Result-line amount for this login.
 
-    HD and work unit show Inkomsten residentie with the opposite sign of the
-    van-leg, so that amount is positive.
+    An HD login shows Inkomsten residentie with the opposite sign of the
+    van-leg, so that amount is positive. A work unit does not show the line.
     """
-    if kind in ("hd", "unit"):
+    if kind == "hd":
         return -effect_van
     return effect_van
 
@@ -277,17 +278,16 @@ def cash_inkomsten_uitgaven(
 ) -> tuple[Decimal, Decimal]:
     """Cash-table Uitgaven and Inkomsten.
 
-    The P&L inkomsten already include ``column_effect``, Inkomsten residentie.
-    Kruisposten ``kruis`` has been removed from the extras, so the cash line
-    puts that statement total back on Inkomsten. An HD login negates the
-    profit column before that.
+    An HD login already includes ``column_effect``, Inkomsten residentie, in
+    the profit column. Kruisposten ``kruis`` has been removed from the
+    extras, so the cash line puts that statement total back on Inkomsten
+    and negates the profit column first. A work unit keeps the resultaat
+    totals: 4995 is not on that sheet, and the cash table settles the same
+    amount on Rekening courant instead.
     """
     if kind == "hd":
         plain = opbrengsten_sum - column_effect
         return kosten_sum, -plain + kruis
-    if kind == "unit":
-        plain = opbrengsten_sum - column_effect
-        return kosten_sum, plain + kruis
     return kosten_sum, opbrengsten_sum
 
 
