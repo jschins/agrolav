@@ -3007,6 +3007,8 @@ def export_resultaat_excel_data(
     center: str | None = None,
     account: str | None = None,
     unit: bool = False,
+    hd: bool = False,
+    login: str | None = None,
 ) -> dict[str, Any]:
     """P&L (3000–4999) plus Saldo, scoped to the login.
 
@@ -3017,20 +3019,23 @@ def export_resultaat_excel_data(
 
     ``category_role`` can hold a login username. If that username appears on
     any P&L row, only those tagged rows plus ``remainder`` are listed; otherwise every P&L
-    category is listed. That same case also sends monthly meal counts from
-    ``dbo.maaltijden_aantallen`` (ontbijt / koud / warm / warm_hd). Equivalent
-    tafelgenoten and food cost per tafelgenoot are calculated in the client,
-    and that Maaltijden table is rendered last. Month columns run from January
-    through the current month of this year (all twelve when the export year is
-    already over). Cumulatief is their sum. Totaal is the sum of the displayed
-    P&L rows. A selected account limits those rows, and the cash-flow block,
-    to that account. With no account, a person login uses every account of
-    that person. Otherwise the cash-flow block stays on the account mapped
-    to category 1053. Beginsaldo is the balance of those accounts at the
-    start of each month. Overige mutaties is every other movement on them
-    in that month (transfers and categories absent from the P&L rows).
-    Totaal repeats the displayed P&L months. Banksaldo einde maand is the
-    balance at the month's end, which is the next column's Beginsaldo.
+    category is listed. An HD login (username ``hd_…``, or a bank whose
+    ``category_role`` is ``hd``) lists the P&L posts with ``visibility`` 5
+    instead of a role named after the login. That same login also sends
+    monthly meal counts from ``dbo.maaltijden_aantallen`` (ontbijt / koud /
+    warm / warm_hd). Equivalent tafelgenoten and food cost per tafelgenoot
+    are calculated in the client. Month columns run from January through the
+    current month of this year (all twelve when the export year is already
+    over). Cumulatief is their sum. Saldo is the sum of the displayed P&L
+    rows. A selected account limits those rows, and the cash-flow block, to
+    that account. With no account, a person login uses every account of that
+    person, narrowed to the ``hd`` bank when one of them has that role.
+    Otherwise the cash-flow block stays on the account mapped to category
+    1053. Beginsaldo is the balance at the start of each month. An HD login
+    splits the month's movements into Stichting de Oude Gracht (counterparty
+    IBAN NL94INGB0006200605), Overige inkomsten and Uitgaven, so Beginsaldo
+    plus those three lines is Banksaldo einde maand. Other logins keep
+    Overige mutaties beside the P&L total.
 
     An HD login moves that account's kruisposten out of Overige mutaties
     onto role ``4000``. A work unit and every higher login leave kruisposten
@@ -3050,18 +3055,29 @@ def export_resultaat_excel_data(
         from shared.balance_values import (
             account_links,
             category_local_codes,
+            category_visibility,
             is_hit_forbidden_role,
             is_remainder_role,
+            country_has_balance,
             is_resultaat,
             journal_deltas,
             spaar_source_exclude_clause,
             transaction_table,
         )
 
+        login_name = (login or person_name or center_name or name).strip()
+        login_l = login_name.lower()
+        hd_login = (
+            bool(hd)
+            or login_l.startswith("hd_")
+            or person_name.lower().startswith("hd_")
+        )
+
         cursor = _cursor()
         country_id = _country_id_for(cursor, name)
         if country_id is None:
             raise ValueError(f"unknown country: {name}")
+        balance_country = country_has_balance(int(country_id), cursor)
         today = datetime.date.today()
         y = int(year)
         if y < today.year:
@@ -3140,7 +3156,9 @@ def export_resultaat_excel_data(
 
         explicit_account = "".join(str(account or "").split()).upper()
         explicit_account = "" if explicit_account == "CONSOLIDATED" else explicit_account
-        selected_ids = _account_ids(explicit_account, person_only=person_id)
+        selected_ids = _account_ids(
+            explicit_account, person_only=None if unit or hd_login else person_id
+        )
         account_sql = ""
         account_params: list[Any] = []
         if explicit_account:
@@ -3254,14 +3272,13 @@ def export_resultaat_excel_data(
             (int(country_id),),
         )
         dim_rows = cursor.fetchall()
-        login = (person_name or center_name or name).strip()
-        login_l = login.lower()
         role_listed = False
-        if login_l:
+        if login_l and not hd_login:
             for _cid, _code, _label, role in dim_rows:
                 if str(role or "").strip().lower() == login_l:
                     role_listed = True
                     break
+        vis_by_id = category_visibility(int(country_id), cursor) if hd_login else None
         rows: list[dict[str, Any]] = []
         total_months = [Decimal("0")] * 12
         total = Decimal("0")
@@ -3269,11 +3286,16 @@ def export_resultaat_excel_data(
             if is_hit_forbidden_role(role):
                 continue
             role_text = str(role or "").strip()
-            if role_listed and role_text.lower() != login_l and not is_remainder_role(role):
-                continue
             cid = int(category_id)
             months = list(monthly.get(cid, [Decimal("0")] * 12))[:month_count]
             amount = sum(months, Decimal("0"))
+            if hd_login:
+                if vis_by_id is not None and vis_by_id.get(cid, 5) != 5:
+                    continue
+                if amount == 0:
+                    continue
+            elif role_listed and role_text.lower() != login_l and not is_remainder_role(role):
+                continue
             total += amount
             for i, part in enumerate(months):
                 total_months[i] += part
@@ -3286,39 +3308,13 @@ def export_resultaat_excel_data(
                 }
             )
         maaltijden: dict[str, list[float]] | None = None
-        if role_listed and login:
-            cursor.execute("SELECT OBJECT_ID(N'dbo.maaltijden_aantallen', N'U')")
-            if cursor.fetchone()[0] is not None:
-                ont = [0.0] * month_count
-                koud = [0.0] * month_count
-                warm = [0.0] * month_count
-                warm_hd = [0.0] * month_count
-                if month_count > 0:
-                    cursor.execute(
-                        """
-                        SELECT maand, ontbijt, koud, warm, warm_hd
-                        FROM dbo.maaltijden_aantallen
-                        WHERE username = ? COLLATE Latin1_General_CI_AI
-                          AND jaar = ?
-                          AND maand BETWEEN 1 AND ?
-                        """,
-                        (login, int(year), month_count),
-                    )
-                    for month, o, k, w, wh in cursor.fetchall():
-                        m = int(month)
-                        if 1 <= m <= month_count:
-                            ont[m - 1] = float(o or 0)
-                            koud[m - 1] = float(k or 0)
-                            warm[m - 1] = float(w or 0)
-                            warm_hd[m - 1] = float(wh or 0)
-                maaltijden = {
-                    "ontbijten": ont,
-                    "koude": koud,
-                    "warme": warm,
-                    "warm_hd": warm_hd,
-                }
         incoming_1053_months = [0.0] * month_count
+        incoming_1053_code = 1053
         incoming_1053_label = "Ontvangsten"
+        stichting_iban = "NL94INGB0006200605"
+        q_months = [0.0] * month_count
+        r_months = [0.0] * month_count
+        s_months = [0.0] * month_count
         opening_months = [0.0] * month_count
         other_months = [0.0] * month_count
         banksaldo_months = [0.0] * month_count
@@ -3349,6 +3345,64 @@ def export_resultaat_excel_data(
                 account_id_1053 = links.get(1053)
             if account_id_1053 is not None:
                 flow_ids = [int(account_id_1053)]
+        if flow_ids:
+            hd_marks = ",".join("?" * len(flow_ids))
+            cursor.execute(
+                f"""
+                SELECT DISTINCT m.account_id, d.local_code
+                FROM dbo.mapping_banks m
+                JOIN dbo.dim_category d
+                  ON d.category_id = m.category_id AND d.country_id = m.country_id
+                WHERE m.country_id = ?
+                  AND m.account_id IN ({hd_marks})
+                  AND LOWER(LTRIM(RTRIM(ISNULL(d.category_role, N'')))) = N'hd'
+                """,
+                (int(country_id), *flow_ids),
+            )
+            hd_rows = cursor.fetchall()
+            if hd_rows:
+                hd_login = True
+                flow_ids = [int(row[0]) for row in hd_rows]
+                incoming_1053_code = int(hd_rows[0][1])
+        if balance_country and unit and hd_login and login_name and month_count > 0:
+            cursor.execute("SELECT OBJECT_ID(N'dbo.maaltijden_aantallen', N'U')")
+            if cursor.fetchone()[0] is not None:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM dbo.maaltijden_aantallen
+                    WHERE username = ? COLLATE Latin1_General_CI_AI
+                    """,
+                    (login_name,),
+                )
+                if cursor.fetchone() is not None:
+                    ont = [0.0] * month_count
+                    koud = [0.0] * month_count
+                    warm = [0.0] * month_count
+                    warm_hd = [0.0] * month_count
+                    cursor.execute(
+                        """
+                        SELECT maand, ontbijt, koud, warm, warm_hd
+                        FROM dbo.maaltijden_aantallen
+                        WHERE username = ? COLLATE Latin1_General_CI_AI
+                          AND jaar = ?
+                          AND maand BETWEEN 1 AND ?
+                        """,
+                        (login_name, int(year), month_count),
+                    )
+                    for month, o, k, w, wh in cursor.fetchall():
+                        m = int(month)
+                        if 1 <= m <= month_count:
+                            ont[m - 1] = float(o or 0)
+                            koud[m - 1] = float(k or 0)
+                            warm[m - 1] = float(w or 0)
+                            warm_hd[m - 1] = float(wh or 0)
+                    maaltijden = {
+                        "ontbijten": ont,
+                        "koude": koud,
+                        "warme": warm,
+                        "warm_hd": warm_hd,
+                    }
         table_ok = False
         if table:
             cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
@@ -3375,6 +3429,50 @@ def export_resultaat_excel_data(
                 m = int(month)
                 if 1 <= m <= month_count:
                     movement_months[m - 1] = float(amount or 0)
+            if hd_login:
+                iban_sql = (
+                    "REPLACE(REPLACE(UPPER(ISNULL(t.counterparty_iban, N'')), "
+                    "N' ', N''), N'-', N'')"
+                )
+                cursor.execute(
+                    f"""
+                    SELECT MONTH(t.booked_on),
+                           SUM(CASE WHEN t.amount > 0
+                                    THEN CAST(t.amount AS decimal(19, 2))
+                                    ELSE 0 END),
+                           SUM(CASE WHEN {iban_sql} = ?
+                                    THEN CAST(t.amount AS decimal(19, 2))
+                                    ELSE 0 END),
+                           SUM(CASE WHEN {iban_sql} <> ?
+                                     AND t.amount > 0
+                                    THEN CAST(t.amount AS decimal(19, 2))
+                                    ELSE 0 END),
+                           SUM(CASE WHEN {iban_sql} <> ?
+                                     AND t.amount < 0
+                                    THEN CAST(t.amount AS decimal(19, 2))
+                                    ELSE 0 END)
+                    FROM {table} t
+                    WHERE t.account_id IN ({flow_marks})
+                      AND t.booked_on >= ?
+                      AND t.booked_on < ?
+                    GROUP BY MONTH(t.booked_on)
+                    """,
+                    (
+                        stichting_iban,
+                        stichting_iban,
+                        stichting_iban,
+                        *flow_params,
+                        year_start.isoformat(),
+                        year_end.isoformat(),
+                    ),
+                )
+                for month, incoming, q_amt, r_amt, s_amt in cursor.fetchall():
+                    m = int(month)
+                    if 1 <= m <= month_count:
+                        incoming_1053_months[m - 1] = float(incoming or 0)
+                        q_months[m - 1] = float(q_amt or 0)
+                        r_months[m - 1] = float(r_amt or 0)
+                        s_months[m - 1] = float(s_amt or 0)
             if unit and flow_ids:
                 _add_unit_kruisposten_excel(
                     cursor,
@@ -3456,6 +3554,23 @@ def export_resultaat_excel_data(
                 "amount": float(sum(months)),
             }
 
+        from shared.handset_debug import login_debug
+
+        login_debug(
+            "monthly",
+            country_id=country_id,
+            year=int(year),
+            login=login_name,
+            person=person_name,
+            center=center_name,
+            account=explicit_account,
+            unit=bool(unit),
+            hd_flag=bool(hd),
+            hd_login=hd_login,
+            flow_ids=flow_ids,
+            stichting=hd_login,
+        )
+
         return {
             "year": int(year),
             "country": name,
@@ -3463,7 +3578,7 @@ def export_resultaat_excel_data(
             "center": center_name or None,
             "month_count": month_count,
             "incoming_1053": {
-                "code": 1053,
+                "code": incoming_1053_code,
                 "label": incoming_1053_label,
                 "months": incoming_1053_months,
                 "amount": float(sum(incoming_1053_months)),
@@ -3472,21 +3587,51 @@ def export_resultaat_excel_data(
             "total_months": [float(part) for part in total_months[:month_count]],
             "total_resultaat": float(total),
             "maaltijden": maaltijden,
-            "cashflow_1053": {
-                "opening": {
-                    "code": "",
-                    "label": "Beginsaldo",
-                    "months": opening_months,
-                    "amount": float(opening_months[0] if opening_months else 0),
-                },
-                "other": _line("", "Overige mutaties", other_months),
-                "banksaldo": {
-                    "code": "",
-                    "label": "Banksaldo einde maand",
-                    "months": banksaldo_months,
-                    "amount": float(banksaldo_months[-1] if banksaldo_months else 0),
-                },
-            },
+            "cashflow_1053": (
+                {
+                    "opening": {
+                        "code": "",
+                        "label": "Beginsaldo",
+                        "months": opening_months,
+                        "amount": float(opening_months[0] if opening_months else 0),
+                    },
+                    "stichting": _line("", "Stichting de Oude Gracht", q_months),
+                    "inkomsten": _line("", "Overige inkomsten", r_months),
+                    "uitgaven": _line("", "Uitgaven", s_months),
+                    "resultaat": _line(
+                        "",
+                        "Resultaat",
+                        [
+                            q_months[i] + r_months[i] + s_months[i]
+                            for i in range(month_count)
+                        ],
+                    ),
+                    "banksaldo": {
+                        "code": "",
+                        "label": "Banksaldo einde maand",
+                        "months": banksaldo_months,
+                        "amount": float(banksaldo_months[-1] if banksaldo_months else 0),
+                    },
+                }
+                if balance_country and hd_login
+                else {
+                    "opening": {
+                        "code": "",
+                        "label": "Beginsaldo",
+                        "months": opening_months,
+                        "amount": float(opening_months[0] if opening_months else 0),
+                    },
+                    "other": _line("", "Overige mutaties", other_months),
+                    "banksaldo": {
+                        "code": "",
+                        "label": "Banksaldo einde maand",
+                        "months": banksaldo_months,
+                        "amount": float(banksaldo_months[-1] if banksaldo_months else 0),
+                    },
+                }
+                if balance_country
+                else None
+            ),
         }
 
     try:
@@ -3889,6 +4034,8 @@ def export_matrix_excel_data(
             for code, cents in overlay.items():
                 combined[code] = combined.get(code, Decimal("0")) + Decimal(cents) / Decimal(100)
 
+        cp_statement = "0"
+        moved_4995 = False
         if unit_ids and unit_kind and table:
             from shared.balance_values import (
                 balance_category_id,
@@ -3902,10 +4049,12 @@ def export_matrix_excel_data(
             statement = _cp_statement_sum(
                 cursor, table, int(country_id), unit_ids, int(year)
             )
+            cp_statement = str(statement)
 
             van_local = unit_kruisposten_local(unit_kind)
             role = unit_kruisposten_role(unit_kind)
-            if van_local is not None and role and statement != 0:
+            moved_4995 = van_local is not None and role is not None and statement != 0
+            if moved_4995:
                 cp_post = role_category_row(int(country_id), "cp", cursor)
                 cp_local = int(cp_post[1]) if cp_post is not None else 1200
                 _amount, effect_van, _effect_cp = implicit_kruisposten_journal(
@@ -3922,6 +4071,22 @@ def export_matrix_excel_data(
                 by_acc = pnl_sums.setdefault(int(target_id), {})
                 slot = int(unit_ids[0])
                 by_acc[slot] = by_acc.get(slot, Decimal("0")) + effect_van
+
+        from shared.handset_debug import login_debug
+
+        login_debug(
+            "excel",
+            country_id=country_id,
+            year=int(year),
+            person=person_name,
+            center=center_name,
+            account=(account or "").strip(),
+            unit=bool(unit),
+            unit_kind=unit_kind or "-",
+            unit_ids=unit_ids,
+            cp_statement=cp_statement,
+            moved_4995=moved_4995,
+        )
 
         def _result_columns(cat_id: int) -> list[float]:
             acc = [pnl_sums.get(cat_id, {}).get(aid, Decimal("0")) for aid in account_ids]

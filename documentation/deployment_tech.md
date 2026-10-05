@@ -621,3 +621,11 @@ cd /opt/agrolav/client/frontend && npm ci && npm run build
 sudo systemctl restart agrolav-hub agrolav-client
 ```
 
+
+
+
+# Copied from cursor's Grok 4.7:
+
+There is one sheet process, agrolav-balance. The repo has no agrolav-result unit and no result/ directory.
+
+The four services are agrolav-hub, agrolav-client, agrolav-balance, and agrolav-maaltijden. Profit/Loss opens /result/{slug}/ on port 8500, and that is agrolav-balance (uvicorn app.result_main:app from balance/). Caddy sends /result* to that port. Rebuilding balance/frontend and restarting agrolav-balance refreshes that window only.

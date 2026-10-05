@@ -112,7 +112,10 @@ def unit_login_kind(
     if not _is_unit_level(unit, account):
         return ""
     accounts = _load_accounts(country_id)
-    return _unit_kind(_resolve_unit_account(accounts, login, account), login)
+    login_account = _prefer_hd_account(
+        accounts, login, _resolve_unit_account(accounts, login, account)
+    )
+    return _unit_kind(login_account, login)
 
 
 def _categories(country_id: int) -> list[tuple[int, int, str]]:
@@ -623,14 +626,53 @@ def _resolve_unit_account(
 
 
 def _unit_kind(login_account: _BankAccount | None, login: str) -> str:
-    """``hd`` or ``unit`` for a unit-level login."""
-    if login_account is not None and login_account.role == "hd":
-        return "hd"
-    if login_account is not None and _unit_digits(login_account.role) is not None:
-        return "unit"
+    """``hd`` or ``unit`` for a unit-level login.
+
+    A login named ``hd_…`` is the huishoudelijke dienst even when the
+    account it resolved first carries a ``unitNNNN`` role. Country 4's
+    Keizersgracht bank is ``unit1111``; the HD bank is role ``hd``.
+    """
     if _name_slug(login).startswith("hd_"):
         return "hd"
+    if login_account is not None and login_account.role == "hd":
+        return "hd"
     return "unit"
+
+
+def _prefer_hd_account(
+    accounts: list[_BankAccount],
+    login: str,
+    current: _BankAccount | None,
+) -> _BankAccount | None:
+    """Use the role-``hd`` bank for an ``hd_`` login.
+
+    The resultaat then moves that bank's Kruisposten onto 4995, the same
+    way an Instudo HD login does. A work-unit login keeps ``current``.
+    """
+    if not _name_slug(login).startswith("hd_"):
+        return current
+    if current is not None and current.role == "hd":
+        return current
+    candidates = [item for item in accounts if item.role == "hd"]
+    if current is not None:
+        in_center = [item for item in candidates if item.center_id == current.center_id]
+        if in_center:
+            candidates = in_center
+    if len(candidates) == 1:
+        return candidates[0]
+    slug = _name_slug(login)
+    named = [
+        item
+        for item in candidates
+        if slug == _name_slug(item.unit_username)
+        or slug in _name_stems(item.name)
+        or slug in _name_stems(item.unit_username)
+        or _names_pair(login, item.name)
+        or _names_pair(login, item.unit_username)
+    ]
+    if len(named) == 1:
+        return named[0]
+    return current
 
 
 def _sibling_for(
@@ -1095,7 +1137,9 @@ def result_sheet(
     kind = ""
     named_banks = False
     if unit_level:
-        login_account = _resolve_unit_account(accounts, login, account)
+        login_account = _prefer_hd_account(
+            accounts, login, _resolve_unit_account(accounts, login, account)
+        )
         kind = _unit_kind(login_account, login)
         if login_account is not None:
             sibling = _sibling_for(login_account, accounts, kind, login)
@@ -1199,6 +1243,42 @@ def result_sheet(
             present_day=present_day,
             extras=rc_lines,
         )
+
+    if unit_level:
+        level = "unit"
+    elif person.strip():
+        level = "person"
+    elif center.strip():
+        level = "center"
+    else:
+        level = "country"
+    cash_labels = [
+        str(row.get("label") or "")
+        for row in (cash or {}).get("rows") or []
+        if isinstance(row, dict)
+    ]
+    from shared.handset_debug import login_debug
+
+    login_debug(
+        "pl-window",
+        country_id=country_id,
+        year=year,
+        level=level,
+        login=login,
+        unit=unit,
+        person=person,
+        center=center,
+        account=account,
+        kind=kind or "-",
+        bank_id=None if login_account is None else login_account.account_id,
+        bank_role="" if login_account is None else login_account.role,
+        bank_name="" if login_account is None else login_account.name,
+        kruis=str(kruis),
+        column_effect=str(column_effect),
+        inkomsten_4995=any(int(row.get("code") or 0) == 4995 for row in opbrengsten),
+        cash_kruisposten=any(label == "Kruisposten" for label in cash_labels),
+        cash_labels=cash_labels,
+    )
 
     return {
         "year": year,

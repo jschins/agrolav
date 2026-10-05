@@ -818,6 +818,21 @@ def export_excel_data(
     Center and person sessions stay on their own login.
     """
     cfg = load_config()
+    from app.runtime import unit_is_hd
+    from shared.handset_debug import login_debug
+
+    login_debug(
+        "excel-bff",
+        access=cfg.access,
+        username=cfg.username,
+        person=cfg.person,
+        center=cfg.center,
+        country=cfg.country,
+        account=cfg.account,
+        hd=unit_is_hd(),
+        asked_person=(person or "").strip(),
+        asked_center=(center or "").strip(),
+    )
     qs = [f"year={int(year)}"]
     if cfg.access == ACCESS_COUNTRY:
         asked_person = (person or "").strip()
@@ -889,7 +904,26 @@ def export_resultaat_excel_data(year: int, account: str | None = None) -> dict[s
     bank-switcher IBAN; consolidated leaves ``account`` empty.
     """
     cfg = load_config()
+    from app.runtime import unit_is_hd
+    from shared.handset_debug import login_debug
+
+    login_debug(
+        "monthly-bff",
+        access=cfg.access,
+        username=cfg.username,
+        person=cfg.person,
+        center=cfg.center,
+        country=cfg.country,
+        account=cfg.account,
+        hd=unit_is_hd(),
+        bank=(account or "").strip(),
+    )
     qs = [f"year={int(year)}"]
+    login_name = (cfg.username or "").strip()
+    if unit_is_hd() or login_name.lower().startswith("hd_"):
+        qs.append("hd=1")
+    if login_name:
+        qs.append(f"login={urllib.parse.quote(login_name)}")
     if cfg.access in (ACCESS_PERSON, ACCESS_UNIT) and cfg.person:
         qs.append(f"person={urllib.parse.quote(cfg.person)}")
     elif cfg.access == ACCESS_CENTER and cfg.center:

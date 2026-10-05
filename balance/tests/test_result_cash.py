@@ -12,6 +12,7 @@ from app.result import (
     _fold_cash_extras,
     _is_unit_level,
     _names_pair,
+    _prefer_hd_account,
     _release_kruis_from_rc,
     _unit_kind,
     _unit_xx0x,
@@ -46,6 +47,23 @@ class UnitLevelTests(unittest.TestCase):
         self.assertEqual(_unit_kind(unit, "den_eker"), "unit")
         self.assertEqual(_unit_kind(None, "hd_den_eker"), "hd")
         self.assertEqual(_unit_kind(None, "den_eker"), "unit")
+
+    def test_hd_login_stays_hd_when_the_first_account_is_a_unit_role(self) -> None:
+        keizersgracht = _BankAccount(
+            6, "Bank Keizersgracht", Decimal("0"), "", 4, "", "sdog", "unit1111"
+        )
+        self.assertEqual(_unit_kind(keizersgracht, "hd_sdog"), "hd")
+
+    def test_hd_login_uses_the_role_hd_bank_in_the_same_center(self) -> None:
+        unit_bank = _BankAccount(
+            6, "Bank Keizersgracht", Decimal("0"), "NL1", 4, "", "sdog", "unit1111"
+        )
+        hd_bank = _BankAccount(
+            3, "Bank HD Keizersgracht", Decimal("0"), "NL2", 4, "", "sdog", "hd"
+        )
+        other = _BankAccount(9, "Bank HD elsewhere", Decimal("0"), "NL3", 8, "", "sia", "hd")
+        chosen = _prefer_hd_account([unit_bank, hd_bank, other], "hd_sdog", unit_bank)
+        self.assertIs(chosen, hd_bank)
 
 
 class CrossCashTests(unittest.TestCase):

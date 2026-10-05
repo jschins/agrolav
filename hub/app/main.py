@@ -669,6 +669,8 @@ def api_export_resultaat(
     center_name: str | None = Query(default=None),
     account: str | None = Query(default=None),
     unit: bool = Query(default=False),
+    hd: bool = Query(default=False),
+    login: str | None = Query(default=None),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     import datetime
@@ -690,6 +692,8 @@ def api_export_resultaat(
             center=scope_center or None,
             account=(account or "").strip() or None,
             unit=bool(unit),
+            hd=bool(hd),
+            login=(login or "").strip() or None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

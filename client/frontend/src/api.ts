@@ -134,7 +134,15 @@ export interface ExportResultaatCashflow {
   /** Balance of the scoped accounts at the start of each month. */
   opening: ExportExcelLine;
   /** Account movements that are not in the category-totals rows. */
-  other: ExportExcelLine;
+  other?: ExportExcelLine;
+  /** HD sheet: amounts with the Stichting de Oude Gracht IBAN. */
+  stichting?: ExportExcelLine;
+  /** HD sheet: other incoming amounts on the HD bank. */
+  inkomsten?: ExportExcelLine;
+  /** HD sheet: outgoing amounts on the HD bank. */
+  uitgaven?: ExportExcelLine;
+  /** HD sheet: stichting + inkomsten + uitgaven. */
+  resultaat?: ExportExcelLine;
   /** Balance of the scoped accounts at the end of each month. */
   banksaldo: ExportExcelLine;
 }

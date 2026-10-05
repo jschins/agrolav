@@ -4,6 +4,12 @@ from __future__ import annotations
 import traceback
 
 
+def login_debug(procedure: str, **fields: object) -> None:
+    """One line for the login scope of a sheet or export. Grep ``LOGIN-DEBUG``."""
+    bits = " ".join(f"{key}={value!r}" for key, value in fields.items())
+    print(f"LOGIN-DEBUG {procedure} {bits}".rstrip(), flush=True)
+
+
 def handset_debug(
     procedure: str,
     *,

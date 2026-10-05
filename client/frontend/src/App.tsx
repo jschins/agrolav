@@ -654,6 +654,19 @@ function resultaatSections(data: ExportResultaatData): {
 
   const categoryBody: (string | number)[][] = [];
   const saldoMonths = Array.from({ length: monthCount }, () => 0);
+  const hdCash = data.cashflow_1053?.stichting ? data.cashflow_1053 : null;
+  if (hdCash && data.incoming_1053) {
+    const parts = padMonths(data.incoming_1053.months);
+    if (parts.some((n) => n !== 0)) {
+      const monthSum = parts.reduce((sum, n) => sum + n, 0);
+      categoryBody.push([
+        String(data.incoming_1053.code),
+        data.incoming_1053.label,
+        ...parts.map((n) => euro2(n)),
+        euro2(monthSum),
+      ]);
+    }
+  }
   for (const line of data.resultaat) {
     const parts = padMonths(line.months);
     const monthSum = parts.reduce((sum, n) => sum + n, 0);
@@ -669,13 +682,80 @@ function resultaatSections(data: ExportResultaatData): {
   const saldoCumul = saldoMonths.reduce((sum, n) => sum + n, 0);
   categoryBody.push([
     "",
-    "Totaal",
+    hdCash ? "Saldo" : "Totaal",
     ...saldoMonths.map((n) => euro2(n)),
     euro2(saldoCumul),
   ]);
-  sections.push({ title: "Resultaat", header, body: categoryBody });
+  if (hdCash && data.maaltijden) {
+    const ont = padMonths(data.maaltijden.ontbijten);
+    const koude = padMonths(data.maaltijden.koude);
+    const warme = padMonths(data.maaltijden.warme);
+    const warmHd = padMonths(data.maaltijden.warm_hd);
+    const foodLine = data.resultaat.find((line) => line.code === 3035);
+    const food = padMonths(foodLine?.months);
+    const foodCumul = food.some((n) => n !== 0)
+      ? food.reduce((sum, n) => sum + n, 0)
+      : (foodLine?.amount ?? 0);
+    const ontCumul = ont.reduce((sum, n) => sum + n, 0);
+    const koudeCumul = koude.reduce((sum, n) => sum + n, 0);
+    const warmeCumul = warme.reduce((sum, n) => sum + n, 0);
+    const warmHdCumul = warmHd.reduce((sum, n) => sum + n, 0);
+    const equivalent = (o: number, k: number, w: number, wh: number): number =>
+      (o + 2 * k + 3 * w + 3 * wh) / 6;
+    const costCell = (foodAmt: number, eq: number): number | "" =>
+      eq === 0 ? "" : euro2(-(foodAmt / eq));
+    const countRow = (label: string, parts: number[], cumul: number) => {
+      categoryBody.push(["", label, ...parts.map((n) => euro2(n)), euro2(cumul)]);
+    };
+    categoryBody.push([]);
+    countRow("Aantal ontbijten", ont, ontCumul);
+    countRow("Aantal koude maaltijden", koude, koudeCumul);
+    countRow("Aantal warme maaltijden", warme, warmeCumul);
+    const equivMonths = ont.map((_, i) =>
+      equivalent(ont[i], koude[i], warme[i], warmHd[i])
+    );
+    const equivCumul = equivalent(ontCumul, koudeCumul, warmeCumul, warmHdCumul);
+    categoryBody.push([
+      "",
+      "Equivalent aantal tafelgenoten",
+      ...equivMonths.map((n) => euro2(n)),
+      euro2(equivCumul),
+    ]);
+    categoryBody.push([
+      "",
+      "Voedselkosten per tafelgenoot",
+      ...equivMonths.map((eq, i) => costCell(food[i], eq)),
+      costCell(foodCumul, equivCumul),
+    ]);
+  }
+  if (hdCash) {
+    const opening = padMonths(hdCash.opening?.months);
+    const stichting = padMonths(hdCash.stichting?.months);
+    const income = padMonths(hdCash.inkomsten?.months);
+    const spent = padMonths(hdCash.uitgaven?.months);
+    const movement = padMonths(hdCash.resultaat?.months);
+    const closing = padMonths(hdCash.banksaldo?.months);
+    const stock = (label: string, parts: number[]) => {
+      categoryBody.push(["", label, ...parts.map((n) => euro2(n)), ""]);
+    };
+    const flow = (label: string, parts: number[]) => {
+      const cumul = parts.reduce((sum, n) => sum + n, 0);
+      categoryBody.push(["", label, ...parts.map((n) => euro2(n)), euro2(cumul)]);
+    };
+    categoryBody.push([]);
+    stock("Beginsaldo", opening);
+    flow("Stichting de Oude Gracht", stichting);
+    flow("Overige inkomsten", income);
+    flow("Uitgaven", spent);
+    flow("Resultaat", movement);
+    categoryBody.push([]);
+    stock("Banksaldo einde maand", closing);
+    sections.push({ title: "Resultaat", header, body: categoryBody });
+  } else {
+    sections.push({ title: "Resultaat", header, body: categoryBody });
+  }
 
-  if (data.cashflow_1053) {
+  if (data.cashflow_1053 && !hdCash) {
     const opening = padMonths(data.cashflow_1053.opening?.months);
     const other = padMonths(data.cashflow_1053.other?.months);
     const closing = padMonths(data.cashflow_1053.banksaldo?.months);
@@ -698,7 +778,7 @@ function resultaatSections(data: ExportResultaatData): {
       mismatch,
     });
   }
-  if (data.maaltijden) {
+  if (data.maaltijden && !hdCash) {
     const ont = padMonths(data.maaltijden.ontbijten);
     const koude = padMonths(data.maaltijden.koude);
     const warme = padMonths(data.maaltijden.warme);
@@ -2129,11 +2209,13 @@ function SyncNotifyShell({
         onClick: () => openResultSheetWindow(status.result_url!),
       });
     }
-    items.push({
-      id: "monthly-drilldown",
-      label: tableHeaderTerm(menuTerms, "Monthly drilldown"),
-      onClick: () => openView("monthly"),
-    });
+    if (status?.balance_url) {
+      items.push({
+        id: "monthly-drilldown",
+        label: tableHeaderTerm(menuTerms, "Monthly drilldown"),
+        onClick: () => openView("monthly"),
+      });
+    }
     const onMatrix =
       activeYear &&
       !termsView &&
@@ -4698,7 +4780,7 @@ function ResultaatPreviewTable({
   if (!data) return null;
   const sections = resultaatSections(data);
   if (sections.length === 0) return null;
-  const strongLabels = new Set(["Totaal", "Banksaldo einde maand"]);
+  const strongLabels = new Set(["Totaal", "Saldo", "Resultaat", "Banksaldo einde maand"]);
   return (
     <div className="resultaat-preview">
       {sections.map((section) => {

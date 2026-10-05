@@ -14,7 +14,8 @@ import type {
   CashSheet,
   SubadministratieRow,
 } from "./types";
-import { unitResultWorkbook } from "./resultWorkbook";
+import { hdMonthlySheet } from "./hdMonthlySheet";
+import { resultSheet, unitResultWorkbook } from "./resultWorkbook";
 import { zipDoneLine, zipMessageLine, zipPulseLine, zipStartLines } from "./zipDebug"; // ZIP_DEBUG
 import { buildXlsx, downloadBlob, euro2, type XlsxSheet } from "./xlsx";
 
@@ -615,8 +616,22 @@ export default function App() {
                 disabled={!sheet}
                 onClick={() => {
                   if (!sheet) return;
-                  if (isUnitLogin()) exportWindow(sheet, true);
-                  else requestMenuExport();
+                  if (isUnitLogin()) {
+                    const label =
+                      new URLSearchParams(window.location.search).get("label")?.trim() ||
+                      loginName();
+                    const filename = `Resultaat_${safeFilePart(loginName())}_${exportStamp()}.xlsx`;
+                    hdMonthlySheet(sheet.year, label)
+                      .then((monthly) => {
+                        downloadBlob(filename, buildXlsx([resultSheet(sheet, label), monthly]));
+                      })
+                      .catch((e: Error) => {
+                        exportWindow(sheet, true);
+                        setError(e.message);
+                      });
+                    return;
+                  }
+                  requestMenuExport();
                 }}
               >
                 Export
