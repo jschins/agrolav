@@ -7,16 +7,20 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from app.cash_on_hand import assign_cash_on_hand
-from shared.balance_values import balance_category_breakdown
+from shared.balance_values import CASH_ON_HAND_ACCOUNT, balance_category_breakdown
 
 
 class _Cursor:
-    def __init__(self) -> None:
+    def __init__(self, rows: list[tuple] | None = None) -> None:
         self.calls: list[tuple[str, tuple]] = []
         self.rowcount = 3
+        self._rows = list(rows or [])
 
     def execute(self, sql: str, params: tuple | None = None) -> None:
         self.calls.append((sql, tuple(params or ())))
+
+    def fetchall(self) -> list[tuple]:
+        return list(self._rows)
 
 
 class CashOnHandTests(unittest.TestCase):
@@ -68,7 +72,7 @@ class CashOnHandTests(unittest.TestCase):
         self.assertEqual(out[11133], (5250, "opening+bookings"))
 
     def test_assign_writes_the_cash_category_on_open_rows(self) -> None:
-        cursor = _Cursor()
+        cursor = _Cursor(list(CASH_ON_HAND_ACCOUNT.items()))
         count = assign_cash_on_hand(
             cursor,
             "dbo.transaction_beheer_instudo",
@@ -76,9 +80,10 @@ class CashOnHandTests(unittest.TestCase):
             person_id=7,
             year=2026,
         )
+        updates = [call for call in cursor.calls if call[0].lstrip().upper().startswith("UPDATE")]
         self.assertEqual(count, 3 * 7)
-        self.assertEqual(len(cursor.calls), 7)
-        sql, params = cursor.calls[0]
+        self.assertEqual(len(updates), 7)
+        sql, params = updates[0]
         self.assertIn("bank_type = ?", sql)
         self.assertIn("modification IN (-1, 0, 1)", sql)
         self.assertNotIn("modification IN (-1, 0, 1, 2", sql)
@@ -87,13 +92,27 @@ class CashOnHandTests(unittest.TestCase):
         self.assertEqual(params[2], "Geldautomaat")
         self.assertEqual(params[3:], (7, 2026))
 
+    def test_country_4_cash_role_is_written_too(self) -> None:
+        cursor = _Cursor([(1057, 48)])
+        count = assign_cash_on_hand(
+            cursor,
+            "dbo.transaction_beheer_sdog",
+            4,
+            year=2026,
+        )
+        updates = [call for call in cursor.calls if call[0].lstrip().upper().startswith("UPDATE")]
+        self.assertEqual(count, 3)
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0][1][0], 1057)
+        self.assertEqual(updates[0][1][1], 48)
+
     def test_other_countries_are_left_alone(self) -> None:
         cursor = _Cursor()
         self.assertEqual(
             assign_cash_on_hand(cursor, "dbo.transaction_nederland", 1),
             0,
         )
-        self.assertEqual(cursor.calls, [])
+        self.assertTrue(all(not sql.lstrip().upper().startswith("UPDATE") for sql, _params in cursor.calls))
 
 
 if __name__ == "__main__":

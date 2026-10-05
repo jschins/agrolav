@@ -4130,9 +4130,14 @@ def export_matrix_excel_data(
 
         result_id = verlies_id(country_id, cursor)
         balance_id = eigen_vermogen_id(country_id, cursor)
-        from shared.balance_values import category_roles, is_cp_role
+        from shared.balance_values import (
+            cash_category_accounts,
+            category_roles,
+            is_cp_role,
+        )
 
         roles = category_roles(country_id, cursor) if unit_ids else {}
+        cash_links = cash_category_accounts(int(country_id), cursor)
         breakdown = None
         if is_opening_sheet_year(country_id, int(year), cursor):
             breakdown = opening_sheet_breakdown(country_id, int(year), cursor)
@@ -4149,8 +4154,9 @@ def export_matrix_excel_data(
             if unit_ids and is_cp_role(roles.get(cat_id)):
                 continue
             side, account_id = cmap[cat_id]
+            placed_on = cash_links.get(int(cat_id), account_id)
             if scoped_ids is not None and (
-                account_id is None or int(account_id) not in scoped_ids
+                placed_on is None or int(placed_on) not in scoped_ids
             ):
                 continue
             cents, _source = breakdown.get(cat_id, (0, "opening"))
@@ -4160,12 +4166,12 @@ def export_matrix_excel_data(
                 "label": labels.get(cat_id, f"cat_{cat_id}"),
                 "amount": amount,
             }
-            if scoped and result_accounts and account_id is not None:
+            if scoped and result_accounts and placed_on is not None:
                 slot = next(
                     (
                         index
                         for index, item in enumerate(result_accounts)
-                        if int(item["account_id"]) == int(account_id)
+                        if int(item["account_id"]) == int(placed_on)
                     ),
                     None,
                 )

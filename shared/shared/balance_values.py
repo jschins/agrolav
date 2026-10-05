@@ -83,6 +83,7 @@ CATEGORY_ROLE_SIA = "sia"
 CATEGORY_ROLE_SIB = "sib"
 CATEGORY_ROLE_SIASIB = "siasib"
 CATEGORY_ROLE_CP = "cp"
+CATEGORY_ROLE_CASH = "cash"
 CATEGORY_ROLE_UNIT_PROFIT = "4000"
 # HD label for kruisposten. Present in dim_category so the local code stays
 # reserved. Bookings and journals do not use it. A work unit does not show it.
@@ -1040,6 +1041,37 @@ CASH_ON_HAND_ACCOUNT: dict[int, int] = {
 }
 
 
+def cash_category_accounts(country_id: int, cursor: object) -> dict[int, int]:
+    """category_id → account_id for ``category_role`` ``cash``.
+
+    The mapping says which bank the cash was taken from. The sheet does not
+    copy that account's balance: the post is its opening plus the bookings
+    stored on the cash category. Country 5 keeps the known 11133–11139
+    pairs when the role rows are not readable yet.
+    """
+    found: dict[int, int] = {}
+    cursor.execute(
+        """
+        SELECT d.category_id, m.account_id
+        FROM dbo.dim_category d
+        JOIN dbo.mapping_banks m
+          ON m.category_id = d.category_id AND m.country_id = d.country_id
+        WHERE d.country_id = ?
+          AND LOWER(LTRIM(RTRIM(ISNULL(d.category_role, N'')))) = N'cash'
+        """,
+        (int(country_id),),
+    )
+    for category_id, account_id in cursor.fetchall():
+        if category_id is None or account_id is None:
+            continue
+        found[int(category_id)] = int(account_id)
+    if found:
+        return found
+    if int(country_id) == 5:
+        return dict(CASH_ON_HAND_ACCOUNT)
+    return {}
+
+
 def account_links(country_id: int, cursor: object) -> dict[int, int]:
     """category_id → account_id from ``dbo.mapping_banks`` for a country.
 
@@ -1047,11 +1079,12 @@ def account_links(country_id: int, cursor: object) -> dict[int, int]:
     category (the ``source`` post is the spaar checking account).
     ``11019``, ``11021`` and ``11100`` always use ``dbo.balance_opening``. Mirror-role
     posts never ride a leftover ``mapping_banks`` row as a live account.
-    Instudo cash posts 11133–11139 are opening plus the bookings stored on
-    that category, not the mapped account’s balance.
+    A ``cash`` post is opening plus the bookings stored on that category,
+    not the mapped account's balance.
     """
     skip = set(_OPENING_NOT_ACCOUNT_IDS)
     skip.update(CASH_ON_HAND_ACCOUNT)
+    skip.update(cash_category_accounts(country_id, cursor))
     skip.update(
         cat_id
         for cat_id, role in category_roles(country_id, cursor).items()

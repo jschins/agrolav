@@ -7,7 +7,11 @@ are left as they are.
 """
 from __future__ import annotations
 
-from shared.balance_values import CASH_ON_HAND_ACCOUNT, CASH_ON_HAND_BANK_TYPE
+from shared.balance_values import (
+    CASH_ON_HAND_ACCOUNT,
+    CASH_ON_HAND_BANK_TYPE,
+    cash_category_accounts,
+)
 
 CASH_COUNTRY_ID = 5
 
@@ -27,13 +31,16 @@ def assign_cash_on_hand(
     ``modification`` 1 keeps the later term pass and the cross-posting pass
     off the row. Returns the number of rows the updates matched.
     """
-    if int(country_id) != CASH_COUNTRY_ID or not table:
+    if not table:
         return 0
     if source_ids is not None and not source_ids:
         return 0
     sources = [str(item).strip() for item in (source_ids or set()) if str(item).strip()]
+    pairs = cash_category_accounts(int(country_id), cursor)
+    if not pairs and int(country_id) == CASH_COUNTRY_ID:
+        pairs = dict(CASH_ON_HAND_ACCOUNT)
     updated = 0
-    for category_id, mapped_account in CASH_ON_HAND_ACCOUNT.items():
+    for category_id, mapped_account in pairs.items():
         if account_id is not None and int(mapped_account) != int(account_id):
             continue
         updated += _assign_account(
