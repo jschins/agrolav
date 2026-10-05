@@ -1042,31 +1042,44 @@ CASH_ON_HAND_ACCOUNT: dict[int, int] = {
 
 
 def cash_category_accounts(country_id: int, cursor: object) -> dict[int, int]:
-    """category_id → account_id for ``category_role`` ``cash``.
+    """category_id → account_id for each HD account's own cash post.
 
-    The mapping says which bank the cash was taken from. The sheet does not
-    copy that account's balance: the post is its opening plus the bookings
-    stored on the cash category. Country 5 keeps the known 11133–11139
-    pairs when the role rows are not readable yet.
+    An account is HD when ``mapping_banks`` points it at ``category_role``
+    ``hd``. Its cash post is the ``cash`` category mapped to that same
+    account. A ``Geldautomaat`` booking on the account is stored on that
+    cash post. The sheet does not copy the account balance onto it.
+    Country 5 keeps the known 11133–11139 pairs when those role rows are
+    not readable yet.
     """
-    found: dict[int, int] = {}
     cursor.execute(
         """
-        SELECT d.category_id, m.account_id
-        FROM dbo.dim_category d
-        JOIN dbo.mapping_banks m
-          ON m.category_id = d.category_id AND m.country_id = d.country_id
-        WHERE d.country_id = ?
-          AND LOWER(LTRIM(RTRIM(ISNULL(d.category_role, N'')))) = N'cash'
+        SELECT cash.category_id, m_cash.account_id
+        FROM dbo.mapping_banks m_hd
+        JOIN dbo.dim_category hd
+          ON hd.category_id = m_hd.category_id AND hd.country_id = m_hd.country_id
+        JOIN dbo.mapping_banks m_cash
+          ON m_cash.account_id = m_hd.account_id
+         AND m_cash.country_id = m_hd.country_id
+        JOIN dbo.dim_category cash
+          ON cash.category_id = m_cash.category_id
+         AND cash.country_id = m_cash.country_id
+        WHERE m_hd.country_id = ?
+          AND LOWER(LTRIM(RTRIM(ISNULL(hd.category_role, N'')))) = N'hd'
+          AND LOWER(LTRIM(RTRIM(ISNULL(cash.category_role, N'')))) = N'cash'
         """,
         (int(country_id),),
     )
+    by_account: dict[int, int] = {}
     for category_id, account_id in cursor.fetchall():
         if category_id is None or account_id is None:
             continue
-        found[int(category_id)] = int(account_id)
-    if found:
-        return found
+        account = int(account_id)
+        category = int(category_id)
+        previous = by_account.get(account)
+        if previous is None or category < previous:
+            by_account[account] = category
+    if by_account:
+        return {category: account for account, category in by_account.items()}
     if int(country_id) == 5:
         return dict(CASH_ON_HAND_ACCOUNT)
     return {}

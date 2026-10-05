@@ -80,6 +80,9 @@ class CashOnHandTests(unittest.TestCase):
             person_id=7,
             year=2026,
         )
+        lookup = next(sql for sql, _params in cursor.calls if "category_role" in sql)
+        self.assertIn("= N'hd'", lookup)
+        self.assertIn("= N'cash'", lookup)
         updates = [call for call in cursor.calls if call[0].lstrip().upper().startswith("UPDATE")]
         self.assertEqual(count, 3 * 7)
         self.assertEqual(len(updates), 7)

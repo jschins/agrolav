@@ -41,6 +41,7 @@ export const MONTHLY_STYLE = {
   strongAmount: 17,
   rule: 18,
   ruleHeavy: 19,
+  headRight: 20,
 } as const;
 
 const XML_ESCAPES: Record<string, string> = {
@@ -240,6 +241,7 @@ function stylesXml(): string {
     xfXml(1, 3, 1, 166, "right"),
     xfXml(0, 2, 4),
     xfXml(0, 2, 5),
+    xfXml(1, 3, 1, 0, "right"),
   ];
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="165" formatCode="#,##0"/><numFmt numFmtId="166" formatCode="#,##0.00"/></numFmts><fonts count="5">${fonts}</fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fills}</fills><borders count="${borders.length}">${borders.join("")}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join("")}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;

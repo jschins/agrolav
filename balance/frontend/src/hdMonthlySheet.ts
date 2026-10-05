@@ -116,8 +116,8 @@ export async function hdMonthlySheet(year: number, label: string): Promise<XlsxS
     push([
       paint("Code", S.head),
       paint("Post", S.head),
-      ...names.map((name) => paint(name, S.head)),
-      paint("Cumulatief", S.head),
+      ...names.map((name) => paint(name, M.headRight)),
+      paint("Cumulatief", M.headRight),
     ]);
   };
   const moneyRow = (

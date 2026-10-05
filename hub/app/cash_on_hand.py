@@ -1,9 +1,8 @@
-"""Write Instudo HD cash categories onto Geldautomaat bookings.
+"""Write an HD account's Geldautomaat bookings onto that account's cash category.
 
-One booking has one category. A ``Geldautomaat`` row on a mapped HD account
-is stored as that account's cash post (11133–11139) and leaves the P&L
-category a term list would have given it. Hand rows (modification 2, 3, or 4)
-are left as they are.
+One booking has one category. The cash category is the ``category_role``
+``cash`` post mapped to the same account as the ``hd`` bank. Hand rows
+(modification 2, 3, or 4) are left as they are.
 """
 from __future__ import annotations
 
