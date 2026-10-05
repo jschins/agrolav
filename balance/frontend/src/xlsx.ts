@@ -12,6 +12,8 @@ export interface XlsxSheet {
   merges?: string[];
   /** Fit the sheet onto one printed page, landscape. */
   fitPage?: boolean;
+  /** Cream page without spreadsheet gridlines. */
+  hideGrid?: boolean;
   rowHeights?: (number | undefined)[];
 }
 
@@ -30,6 +32,15 @@ export const RESULT_STYLE = {
   strongAmount: 12,
   alert: 13,
   alertAmount: 14,
+} as const;
+
+/** Second-sheet styles. Amounts keep cents; the two rules separate the three parts. */
+export const MONTHLY_STYLE = {
+  amount: 15,
+  totalAmount: 16,
+  strongAmount: 17,
+  rule: 18,
+  ruleHeavy: 19,
 } as const;
 
 const XML_ESCAPES: Record<string, string> = {
@@ -100,9 +111,10 @@ function sheetXml(sheet: XlsxSheet): string {
           .join("")}</mergeCells>`
       : "";
   const sheetPr = sheet.fitPage ? `<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>` : "";
-  const views = sheet.fitPage
-    ? `<sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>`
-    : "";
+  const views =
+    sheet.fitPage || sheet.hideGrid
+      ? `<sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>`
+      : "";
   const setupXml = sheet.fitPage
     ? `<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="1"/>`
     : "";
@@ -164,10 +176,17 @@ function fillXml(rgb: string): string {
   return `<fill><patternFill patternType="solid"><fgColor rgb="${rgb}"/><bgColor indexed="64"/></patternFill></fill>`;
 }
 
-function borderXml(top?: string, bottom?: string): string {
-  const edge = (side: string, color?: string) =>
-    color ? `<${side} style="${color === "2A5A8C" ? "medium" : "thin"}"><color rgb="FF${color}"/></${side}>` : `<${side}/>`;
-  return `<border>${edge("left")}${edge("right")}${edge("top", top)}${edge("bottom", bottom)}<diagonal/></border>`;
+function borderXml(
+  top?: string,
+  bottom?: string,
+  bottomWeight?: "thin" | "medium" | "thick"
+): string {
+  const edge = (side: string, color?: string, weight?: "thin" | "medium" | "thick") => {
+    if (!color) return `<${side}/>`;
+    const style = weight ?? (color === "2A5A8C" ? "medium" : "thin");
+    return `<${side} style="${style}"><color rgb="FF${color}"/></${side}>`;
+  };
+  return `<border>${edge("left")}${edge("right")}${edge("top", top)}${edge("bottom", bottom, bottomWeight)}<diagonal/></border>`;
 }
 
 function xfXml(
@@ -195,8 +214,11 @@ function stylesXml(): string {
     borderXml(undefined, "EEF0F3"),
     borderXml("2A5A8C"),
     borderXml(undefined, "E0E3E8"),
-  ].join("");
-  // 0 plain, 1 legacy number, then the Resultaat window styles.
+    borderXml(undefined, "C4A35A"),
+    borderXml(undefined, "8A6414", "medium"),
+  ];
+  // 0 plain, 1 legacy number, then the Resultaat window styles,
+  // then the monthly sheet: cents, a thin rule, and a heavier appendix rule.
   const xfs = [
     `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`,
     `<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>`,
@@ -213,9 +235,14 @@ function stylesXml(): string {
     xfXml(1, 3, 1, 165, "right"),
     xfXml(3, 3, 1),
     xfXml(3, 3, 1, 165, "right"),
-  ].join("");
+    xfXml(0, 3, 1, 166, "right"),
+    xfXml(1, 3, 2, 166, "right"),
+    xfXml(1, 3, 1, 166, "right"),
+    xfXml(0, 2, 4),
+    xfXml(0, 2, 5),
+  ];
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="165" formatCode="#,##0"/></numFmts><fonts count="5">${fonts}</fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fills}</fills><borders count="4">${borders}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${15}">${xfs}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="165" formatCode="#,##0"/><numFmt numFmtId="166" formatCode="#,##0.00"/></numFmts><fonts count="5">${fonts}</fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fills}</fills><borders count="${borders.length}">${borders.join("")}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join("")}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 }
 
 function rootRelsXml(): string {
