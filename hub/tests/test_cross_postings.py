@@ -273,10 +273,16 @@ class CrossPostingMatchTests(unittest.TestCase):
     def test_assoc_writes_cp_on_the_hd_booking(self) -> None:
         links = (
             CategoryLink(1053, 1053, "hd", 44, 1056),
-            CategoryLink(1056, 1056, "unit", 21, 1101),
-            CategoryLink(1051, 1051, "source", 18, None),
-            CategoryLink(1101, 1101, "rc", None, 1056),
-            CategoryLink(1111, 1111, "rc", None, 1053),
+            CategoryLink(1056, 1056, "unit", 21, 1051),
+            CategoryLink(1051, 1051, "source", 18, 1101),
+            CategoryLink(1101, 1101, "rc", 21, 1051),
+            CategoryLink(1111, 1111, "rc", 44, 1056),
+            CategoryLink(11020, 1020, "source", 39, 11125),
+            CategoryLink(11025, 1025, "unit", 40, 11020),
+            CategoryLink(11125, 1125, "sib", 39, 11020),
+            CategoryLink(11010, 1010, "source", 60, 11126),
+            CategoryLink(11100, 1100, "siasib", 60, 11020),
+            CategoryLink(11126, 1126, "sia", 60, 11010),
         )
         self.assertEqual(
             assoc_pair_local_codes(links, 21, 44, "keizersgracht", "keizersgracht", 1110),
@@ -286,34 +292,29 @@ class CrossPostingMatchTests(unittest.TestCase):
             assoc_pair_local_codes(links, 44, 21, "keizersgracht", "keizersgracht", 1110),
             (1110, 1111),
         )
-        old = pair_local_codes(
-            "NL00INGB0000000001",
-            "NL00INGB0000000002",
-            "keizersgracht",
-            "keizersgracht",
-            "unit1101",
-            "hd",
-            legs=PairLegs(cp=1110),
-        )
-        self.assertEqual(old, (1111, 1110))
-        self.assertIsNone(
-            assoc_pair_local_codes(links, 21, 18, "keizersgracht", "keizersgracht", 1110)
+        self.assertEqual(
+            assoc_pair_local_codes(links, 21, 18, "keizersgracht", "algemeen", 1110),
+            (1101, 1110),
         )
         self.assertEqual(
-            _pair_locals(
-                links,
-                21,
-                18,
-                "keizersgracht",
-                "keizersgracht",
-                1110,
-                "NL00INGB0000000001",
-                "NL00INGB0000000002",
-                "unit",
-                "source",
-                PairLegs(cp=1110),
-            ),
-            (None, None),
+            assoc_pair_local_codes(links, 18, 21, "algemeen", "keizersgracht", 1110),
+            (1110, 1101),
+        )
+        self.assertEqual(
+            assoc_pair_local_codes(links, 40, 39, "den eker", "sib", 1200),
+            (1125, 1200),
+        )
+        self.assertEqual(
+            assoc_pair_local_codes(links, 39, 40, "sib", "den eker", 1200),
+            (1200, 1125),
+        )
+        self.assertEqual(
+            assoc_pair_local_codes(links, 60, 39, "sia", "sib", 1200),
+            (1100, 1200),
+        )
+        self.assertEqual(
+            assoc_pair_local_codes(links, 39, 60, "sib", "sia", 1200),
+            (1200, 1100),
         )
 
     def test_everything_else_stays_uncategorized(self) -> None:

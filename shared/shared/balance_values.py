@@ -1101,10 +1101,11 @@ def cash_category_accounts(country_id: int, cursor: object) -> dict[int, int]:
 
 
 def _cash_from_assoc(country_id: int, cursor: object) -> dict[int, int]:
-    """Cash post whose ``assoc_category_id`` is the HD bank, when mapping has no row.
+    """Cash post on the same account as the HD bank, when mapping has no row.
 
-    ``1057`` points at ``1053``. A Geldautomaat booking on that HD account is
-    written to ``1057``. The column may be absent; then this returns nothing.
+    ``11134`` and ``11029`` share account 48. ``1057`` and ``1053`` share
+    account 44. A Geldautomaat booking on that account is written to the cash
+    post. The column may be absent; then this returns nothing.
     """
     try:
         cursor.execute(
@@ -1124,8 +1125,9 @@ def _cash_from_assoc(country_id: int, cursor: object) -> dict[int, int]:
             SELECT cash.category_id, cash.account_id, cash.category_role
             FROM dbo.dim_category cash
             JOIN dbo.dim_category hd
-              ON hd.category_id = cash.assoc_category_id
+              ON hd.account_id = cash.account_id
              AND hd.country_id = cash.country_id
+             AND hd.category_id <> cash.category_id
             WHERE cash.country_id = ?
               AND cash.account_id IS NOT NULL
               AND LOWER(LTRIM(RTRIM(ISNULL(hd.category_role, N'')))) = N'hd'

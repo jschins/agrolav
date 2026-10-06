@@ -118,3 +118,19 @@ In all cases: explicitly check that all amounts are always written in sign-oppos
 
 ## How dbo.dim_category is read now (in the context of the cross-postings calculation)
 
+`apply_cross_postings` loads every `dbo.dim_category` row of the country when the columns `account_id` and `assoc_category_id` exist. The columns it keeps are `category_id`, `local_code`, `category_role`, `account_id`, and `assoc_category_id`. When either column is absent, this load is skipped and the previous role rules run.
+
+`account_id` is the bank of that category. A booking’s account is matched to the row with that `account_id` whose role is `hd`, `unit`, `unitNNNN`, `source`, or `bank`. A `cash`, `rc`, `cp`, or `mirror` row on the same account is not that bank. Where `hd` and another role share the account, `hd` is the bank.
+
+`assoc_category_id` names one other category. Four reads use these columns.
+
+A work unit and its HD share a center. The HD row’s assoc is the work-unit bank. The `rc` row on the HD account whose assoc is that same work-unit bank is written on the work-unit booking. The HD booking is written to `cp`. Account 21 against account 44 is written to 1111. Account 44 is written to `cp`. Account 40 against account 48 is written to 11114. Account 48 is written to `cp`.
+
+A work unit and its centrale: the unit row’s assoc is the source category, and that source row’s assoc is the category written on the unit booking. The source booking is written to `cp`. Account 21 against account 18 is written to 1101, because 1051 points at 1101. Account 18 is written to `cp`. Account 40 against account 39 is written to 11125, because 11020 points at 11125. Account 39 is written to `cp`.
+
+SIa against SIb: the `siasib` row’s account is written to that category, and the category it points at is written to `cp`. 11100 has account 60 and points at 11020, so account 60 is written to 11100 and account 39 is written to `cp`.
+
+Geldautomaat uses the other category on the HD account whose role is `cash` or empty. 11134 shares account 48 with 11029. 1057 shares account 44 with 1053. The cash write stores `modification` 1, and the pair pass leaves that booking alone.
+
+When the assoc columns do not resolve the pair, the previous read still runs. `category_role` supplies `cp`, `siasib`, `sia`, and `sib`. A `unitXX0X` role against `hd` in the same center still writes `XX0X + 10` on the unit and `cp` on the HD. Centrale SIa against Centrale SIb still writes `siasib` and `cp`. Centrale against a `unitNNNN` still writes `NNNN` on Centrale and `sia` or `sib` on the unit.
+

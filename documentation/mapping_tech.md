@@ -116,22 +116,16 @@ Country 4, in that shape:
 | category | role | account_id | assoc_category_id | what it says |
 |---|---|---|---|---|
 | 1053 | `hd` | 44 | 1056 | this HD bank's work unit is 1056 |
-| 1056 | `unit` | 21 | 1101 | this work unit names 1101 |
-| 1057 | `cash` | 44 | 1053 | Geldautomaat on 1053 is written to 1057 |
-| 1101 | `rc` | | 1056 | 1101 belongs to work unit 1056 |
-| 1111 | `rc` | | 1053 | 1111 is the register of this HD |
+| 1056 | `unit` | 21 | 1051 | this work unit's central bank is 1051 |
+| 1051 | `source` | 18 | 1101 | the unit booking against this bank is written to 1101 |
+| 1057 | `cash` | 44 | | Geldautomaat on account 44 is written to 1057 |
+| 1101 | `rc` | 21 | 1051 | the same link as the work-unit bank |
+| 1111 | `rc` | 44 | 1056 | written on account 21 against this HD |
 
-A booking on account 21 against account 44 is written to 1111, because 1111
-is the `rc` row whose assoc is the HD category 1053, and 1053's assoc is the
-work-unit bank 1056. The booking on account 44 is written to `cp` (1110).
-That is the same booking the previous rule wrote to `cp`: the HD side of a
-work-unit/HD pair. The work-unit side is not `cp`.
-
-1101 points at 1056, the work-unit bank that register belongs to. The
-source is the country's `source` row (1051 on account 18), not a pointer on
-1101: the country has one source, and each register has its own work unit. A
-booking on account 21 against that source is not written to `cp`. The
-previous function left that pair uncategorized, and this function still does.
+A booking on account 21 against account 44 is written to 1111. The booking
+on account 44 is written to `cp` (1110). A booking on account 21 against
+account 18 is written to 1101. The booking on account 18 is written to `cp`.
+SIa against SIb writes account 60 to 11100 and account 39 to `cp`.
 
 When those columns do not resolve the pair, the previous rule still runs.
 A `unitXX0X` role (third digit 0, as in `unit1108`) paired with `hd` in the

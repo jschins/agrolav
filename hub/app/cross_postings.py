@@ -16,9 +16,13 @@ Each leg of a pair is written on its own. Every fixed leg is the
   (category 1NNNN) and the unit is the ``sib`` row.
 * ``unitXX0X`` against the ``hd`` account in the same center: the unit is
   local XX1X (category 1XX1X) and the sibling is the ``cp`` row.
-  ``unit1108`` writes the unit to 11118. When ``assoc_category_id`` names
-  that pair, the work-unit booking is the ``rc`` row that points at the HD
-  category and the HD booking is still ``cp``.
+  ``unit1108`` writes the unit to 11118. When ``account_id`` and
+  ``assoc_category_id`` name the pair, the work-unit booking is the ``rc``
+  row on the HD account that points at the work unit, and the HD booking
+  is still ``cp``. A work unit against the source it points at is written
+  to the category that source points at, and the source booking is ``cp``.
+  SIa against SIb writes the ``siasib`` account to ``siasib`` and the
+  category that row points at to ``cp``.
 
 A country without a row for a role leaves that leg uncategorized.
 
@@ -401,17 +405,106 @@ def _bank_link(links: Sequence[CategoryLink], account_id: int) -> CategoryLink |
     return hits[0]
 
 
-def _rc_for_hd(links: Sequence[CategoryLink], hd_category_id: int) -> CategoryLink | None:
-    """The ``rc`` row whose assoc is this HD category. Lowest local code wins."""
-    found = [
-        link
-        for link in links
-        if link.role == "rc" and link.assoc_category_id == int(hd_category_id)
-    ]
+def _link_by_id(links: Sequence[CategoryLink], category_id: int | None) -> CategoryLink | None:
+    if category_id is None:
+        return None
+    for link in links:
+        if link.category_id == int(category_id):
+            return link
+    return None
+
+
+def _lowest(found: list[CategoryLink]) -> CategoryLink | None:
     if not found:
         return None
     found.sort(key=lambda link: (link.local_code, link.category_id))
     return found[0]
+
+
+def _hd_register(links: Sequence[CategoryLink], hd: CategoryLink, unit: CategoryLink) -> CategoryLink | None:
+    """``rc`` on the HD account whose assoc is the work-unit bank."""
+    return _lowest([
+        link
+        for link in links
+        if link.role == "rc"
+        and link.account_id == hd.account_id
+        and link.assoc_category_id == unit.category_id
+    ])
+
+
+def _hd_unit_locals(
+    links: Sequence[CategoryLink],
+    left: CategoryLink,
+    right: CategoryLink,
+    cp_local: int | None,
+) -> tuple[int, int] | None:
+    """Work-unit booking → that ``rc``. HD booking → ``cp``."""
+    if cp_local is None:
+        return None
+    if left.role == "hd" and _is_unit_role(right.role) and left.assoc_category_id == right.category_id:
+        register = _hd_register(links, left, right)
+        if register is None:
+            return None
+        return (int(cp_local), int(register.local_code))
+    if right.role == "hd" and _is_unit_role(left.role) and right.assoc_category_id == left.category_id:
+        register = _hd_register(links, right, left)
+        if register is None:
+            return None
+        return (int(register.local_code), int(cp_local))
+    return None
+
+
+def _source_unit_locals(
+    links: Sequence[CategoryLink],
+    left: CategoryLink,
+    right: CategoryLink,
+    cp_local: int | None,
+) -> tuple[int, int] | None:
+    """Unit booking → the category the source points at. Source booking → ``cp``.
+
+    ``1051`` points at ``1101``, so account 21 is written to 1101 and account
+    18 to ``cp``. ``11020`` points at ``11125``, so account 40 is written to
+    11125 and account 39 to ``cp``.
+    """
+    if cp_local is None:
+        return None
+    if _is_unit_role(left.role) and right.role == "source" and left.assoc_category_id == right.category_id:
+        target = _link_by_id(links, right.assoc_category_id)
+        if target is None:
+            return None
+        return (int(target.local_code), int(cp_local))
+    if _is_unit_role(right.role) and left.role == "source" and right.assoc_category_id == left.category_id:
+        target = _link_by_id(links, left.assoc_category_id)
+        if target is None:
+            return None
+        return (int(cp_local), int(target.local_code))
+    return None
+
+
+def _siasib_locals(
+    links: Sequence[CategoryLink],
+    left: CategoryLink,
+    right: CategoryLink,
+    cp_local: int | None,
+) -> tuple[int, int] | None:
+    """SIa booking → ``siasib``. SIb booking → ``cp``.
+
+    ``11100`` has account 60 and points at ``11020``. Account 60 is written
+    to 11100. Account 39 is written to ``cp``.
+    """
+    if cp_local is None:
+        return None
+    for link in links:
+        if link.role != "siasib" or link.account_id is None or link.assoc_category_id is None:
+            continue
+        other = _link_by_id(links, link.assoc_category_id)
+        if other is None or other.account_id is None:
+            continue
+        if left.account_id == link.account_id and right.account_id == other.account_id:
+            return (int(link.local_code), int(cp_local))
+        if right.account_id == link.account_id and left.account_id == other.account_id:
+            return (int(cp_local), int(link.local_code))
+    return None
 
 
 def assoc_pair_local_codes(
@@ -422,47 +515,43 @@ def assoc_pair_local_codes(
     to_center: str | None = None,
     cp_local: int | None = None,
 ) -> tuple[int, int] | None:
-    """Local codes for a work-unit against its HD, or ``None`` if unresolved.
-
-    The HD row's ``assoc_category_id`` is the work-unit bank. The ``rc`` row
-    whose assoc is that HD category is written on the work-unit booking. The
-    HD booking is written to ``cp``. That is the same leg the digit rule
-    writes to ``cp``. An ``rc`` row such as 1101 points at its own work-unit
-    bank, not at the source. The source is the country's ``source`` row. A
-    unit against that source is not decided here, so that booking is not
-    newly written to ``cp``.
-    """
-    if cp_local is None or not _centers_match(from_center, to_center):
-        return None
+    """Local codes from ``account_id`` and ``assoc_category_id``, or ``None``."""
     left = _bank_link(links, from_account)
     right = _bank_link(links, to_account)
-    if left is None or right is None:
+    if left is None or right is None or cp_local is None:
         return None
-    if left.role == "hd" and _is_unit_role(right.role) and left.assoc_category_id == right.category_id:
-        register = _rc_for_hd(links, left.category_id)
-        if register is None:
-            return None
-        return (int(cp_local), int(register.local_code))
-    if right.role == "hd" and _is_unit_role(left.role) and right.assoc_category_id == left.category_id:
-        register = _rc_for_hd(links, right.category_id)
-        if register is None:
-            return None
-        return (int(register.local_code), int(cp_local))
-    return None
+    if _centers_match(from_center, to_center):
+        found = _hd_unit_locals(links, left, right, cp_local)
+        if found is not None:
+            return found
+    found = _source_unit_locals(links, left, right, cp_local)
+    if found is not None:
+        return found
+    return _siasib_locals(links, left, right, cp_local)
 
 
 def assoc_register_locals(links: Sequence[CategoryLink]) -> set[int]:
-    """Local codes written on the work-unit leg, so a later run can release them."""
-    hd_ids = {
-        link.category_id
-        for link in links
-        if link.role == "hd" and link.assoc_category_id is not None
-    }
-    return {
-        int(link.local_code)
-        for link in links
-        if link.role == "rc" and link.assoc_category_id in hd_ids
-    }
+    """Local codes written from assoc links, so a later run can release them."""
+    codes: set[int] = set()
+    for hd in links:
+        if hd.role != "hd" or hd.assoc_category_id is None or hd.account_id is None:
+            continue
+        unit = _link_by_id(links, hd.assoc_category_id)
+        if unit is None:
+            continue
+        register = _hd_register(links, hd, unit)
+        if register is not None:
+            codes.add(int(register.local_code))
+    for source in links:
+        if source.role != "source":
+            continue
+        target = _link_by_id(links, source.assoc_category_id)
+        if target is not None:
+            codes.add(int(target.local_code))
+    for link in links:
+        if link.role == "siasib":
+            codes.add(int(link.local_code))
+    return codes
 
 
 def _activa_sheet_amount(local_code: int, amount: Decimal) -> Decimal | None:
@@ -792,9 +881,9 @@ def _pair_locals(
 ) -> tuple[int | None, int | None]:
     """Assoc lookup first. The digit and Centrale rules run when it does not resolve.
 
-    The assoc lookup writes ``cp`` on the HD booking. The digit rule writes
-    ``cp`` on that same booking. A unit against ``source`` stays on the digit
-    rule, which leaves it uncategorized, so that booking is not written to ``cp``.
+    The assoc lookup writes ``cp`` on the HD booking, on the source booking
+    against a work unit, and on the SIb booking against SIa. The digit rule
+    writes ``cp`` on the HD booking and on Centrale SIb against Centrale SIa.
     """
     if links:
         found = assoc_pair_local_codes(
