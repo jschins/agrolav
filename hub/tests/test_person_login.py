@@ -1,5 +1,6 @@
 """Person password hashing, formula fallback, OTP tokens."""
 import unittest
+from unittest import mock
 
 from app.person_otp import encode_otp_token, issue_and_send, mask_phone, verify_otp_token
 from app.user_store import (
@@ -9,6 +10,7 @@ from app.user_store import (
     login_kind,
     normalize_mobile_phone,
     password_for_username,
+    set_administrator_password,
 )
 from shared.passwords import hash_password, verify_password
 
@@ -129,3 +131,30 @@ class OtpTokenTests(unittest.TestCase):
         self.assertTrue(payload["otp_token"])
         self.assertEqual(len(payload["dev_code"]), 6)
         self.assertTrue(payload["dev_code"].isdigit())
+
+
+class AdministratorPasswordTests(unittest.TestCase):
+    def test_writes_dbo_administrator(self):
+        cursor = mock.Mock()
+        cursor.rowcount = 1
+        conn = mock.Mock()
+        conn.cursor.return_value = cursor
+        with (
+            mock.patch("app.user_store._fetch_administrator", return_value={"username": "boss"}),
+            mock.patch("app.user_store.init_user_store"),
+            mock.patch("app.user_store._sql_connect", return_value=conn),
+        ):
+            result = set_administrator_password(
+                username="boss", new="secret", confirm="secret"
+            )
+        self.assertEqual(result, {"ok": True})
+        sql, params = cursor.execute.call_args[0]
+        self.assertIn("dbo.administrator", sql)
+        self.assertEqual(params[1], "boss")
+        self.assertTrue(verify_password("secret", params[0]))
+        conn.commit.assert_called_once()
+
+    def test_unknown_administrator_is_rejected(self):
+        with mock.patch("app.user_store._fetch_administrator", return_value=None):
+            with self.assertRaises(ValueError):
+                set_administrator_password(username="boss", new="secret", confirm="secret")

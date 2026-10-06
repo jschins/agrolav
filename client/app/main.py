@@ -383,11 +383,20 @@ def api_person_password(body: PasswordChangeRequest, request: Request) -> dict[s
     from app.centrale_sync import hub_request
 
     username = _session_username(request)
+    session = getattr(request.state, "session", None) or {}
     payload: dict[str, Any] = {
         "username": username,
         "new_password": body.new_password,
         "confirm": body.confirm,
     }
+    if session.get("administrator"):
+        admin_name = str(session.get("administrator_username") or "").strip()
+        if not admin_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Log in again, then set the password",
+            )
+        payload["administrator_username"] = admin_name
     if body.mobile_phone is not None:
         payload["mobile_phone"] = body.mobile_phone
     try:

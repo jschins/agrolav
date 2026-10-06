@@ -459,6 +459,9 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
     rec = enrich_user_record(user)
     if user.get("administrator"):
         rec["administrator"] = True
+    admin_name = str(user.get("administrator_username") or "").strip()
+    if admin_name:
+        rec["administrator_username"] = admin_name
     from app.runtime import country_folder
     from app.store import list_centers, list_countries
 
@@ -826,6 +829,7 @@ def _administrator_login(username: str, password: str) -> tuple[bool, dict[str, 
         return True, None
     if user is not None:
         user["administrator"] = True
+        user["administrator_username"] = name
     return True, user
 
 
@@ -1079,6 +1083,42 @@ def set_person_password(
         cursor.execute(
             f"""
             UPDATE {table} SET password_hash = ?
+            WHERE username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (hashed, name),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError("Unknown login")
+        _sql_connect().commit()
+    return {"ok": True}
+
+
+def set_administrator_password(
+    *,
+    username: str,
+    new: str,
+    confirm: str,
+) -> dict[str, Any]:
+    """Replace ``dbo.administrator.password_hash``.
+
+    An administrator session opens the country named on that row. Set
+    password must still write this table: the next login reads it, not
+    ``dbo.country.password_hash``.
+    """
+    name = (username or "").strip()
+    if str(new or "") != str(confirm or ""):
+        raise ValueError("New password and confirmation do not match")
+    if not str(new or "").strip():
+        raise ValueError("New password is required")
+    if _fetch_administrator(name) is None:
+        raise ValueError("Unknown login")
+    hashed = hash_password(str(new))
+    with _LOCK:
+        init_user_store()
+        cursor = _sql_connect().cursor()
+        cursor.execute(
+            """
+            UPDATE dbo.administrator SET password_hash = ?
             WHERE username = ? COLLATE Latin1_General_CI_AI
             """,
             (hashed, name),

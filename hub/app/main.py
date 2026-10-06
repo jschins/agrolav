@@ -278,6 +278,7 @@ class AuthPasswordRequest(BaseModel):
     new_password: str
     confirm: str
     mobile_phone: str | None = None
+    administrator_username: str | None = None
 
 
 @app.post("/api/auth/password")
@@ -288,6 +289,13 @@ def api_auth_password(
     from app import user_store
 
     try:
+        admin_name = str(body.administrator_username or "").strip()
+        if admin_name:
+            return user_store.set_administrator_password(
+                username=admin_name,
+                new=body.new_password,
+                confirm=body.confirm,
+            )
         result = user_store.set_person_password(
             username=body.username,
             new=body.new_password,

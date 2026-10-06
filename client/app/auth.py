@@ -142,6 +142,9 @@ def profile_from_user(user: dict[str, Any]) -> dict[str, Any]:
         profile["hd"] = bool(user.get("hd")) or username.lower().startswith("hd_")
     if user.get("administrator"):
         profile["administrator"] = True
+    admin_name = str(user.get("administrator_username") or "").strip()
+    if admin_name:
+        profile["administrator_username"] = admin_name
     return profile
 
 
