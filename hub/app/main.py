@@ -861,6 +861,7 @@ class WipeYearRequest(BaseModel):
     categorizations: bool = False
     journal: bool = False
     afschrijvingen: bool = False
+    reset_all: bool = False
     whole_country: bool = False
 
 
@@ -1118,6 +1119,7 @@ def api_wipe_year(
             categorizations=body.categorizations,
             journal=body.journal,
             afschrijvingen=body.afschrijvingen,
+            reset_all=body.reset_all,
             whole_country=body.whole_country,
         )
     except ValueError as exc:

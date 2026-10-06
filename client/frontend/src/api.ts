@@ -298,6 +298,7 @@ export function wipeYear(body: {
   categorizations: boolean;
   journal: boolean;
   afschrijvingen: boolean;
+  reset_all: boolean;
   person?: string;
   account?: string;
 }): Promise<{

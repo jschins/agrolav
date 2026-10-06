@@ -2440,6 +2440,8 @@ const WIPE_STATEMENTS =
   "Remove all bank statements; leave categorizations untouched";
 const WIPE_CATEGORIES =
   "Clear categories, cross-postings; keep terms, statements";
+const WIPE_ALL =
+  "Clear categories, cross-postings, terms, and statements";
 const WIPE_JOURNAL = "Remove all manual journal entries";
 const WIPE_AFSCHRIJVINGEN = "Remove all automatic journal entries";
 
@@ -2448,6 +2450,7 @@ type WipeFlags = {
   categorizations: boolean;
   journal: boolean;
   afschrijvingen: boolean;
+  reset_all: boolean;
 };
 
 function RecalcChoices({
@@ -2498,7 +2501,8 @@ function WipeChoices({
   const [categorizations, setCategorizations] = useState(false);
   const [journal, setJournal] = useState(false);
   const [afschrijvingen, setAfschrijvingen] = useState(false);
-  const anyChecked = statements || categorizations || journal || afschrijvingen;
+  const [resetAll, setResetAll] = useState(false);
+  const anyChecked = statements || categorizations || journal || afschrijvingen || resetAll;
   return (
     <div className="priority-rules-overlay" onClick={onCancel}>
       <div
@@ -2526,6 +2530,14 @@ function WipeChoices({
         <label className="wipe-choice">
           <input
             type="checkbox"
+            checked={resetAll}
+            onChange={(e) => setResetAll(e.target.checked)}
+          />
+          {tableHeaderTerm(terms, WIPE_ALL)}
+        </label>
+        <label className="wipe-choice">
+          <input
+            type="checkbox"
             checked={journal}
             onChange={(e) => setJournal(e.target.checked)}
           />
@@ -2544,7 +2556,9 @@ function WipeChoices({
             type="button"
             className="priority-rules-close"
             disabled={!anyChecked}
-            onClick={() => onRun({ statements, categorizations, journal, afschrijvingen })}
+            onClick={() =>
+              onRun({ statements, categorizations, journal, afschrijvingen, reset_all: resetAll })
+            }
           >
             OK
           </button>

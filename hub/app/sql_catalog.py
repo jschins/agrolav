@@ -696,17 +696,20 @@ def clear_bookings(
     categorizations: bool = False,
     journal: bool = False,
     afschrijvingen: bool = False,
+    reset_all: bool = False,
 ) -> dict[str, Any]:
     """Drop bank statements, reset categories, and/or clear journal tables.
 
     ``whole_country`` updates every row of ``dbo.transaction_{country}``.
     Otherwise the rows are limited to ``account``, ``person``, or ``center``.
-    Terms (``dbo.category_term``) are not touched. Category reset sets
+    Terms (``dbo.category_term``) are not touched. ``categorizations`` sets
     ``modification = -1`` and ``category_id`` to ``category_role = remainder``
     on every row except a hand row (``modification`` 2, 3, or 4).
-    Those keep their category and their description. ``journal`` deletes every ``dbo.journal`` row for this
-    country. ``afschrijvingen`` deletes every ``dbo.afschrijvingen`` row for
-    this country. Those tables are country-wide, not person or account.
+    Those keep their category and their description. ``reset_all`` sets the
+    same two fields on every row in scope, hand rows included. ``journal``
+    deletes every ``dbo.journal`` row for this country. ``afschrijvingen``
+    deletes every ``dbo.afschrijvingen`` row for this country. Those tables
+    are country-wide, not person or account.
     """
     from app import user_store
     from app.sql_replica import _transaction_table
@@ -716,7 +719,7 @@ def clear_bookings(
     table = _transaction_table(name)
     if not name or not table:
         raise ValueError(f"Unknown country {country!r}")
-    if not statements and not categorizations and not journal and not afschrijvingen:
+    if not statements and not categorizations and not journal and not afschrijvingen and not reset_all:
         raise ValueError("Choose at least one wipe action")
     if not _sql_ready():
         raise RuntimeError("SQL is not configured")
@@ -750,21 +753,27 @@ def clear_bookings(
             from app.category_hand import forget_wiped_statements
 
             forget_wiped_statements(cursor, country_id, table, where_sql, where_params)
-        if categorizations:
+        if categorizations or reset_all:
             remainder_id, _remainder_code = require_remainder_row(country_id, cursor)
-            hand_kept = "modification < 2"
-            if where_sql:
-                kept_sql = f"{where_sql} AND {hand_kept}"
+            if reset_all:
+                cursor.execute(
+                    f"UPDATE {table} SET modification = -1, category_id = ?{where_sql}",
+                    (remainder_id, *where_params),
+                )
             else:
-                kept_sql = f" WHERE {hand_kept}"
-            cursor.execute(
-                f"UPDATE {table} SET modification = -1{kept_sql}",
-                where_params,
-            )
-            cursor.execute(
-                f"UPDATE {table} SET category_id = ?{kept_sql}",
-                (remainder_id, *where_params),
-            )
+                hand_kept = "modification < 2"
+                if where_sql:
+                    kept_sql = f"{where_sql} AND {hand_kept}"
+                else:
+                    kept_sql = f" WHERE {hand_kept}"
+                cursor.execute(
+                    f"UPDATE {table} SET modification = -1{kept_sql}",
+                    where_params,
+                )
+                cursor.execute(
+                    f"UPDATE {table} SET category_id = ?{kept_sql}",
+                    (remainder_id, *where_params),
+                )
         if statements:
             cursor.execute(f"SELECT COUNT(*) FROM {table}{where_sql}", where_params)
             tx_count = int(cursor.fetchone()[0])
@@ -806,7 +815,7 @@ def clear_bookings(
                 "WHERE d.country_id = ?",
                 (int(country_id),),
             )
-        if person_ids and (statements or categorizations):
+        if person_ids and (statements or categorizations or reset_all):
             _rebuild_category_totals(cursor, table, country_id, person_ids, spaar_source_exclude_clause)
         user_store._sql_connect().commit()
         return {
@@ -814,6 +823,7 @@ def clear_bookings(
             "transactions": tx_count,
             "statements": bool(statements),
             "categorizations": bool(categorizations),
+            "reset_all": bool(reset_all),
             "journal": bool(journal),
             "afschrijvingen": bool(afschrijvingen),
         }

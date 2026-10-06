@@ -294,7 +294,11 @@ FROM (VALUES
         'Clear categories, cross-postings; keep terms, statements',
         'Wis categorisatie en kruisposten; behoud termen, afschriften'
     ),
-    ('Cancel', 'Annuleren')
+    ('Cancel', 'Annuleren'),
+    (
+        'Clear categories, cross-postings, terms, and statements',
+        'Wis categorisatie, kruisposten, termen en afschriften'
+    )
 ) AS v (term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1

@@ -621,3 +621,11 @@ insert into dbo.dim_category values
 (11138,	5, 1138, 'kas HD Lepelenburg', NULL, 'Activa/Vlottende activa/Kas HD', 5),
 (11139,	5, 1139, 'kas HD De Stade', NULL, 'Activa/Vlottende activa/Kas HD', 5);
 
+====================unit_id == account_id 
+
+ALTER TABLE dbo.unit
+ADD CONSTRAINT fk_unit_account
+FOREIGN KEY (unit_id) REFERENCES dbo.account (account_id);
+
+
+===================
