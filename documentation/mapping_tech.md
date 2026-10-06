@@ -151,3 +151,107 @@ The release set is those `category_id`s, the ones that appear with a
 counterparty. A later run that does not assign the pair returns an open
 booking on one of them to the remainder. A bank post (counterparty NULL)
 stays out of that set, as it does today.
+
+---
+
+## dbo.mapping
+
+Bereken kruisposten keeps its procedure. A menu run still rewrites rows at
+modification -1 and 0. A download still rewrites only -1. A matched pair
+is still stored with modification 1. A hand row (2, 3, or 4) is still left
+as it is. A later run still releases an open booking on a cross-posting
+category back to the remainder. The pair detector stays as it is: opposite
+amounts, same day or the next, each statement names the other account's
+IBAN.
+
+The change is only the read that chooses the two `category_id`s. Today
+that choice is computed from `category_role`: `unitXX0X` means the third
+digit is 0, and the unit leg is `XX0X + 10` (`xx1x`). `cp`, `sia`, `sib`,
+and `siasib` are further role strings. Those codes are not readable. A
+row in `dbo.mapping` stores the category itself.
+
+`dbo.mapping` replaces `dbo.mapping_banks`. It holds every column of that
+table and every column of the cross-posting table above.
+
+| column | |
+|---|---|
+| `country_id` | from `dbo.mapping_banks` |
+| `account_id` | from `dbo.mapping_banks` and from the cross-posting table |
+| `category_id` | from `dbo.mapping_banks` and from the cross-posting table. For a pair, this is the post written on that leg. |
+| `counterparty_account_id` | from the cross-posting table. NULL on every row copied from `dbo.mapping_banks`. |
+
+A NULL counterparty is a bank, cash, or mirror link, exactly as that row
+stands in `dbo.mapping_banks` today. `account_links`, the Geldautomaat
+write, and the mirror rule keep reading those rows. Their behavior does
+not change.
+
+A filled counterparty is one leg of Bereken kruisposten. After the IBAN
+match, each leg is one SELECT: this `account_id`, the other account as
+`counterparty_account_id`. Both rows present means write those two
+`category_id`s, by the same modification rules as now. One row missing
+means the pair is not a cross-posting.
+
+`unit1108` against its HD is then two rows, not a code. `U` is the unit
+account, `H` the HD account. 11118 is the category written on the unit.
+11200 is the category written on the HD. Nothing in the row says `xx0x`
+or `xx1x`.
+
+| account_id | counterparty_account_id | category_id |
+|---|---|---|
+| U | H | 11118 |
+| H | U | 11200 |
+| Centrale SIb | Centrale SIa | 11200 |
+| Centrale SIa | Centrale SIb | 11100 |
+| Centrale SIa | a SIa unit | that unit's own post |
+| that SIa unit | Centrale SIa | 11126 |
+| Centrale SIb | a SIb unit | that unit's own post |
+| that SIb unit | Centrale SIb | 11125 |
+
+`1102` through `1109` are the same two rows: the unit account points at
+11112–11119, and the HD account points back at 11200.
+
+A primary key cannot include the NULL counterparty. `mapping_id` is the
+key. One unique index covers the NULL rows on
+`(country_id, account_id, category_id)`. Another covers the pair rows on
+`(country_id, account_id, counterparty_account_id, category_id)`.
+
+`hub/sql/mapping.sql` creates this table and fills it for countries 4 and
+5. It does not change `category_role`. The present code still reads those
+values.
+
+---
+
+## Which category_role values are cleared
+
+Clear a role only when Bereken kruisposten reads `dbo.mapping` for the two
+categories. Until that read is switched, the role stays, because the
+present code still uses it.
+
+Two roles are cleared. They sit on the bank post and exist to carry four
+digits. `unit1108` is the `xx0x` code, and the written category `1118` is
+the `xx1x` code. `user1108` is the same four digits. The pair row stores
+11118 itself, so the digits are no longer the source.
+
+| role | where it sits |
+|---|---|
+| `unitNNNN` | the work-unit bank post, such as `unit1108` or `unit1111` |
+| `userNNNN` | a bank post whose role is `user` plus four digits |
+
+The result sheet still reads `unitNNNN` to tell a work-unit bank from role
+`hd`. That read is separate from Bereken kruisposten.
+
+Every other role stays. The pair row names the `category_id` that is
+written. It does not replace the rule that role still carries.
+
+| role | why it stays |
+|---|---|
+| `remainder` | the uncategorized booking |
+| `balance`, `last_booked` | the matrix footers |
+| `equity`, `profit` | Eigen vermogen and the result plug |
+| `4000` | the HD result line 4995 |
+| `bank`, `source`, `mirror` | which post reads an account, and which mirror does not |
+| `cash` | the Geldautomaat post |
+| `hd` | which bank is the Huishoudelijke Dienst |
+| `rc`, `sia`, `sib` | Calculate opening balance zeros them into `cp` |
+| `siasib` | that post keeps its year-end amount |
+| `cp` | the post that receives the zeroed total |
