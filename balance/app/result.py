@@ -498,8 +498,9 @@ def _load_accounts(country_id: int) -> list[_BankAccount]:
             FROM dbo.account a
             JOIN dbo.person p ON p.id = a.person_id
             JOIN dbo.center n ON n.center_id = p.center_id
-            LEFT JOIN dbo.mapping_banks m
+            LEFT JOIN dbo.mapping m
               ON m.account_id = a.account_id AND m.country_id = n.country_id
+             AND m.counterparty_account_id IS NULL
             LEFT JOIN dbo.dim_category d
               ON d.category_id = m.category_id AND d.country_id = m.country_id
             WHERE n.country_id = ?

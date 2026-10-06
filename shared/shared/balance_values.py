@@ -1,6 +1,6 @@
 """Present-day balance values shared by the balance app and the hub.
 
-Both services compute the balance sheet from the same tables (``dbo.mapping_banks``,
+Both services compute the balance sheet from the same tables (``dbo.mapping``,
 ``dbo.balance_opening``, ``dbo.transaction_mirror``, ``dbo.journal``,
 the country's ``dbo.transaction_*`` bookings on codes 1000-2999, and the live
 ``dbo.account.balance``), so the derivation lives here once instead of being
@@ -672,7 +672,7 @@ def spaar_mirrors(
     """Every complete source→mirror pair for a country.
 
     A country may have several (Instudo: one spaarrekening per center). Each
-    ``source`` needs ``dbo.mapping_banks.account_id``. A source is paired only
+    ``source`` needs the account on its ``dbo.mapping`` row. A source is paired only
     with the mirror in the same center (mapping leftover or a spaarrekening
     term that lives only in that center). Leftovers are not zipped.
     """
@@ -683,8 +683,9 @@ def spaar_mirrors(
         SELECT d.category_id, d.local_code, d.category_role, m.account_id,
                p.center_id, n.username
         FROM dbo.dim_category d
-        LEFT JOIN dbo.mapping_banks m
+        LEFT JOIN dbo.mapping m
           ON m.category_id = d.category_id AND m.country_id = d.country_id
+         AND m.counterparty_account_id IS NULL
         LEFT JOIN dbo.account a ON a.account_id = m.account_id
         LEFT JOIN dbo.person p ON p.id = a.person_id
         LEFT JOIN dbo.center n ON n.center_id = p.center_id
@@ -1021,12 +1022,12 @@ def country_has_balance(country_id: int, cursor: object) -> bool:
     return bool(row[0]) if row else False
 
 
-# Posts that must use dbo.balance_opening even when mapping_banks still
+# Posts that must use dbo.balance_opening even when dbo.mapping still
 # points at an account. 11019 / 11021 are spaar openings. 11100 is the
 # SIa leg of the SIa/SIb cross-posting (local 1100); it is not a bank account.
 _OPENING_NOT_ACCOUNT_IDS = frozenset({11019, 11021, 11100})
 
-# Instudo HD cash on hand. mapping_banks still names the account, but the
+# Instudo HD cash on hand. dbo.mapping still names the account, but the
 # sheet must not copy that account's balance. The post is the opening row
 # (zero when dbo.balance_opening has none) plus Geldautomaat bookings.
 CASH_ON_HAND_BANK_TYPE = "Geldautomaat"
@@ -1044,7 +1045,7 @@ CASH_ON_HAND_ACCOUNT: dict[int, int] = {
 def cash_category_accounts(country_id: int, cursor: object) -> dict[int, int]:
     """category_id → account_id for each HD account's own cash post.
 
-    An account is HD when ``mapping_banks`` points it at ``category_role``
+    An account is HD when ``dbo.mapping`` points it at ``category_role``
     ``hd``. The cash post is the other category mapped to that same account:
     role ``cash``, or an empty role (beheer_sdog 1057). The sheet uses that
     post's ``dbo.balance_opening`` plus the bookings stored on it. It does
@@ -1054,17 +1055,19 @@ def cash_category_accounts(country_id: int, cursor: object) -> dict[int, int]:
     cursor.execute(
         """
         SELECT cash.category_id, m_cash.account_id, cash.category_role
-        FROM dbo.mapping_banks m_hd
+        FROM dbo.mapping m_hd
         JOIN dbo.dim_category hd
           ON hd.category_id = m_hd.category_id AND hd.country_id = m_hd.country_id
-        JOIN dbo.mapping_banks m_cash
+        JOIN dbo.mapping m_cash
           ON m_cash.account_id = m_hd.account_id
          AND m_cash.country_id = m_hd.country_id
          AND m_cash.category_id <> m_hd.category_id
+         AND m_cash.counterparty_account_id IS NULL
         JOIN dbo.dim_category cash
           ON cash.category_id = m_cash.category_id
          AND cash.country_id = m_cash.country_id
         WHERE m_hd.country_id = ?
+          AND m_hd.counterparty_account_id IS NULL
           AND LOWER(LTRIM(RTRIM(ISNULL(hd.category_role, N'')))) = N'hd'
           AND (
                 LOWER(LTRIM(RTRIM(ISNULL(cash.category_role, N'')))) = N'cash'
@@ -1095,12 +1098,13 @@ def cash_category_accounts(country_id: int, cursor: object) -> dict[int, int]:
 
 
 def account_links(country_id: int, cursor: object) -> dict[int, int]:
-    """category_id → account_id from ``dbo.mapping_banks`` for a country.
+    """category_id → account_id from ``dbo.mapping`` for a country.
 
-    The mapping table records which live bank account feeds each balance
-    category (the ``source`` post is the spaar checking account).
+    Bank, cash, and mirror links are the rows whose counterparty is empty.
+    A filled counterparty is one Bereken kruisposten leg and is not an
+    account balance. The ``source`` post is the spaar checking account.
     ``11019``, ``11021`` and ``11100`` always use ``dbo.balance_opening``. Mirror-role
-    posts never ride a leftover ``mapping_banks`` row as a live account.
+    posts never ride a leftover mapping row as a live account.
     A ``cash`` post is opening plus the bookings stored on that category,
     not the mapped account's balance.
     """
@@ -1113,7 +1117,8 @@ def account_links(country_id: int, cursor: object) -> dict[int, int]:
         if category_role_canonical(role) in (CATEGORY_ROLE_MIRROR, CATEGORY_ROLE_CASH)
     )
     cursor.execute(
-        "SELECT category_id, account_id FROM dbo.mapping_banks WHERE country_id = ?",
+        "SELECT category_id, account_id FROM dbo.mapping "
+        "WHERE country_id = ? AND counterparty_account_id IS NULL",
         (int(country_id),),
     )
     return {
@@ -1215,7 +1220,7 @@ def category_map(
 
     Every A/P ``dim_category`` row (local_code 1000-2999) is included; side
     comes from the code range. Resultaat 3000-4999 is not a sheet post.
-    ``dbo.mapping_banks`` overrides the account link per category.
+    ``dbo.mapping`` overrides the account link per category.
     """
     codes = category_local_codes(country_id, cursor)
     result: dict[int, tuple[str, int | None]] = {}

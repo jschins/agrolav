@@ -2768,8 +2768,9 @@ def _load_sibling_accounts(cursor: Any, country_id: int) -> list[dict[str, Any]]
         FROM dbo.account a
         JOIN dbo.person p ON p.id = a.person_id
         JOIN dbo.center n ON n.center_id = p.center_id
-        LEFT JOIN dbo.mapping_banks m
+        LEFT JOIN dbo.mapping m
           ON m.account_id = a.account_id AND m.country_id = n.country_id
+         AND m.counterparty_account_id IS NULL
         LEFT JOIN dbo.dim_category d
           ON d.category_id = m.category_id AND d.country_id = m.country_id
         WHERE n.country_id = ?
@@ -2938,10 +2939,11 @@ def _add_unit_kruisposten_excel(
     cursor.execute(
         f"""
         SELECT d.category_role
-        FROM dbo.mapping_banks m
+        FROM dbo.mapping m
         JOIN dbo.dim_category d
           ON d.category_id = m.category_id AND d.country_id = m.country_id
-        WHERE m.country_id = ? AND m.account_id IN ({marks})
+        WHERE m.country_id = ? AND m.counterparty_account_id IS NULL
+          AND m.account_id IN ({marks})
         """,
         (int(country_id), *account_ids),
     )
@@ -3360,10 +3362,11 @@ def export_resultaat_excel_data(
             cursor.execute(
                 f"""
                 SELECT DISTINCT m.account_id, d.local_code
-                FROM dbo.mapping_banks m
+                FROM dbo.mapping m
                 JOIN dbo.dim_category d
                   ON d.category_id = m.category_id AND d.country_id = m.country_id
                 WHERE m.country_id = ?
+                  AND m.counterparty_account_id IS NULL
                   AND m.account_id IN ({hd_marks})
                   AND LOWER(LTRIM(RTRIM(ISNULL(d.category_role, N'')))) = N'hd'
                 """,

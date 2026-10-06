@@ -703,12 +703,13 @@ def _country_registered_accounts(cursor: Any, country_id: int) -> set[int]:
 
 
 def _account_categories(cursor: Any, country_id: int) -> dict[int, int]:
-    """account_id → category_id from ``dbo.mapping_banks``."""
+    """account_id → category_id from ``dbo.mapping`` (no counterparty)."""
     cursor.execute(
         """
         SELECT account_id, category_id
-        FROM dbo.mapping_banks
+        FROM dbo.mapping
         WHERE country_id = ?
+          AND counterparty_account_id IS NULL
         """,
         (int(country_id),),
     )
@@ -730,8 +731,9 @@ def _user_roles(cursor: Any, country_id: int) -> dict[int, str]:
         """
         SELECT m.account_id, d.category_role
         FROM dbo.dim_category d
-        JOIN dbo.mapping_banks m
+        JOIN dbo.mapping m
           ON m.category_id = d.category_id AND m.country_id = d.country_id
+         AND m.counterparty_account_id IS NULL
         WHERE d.country_id = ?
           AND (
             LOWER(LTRIM(RTRIM(d.category_role))) = N'hd'

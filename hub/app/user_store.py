@@ -74,10 +74,11 @@ SELECT
     a.iban COLLATE Latin1_General_CI_AI AS account,
     CASE WHEN EXISTS (
         SELECT 1
-        FROM dbo.mapping_banks m
+        FROM dbo.mapping m
         JOIN dbo.dim_category d
           ON d.category_id = m.category_id AND d.country_id = c.country_id
         WHERE m.account_id = a.account_id
+          AND m.counterparty_account_id IS NULL
           AND LOWER(LTRIM(RTRIM(ISNULL(d.category_role, N'')))) = N'hd'
     ) THEN 1 ELSE 0 END AS hd
 FROM dbo.unit u
