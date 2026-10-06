@@ -31,9 +31,11 @@ here, then **deletes** it (backups hold Enable Banking keys). Dated names
 | Copy of the other side | `…/remote_backups/` | `…/local_backups/` |
 
 SSH / `scp` always use port **4523**. SQL Server in the container runs as uid
-**10001**. `BACKUP DATABASE` rewrites the file as `10001`, so `scp` as
-`agrolav` needs `chown agrolav` first. `scp` onto the server creates the file
-as `agrolav`, so a restore needs `chown 10001` first.
+**10001** (`mssql`). `/opt/sql_backups` itself stays owned by `agrolav`.
+The two folders under it change owner for each step. Who owns the folder,
+and who owns an existing `.bak`, is what makes `BACKUP` and `scp` succeed
+or fail. The sequences below hand the folder to the account that needs it,
+then hand it back.
 
 ---
 
@@ -52,8 +54,8 @@ mirrored folders — no `.bak` files at the root:
 
 ```text
 /opt/sql_backups/                  host, bind-mounted
-├── local_backups/                 copies written on the PC (§1.3 / §2.1)
-└── remote_backups/                written here by MSSQL2022 (§1.1), then deleted after pull
+├── local_backups/                 a .bak copied up from the PC (§1.2)
+└── remote_backups/                written here by MSSQL2022 (§1.1), then deleted after the pull
 ```
 
 Inside the container that is the same disk:
@@ -65,47 +67,40 @@ Inside the container that is the same disk:
 
 Do not `docker cp` through `/tmp`. The bind mount is the same directory.
 
-SQL Server (uid **10001**) must **own the folder** to create a new dated
-`.bak` (error 5 if the directory is `agrolav`). Keep `remote_backups/` as
-`10001`; only `chown` the **file** to `agrolav` when you `scp` it.
+<!-- {en:remote[5],database[5],container,backup,droplet} -->
+<!-- {nl:extern[5],database[5],container,reservekopie,droplet} -->
+
+### 1.1 Pull the remote database to this PC
+
+`scripts/pull-remote-backup.ps1` is this sequence. Run it from the repo root when you want the whole list done for you. The steps are here so a failed `chown` or a `Permission denied` can be matched to the line that owns the file.
+
+Uid **10001** is the SQL Server process inside `MSSQL2022`. User `agrolav` is the SSH login. A `BACKUP` is a create or an overwrite by uid 10001. An `scp` download is a read by `agrolav`.
+
+`BACKUP` returns operating-system error 5 when `remote_backups` or the existing `agrolav.bak` is owned by `agrolav`: uid 10001 cannot create or replace that file. The script therefore gives the directory and the file to 10001 before the backup. After the backup the owner stays 10001 and the group becomes `agrolav`, mode 640, so `scp` can read the file and the next backup can still overwrite it.
+
+The script asks for the `agrolav` password once (SSH and sudo; paste with Shift+Insert). It retries each ssh/scp step up to five times. The `sa` password is read on the droplet from `/root/sqlserver/.env` or `/opt/agrolav/.env`. It is not typed into the script.
+
+**1. On the droplet, give the folder and the file to SQL.**
 
 ```bash
 sudo chown 10001:10001 /opt/sql_backups/remote_backups
 sudo chmod 775 /opt/sql_backups/remote_backups
 ```
 
-<!-- {en:remote[5],database[5],container,backup,droplet} -->
-<!-- {nl:extern[5],database[5],container,reservekopie,droplet} -->
+When `agrolav.bak` is already there:
 
-### 1.1–1.2 Remote backup and copy to this PC
-
-From Windows, one script writes `agrolav.bak` on the droplet, `scp`s it to
-`C:\SQLBackups\remote_backups\agrolav{YYYYMMDD_HHMM}.bak`, then deletes the
-droplet file (stamp from the backup time, no seconds):
-
-```powershell
-powershell -File scripts/pull-remote-backup.ps1
+```bash
+sudo chown 10001:10001 /opt/sql_backups/remote_backups/agrolav.bak
+sudo chmod 660 /opt/sql_backups/remote_backups/agrolav.bak
 ```
 
-You need SSH as `agrolav` on port **4523**, and sudo on the droplet for
-`docker exec` / `chown`. The script asks for that password **once**: it hands
-it to `ssh`/`scp` through an `SSH_ASKPASS` helper (kept in the environment,
-not on disk) and to the droplet's `sudo -S` over stdin. Each ssh/scp step
-retries up to five times; after a "Permission denied" you can retype the
-password before the next attempt. The `sa` password is read on the server from
-`/root/sqlserver/.env` or `/opt/agrolav/.env` (never typed into the script).
+When it is not there, create an empty file owned by 10001 so the backup overwrites that file instead of creating one as the wrong user:
 
-What the script runs is the same as the two steps below.
+```bash
+sudo install -o 10001 -g 10001 -m 660 /dev/null /opt/sql_backups/remote_backups/agrolav.bak
+```
 
-<!-- {en:remote[5],backup[5],copy[5],pc[5],bak,scp} -->
-<!-- {nl:extern[5],reservekopie[5],kopie[5],pc[5],bak,scp} -->
-
-### 1.1 SQL to write the database to disk
-
-The folder must already be `10001` (above). A new filename is a create, not
-an overwrite of an existing file.
-
-SSMS from the authorized computer, through the VPC (`sa`):
+**2. Write the database.** SSMS on the authorized computer, or `sqlcmd` inside `MSSQL2022`. The path is the container path. `INIT` replaces the contents of that file.
 
 ```sql
 BACKUP DATABASE [agrolav]
@@ -117,184 +112,97 @@ WITH
     STATS = 10;
 ```
 
-Host file: `/opt/sql_backups/remote_backups/agrolav.bak`. Claim it for `scp`
-(every backup, not once):
+**3. Let `agrolav` read the file, and drop older dated copies in that folder.**
 
 ```bash
-sudo chown agrolav:agrolav /opt/sql_backups/remote_backups/agrolav.bak
+sudo chown 10001:agrolav /opt/sql_backups/remote_backups/agrolav.bak
+sudo chmod 640 /opt/sql_backups/remote_backups/agrolav.bak
+sudo rm -f /opt/sql_backups/remote_backups/agrolav[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.bak
 sudo ls -lh /opt/sql_backups/remote_backups/agrolav.bak
 ```
 
-<!-- {en:sql[5],write[5],database[5],disk[5],backup,bak} -->
-<!-- {nl:sql[5],schrijven[5],database[5],schijf[5],reservekopie,bak} -->
+The host path of that file is `/opt/sql_backups/remote_backups/agrolav.bak`.
 
-### 1.2 scp from the remote system to the local disk
-
-From Windows into the folder that holds **copies of the remote** database:
+**4. From Windows, copy it into the dated archive.** The stamp is the file time, with no seconds.
 
 ```powershell
-scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolav20260917_1204.bak
+scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolavYYYYMMDD_HHMM.bak
 ```
 
-That is `C:\SQLBackups\remote_backups\agrolavYYYYMMDD_HHMM.bak` on the PC,
-copied from `/var/opt/mssql/backup/remote_backups/agrolav.bak` inside
-`MSSQL2022`. Then delete the droplet file so the keys do not stay there:
+**5. On the droplet, delete every `.bak`.** The copy on the PC stays. The droplet must not keep the file: a backup holds the Enable Banking keys.
 
 ```bash
-sudo rm -f /opt/sql_backups/remote_backups/agrolav.bak
+sudo find /opt/sql_backups/remote_backups -type f \( -name '*.bak' -o -name '*.bak.partial' \) -delete
 ```
 
-<!-- {en:scp[5],remote[5],local[5],disk[5],copy,bak} -->
-<!-- {nl:scp[5],extern[5],lokaal[5],schijf[5],kopie,bak} -->
+That whole list is:
 
-### 1.3 SQL for restoring a local backup
+```powershell
+powershell -File scripts/pull-remote-backup.ps1
+```
 
-Put a backup written on the PC onto the remote instance. First write it
-locally (§2.1), then copy into the remote **local_backups** folder (same
-name as on Windows):
+`-CopyOnly` skips steps 1–3, copies the `agrolav.bak` already on the droplet, then runs step 5. That file has to be readable by `agrolav` already (owner 10001, group `agrolav`, mode 640).
+
+<!-- {en:remote[5],backup[5],copy[5],pc[5],bak,scp} -->
+<!-- {nl:extern[5],reservekopie[5],kopie[5],pc[5],bak,scp} -->
+
+### 1.2 Copy a local backup onto the droplet
+
+This sends a `.bak` that is already on the PC to `MSSQL2022`, then either replaces `agrolav` or restores a second database beside it. The PC file can be a dated pull under `C:\SQLBackups\remote_backups` or a backup this PC wrote under `C:\SQLBackups\local_backups` (§2.1).
+
+`local_backups` on the droplet is owned by uid 10001 so SQL can create a backup there. `scp` logs in as `agrolav`. The login succeeds and the copy still fails with `Permission denied` in either of these cases:
+
+- the directory is `10001:10001` mode 775, so `agrolav` is “other” and cannot create a file in it
+- a file of the same name is already there, owned by 10001 mode 660, so `agrolav` cannot overwrite it
+
+Hand the directory to `agrolav` for the `scp`, then hand the new file and the directory back to 10001 before `RESTORE`. SQL reads that file as uid 10001. A later `BACKUP` into the same folder is also uid 10001, and it returns error 5 while the folder belongs to `agrolav`.
+
+Use one filename in every command below. `agrolav.bak` is that name on the droplet. Substitute your dated PC name in the `scp` source only.
+
+**1. On the droplet, clear the destination and give the folder to `agrolav`.**
+
+```bash
+sudo rm -f /opt/sql_backups/local_backups/agrolav.bak
+sudo chown agrolav:agrolav /opt/sql_backups/local_backups
+```
+
+**2. From Windows, copy the file.**
+
+```powershell
+scp -P 4523 C:/SQLBackups/remote_backups/agrolavYYYYMMDD_HHMM.bak agrolav@209.38.39.105:/opt/sql_backups/local_backups/agrolav.bak
+```
+
+A backup written on this PC uses the other folder as the source:
 
 ```powershell
 scp -P 4523 C:/SQLBackups/local_backups/agrolav.bak agrolav@209.38.39.105:/opt/sql_backups/local_backups/agrolav.bak
 ```
 
-SQL Server must own the file:
+**3. On the droplet, give the file and the folder back to SQL.**
 
 ```bash
 sudo chown 10001:10001 /opt/sql_backups/local_backups/agrolav.bak
+sudo chown 10001:10001 /opt/sql_backups/local_backups
+sudo chmod 775 /opt/sql_backups/local_backups
 sudo ls -lh /opt/sql_backups/local_backups/agrolav.bak
 ```
 
-The same push works for a file that is already on the PC, such as a dated
-copy under `C:\SQLBackups\remote_backups`. `scp` it into
-`/opt/sql_backups/local_backups/` (keep the dated name), then `chown` it to
-uid **10001** so the container can read it. SQL Server sees that directory
-as `/var/opt/mssql/backup/local_backups/`. When the restore is finished,
-delete the droplet copy; the PC file stays.
+SQL Server sees `/var/opt/mssql/backup/local_backups/agrolav.bak`. That is the bind mount. The data files live under `/var/opt/mssql/data`. A restore path that puts `/opt/sql_backups` under `/var/opt/mssql/data` is not this file (operating-system error 2).
 
-```powershell
-scp -P 4523 C:/SQLBackups/remote_backups/agrolav20260922_1309.bak agrolav@209.38.39.105:/opt/sql_backups/local_backups/agrolav20260922_1309.bak
-```
-
-```bash
-sudo chown 10001:10001 /opt/sql_backups/local_backups/agrolav20260922_1309.bak
-sudo ls -lh /opt/sql_backups/local_backups/agrolav20260922_1309.bak
-```
+**4. Read the logical names.** SSMS on the authorized computer. The `LogicalName` column is what `MOVE` uses. For a backup of this database those names are `agrolav` and `agrolav_log`.
 
 ```sql
-RESTORE FILELISTONLY
-FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav20260922_1309.bak';
-```
-
-```bash
-sudo rm -f /opt/sql_backups/local_backups/agrolav20260922_1309.bak
-```
-
-To put one table back from that file without touching the rest of the live
-database, restore the `.bak` beside `agrolav` and copy the rows across.
-Do this instead of the `REPLACE` restore below. The side database keeps
-the old schema; the live table keeps columns added since that backup.
-Leave the `.bak` in place until this `RESTORE DATABASE` has finished, then
-delete it as above.
-
-`MOVE` uses the `LogicalName` values from `RESTORE FILELISTONLY`. The
-paths are inside the container, not on the PC:
-
-```sql
-RESTORE DATABASE agrolav_0922
-FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav20260922_1309.bak'
-WITH MOVE N'agrolav'     TO N'/var/opt/mssql/data/agrolav_0922.mdf',
-     MOVE N'agrolav_log' TO N'/var/opt/mssql/data/agrolav_0922_log.ldf',
-     RECOVERY;
-```
-
-Confirm the side copy has the rows and the live table is empty. A live
-count other than 0 means the insert would add to what is still there, and
-a repeated `transaction_id` would fail. Delete the live rows first if
-this run is meant to replace them.
-
-```sql
-SELECT COUNT(*) AS old_rows
-FROM agrolav_0922.dbo.transaction_beheer_instudo;
-
-SELECT COUNT(*) AS live_rows
-FROM agrolav.dbo.transaction_beheer_instudo;
-```
-
-Columns that exist only on the live table are the ones you keep. Copied
-rows get each such column's default, or `NULL` when the column allows it.
-A `NOT NULL` column with no default has to be given a default, or listed
-in the insert with a value, before the copy will succeed.
-
-```sql
-SELECT c.name
-FROM agrolav.sys.tables t
-JOIN agrolav.sys.columns c ON c.object_id = t.object_id
-WHERE t.name = N'transaction_beheer_instudo'
-  AND SCHEMA_NAME(t.schema_id) = N'dbo'
-  AND c.is_computed = 0
-EXCEPT
-SELECT c.name
-FROM agrolav_0922.sys.tables t
-JOIN agrolav_0922.sys.columns c ON c.object_id = t.object_id
-WHERE t.name = N'transaction_beheer_instudo'
-  AND SCHEMA_NAME(t.schema_id) = N'dbo'
-  AND c.is_computed = 0;
-```
-
-`transaction_id` is an `IDENTITY` column, so it has to be listed and
-identity insert has to be on. This copies only columns that exist in both
-tables:
-
-```sql
-DECLARE @cols nvarchar(max);
-
-SELECT @cols = STRING_AGG(QUOTENAME(live.name), N', ')
-               WITHIN GROUP (ORDER BY live.column_id)
-FROM agrolav.sys.tables t
-JOIN agrolav.sys.columns live ON live.object_id = t.object_id
-WHERE t.name = N'transaction_beheer_instudo'
-  AND SCHEMA_NAME(t.schema_id) = N'dbo'
-  AND live.is_computed = 0
-  AND live.name IN (
-      SELECT old.name
-      FROM agrolav_0922.sys.tables ot
-      JOIN agrolav_0922.sys.columns old ON old.object_id = ot.object_id
-      WHERE ot.name = N'transaction_beheer_instudo'
-        AND SCHEMA_NAME(ot.schema_id) = N'dbo'
-        AND old.is_computed = 0
-  );
-
-DECLARE @sql nvarchar(max) = N'
-SET IDENTITY_INSERT agrolav.dbo.transaction_beheer_instudo ON;
-INSERT INTO agrolav.dbo.transaction_beheer_instudo (' + @cols + N')
-SELECT ' + @cols + N'
-FROM agrolav_0922.dbo.transaction_beheer_instudo;
-SET IDENTITY_INSERT agrolav.dbo.transaction_beheer_instudo OFF;';
-
-PRINT @sql;
-EXEC (@sql);
-```
-
-Read the `PRINT` output before `EXEC`. The live count should then match
-`old_rows`. Drop the side database when it does:
-
-```sql
-SELECT COUNT(*) AS live_rows
-FROM agrolav.dbo.transaction_beheer_instudo;
-
-ALTER DATABASE agrolav_0922 SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-DROP DATABASE agrolav_0922;
-```
-
-SSMS from the authorized computer, through the VPC:
-
-```sql
-USE master;
 RESTORE FILELISTONLY
 FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav.bak';
 ```
 
-Then, with those logical names:
+Keep the `.bak` until the restore in 1.2a or 1.2b has finished. The delete is the last command of that restore. The PC file stays.
+
+#### 1.2a Overwrite `agrolav`
+
+This replaces the live database. Every current row in `agrolav` is the backup’s row afterwards.
+
+`MOVE` sends the files to the paths already used by the live database. If `FILELISTONLY` printed other logical names, use those names here.
 
 ```sql
 USE master;
@@ -306,6 +214,8 @@ WITH ROLLBACK IMMEDIATE;
 RESTORE DATABASE [agrolav]
 FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav.bak'
 WITH
+    MOVE N'agrolav'     TO N'/var/opt/mssql/data/agrolav.mdf',
+    MOVE N'agrolav_log' TO N'/var/opt/mssql/data/agrolav_log.ldf',
     REPLACE,
     RECOVERY;
 
@@ -313,7 +223,7 @@ ALTER DATABASE [agrolav]
 SET MULTI_USER;
 ```
 
-The hub does not auto-create tables. After a restore:
+The hub does not auto-create tables. After the restore:
 
 ```sql
 USE agrolav;
@@ -333,9 +243,46 @@ Run the idempotent scripts so local and remote stay identical:
 - `hub/sql/visitor_ip.sql`
 - `hub/sql/egress_ip.sql`
 
-Insert the production router WAN addresses into `dbo.egress_ip`
-**before** country/center logins can succeed (empty `egress_ip` admits
-nobody). See [Logins](#logins).
+Insert the production router WAN addresses into `dbo.egress_ip` before country/center logins can succeed (an empty `egress_ip` admits nobody). See [Logins](#logins).
+
+Delete the droplet copy after this restore has finished:
+
+```bash
+sudo rm -f /opt/sql_backups/local_backups/agrolav.bak
+```
+
+#### 1.2b A second database beside `agrolav`
+
+This leaves `agrolav` as it is and restores the file as `agrolav_copy`, so a query can name both databases. Pick another name when `agrolav_copy` already exists. `MOVE` writes `agrolav_copy.mdf` and `agrolav_copy_log.ldf`. The live data files stay the live database.
+
+```sql
+RESTORE DATABASE [agrolav_copy]
+FROM DISK = N'/var/opt/mssql/backup/local_backups/agrolav.bak'
+WITH
+    MOVE N'agrolav'     TO N'/var/opt/mssql/data/agrolav_copy.mdf',
+    MOVE N'agrolav_log' TO N'/var/opt/mssql/data/agrolav_copy_log.ldf',
+    RECOVERY;
+```
+
+Comparisons and copies use three-part names:
+
+```sql
+SELECT * FROM agrolav.dbo.journal;
+SELECT * FROM agrolav_copy.dbo.journal;
+```
+
+Delete the droplet copy after this restore has finished. The PC file stays.
+
+```bash
+sudo rm -f /opt/sql_backups/local_backups/agrolav.bak
+```
+
+When the side database is no longer needed:
+
+```sql
+ALTER DATABASE [agrolav_copy] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+DROP DATABASE [agrolav_copy];
+```
 
 ---
 
@@ -369,20 +316,15 @@ WITH
     STATS = 10;
 ```
 
-Host file: `C:\SQLBackups\local_backups\agrolav.bak`. That is the file §1.3
-copies to `/opt/sql_backups/local_backups/`.
+Host file: `C:\SQLBackups\local_backups\agrolav.bak`. §1.2 can copy that file
+to `/opt/sql_backups/local_backups/`.
 
 <!-- {en:sql[5],write[5],database[5],disk[5],backup,bak} -->
 <!-- {nl:sql[5],schrijven[5],database[5],schijf[5],reservekopie,bak} -->
 
 ### 2.2 scp from the remote system to the local disk
 
-Same copy as §1.2: take the file the remote instance just wrote, store it
-under `remote_backups` on the PC.
-
-```powershell
-scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolav.bak
-```
+That copy is §1.1. `scripts/pull-remote-backup.ps1` writes the file, copies it to `C:\SQLBackups\remote_backups\agrolavYYYYMMDD_HHMM.bak`, and deletes it on the droplet.
 
 <!-- {en:scp[5],remote[5],local[5],disk[5],copy,bak} -->
 <!-- {nl:scp[5],extern[5],lokaal[5],schijf[5],kopie,bak} -->
@@ -431,7 +373,7 @@ for a typed `YES` first; `-Yes` skips that. Stop the hub, BFF and balance apps
 before running it.
 
 Then the same table check and `visitor_ip.sql` / `egress_ip.sql` as
-§1.3. A local restore does not need production WAN rows in
+§1.2a. A local restore does not need production WAN rows in
 `dbo.egress_ip` if you sign in with `HUB_DEV_LOGIN=1` on loopback.
 
 ---

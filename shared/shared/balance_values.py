@@ -1092,9 +1092,67 @@ def cash_category_accounts(country_id: int, cursor: object) -> dict[int, int]:
             chosen[account] = (category, is_cash)
     if chosen:
         return {category: account for account, (category, _cash) in chosen.items()}
+    associated = _cash_from_assoc(country_id, cursor)
+    if associated:
+        return associated
     if int(country_id) == 5:
         return dict(CASH_ON_HAND_ACCOUNT)
     return {}
+
+
+def _cash_from_assoc(country_id: int, cursor: object) -> dict[int, int]:
+    """Cash post whose ``assoc_category_id`` is the HD bank, when mapping has no row.
+
+    ``1057`` points at ``1053``. A Geldautomaat booking on that HD account is
+    written to ``1057``. The column may be absent; then this returns nothing.
+    """
+    try:
+        cursor.execute(
+            """
+            SELECT COL_LENGTH(N'dbo.dim_category', N'assoc_category_id'),
+                   COL_LENGTH(N'dbo.dim_category', N'account_id')
+            """
+        )
+        widths = cursor.fetchone()
+    except Exception:
+        return {}
+    if widths is None or widths[0] is None or widths[1] is None:
+        return {}
+    try:
+        cursor.execute(
+            """
+            SELECT cash.category_id, cash.account_id, cash.category_role
+            FROM dbo.dim_category cash
+            JOIN dbo.dim_category hd
+              ON hd.category_id = cash.assoc_category_id
+             AND hd.country_id = cash.country_id
+            WHERE cash.country_id = ?
+              AND cash.account_id IS NOT NULL
+              AND LOWER(LTRIM(RTRIM(ISNULL(hd.category_role, N'')))) = N'hd'
+              AND (
+                    LOWER(LTRIM(RTRIM(ISNULL(cash.category_role, N'')))) = N'cash'
+                    OR cash.category_role IS NULL
+                    OR LTRIM(RTRIM(cash.category_role)) = N''
+                  )
+            """,
+            (int(country_id),),
+        )
+        rows = cursor.fetchall()
+    except Exception:
+        return {}
+    chosen: dict[int, tuple[int, bool]] = {}
+    for row in rows:
+        if row is None or len(row) < 2 or row[0] is None or row[1] is None:
+            continue
+        category = int(row[0])
+        account = int(row[1])
+        is_cash = category_role_canonical(row[2] if len(row) > 2 else None) == CATEGORY_ROLE_CASH
+        previous = chosen.get(account)
+        if previous is None or (is_cash and not previous[1]) or (
+            is_cash == previous[1] and category < previous[0]
+        ):
+            chosen[account] = (category, is_cash)
+    return {category: account for account, (category, _cash) in chosen.items()}
 
 
 def account_links(country_id: int, cursor: object) -> dict[int, int]:

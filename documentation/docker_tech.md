@@ -353,7 +353,7 @@ Default restore paths land in `/var/opt/mssql/data`, which sits on the
 `mssql-data` volume. If `FILELISTONLY` shows different logical names, restore
 only the data/log rows with `MOVE` to `/var/opt/mssql/data/...`.
 
-Verify the app's tables exist ([`DATABASE.md`](DATABASE.md) §1.3):
+Verify the app's tables exist ([`DATABASE.md`](DATABASE.md) §1.2a):
 
 ```sql
 USE agrolav;
@@ -370,7 +370,7 @@ ORDER BY name;
 
 Then run the idempotent scripts and re-add the production router WAN addresses
 into `dbo.egress_ip` before country/center logins work
-([`DATABASE.md`](DATABASE.md) §1.3).
+([`DATABASE.md`](DATABASE.md) §1.2a).
 
 Bring the apps back:
 

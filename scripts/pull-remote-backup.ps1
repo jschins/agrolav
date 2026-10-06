@@ -1,4 +1,4 @@
-# Remote agrolav backup (DATABASE.md §1.1 + §1.2).
+# Remote agrolav backup (DATABASE.md §1.1).
 # From Windows:
 #
 #   powershell -File scripts/pull-remote-backup.ps1

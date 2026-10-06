@@ -16,7 +16,9 @@ Each leg of a pair is written on its own. Every fixed leg is the
   (category 1NNNN) and the unit is the ``sib`` row.
 * ``unitXX0X`` against the ``hd`` account in the same center: the unit is
   local XX1X (category 1XX1X) and the sibling is the ``cp`` row.
-  ``unit1108`` writes the unit to 11118.
+  ``unit1108`` writes the unit to 11118. When ``assoc_category_id`` names
+  that pair, the work-unit booking is the ``rc`` row that points at the HD
+  category and the HD booking is still ``cp``.
 
 A country without a row for a role leaves that leg uncategorized.
 
@@ -358,6 +360,111 @@ def pair_local_codes(
     return (None, None)
 
 
+@dataclass(frozen=True)
+class CategoryLink:
+    """One ``dbo.dim_category`` row used by the assoc lookup.
+
+    ``account_id`` is the bank link. ``assoc_category_id`` is the other
+    category this row names. ``None`` on either column means this row does
+    not take part in that half of the lookup.
+    """
+
+    category_id: int
+    local_code: int
+    role: str
+    account_id: int | None = None
+    assoc_category_id: int | None = None
+
+
+def _link_role(role: object) -> str:
+    return _role_text(role)
+
+
+def _is_unit_role(role: str) -> bool:
+    return role == "unit" or unit_digits(role) is not None
+
+
+def _bank_link(links: Sequence[CategoryLink], account_id: int) -> CategoryLink | None:
+    """The bank category of this account. Cash on the same account is skipped."""
+    hits: list[CategoryLink] = []
+    for link in links:
+        if link.account_id != int(account_id):
+            continue
+        role = link.role
+        if role in ("cash", "rc", "cp", "mirror"):
+            continue
+        if role in ("hd", "source", "bank") or _is_unit_role(role):
+            hits.append(link)
+    if not hits:
+        return None
+    hits.sort(key=lambda link: (0 if link.role == "hd" else 1 if _is_unit_role(link.role) else 2, link.category_id))
+    return hits[0]
+
+
+def _rc_for_hd(links: Sequence[CategoryLink], hd_category_id: int) -> CategoryLink | None:
+    """The ``rc`` row whose assoc is this HD category. Lowest local code wins."""
+    found = [
+        link
+        for link in links
+        if link.role == "rc" and link.assoc_category_id == int(hd_category_id)
+    ]
+    if not found:
+        return None
+    found.sort(key=lambda link: (link.local_code, link.category_id))
+    return found[0]
+
+
+def assoc_pair_local_codes(
+    links: Sequence[CategoryLink],
+    from_account: int,
+    to_account: int,
+    from_center: str | None = None,
+    to_center: str | None = None,
+    cp_local: int | None = None,
+) -> tuple[int, int] | None:
+    """Local codes for a work-unit against its HD, or ``None`` if unresolved.
+
+    The HD row's ``assoc_category_id`` is the work-unit bank. The ``rc`` row
+    whose assoc is that HD category is written on the work-unit booking. The
+    HD booking is written to ``cp``. That is the same leg the digit rule
+    writes to ``cp``. An ``rc`` row such as 1101 points at its own work-unit
+    bank, not at the source. The source is the country's ``source`` row. A
+    unit against that source is not decided here, so that booking is not
+    newly written to ``cp``.
+    """
+    if cp_local is None or not _centers_match(from_center, to_center):
+        return None
+    left = _bank_link(links, from_account)
+    right = _bank_link(links, to_account)
+    if left is None or right is None:
+        return None
+    if left.role == "hd" and _is_unit_role(right.role) and left.assoc_category_id == right.category_id:
+        register = _rc_for_hd(links, left.category_id)
+        if register is None:
+            return None
+        return (int(cp_local), int(register.local_code))
+    if right.role == "hd" and _is_unit_role(left.role) and right.assoc_category_id == left.category_id:
+        register = _rc_for_hd(links, right.category_id)
+        if register is None:
+            return None
+        return (int(register.local_code), int(cp_local))
+    return None
+
+
+def assoc_register_locals(links: Sequence[CategoryLink]) -> set[int]:
+    """Local codes written on the work-unit leg, so a later run can release them."""
+    hd_ids = {
+        link.category_id
+        for link in links
+        if link.role == "hd" and link.assoc_category_id is not None
+    }
+    return {
+        int(link.local_code)
+        for link in links
+        if link.role == "rc" and link.assoc_category_id in hd_ids
+    }
+
+
 def _activa_sheet_amount(local_code: int, amount: Decimal) -> Decimal | None:
     """Activa sign for a cross-posting leg.
 
@@ -548,11 +655,14 @@ def apply_cross_postings(
     center_of = _account_centers(cursor, country_id)
     role_of = _user_roles(cursor, country_id)
     account_category = _account_categories(cursor, country_id)
+    links = _category_links(cursor, country_id)
     digit_codes = {
         digits
         for role in role_of.values()
         if (digits := user_digits(role)) is not None
     }
+    if links:
+        digit_codes.update(assoc_register_locals(links))
     digit_codes.update(
         hd_sibling_local_code(digits)
         for role in role_of.values()
@@ -589,14 +699,18 @@ def apply_cross_postings(
         else:
             from_account, to_account = right_account, left_account
             from_id, to_id = right_id, left_id
-        from_local, to_local = pair_local_codes(
-            iban_of.get(from_account, ""),
-            iban_of.get(to_account, ""),
+        from_local, to_local = _pair_locals(
+            links,
+            from_account,
+            to_account,
             center_of.get(from_account),
             center_of.get(to_account),
+            legs.cp,
+            iban_of.get(from_account, ""),
+            iban_of.get(to_account, ""),
             role_of.get(from_account, ""),
             role_of.get(to_account, ""),
-            legs=legs,
+            legs,
         )
         if from_local is None or to_local is None:
             continue
@@ -661,6 +775,82 @@ def apply_cross_postings(
         print(f"cross-postings: category totals were not refreshed: {exc}")
     updated = sum(len(ids) for ids in by_category.values())
     return {"updated": updated, "released": len(to_release)}
+
+
+def _pair_locals(
+    links: Sequence[CategoryLink] | None,
+    from_account: int,
+    to_account: int,
+    from_center: str | None,
+    to_center: str | None,
+    cp_local: int | None,
+    from_iban: object,
+    to_iban: object,
+    from_role: object,
+    to_role: object,
+    legs: PairLegs,
+) -> tuple[int | None, int | None]:
+    """Assoc lookup first. The digit and Centrale rules run when it does not resolve.
+
+    The assoc lookup writes ``cp`` on the HD booking. The digit rule writes
+    ``cp`` on that same booking. A unit against ``source`` stays on the digit
+    rule, which leaves it uncategorized, so that booking is not written to ``cp``.
+    """
+    if links:
+        found = assoc_pair_local_codes(
+            links,
+            from_account,
+            to_account,
+            from_center,
+            to_center,
+            cp_local,
+        )
+        if found is not None:
+            return found
+    return pair_local_codes(
+        from_iban,
+        to_iban,
+        from_center,
+        to_center,
+        from_role,
+        to_role,
+        legs=legs,
+    )
+
+
+def _category_links(cursor: Any, country_id: int) -> list[CategoryLink] | None:
+    """Rows for the assoc lookup, or ``None`` when the columns are not there yet."""
+    cursor.execute(
+        """
+        SELECT COL_LENGTH(N'dbo.dim_category', N'account_id'),
+               COL_LENGTH(N'dbo.dim_category', N'assoc_category_id')
+        """
+    )
+    widths = cursor.fetchone()
+    if widths is None or widths[0] is None or widths[1] is None:
+        return None
+    cursor.execute(
+        """
+        SELECT category_id, local_code, category_role, account_id, assoc_category_id
+        FROM dbo.dim_category
+        WHERE country_id = ?
+        """,
+        (int(country_id),),
+    )
+    rows: list[CategoryLink] = []
+    for category_id, local_code, role, account_id, assoc_id in cursor.fetchall():
+        if category_id is None or local_code is None:
+            continue
+        rows.append(
+            CategoryLink(
+                int(category_id),
+                int(local_code),
+                _link_role(role),
+                None if account_id is None else int(account_id),
+                None if assoc_id is None else int(assoc_id),
+            )
+        )
+    return rows
 
 
 def _account_centers(cursor: Any, country_id: int) -> dict[int, str]:

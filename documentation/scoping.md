@@ -97,7 +97,7 @@ The filter is applied on:
 A category name or code that is absent from the visibility map is kept.
 
 HD versus work-unit is `category_role = 'hd'` on the unit’s mapped bank
-category (`dbo.mapping_banks` joined to `dbo.dim_category`). The username
+category (`dbo.mapping` joined to `dbo.dim_category`, counterparty empty). The username
 prefix `hd_` is the fallback. The flag is stored on the session at login.
 Until the next login, a unit whose name starts with `hd_` is still treated
 as HD.

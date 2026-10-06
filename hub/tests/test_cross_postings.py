@@ -6,10 +6,13 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.cross_postings import (
+    CategoryLink,
     PairLegs,
     _IBAN_NL46,
     _IBAN_NL84,
     _load_candidates,
+    _pair_locals,
+    assoc_pair_local_codes,
     between_registered_accounts,
     category_id_for_local_code,
     category_id_offset,
@@ -263,6 +266,52 @@ class CrossPostingMatchTests(unittest.TestCase):
                 "unit1025",
                 "hd",
                 legs=_LEGS,
+            ),
+            (None, None),
+        )
+
+    def test_assoc_writes_cp_on_the_hd_booking(self) -> None:
+        links = (
+            CategoryLink(1053, 1053, "hd", 44, 1056),
+            CategoryLink(1056, 1056, "unit", 21, 1101),
+            CategoryLink(1051, 1051, "source", 18, None),
+            CategoryLink(1101, 1101, "rc", None, 1056),
+            CategoryLink(1111, 1111, "rc", None, 1053),
+        )
+        self.assertEqual(
+            assoc_pair_local_codes(links, 21, 44, "keizersgracht", "keizersgracht", 1110),
+            (1111, 1110),
+        )
+        self.assertEqual(
+            assoc_pair_local_codes(links, 44, 21, "keizersgracht", "keizersgracht", 1110),
+            (1110, 1111),
+        )
+        old = pair_local_codes(
+            "NL00INGB0000000001",
+            "NL00INGB0000000002",
+            "keizersgracht",
+            "keizersgracht",
+            "unit1101",
+            "hd",
+            legs=PairLegs(cp=1110),
+        )
+        self.assertEqual(old, (1111, 1110))
+        self.assertIsNone(
+            assoc_pair_local_codes(links, 21, 18, "keizersgracht", "keizersgracht", 1110)
+        )
+        self.assertEqual(
+            _pair_locals(
+                links,
+                21,
+                18,
+                "keizersgracht",
+                "keizersgracht",
+                1110,
+                "NL00INGB0000000001",
+                "NL00INGB0000000002",
+                "unit",
+                "source",
+                PairLegs(cp=1110),
             ),
             (None, None),
         )

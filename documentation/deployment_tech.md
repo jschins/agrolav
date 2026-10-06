@@ -528,7 +528,7 @@ sudo journalctl -u agrolav-hub -n 50 --no-pager
 
 - `HUB_DATABASE_URL is not set` → env not reaching the process (§11).
 - `dbo.person missing` → restore a database that contains the schema
-(`[DATABASE.md](DATABASE.md)` §1.3; `hub/sql/phase_c.sql` is
+(`[DATABASE.md](DATABASE.md)` §1.2a; `hub/sql/phase_c.sql` is
 wipe-and-recreate; do not run it live).
 - `ImportError: libodbc.so.2` → §10.
 

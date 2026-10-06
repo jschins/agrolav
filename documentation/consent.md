@@ -3,7 +3,8 @@
 Notes from the planned split: account-only login, two account groups, one
 country balance. Not implemented yet. Beheer (country 4) is out of scope.
 
-Today one person (id 24) holds five IBANs, all mapped on `dbo.mapping_banks`:
+Today one person (id 24) holds five IBANs, all mapped on `dbo.mapping`
+(counterparty empty):
 
 | account_id | IBAN | name |
 |-----------:|------|------|
@@ -47,7 +48,7 @@ different product (2-digit expense matrix, no journal, no 2000).
 
 **Do this (data).** One `dbo.person` per Instudo IBAN. Two centers for the
 two groups. Personal login is then account-only; center login is one group;
-country login is everyone. Keep the same `account_id`s so `mapping_banks`
+country login is everyone. Keep the same `account_id`s so `dbo.mapping`
 can stay. Leave `has_balance`, account-modality, and the country sheet as
 they are.
 
@@ -60,7 +61,7 @@ bank switcher.
 
 **Do not bundle center balances.** A center is an access group, not a
 balance grain. Journals, `balance_opening`, `afschrijvingen`,
-`dim_category` (incl. `parent`), `mapping_banks`, and the 2000 plug are
+`dim_category` (incl. `parent`), `dbo.mapping`, and the 2000 plug are
 all `country_id`. Two centers do not give two sheets. Instudo already has
 **Bijdrage SI centrale** (3125): inter-group bookings make “sum of two
 center 2000s = country 2000” false unless that contra is designed.
