@@ -757,7 +757,7 @@ def clear_bookings(
             remainder_id, _remainder_code = require_remainder_row(country_id, cursor)
             if reset_all:
                 cursor.execute(
-                    f"UPDATE {table} SET modification = -1, category_id = ?{where_sql}",
+                    f"UPDATE {table} SET modification = -1, category_id = ?, hit = NULL{where_sql}",
                     (remainder_id, *where_params),
                 )
             else:
@@ -767,7 +767,7 @@ def clear_bookings(
                 else:
                     kept_sql = f" WHERE {hand_kept}"
                 cursor.execute(
-                    f"UPDATE {table} SET modification = -1{kept_sql}",
+                    f"UPDATE {table} SET modification = -1, hit = NULL{kept_sql}",
                     where_params,
                 )
                 cursor.execute(

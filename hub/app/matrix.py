@@ -511,7 +511,16 @@ def recalculate_pack_from_scratch(pack: PersonScope) -> None:
     from app.core.categorize import recategorize_transactions
     from app.sql_catalog import years_for_person
 
+    from shared.handset_debug import recalc_debug
+
     years = years_for_person(pack.person)
+    recalc_debug(
+        "person",
+        person=pack.person,
+        center=pack.center,
+        country=pack.country,
+        years=years,
+    )
     for year in years:
         year_pack = replace(pack, year=year)
         with bind_scope(year_pack):
@@ -533,12 +542,19 @@ def recalculate_all_from_scratch(
 
     iban = "".join(str(account or "").split()).upper() or None
     with CALC_LOCK:
+        from shared.handset_debug import recalc_debug
+
         packs = refresh_people()
         if person_folders:
             wanted = {Path(name).name for name in person_folders}
             to_run = [p for p in packs if p.person_name in wanted]
         else:
             to_run = packs
+        recalc_debug(
+            "center-people",
+            people=[p.person for p in to_run],
+            skipped=[p.person for p in packs if p not in to_run],
+        )
         for pack in to_run:
             scoped = replace(pack, account=iban) if iban else pack
             recalculate_pack_from_scratch(scoped)

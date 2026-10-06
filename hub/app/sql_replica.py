@@ -978,15 +978,20 @@ def _executemany_commit(conn, cursor, sql: str, params: list[tuple[Any, ...]]) -
             pass
 
 
-def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
+def sync_bound_transactions(records: list[dict[str, Any]], *, trace: bool = False) -> None:
     """UPDATE ``transaction_*`` for the person/year(/bank) bound in ``app.runtime``."""
     from app import user_store
+    from shared.handset_debug import recalc_debug
 
     if not user_store.database_url():
+        if trace:
+            recalc_debug("save-skip", reason="no database url")
         return
     try:
         bound = _open_bound_scope()
         if bound is None:
+            if trace:
+                recalc_debug("save-skip", reason="no bound scope", rows=len(records))
             return
         bound.cursor.execute(
             """
@@ -1014,6 +1019,13 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
             by_code[code] = cid
         if remainder_id is None:
             print(f"sql replica: no remainder category for {bound.username!r}")
+            if trace:
+                recalc_debug(
+                    "save-skip",
+                    reason="no remainder",
+                    person=bound.username,
+                    person_id=bound.person_id,
+                )
             return
 
         extra = ""
@@ -1061,11 +1073,52 @@ def sync_bound_transactions(records: list[dict[str, Any]]) -> None:
                 row = (*row, bound.bank_key)
             params.append(row)
         if not params:
+            if trace:
+                recalc_debug("save-skip", reason="no params", person=bound.username)
             return
+        if trace:
+            hit_rows = [row for row in params if row[2]]
+            recalc_debug(
+                "save",
+                person=bound.username,
+                person_id=bound.person_id,
+                year=bound.year,
+                account_id=bound.account_id,
+                table=bound.table,
+                rows=len(params),
+                hits=len(hit_rows),
+                remainder_id=remainder_id,
+                code_4021=by_code.get(4021),
+            )
+            shown = 0
+            for row in params:
+                hit = row[2]
+                if not hit or ("pension" not in str(hit) and "huur" not in str(hit)):
+                    continue
+                recalc_debug(
+                    "save-row",
+                    source_id=row[6],
+                    category_id=row[0],
+                    modification=row[1],
+                    hit=hit,
+                )
+                shown += 1
+                if shown >= 8:
+                    break
         _executemany_commit(bound.conn, bound.cursor, sql, params)
+        if trace:
+            recalc_debug(
+                "save-done",
+                person=bound.username,
+                person_id=bound.person_id,
+                year=bound.year,
+                rowcount=bound.cursor.rowcount,
+            )
         sync_person_category_totals(bound)
     except Exception as exc:  # noqa: BLE001
         print(f"sql replica: failed to update bookings: {exc}")
+        if trace:
+            recalc_debug("save-error", error=f"{type(exc).__name__}: {exc}")
         raise
 
 

@@ -10,6 +10,12 @@ def login_debug(procedure: str, **fields: object) -> None:
     print(f"LOGIN-DEBUG {procedure} {bits}".rstrip(), flush=True)
 
 
+def recalc_debug(procedure: str, **fields: object) -> None:
+    """One line for Recalculate from scratch. Grep ``RECALC-DEBUG``."""
+    bits = " ".join(f"{key}={value!r}" for key, value in fields.items())
+    print(f"RECALC-DEBUG {procedure} {bits}".rstrip(), flush=True)
+
+
 def handset_debug(
     procedure: str,
     *,

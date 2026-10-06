@@ -984,9 +984,12 @@ def api_recalculate_incremental() -> dict[str, Any]:
 @app.post("/api/recalculate-from-scratch")
 def api_recalculate_from_scratch() -> dict[str, Any]:
     from app.centrale_sync import hub_post, scope_matrix
+    from shared.handset_debug import recalc_debug
 
+    scope = _recalculate_scope()
+    recalc_debug("client", **scope)
     try:
-        result = hub_post("/recalculate-from-scratch", _recalculate_scope(), timeout=600.0)
+        result = hub_post("/recalculate-from-scratch", scope, timeout=600.0)
         matrix = result.get("matrix")
         if isinstance(matrix, dict):
             return scope_matrix(matrix)

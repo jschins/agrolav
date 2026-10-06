@@ -1155,7 +1155,7 @@ def _update_ids(cursor: Any, table: str, ids: list[int], category_id: int, modif
         cursor.execute(
             f"""
             UPDATE {table}
-            SET category_id = ?, modification = ?
+            SET category_id = ?, modification = ?, hit = NULL
             WHERE transaction_id IN ({marks})
             """,
             [category_id, modification, *chunk],

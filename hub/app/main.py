@@ -880,6 +880,15 @@ def api_recalculate_from_scratch(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     req = body or RecalculateScratchRequest()
+    from shared.handset_debug import recalc_debug
+
+    recalc_debug(
+        "hub",
+        center=center,
+        person=req.person,
+        account=req.account,
+        whole_country=req.whole_country,
+    )
     try:
         payload = store.recalculate_from_scratch_all(
             center,

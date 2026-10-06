@@ -97,7 +97,7 @@ def _load_categorized_store() -> dict[str, Any]:
     return {"transactions": [dict(item) for item in (rows or [])]}
 
 
-def _persist_categorized_store(data: dict[str, Any]) -> dict[str, Any]:
+def _persist_categorized_store(data: dict[str, Any], *, trace: bool = False) -> dict[str, Any]:
     """UPDATE matching SQL rows."""
     data = _migrate_categorized_store(data)
     data.pop("modifications", None)
@@ -105,7 +105,7 @@ def _persist_categorized_store(data: dict[str, Any]) -> dict[str, Any]:
 
     txs = data.get("transactions")
     if isinstance(txs, list):
-        sync_bound_transactions(txs)
+        sync_bound_transactions(txs, trace=trace)
     return data
 
 
@@ -945,12 +945,66 @@ def recategorize_transactions(
             only_uncalculated=only_uncalculated,
         )
 
+    if from_scratch:
+        _recalc_debug_score(general, records, categorized)
+
     result = dict(data) if data else {}
     result["transactions"] = sorted(categorized, key=_tx_sort_key, reverse=True)
     result.pop("modifications", None)
 
-    result = _persist_categorized_store(result)
+    result = _persist_categorized_store(result, trace=from_scratch)
     return _write_category_totals(result, general)
+
+
+def _recalc_debug_score(
+    general: dict[str, list[str]],
+    loaded: list[dict[str, Any]],
+    categorized: list[dict[str, Any]],
+) -> None:
+    """Print the from-scratch score for the bound person. Grep ``RECALC-DEBUG``."""
+    from shared.handset_debug import recalc_debug
+
+    def _attached(needle: str) -> list[str]:
+        found: list[str] = []
+        for name, fields in general.items():
+            for field in fields or []:
+                if needle in str(field).lower():
+                    found.append(f"{name}={field}")
+        return found[:6]
+
+    hits = [row for row in categorized if row.get("hit")]
+    misses = [
+        row
+        for row in categorized
+        if _modification_of(row) == MOD_UNCALCULATED and not row.get("hit")
+    ]
+    recalc_debug(
+        "score",
+        person=str(paths.BOUND_PERSON or ""),
+        year=paths.BOUND_YEAR,
+        country=str(paths.BOUND_COUNTRY or ""),
+        loaded=len(loaded),
+        scored=len(categorized),
+        hits=len(hits),
+        misses=len(misses),
+        pension=_attached("pension"),
+        huur=_attached("huur"),
+    )
+    shown = 0
+    for row in categorized:
+        blob = f"{row.get('name') or ''} {row.get('description') or ''}".lower()
+        if "pension" not in blob and "huur" not in blob:
+            continue
+        recalc_debug(
+            "row",
+            id=row.get("id"),
+            category=row.get("category"),
+            modification=row.get("modification"),
+            hit=row.get("hit"),
+        )
+        shown += 1
+        if shown >= 8:
+            break
 
 
 def ircft_add_term(

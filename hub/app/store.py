@@ -585,6 +585,17 @@ def recalculate_from_scratch_all(
     centers = list_centers(primary_country) if whole_country and primary_country else [primary]
     if not centers:
         centers = [primary]
+    from shared.handset_debug import recalc_debug
+
+    recalc_debug(
+        "scope",
+        center=primary,
+        country=primary_country,
+        whole_country=bool(whole_country),
+        centers=centers,
+        person=name,
+        account=iban,
+    )
     uid = account_uid_for_iban(name, iban) if name and iban else None
     with CALC_LOCK:
         if primary_country:
