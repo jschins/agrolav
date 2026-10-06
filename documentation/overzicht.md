@@ -17,7 +17,7 @@ stichting, sectie, deel en werkeenheid.
 | ------- | ------------- | ----------- | ----- | ------ | ----------- | ------ |
 | country | `dbo.country` | *Stichting* | Ja    | Ja     | Nee         | G P    |
 | center  | `dbo.center`  | *Sectie*    | Nee   | Nee    | Nee         | P      |
-| person  | `dbo.person`  | *Deel*      | Nee   | Nee    | Ja          | P      |
+| person  | `dbo.person`  | *Deel*      | Nee   | Nee    | Nee         | P      |
 | unit    | `dbo.unit`    | *Eenheid*   | Ja    | Nee    | Ja          | P      |
 
 

@@ -207,16 +207,16 @@ function loginName(): string {
   return new URLSearchParams(window.location.search).get("login")?.trim() || "";
 }
 
-function exportStamp(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
 function safeFilePart(value: string): string {
   const text = value.trim().replace(/[\\/:*?"<>|]/g, "_");
   return text || "login";
+}
+
+function overviewFilename(username: string): string {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `overzicht ${safeFilePart(username)} ${day}-${month}-${now.getFullYear()}.xlsx`;
 }
 
 function sideSheet(title: string, lines: BalanceLine[], total: number): XlsxSheet {
@@ -229,8 +229,7 @@ function sideSheet(title: string, lines: BalanceLine[], total: number): XlsxShee
 }
 
 function exportWindow(sheet: BalanceSheet, resultView: boolean): void {
-  const kind = resultView ? "Resultaat" : "Balans";
-  const filename = `${kind}_${safeFilePart(loginName())}_${exportStamp()}.xlsx`;
+  const filename = overviewFilename(loginName());
   if (resultView) {
     const label = new URLSearchParams(window.location.search).get("label")?.trim() || loginName();
     downloadBlob(filename, unitResultWorkbook(sheet, label));
@@ -620,7 +619,7 @@ export default function App() {
                     const label =
                       new URLSearchParams(window.location.search).get("label")?.trim() ||
                       loginName();
-                    const filename = `Resultaat_${safeFilePart(loginName())}_${exportStamp()}.xlsx`;
+                    const filename = overviewFilename(loginName());
                     hdMonthlySheet(sheet.year, label)
                       .then((monthly) => {
                         downloadBlob(filename, buildXlsx([resultSheet(sheet, label), monthly]));

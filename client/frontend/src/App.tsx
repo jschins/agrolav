@@ -1629,6 +1629,14 @@ function HelpQuestion({ terms }: { terms?: Record<string, string> }) {
   );
 }
 
+function overviewFilename(username: string): string {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const safe = username.trim().replace(/[\\/:*?"<>|]/g, "_") || "login";
+  return `overzicht ${safe} ${day}-${month}-${now.getFullYear()}.xlsx`;
+}
+
 function SyncNotifyShell({
   children,
   onCenterChanged,
@@ -1925,10 +1933,7 @@ function SyncNotifyShell({
     setScratchError(null);
     getExportExcel(activeYear)
       .then((data) => {
-        const filename = data.has_balance
-          ? `balans-${data.year}.xlsx`
-          : `resultaat-${data.year}.xlsx`;
-        downloadBlob(filename, buildXlsx(excelSheets(data, menuTerms)));
+        downloadBlob(overviewFilename(status?.username || ""), buildXlsx(excelSheets(data, menuTerms)));
       })
       .catch((e: Error) => setScratchError(e.message));
   }
@@ -1949,7 +1954,6 @@ function SyncNotifyShell({
         zipManifestOk(Math.round(performance.now() - manifestAt), manifest, elapsed())
       ); // ZIP_DEBUG
       const files: { name: string; bytes: Uint8Array }[] = [];
-      const part = (value: string) => value.trim().replace(/[\\/:*?"<>|]/g, "_") || "login";
       type ZipJob = {
         folder: string;
         username: string;
@@ -1989,7 +1993,7 @@ function SyncNotifyShell({
       ];
       for (let index = 0; index < jobs.length; index += 1) {
         const job = jobs[index];
-        const file = `${job.folder}/${part(job.username)}.xlsx`;
+        const file = overviewFilename(job.username);
         const place = `${index + 1}/${jobs.length}`;
         current = file;
         if (job.folder === "unit") {
@@ -2050,7 +2054,7 @@ function SyncNotifyShell({
     }
     window.addEventListener("message", onExportRequest);
     return () => window.removeEventListener("message", onExportRequest);
-  }, [activeYear, menuTerms]);
+  }, [activeYear, menuTerms, status?.username]);
 
   function doOpeningBalance() {
     if (scratchBusy || wipeBusy || crossBusy || openingBusy) return;
