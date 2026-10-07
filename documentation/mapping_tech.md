@@ -108,12 +108,12 @@ A `Geldautomaat` row is not one leg of a cross-posting pair.
 ## Cross-posting categories
 
 The work-unit against its HD is read from `dbo.dim_category` when
-`account_id` and `assoc_category_id` are filled. `account_id` is the bank
-of that category. `assoc_category_id` names one other category.
+`account_id` and `assoc_cat_id` are filled. `account_id` is the bank
+of that category. `assoc_cat_id` names one other category.
 
 Country 4, in that shape:
 
-| category | role | account_id | assoc_category_id | what it says |
+| category | role | account_id | assoc_cat_id | what it says |
 |---|---|---|---|---|
 | 1053 | `hd` | 44 | 1056 | this HD bank's work unit is 1056 |
 | 1056 | `unit` | 21 | 1051 | this work unit's central bank is 1051 |
@@ -174,7 +174,7 @@ The other three pair shapes are the same two rows.
 | that SIb unit | Centrale SIb | 11125 (`sib`) |
 
 Both rows present is the stored pair. The running function does not look
-them up. A work-unit/HD pair that `assoc_category_id` resolves is written
+them up. A work-unit/HD pair that `assoc_cat_id` resolves is written
 from those columns. Any other pair is still computed from `category_role`.
 
 The release set is the categories this routine writes: the `cp`,
@@ -195,7 +195,7 @@ category back to the remainder. The pair detector stays as it is: opposite
 amounts, same day or the next, each statement names the other account's
 IBAN.
 
-When `assoc_category_id` resolves a work-unit/HD pair, Bereken kruisposten
+When `assoc_cat_id` resolves a work-unit/HD pair, Bereken kruisposten
 writes the `rc` local code on the work unit and `cp` on the HD. Otherwise
 the two `category_id`s still come from `category_role`: `unitXX0X` means
 the third digit is 0, and the unit leg is `XX0X + 10`. `cp`, `sia`, `sib`,
@@ -254,7 +254,7 @@ that table.
 ## Which category_role values are cleared
 
 Clear a role only when every pair that used it is resolved by
-`assoc_category_id`. Until then the role stays. A work-unit/HD pair that
+`assoc_cat_id`. Until then the role stays. A work-unit/HD pair that
 the assoc columns do not resolve still reads `unitNNNN`.
 
 Two roles are cleared. They sit on the bank post and exist to carry four

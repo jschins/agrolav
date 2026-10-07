@@ -118,19 +118,170 @@ In all cases: explicitly check that all amounts are always written in sign-oppos
 
 ## How dbo.dim_category is read now (in the context of the cross-postings calculation)
 
-`apply_cross_postings` loads every `dbo.dim_category` row of the country when the columns `account_id` and `assoc_category_id` exist. The columns it keeps are `category_id`, `local_code`, `category_role`, `account_id`, and `assoc_category_id`. When either column is absent, this load is skipped and the previous role rules run.
+`apply_cross_postings` loads every `dbo.dim_category` row of the country when the columns `account_id` and `assoc_cat_id` exist. The columns it keeps are `category_id`, `local_code`, `category_role`, `account_id`, and `assoc_cat_id`. 
 
-`account_id` is the bank of that category. A booking’s account is matched to the row with that `account_id` whose role is `hd`, `unit`, `unitNNNN`, `source`, or `bank`. A `cash`, `rc`, `cp`, or `mirror` row on the same account is not that bank. Where `hd` and another role share the account, `hd` is the bank.
+`account_id` is the bank of that category. A booking’s account is matched to the row with that `account_id` whose role is `hd`, `unit`, `source`, or `bank`. A `cash`, `rc`, `cp`, or `mirror` row on the same account is not that bank. Where `hd` and another role share the account, `hd` is the bank.
 
-`assoc_category_id` names one other category. Four reads use these columns.
+`assoc_cat_id` names one other category. Four reads use these columns.
 
-A work unit and its HD share a center. The HD row’s assoc is the work-unit bank. The `rc` row on the HD account whose assoc is that same work-unit bank is written on the work-unit booking. The HD booking is written to `cp`. Account 21 against account 44 is written to 1111. Account 44 is written to `cp`. Account 40 against account 48 is written to 11114. Account 48 is written to `cp`.
+# Application of the cross-postings rules
 
-A work unit and its centrale: the unit row’s assoc is the source category, and that source row’s assoc is the category written on the unit booking. The source booking is written to `cp`. Account 21 against account 18 is written to 1101, because 1051 points at 1101. Account 18 is written to `cp`. Account 40 against account 39 is written to 11125, because 11020 points at 11125. Account 39 is written to `cp`.
+1. All 'Geldautomaat' bookings
+- all hd bookings using bank_type='Geldautomaat' are categorized as 
+cash[category_id] = 11134
+for which 
+cash[account_id] = hd[account_id] = 48
+e.g. 
+11029	5	1029	Bank HD Den Eker	hd	  Activa/Vlottende activa/Bank  HD	2	48	11025
+11134	5	1134	kas HD Den Eker	  cash	Activa/Vlottende activa/Kas   HD	5	48	11029
 
-SIa against SIb: the `siasib` row’s account is written to that category, and the category it points at is written to `cp`. 11100 has account 60 and points at 11020, so account 60 is written to 11100 and account 39 is written to `cp`.
+
+2. All transactions between two sources [instudo: between Centrale SIa and SIb]
+e.g.
+11010	5	1010	Bank Centrale SIa	source	Activa/Vlottende activa/Bank SIa	2	60	11126
+11020	5	1020	Bank Centrale SIb	source	Activa/Vlottende activa/Bank SIb	2	39	11125
+11100	5	1100	r/c SIa SIb	      siasib	Activa/Vlottende activa/Rekening	2	60	11020
+
+- the bookings on Centrale SIa are categorized as 
+siasib[category_id] = 11100
+for which 
+siasib[account_id] = party_source[account_id] = 60
+siasib[assoc_cat_id] = counterparty_source[category_id] = 11020
+- the bookings on Centrale SIb are categorized as 11200 Kruisposten
+
+3. All transactions between a source and its unit
+e.g. 
+11025	5	1025	Bank Den Eker	        unit	  Activa/Vlottende activa/Bank SIb	2	40	11020
+11104	5	1104	r/c Den Eker	        rc	    Activa/Vlottende activa/Rekening	2	40	11020
+11125	5	1125	Bijdrage centrale SIb	sib	    Activa/Vlottende activa/Rekening	2	39	11020
+11126	5	1126	Bijdrage centrale SIa	sia	    Activa/Vlottende activa/Rekening	2	60	11010
+11020	5	1020	Bank Centrale SIb	    source	Activa/Vlottende activa/Bank SIb	2	39	11125
+
+- the bookings of Bank Den Eker are categorized as
+sib[category_id] = source[assoc_cat_id]
+- the bookings of Centrale SIb are categorized as
+rc[category_id] = 11104
+for which
+rc[assoc_cat_id] = unit[assoc_cat_id] = 11020
+The unit and the source share a center.
+
+
+4. All transactions between a unit and its hd-sibling
+e.g.
+11025	5	1025	Bank Den Eker	      unit	Activa/Vlottende activa/Bank SIb	2	40	11020
+11029	5	1029	Bank HD Den Eker	  hd	  Activa/Vlottende activa/Bank HD	  2	48	11025
+11114	5	1114	r/c HD Den Eker	    rc	  Activa/Vlottende activa/Rekening	2	48	11025
+
+- the bookings of Bank Den Eker are categorized as
+rc[category_id]  = 11114
+for which
+rc[assoc_cat_id] = unit[category_id] = 11025
+rc[account_id] = hd[account_id]
+- the bookings of Bank HD Den Eker are categorized as 11200 Kruisposten
+
+
+
+
+# Cursor's proposal
+
+`dbo.cp_rules` holds one row per booking. The category ids stay in `dbo.dim_category`. `tie_booking` equals `tie_other`: that field on this booking’s bank equals that field on the other bank. `write_as = other.assoc_cat_id` is the category that field names on the other bank. `write_as = role` finds the `dim_category` row with that `category_role`. `role_account` is `booking` or `other`: the row’s `account_id` is this bank’s or the other’s. `role_assoc` is the field that row’s `assoc_cat_id` must equal. `booking_role = unit` means role `unit`. The script is `hub/sql/cp_rules.sql`. Bereken kruisposten reads this table. A missing table runs no rule.
+
+<div style="overflow-x: auto; width: 100%;">
+
+<table style="border-collapse: collapse; min-width: 1680px; white-space: nowrap; font-size: 14px;">
+<thead>
+<tr>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">rule_name</th>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">leg</th>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">booking_role</th>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">other_role</th>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">same_center</th>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">tie_booking</th>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">tie_other</th>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">write_as</th>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">category_role</th>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">role_account</th>
+<th style="text-align: left; padding: 6px 14px; border-bottom: 1px solid #ccc;">role_assoc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="padding: 6px 14px;">geldautomaat</td>
+<td style="padding: 6px 14px;">1</td>
+<td style="padding: 6px 14px;">hd</td>
+<td style="padding: 6px 14px;"></td>
+<td style="padding: 6px 14px;">0</td>
+<td style="padding: 6px 14px;"></td>
+<td style="padding: 6px 14px;"></td>
+<td style="padding: 6px 14px;">role</td>
+<td style="padding: 6px 14px;">cash</td>
+<td style="padding: 6px 14px;">booking</td>
+<td style="padding: 6px 14px;"></td>
+</tr>
+<tr>
+<td style="padding: 6px 14px;">unit-hd</td>
+<td style="padding: 6px 14px;">1</td>
+<td style="padding: 6px 14px;">unit</td>
+<td style="padding: 6px 14px;">hd</td>
+<td style="padding: 6px 14px;">1</td>
+<td style="padding: 6px 14px;">category_id</td>
+<td style="padding: 6px 14px;">assoc_cat_id</td>
+<td style="padding: 6px 14px;">role</td>
+<td style="padding: 6px 14px;">rc</td>
+<td style="padding: 6px 14px;">other</td>
+<td style="padding: 6px 14px;">booking.category_id</td>
+</tr>
+<tr>
+<td style="padding: 6px 14px;">source-unit</td>
+<td style="padding: 6px 14px;">1</td>
+<td style="padding: 6px 14px;">unit</td>
+<td style="padding: 6px 14px;">source</td>
+<td style="padding: 6px 14px;">1</td>
+<td style="padding: 6px 14px;">assoc_cat_id</td>
+<td style="padding: 6px 14px;">category_id</td>
+<td style="padding: 6px 14px;">other.assoc_cat_id</td>
+<td style="padding: 6px 14px;"></td>
+<td style="padding: 6px 14px;"></td>
+<td style="padding: 6px 14px;"></td>
+</tr>
+<tr>
+<td style="padding: 6px 14px;">source-unit</td>
+<td style="padding: 6px 14px;">2</td>
+<td style="padding: 6px 14px;">source</td>
+<td style="padding: 6px 14px;">unit</td>
+<td style="padding: 6px 14px;">1</td>
+<td style="padding: 6px 14px;">category_id</td>
+<td style="padding: 6px 14px;">assoc_cat_id</td>
+<td style="padding: 6px 14px;">role</td>
+<td style="padding: 6px 14px;">rc</td>
+<td style="padding: 6px 14px;">other</td>
+<td style="padding: 6px 14px;">other.assoc_cat_id</td>
+</tr>
+<tr>
+<td style="padding: 6px 14px;">source-source</td>
+<td style="padding: 6px 14px;">1</td>
+<td style="padding: 6px 14px;">source</td>
+<td style="padding: 6px 14px;">source</td>
+<td style="padding: 6px 14px;">0</td>
+<td style="padding: 6px 14px;"></td>
+<td style="padding: 6px 14px;"></td>
+<td style="padding: 6px 14px;">role</td>
+<td style="padding: 6px 14px;">siasib</td>
+<td style="padding: 6px 14px;">booking</td>
+<td style="padding: 6px 14px;">other.category_id</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+
+A leg the matched rule does not write is `cp`. `cp` is not a row in the table. A transfer that fits no rule stays as it is.
+
+A work unit and its HD share a center. The HD row’s assoc is the work-unit bank. The `rc` row on the HD account whose assoc is that same work-unit bank is written on the work-unit booking. The HD booking is `cp`. Account 21 against account 44 is written to 1111. Account 44 is `cp`. Account 40 against account 48 is written to 11114. Account 48 is `cp`.
+
+A work unit and its centrale share a center. The unit row’s assoc is the source category, and that source row’s assoc is the category written on the unit booking. The source booking is written to the `rc` row on the unit account whose assoc is that same source category. When that `rc` is absent, the source booking is written to `cp`. Account 21 against account 18 is written to 1101, because 1051 points at 1101. Account 18 is written to `cp` when account 21 has no `rc` pointing at 1051. Account 40 against account 39 is written to 11125, because 11020 points at 11125. Account 39 is written to 11104.
+
+SIa against SIb: the `siasib` row’s account is written to that category. The other source is `cp`. 11100 has account 60 and points at 11020, so account 60 is written to 11100 and account 39 is `cp`.
 
 Geldautomaat uses the other category on the HD account whose role is `cash` or empty. 11134 shares account 48 with 11029. 1057 shares account 44 with 1053. The cash write stores `modification` 1, and the pair pass leaves that booking alone.
-
-When the assoc columns do not resolve the pair, the previous read still runs. `category_role` supplies `cp`, `siasib`, `sia`, and `sib`. A `unitXX0X` role against `hd` in the same center still writes `XX0X + 10` on the unit and `cp` on the HD. Centrale SIa against Centrale SIb still writes `siasib` and `cp`. Centrale against a `unitNNNN` still writes `NNNN` on Centrale and `sia` or `sib` on the unit.
 

@@ -5,26 +5,10 @@ in that country with an IBAN is read. A booking is kept when its
 counterparty is another of those accounts and that account books the
 negated amount on the same day or one day apart.
 
-Each leg of a pair is written on its own. Every fixed leg is the
-``dbo.dim_category`` row with that ``category_role``, read on each run:
-
-* Centrale SIa against Centrale SIb: SIb is the ``cp`` row and SIa is the
-  ``siasib`` row.
-* Centrale SIa against ``unitNNNN`` in center SIa: SIa is local NNNN
-  (category 1NNNN) and the unit is the ``sia`` row.
-* Centrale SIb against ``unitNNNN`` in center SIb: SIb is local NNNN
-  (category 1NNNN) and the unit is the ``sib`` row.
-* ``unitXX0X`` against the ``hd`` account in the same center: the unit is
-  local XX1X (category 1XX1X) and the sibling is the ``cp`` row.
-  ``unit1108`` writes the unit to 11118. When ``account_id`` and
-  ``assoc_category_id`` name the pair, the work-unit booking is the ``rc``
-  row on the HD account that points at the work unit, and the HD booking
-  is still ``cp``. A work unit against the source it points at is written
-  to the category that source points at, and the source booking is ``cp``.
-  SIa against SIb writes the ``siasib`` account to ``siasib`` and the
-  category that row points at to ``cp``.
-
-A country without a row for a role leaves that leg uncategorized.
+Each leg of a pair is written from ``dbo.cp_rules``. A row there names
+the bank being booked, the other bank, and the ``dbo.dim_category`` row
+to write. The category ids stay in ``dbo.dim_category``. When ``dbo.cp_rules``
+is missing, no rule runs.
 
 The value stored on the booking is the category id. Balance countries are
 taken in ``country_id`` order. The first stores the local code. Each later
@@ -368,7 +352,7 @@ def pair_local_codes(
 class CategoryLink:
     """One ``dbo.dim_category`` row used by the assoc lookup.
 
-    ``account_id`` is the bank link. ``assoc_category_id`` is the other
+    ``account_id`` is the bank link. ``assoc_cat_id`` is the other
     category this row names. ``None`` on either column means this row does
     not take part in that half of the lookup.
     """
@@ -377,7 +361,7 @@ class CategoryLink:
     local_code: int
     role: str
     account_id: int | None = None
-    assoc_category_id: int | None = None
+    assoc_cat_id: int | None = None
 
 
 def _link_role(role: object) -> str:
@@ -421,90 +405,246 @@ def _lowest(found: list[CategoryLink]) -> CategoryLink | None:
     return found[0]
 
 
-def _hd_register(links: Sequence[CategoryLink], hd: CategoryLink, unit: CategoryLink) -> CategoryLink | None:
-    """``rc`` on the HD account whose assoc is the work-unit bank."""
-    return _lowest([
+@dataclass(frozen=True)
+class CpRule:
+    """One ``dbo.cp_rules`` row: the category written on one booking."""
+
+    rule_name: str
+    leg: int
+    booking_role: str
+    other_role: str | None
+    same_center: bool
+    tie_booking: str | None
+    tie_other: str | None
+    write_as: str
+    category_role: str | None
+    role_account: str | None
+    role_assoc: str | None
+
+
+def _rule_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    return text or None
+
+
+def load_cp_rules(cursor: Any) -> list[CpRule] | None:
+    """Rows of ``dbo.cp_rules``, or ``None`` when the table is missing."""
+    cursor.execute("SELECT OBJECT_ID(N'dbo.cp_rules', N'U')")
+    found = cursor.fetchone()
+    if found is None or found[0] is None:
+        return None
+    cursor.execute(
+        """
+        SELECT rule_name, leg, booking_role, other_role, same_center,
+               tie_booking, tie_other, write_as,
+               category_role, role_account, role_assoc
+        FROM dbo.cp_rules
+        ORDER BY rule_name, leg
+        """
+    )
+    rules: list[CpRule] = []
+    for row in cursor.fetchall():
+        if row is None or len(row) < 11 or row[0] is None or row[2] is None:
+            continue
+        rules.append(
+            CpRule(
+                str(row[0]).strip().lower(),
+                int(row[1]),
+                str(row[2]).strip().lower(),
+                _rule_text(row[3]),
+                bool(row[4]),
+                _rule_text(row[5]),
+                _rule_text(row[6]),
+                str(row[7] or "").strip().lower(),
+                _rule_text(row[8]),
+                _rule_text(row[9]),
+                _rule_text(row[10]),
+            )
+        )
+    return rules
+
+
+def _role_matches(expected: str | None, actual: str) -> bool:
+    if expected is None:
+        return True
+    if expected == "unit":
+        return _is_unit_role(actual)
+    return actual == expected
+
+
+def _link_field(link: CategoryLink, name: str | None) -> int | None:
+    if name == "category_id":
+        return int(link.category_id)
+    if name == "assoc_cat_id":
+        return None if link.assoc_cat_id is None else int(link.assoc_cat_id)
+    return None
+
+
+def _leg_fits(
+    leg: CpRule,
+    booking: CategoryLink,
+    other: CategoryLink,
+    from_center: str | None,
+    to_center: str | None,
+) -> bool:
+    if not _role_matches(leg.booking_role, booking.role):
+        return False
+    if not _role_matches(leg.other_role, other.role):
+        return False
+    if leg.same_center and not _centers_match(from_center, to_center):
+        return False
+    if leg.tie_booking or leg.tie_other:
+        left_value = _link_field(booking, leg.tie_booking)
+        right_value = _link_field(other, leg.tie_other)
+        if left_value is None or right_value is None or left_value != right_value:
+            return False
+    return True
+
+
+def _write_local(
+    leg: CpRule,
+    links: Sequence[CategoryLink],
+    booking: CategoryLink,
+    other: CategoryLink,
+) -> int | None:
+    """Local code the rule writes on ``booking``."""
+    if "." in leg.write_as:
+        who, _, field = leg.write_as.partition(".")
+        side = booking if who == "booking" else other
+        target = _link_by_id(links, _link_field(side, field))
+        if target is None:
+            return None
+        return int(target.local_code)
+    if leg.write_as != "role" or not leg.category_role:
+        return None
+    account: int | None = None
+    if leg.role_account == "booking":
+        account = booking.account_id
+    elif leg.role_account == "other":
+        account = other.account_id
+    if leg.role_account is not None and account is None:
+        return None
+    assoc: int | None = None
+    if leg.role_assoc:
+        who, _, field = leg.role_assoc.partition(".")
+        side = booking if who == "booking" else other
+        assoc = _link_field(side, field)
+        if assoc is None:
+            return None
+    found = [
         link
         for link in links
-        if link.role == "rc"
-        and link.account_id == hd.account_id
-        and link.assoc_category_id == unit.category_id
-    ])
-
-
-def _hd_unit_locals(
-    links: Sequence[CategoryLink],
-    left: CategoryLink,
-    right: CategoryLink,
-    cp_local: int | None,
-) -> tuple[int, int] | None:
-    """Work-unit booking → that ``rc``. HD booking → ``cp``."""
-    if cp_local is None:
+        if link.role == leg.category_role
+        and (account is None or link.account_id == account)
+        and (assoc is None or link.assoc_cat_id == assoc)
+    ]
+    chosen = _lowest(found)
+    if chosen is None:
         return None
-    if left.role == "hd" and _is_unit_role(right.role) and left.assoc_category_id == right.category_id:
-        register = _hd_register(links, left, right)
-        if register is None:
-            return None
-        return (int(cp_local), int(register.local_code))
-    if right.role == "hd" and _is_unit_role(left.role) and right.assoc_category_id == left.category_id:
-        register = _hd_register(links, right, left)
-        if register is None:
-            return None
-        return (int(register.local_code), int(cp_local))
-    return None
+    return int(chosen.local_code)
 
 
-def _source_unit_locals(
-    links: Sequence[CategoryLink],
-    left: CategoryLink,
-    right: CategoryLink,
-    cp_local: int | None,
-) -> tuple[int, int] | None:
-    """Unit booking → the category the source points at. Source booking → ``cp``.
-
-    ``1051`` points at ``1101``, so account 21 is written to 1101 and account
-    18 to ``cp``. ``11020`` points at ``11125``, so account 40 is written to
-    11125 and account 39 to ``cp``.
-    """
-    if cp_local is None:
+def _cp_local(links: Sequence[CategoryLink]) -> int | None:
+    """Local code of the ``cp`` row. It closes a leg a matched rule did not write."""
+    chosen = _lowest([link for link in links if link.role == "cp"])
+    if chosen is None:
         return None
-    if _is_unit_role(left.role) and right.role == "source" and left.assoc_category_id == right.category_id:
-        target = _link_by_id(links, right.assoc_category_id)
-        if target is None:
-            return None
-        return (int(target.local_code), int(cp_local))
-    if _is_unit_role(right.role) and left.role == "source" and right.assoc_category_id == left.category_id:
-        target = _link_by_id(links, left.assoc_category_id)
-        if target is None:
-            return None
-        return (int(cp_local), int(target.local_code))
-    return None
+    return int(chosen.local_code)
 
 
-def _siasib_locals(
-    links: Sequence[CategoryLink],
-    left: CategoryLink,
-    right: CategoryLink,
-    cp_local: int | None,
-) -> tuple[int, int] | None:
-    """SIa booking → ``siasib``. SIb booking → ``cp``.
+def _closed_local(written: int | None, cp: int | None) -> int | None:
+    if written is not None:
+        return written
+    return cp
 
-    ``11100`` has account 60 and points at ``11020``. Account 60 is written
-    to 11100. Account 39 is written to ``cp``.
-    """
-    if cp_local is None:
-        return None
-    for link in links:
-        if link.role != "siasib" or link.account_id is None or link.assoc_category_id is None:
+
+def _pair_rule_groups(rules: Sequence[CpRule]) -> list[list[CpRule]]:
+    """Pair rules. A row with no other bank, such as Geldautomaat, is left out."""
+    grouped: dict[str, list[CpRule]] = {}
+    for rule in rules:
+        grouped.setdefault(rule.rule_name, []).append(rule)
+    groups: list[list[CpRule]] = []
+    for legs in grouped.values():
+        if any(leg.other_role is None for leg in legs):
             continue
-        other = _link_by_id(links, link.assoc_category_id)
-        if other is None or other.account_id is None:
+        groups.append(legs)
+    return groups
+
+
+def _apply_rule_group(
+    legs: Sequence[CpRule],
+    links: Sequence[CategoryLink],
+    left: CategoryLink,
+    right: CategoryLink,
+    from_center: str | None,
+    to_center: str | None,
+) -> tuple[int, int] | None:
+    """Local codes for one rule. A leg the rule does not write is ``cp``.
+
+    An orientation that writes its named legs wins over one that closes
+    them with ``cp``. A pair that fits no orientation stays uncategorized.
+    """
+    ordered = sorted(legs, key=lambda leg: leg.leg)
+    if not ordered:
+        return None
+    cp = _cp_local(links)
+    if len(ordered) == 1:
+        return _apply_one_leg(ordered[0], links, left, right, from_center, to_center, cp)
+    best: tuple[int, int] | None = None
+    best_score = -1
+    for booking_leg, other_leg in (
+        (ordered[0], ordered[1]),
+        (ordered[1], ordered[0]),
+    ):
+        if not _leg_fits(booking_leg, left, right, from_center, to_center):
             continue
-        if left.account_id == link.account_id and right.account_id == other.account_id:
-            return (int(link.local_code), int(cp_local))
-        if right.account_id == link.account_id and left.account_id == other.account_id:
-            return (int(cp_local), int(link.local_code))
-    return None
+        if not _leg_fits(other_leg, right, left, from_center, to_center):
+            continue
+        from_written = _write_local(booking_leg, links, left, right)
+        to_written = _write_local(other_leg, links, right, left)
+        from_local = _closed_local(from_written, cp)
+        to_local = _closed_local(to_written, cp)
+        if from_local is None or to_local is None:
+            continue
+        score = int(from_written is not None) + int(to_written is not None)
+        if score > best_score:
+            best = (from_local, to_local)
+            best_score = score
+    return best
+
+
+def _apply_one_leg(
+    leg: CpRule,
+    links: Sequence[CategoryLink],
+    left: CategoryLink,
+    right: CategoryLink,
+    from_center: str | None,
+    to_center: str | None,
+    cp: int | None,
+) -> tuple[int, int] | None:
+    """One named booking. The other booking of the pair is ``cp``."""
+    if cp is None:
+        return None
+    best: tuple[int, int] | None = None
+    best_score = -1
+    for booking, other, on_left in (
+        (left, right, True),
+        (right, left, False),
+    ):
+        if not _leg_fits(leg, booking, other, from_center, to_center):
+            continue
+        written = _write_local(leg, links, booking, other)
+        named = _closed_local(written, cp)
+        if named is None:
+            continue
+        score = int(written is not None)
+        found = (named, cp) if on_left else (cp, named)
+        if score > best_score:
+            best = found
+            best_score = score
+    return best
 
 
 def assoc_pair_local_codes(
@@ -514,43 +654,51 @@ def assoc_pair_local_codes(
     from_center: str | None = None,
     to_center: str | None = None,
     cp_local: int | None = None,
+    rules: Sequence[CpRule] | None = None,
 ) -> tuple[int, int] | None:
-    """Local codes from ``account_id`` and ``assoc_category_id``, or ``None``."""
+    """Local codes from ``dbo.cp_rules``, or ``None`` when no row matches.
+
+    ``cp_local`` is unused. A leg the matched rule does not write is the
+    ``dim_category`` row whose ``category_role`` is ``cp``.
+    """
+    del cp_local
+    if not rules:
+        return None
     left = _bank_link(links, from_account)
     right = _bank_link(links, to_account)
-    if left is None or right is None or cp_local is None:
+    if left is None or right is None:
         return None
-    if _centers_match(from_center, to_center):
-        found = _hd_unit_locals(links, left, right, cp_local)
+    for legs in _pair_rule_groups(rules):
+        found = _apply_rule_group(legs, links, left, right, from_center, to_center)
         if found is not None:
             return found
-    found = _source_unit_locals(links, left, right, cp_local)
-    if found is not None:
-        return found
-    return _siasib_locals(links, left, right, cp_local)
+    return None
 
 
-def assoc_register_locals(links: Sequence[CategoryLink]) -> set[int]:
-    """Local codes written from assoc links, so a later run can release them."""
-    codes: set[int] = set()
-    for hd in links:
-        if hd.role != "hd" or hd.assoc_category_id is None or hd.account_id is None:
-            continue
-        unit = _link_by_id(links, hd.assoc_category_id)
-        if unit is None:
-            continue
-        register = _hd_register(links, hd, unit)
-        if register is not None:
-            codes.add(int(register.local_code))
-    for source in links:
-        if source.role != "source":
-            continue
-        target = _link_by_id(links, source.assoc_category_id)
-        if target is not None:
-            codes.add(int(target.local_code))
+def assoc_register_locals(
+    links: Sequence[CategoryLink],
+    rules: Sequence[CpRule] | None = None,
+) -> set[int]:
+    """Local codes the rules can write, so a later run can release them."""
+    if not rules:
+        return set()
+    accounts: list[int] = []
+    seen: set[int] = set()
     for link in links:
-        if link.role == "siasib":
-            codes.add(int(link.local_code))
+        if link.account_id is None or int(link.account_id) in seen:
+            continue
+        if _bank_link(links, int(link.account_id)) is None:
+            continue
+        seen.add(int(link.account_id))
+        accounts.append(int(link.account_id))
+    codes: set[int] = set()
+    for index, left in enumerate(accounts):
+        for right in accounts[index + 1 :]:
+            found = assoc_pair_local_codes(links, left, right, "same", "same", rules=rules)
+            if found is None:
+                continue
+            codes.add(int(found[0]))
+            codes.add(int(found[1]))
     return codes
 
 
@@ -690,7 +838,12 @@ def apply_cross_postings(
     """
     from app import user_store
     from app.sql_catalog import coerce_center, country_for_center
-    from shared.balance_values import country_has_balance, require_remainder_row, transaction_table
+    from shared.balance_values import (
+        country_has_balance,
+        dim_category_link_columns,
+        require_remainder_row,
+        transaction_table,
+    )
 
     if not user_store.database_url():
         raise RuntimeError("SQL Server is not configured")
@@ -713,6 +866,17 @@ def apply_cross_postings(
     country_id = int(found[0])
     if not country_has_balance(country_id, cursor):
         return {"updated": 0, "released": 0}
+    if not dim_category_link_columns(cursor):
+        print(
+            "cross-postings: dbo.dim_category.account_id or assoc_cat_id "
+            "is missing; no rules run",
+            flush=True,
+        )
+        return {"updated": 0, "released": 0}
+    rules = load_cp_rules(cursor)
+    if rules is None:
+        print("cross-postings: dbo.cp_rules is missing; no rules run", flush=True)
+        return {"updated": 0, "released": 0}
     cursor.execute(
         "SELECT country_id FROM dbo.country WHERE has_balance = 1 ORDER BY country_id"
     )
@@ -722,12 +886,13 @@ def apply_cross_postings(
         raise RuntimeError(f"country {country_id} has no transaction table")
     from app.cash_on_hand import assign_cash_on_hand
 
-    assign_cash_on_hand(
-        cursor,
-        table,
-        country_id,
-        source_ids=source_ids,
-    )
+    if any(rule.rule_name == "geldautomaat" for rule in rules):
+        assign_cash_on_hand(
+            cursor,
+            table,
+            country_id,
+            source_ids=source_ids,
+        )
     cursor.execute(f"SELECT OBJECT_ID(N'{table}', N'U')")
     if cursor.fetchone()[0] is None:
         raise RuntimeError(f"{table} does not exist")
@@ -751,7 +916,7 @@ def apply_cross_postings(
         if (digits := user_digits(role)) is not None
     }
     if links:
-        digit_codes.update(assoc_register_locals(links))
+        digit_codes.update(assoc_register_locals(links, rules))
     digit_codes.update(
         hd_sibling_local_code(digits)
         for role in role_of.values()
@@ -800,6 +965,7 @@ def apply_cross_postings(
             role_of.get(from_account, ""),
             role_of.get(to_account, ""),
             legs,
+            rules,
         )
         if from_local is None or to_local is None:
             continue
@@ -878,41 +1044,41 @@ def _pair_locals(
     from_role: object,
     to_role: object,
     legs: PairLegs,
+    rules: Sequence[CpRule] | None = None,
 ) -> tuple[int | None, int | None]:
-    """Assoc lookup first. The digit and Centrale rules run when it does not resolve.
+    """Local codes from ``dbo.cp_rules``.
 
-    The assoc lookup writes ``cp`` on the HD booking, on the source booking
-    against a work unit, and on the SIb booking against SIa. The digit rule
-    writes ``cp`` on the HD booking and on Centrale SIb against Centrale SIa.
+    A pair no row matches stays uncategorized. ``links is None`` means a
+    link column is missing. ``rules is None`` means ``dbo.cp_rules`` is
+    missing. In either case no rule runs.
     """
-    if links:
-        found = assoc_pair_local_codes(
-            links,
-            from_account,
-            to_account,
-            from_center,
-            to_center,
-            cp_local,
-        )
-        if found is not None:
-            return found
-    return pair_local_codes(
-        from_iban,
-        to_iban,
+    del from_iban, to_iban, from_role, to_role, legs
+    if not links or not rules:
+        return (None, None)
+    found = assoc_pair_local_codes(
+        links,
+        from_account,
+        to_account,
         from_center,
         to_center,
-        from_role,
-        to_role,
-        legs=legs,
+        cp_local,
+        rules,
     )
+    if found is None:
+        return (None, None)
+    return found
 
 
 def _category_links(cursor: Any, country_id: int) -> list[CategoryLink] | None:
-    """Rows for the assoc lookup, or ``None`` when the columns are not there yet."""
+    """Rows for the assoc lookup, or ``None`` when a link column is missing.
+
+    ``None`` means no cross-posting rule runs. It does not fall through to
+    the older role rules.
+    """
     cursor.execute(
         """
         SELECT COL_LENGTH(N'dbo.dim_category', N'account_id'),
-               COL_LENGTH(N'dbo.dim_category', N'assoc_category_id')
+               COL_LENGTH(N'dbo.dim_category', N'assoc_cat_id')
         """
     )
     widths = cursor.fetchone()
@@ -920,7 +1086,7 @@ def _category_links(cursor: Any, country_id: int) -> list[CategoryLink] | None:
         return None
     cursor.execute(
         """
-        SELECT category_id, local_code, category_role, account_id, assoc_category_id
+        SELECT category_id, local_code, category_role, account_id, assoc_cat_id
         FROM dbo.dim_category
         WHERE country_id = ?
         """,

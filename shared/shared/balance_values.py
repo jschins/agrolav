@@ -1042,6 +1042,22 @@ CASH_ON_HAND_ACCOUNT: dict[int, int] = {
 }
 
 
+def dim_category_link_columns(cursor: object) -> bool:
+    """True when ``dbo.dim_category`` has ``account_id`` and ``assoc_cat_id``.
+
+    Cross-posting rules, including the older role rules, do not run when
+    either column is missing.
+    """
+    cursor.execute(
+        """
+        SELECT COL_LENGTH(N'dbo.dim_category', N'account_id'),
+               COL_LENGTH(N'dbo.dim_category', N'assoc_cat_id')
+        """
+    )
+    row = cursor.fetchone()
+    return bool(row and row[0] is not None and row[1] is not None)
+
+
 def cash_category_accounts(country_id: int, cursor: object) -> dict[int, int]:
     """category_id → account_id for each HD account's own cash post.
 
@@ -1110,7 +1126,7 @@ def _cash_from_assoc(country_id: int, cursor: object) -> dict[int, int]:
     try:
         cursor.execute(
             """
-            SELECT COL_LENGTH(N'dbo.dim_category', N'assoc_category_id'),
+            SELECT COL_LENGTH(N'dbo.dim_category', N'assoc_cat_id'),
                    COL_LENGTH(N'dbo.dim_category', N'account_id')
             """
         )

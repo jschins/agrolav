@@ -10,6 +10,7 @@ from shared.balance_values import (
     CASH_ON_HAND_ACCOUNT,
     CASH_ON_HAND_BANK_TYPE,
     cash_category_accounts,
+    dim_category_link_columns,
 )
 
 CASH_COUNTRY_ID = 5
@@ -31,6 +32,13 @@ def assign_cash_on_hand(
     off the row. Returns the number of rows the updates matched.
     """
     if not table:
+        return 0
+    if not dim_category_link_columns(cursor):
+        return 0
+    from app.cross_postings import load_cp_rules
+
+    rules = load_cp_rules(cursor)
+    if not rules or not any(rule.rule_name == "geldautomaat" for rule in rules):
         return 0
     if source_ids is not None and not source_ids:
         return 0

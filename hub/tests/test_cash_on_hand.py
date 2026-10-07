@@ -19,7 +19,20 @@ class _Cursor:
     def execute(self, sql: str, params: tuple | None = None) -> None:
         self.calls.append((sql, tuple(params or ())))
 
+    def fetchone(self) -> tuple:
+        sql = self.calls[-1][0] if self.calls else ""
+        if "cp_rules" in sql:
+            return (1,)
+        return (8, 8)
+
     def fetchall(self) -> list[tuple]:
+        sql = self.calls[-1][0] if self.calls else ""
+        if "dbo.cp_rules" in sql:
+            return [(
+                "geldautomaat", 1, "hd", None, 0,
+                None, None, "role",
+                "cash", "booking", None,
+            )]
         return list(self._rows)
 
 
@@ -80,7 +93,7 @@ class CashOnHandTests(unittest.TestCase):
             person_id=7,
             year=2026,
         )
-        lookup = next(sql for sql, _params in cursor.calls if "category_role" in sql)
+        lookup = next(sql for sql, _params in cursor.calls if "= N'hd'" in sql)
         self.assertIn("= N'hd'", lookup)
         self.assertIn("= N'cash'", lookup)
         updates = [call for call in cursor.calls if call[0].lstrip().upper().startswith("UPDATE")]
@@ -108,6 +121,17 @@ class CashOnHandTests(unittest.TestCase):
         self.assertEqual(len(updates), 1)
         self.assertEqual(updates[0][1][0], 1057)
         self.assertEqual(updates[0][1][1], 48)
+
+    def test_missing_link_columns_write_nothing(self) -> None:
+        cursor = _Cursor(list(CASH_ON_HAND_ACCOUNT.items()))
+        cursor.fetchone = lambda: (None, None)  # type: ignore[method-assign]
+        self.assertEqual(
+            assign_cash_on_hand(cursor, "dbo.transaction_beheer_instudo", 5),
+            0,
+        )
+        self.assertTrue(
+            all(not sql.lstrip().upper().startswith("UPDATE") for sql, _params in cursor.calls)
+        )
 
     def test_other_countries_are_left_alone(self) -> None:
         cursor = _Cursor()

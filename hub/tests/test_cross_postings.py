@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from app.cross_postings import (
     CategoryLink,
+    CpRule,
     PairLegs,
     _IBAN_NL46,
     _IBAN_NL84,
@@ -27,6 +28,15 @@ from app.cross_postings import (
 
 # Country 5 rows: cp 1200, siasib 1100, sia 1126, sib 1125.
 _LEGS = PairLegs(cp=1200, siasib=1100, sia=1126, sib=1125)
+
+# The rows hub/sql/cp_rules.sql inserts.
+_RULES = (
+    CpRule("geldautomaat", 1, "hd", None, False, None, None, "role", "cash", "booking", None),
+    CpRule("unit-hd", 1, "unit", "hd", True, "category_id", "assoc_cat_id", "role", "rc", "other", "booking.category_id"),
+    CpRule("source-unit", 1, "unit", "source", True, "assoc_cat_id", "category_id", "other.assoc_cat_id", None, None, None),
+    CpRule("source-unit", 2, "source", "unit", True, "category_id", "assoc_cat_id", "role", "rc", "other", "other.assoc_cat_id"),
+    CpRule("source-source", 1, "source", "source", False, None, None, "role", "siasib", "booking", "other.category_id"),
+)
 
 
 class CrossPostingMatchTests(unittest.TestCase):
@@ -158,6 +168,42 @@ class CrossPostingMatchTests(unittest.TestCase):
         # No cp / siasib rows: both legs stay uncategorized.
         self.assertEqual(pair_local_codes(_IBAN_NL46, _IBAN_NL84), (None, None))
 
+    def test_missing_link_columns_run_no_rule(self) -> None:
+        self.assertEqual(
+            _pair_locals(
+                None,
+                60,
+                39,
+                "sia",
+                "sib",
+                1200,
+                _IBAN_NL84,
+                _IBAN_NL46,
+                "source",
+                "source",
+                _LEGS,
+            ),
+            (None, None),
+        )
+
+    def test_unresolved_assoc_does_not_run_the_old_rules(self) -> None:
+        self.assertEqual(
+            _pair_locals(
+                [],
+                60,
+                39,
+                "sia",
+                "sib",
+                1200,
+                _IBAN_NL84,
+                _IBAN_NL46,
+                "source",
+                "source",
+                _LEGS,
+            ),
+            (None, None),
+        )
+
     def test_sib_to_a_sib_unit_is_the_unit_code_and_the_sib_row(self) -> None:
         self.assertEqual(
             pair_local_codes(
@@ -279,41 +325,82 @@ class CrossPostingMatchTests(unittest.TestCase):
             CategoryLink(1111, 1111, "rc", 44, 1056),
             CategoryLink(11020, 1020, "source", 39, 11125),
             CategoryLink(11025, 1025, "unit", 40, 11020),
+            CategoryLink(11104, 1104, "rc", 40, 11020),
             CategoryLink(11125, 1125, "sib", 39, 11020),
             CategoryLink(11010, 1010, "source", 60, 11126),
             CategoryLink(11100, 1100, "siasib", 60, 11020),
             CategoryLink(11126, 1126, "sia", 60, 11010),
         )
+        keizersgracht = links + (CategoryLink(1110, 1110, "cp"),)
+        instudo = links + (CategoryLink(11200, 1200, "cp"),)
+        self.assertIsNone(
+            assoc_pair_local_codes(instudo, 40, 39, "den eker", "sib", 1200)
+        )
         self.assertEqual(
-            assoc_pair_local_codes(links, 21, 44, "keizersgracht", "keizersgracht", 1110),
+            assoc_pair_local_codes(keizersgracht, 21, 44, "keizersgracht", "keizersgracht", 1110, _RULES),
             (1111, 1110),
         )
         self.assertEqual(
-            assoc_pair_local_codes(links, 44, 21, "keizersgracht", "keizersgracht", 1110),
+            assoc_pair_local_codes(keizersgracht, 44, 21, "keizersgracht", "keizersgracht", 1110, _RULES),
             (1110, 1111),
         )
+        self.assertIsNone(
+            assoc_pair_local_codes(links, 21, 18, "keizersgracht", "algemeen", 1110, _RULES)
+        )
         self.assertEqual(
-            assoc_pair_local_codes(links, 21, 18, "keizersgracht", "algemeen", 1110),
+            _pair_locals(
+                links,
+                21,
+                18,
+                "keizersgracht",
+                "algemeen",
+                1110,
+                "",
+                "",
+                "",
+                "",
+                _LEGS,
+                _RULES,
+            ),
+            (None, None),
+        )
+        self.assertEqual(
+            assoc_pair_local_codes(links, 21, 18, "keizersgracht", "keizersgracht", 1110, _RULES),
+            (1101, 1101),
+        )
+        self.assertEqual(
+            assoc_pair_local_codes(links, 18, 21, "keizersgracht", "keizersgracht", 1110, _RULES),
+            (1101, 1101),
+        )
+        sdog = tuple(
+            CategoryLink(1101, 1101, "rc", None, 1051) if link.category_id == 1101 else link
+            for link in links
+        ) + (CategoryLink(1110, 1110, "cp"),)
+        self.assertEqual(
+            assoc_pair_local_codes(sdog, 21, 18, "keizersgracht", "keizersgracht", 1110, _RULES),
             (1101, 1110),
         )
         self.assertEqual(
-            assoc_pair_local_codes(links, 18, 21, "algemeen", "keizersgracht", 1110),
+            assoc_pair_local_codes(sdog, 18, 21, "keizersgracht", "keizersgracht", 1110, _RULES),
             (1110, 1101),
         )
-        self.assertEqual(
-            assoc_pair_local_codes(links, 40, 39, "den eker", "sib", 1200),
-            (1125, 1200),
+        self.assertIsNone(
+            assoc_pair_local_codes(instudo, 40, 39, "den eker", "sib", 1200, _RULES)
         )
         self.assertEqual(
-            assoc_pair_local_codes(links, 39, 40, "sib", "den eker", 1200),
-            (1200, 1125),
+            assoc_pair_local_codes(instudo, 40, 39, "den eker", "den eker", 1200, _RULES),
+            (1125, 1104),
         )
         self.assertEqual(
-            assoc_pair_local_codes(links, 60, 39, "sia", "sib", 1200),
+            assoc_pair_local_codes(instudo, 39, 40, "den eker", "den eker", 1200, _RULES),
+            (1104, 1125),
+        )
+        self.assertEqual(
+            assoc_pair_local_codes(instudo, 60, 39, "sia", "sib", 1200, _RULES),
             (1100, 1200),
         )
         self.assertEqual(
-            assoc_pair_local_codes(links, 39, 60, "sib", "sia", 1200),
+            assoc_pair_local_codes(instudo, 39, 60, "sib", "sia", 1200, _RULES),
             (1200, 1100),
         )
 
