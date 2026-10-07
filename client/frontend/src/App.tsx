@@ -35,9 +35,13 @@ import {
   login,
   logout,
   verifyLoginOtp,
-  resendLoginOtp,
-  getPersonSecurity,
   setPersonPassword,
+  getTotpStatus,
+  startTotp,
+  confirmTotp,
+  clearTotp,
+  type TotpSetup,
+  type TotpStatus,
   type BankAccount,
   type OtpChallenge,
   recalculate,
@@ -3025,30 +3029,13 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
       .finally(() => setBusy(false));
   }
 
-  function resend() {
-    if (!otp) return;
-    setBusy(true);
-    setError(null);
-    resendLoginOtp(otp.otp_token)
-      .then((next) => {
-        setOtp(next);
-        setCode("");
-      })
-      .catch(fail)
-      .finally(() => setBusy(false));
-  }
-
   return (
     <div className="login-screen">
       <form className="login-card" onSubmit={submit}>
         <h1 className="login-title">Expenses</h1>
         {otp ? (
           <>
-            <p className="login-muted">
-              {otp.dev_code
-                ? `SMS is not configured on the hub. Use code ${otp.dev_code}.`
-                : `Enter the code sent to ${otp.phone_hint || "your mobile phone"}.`}
-            </p>
+            <p className="login-muted">Enter the code from your authenticator app.</p>
             <label className="login-label">
               Code
               <input
@@ -3064,15 +3051,6 @@ function LoginScreen({ onSuccess }: { onSuccess: (title: string) => void }) {
             {error ? <p className="login-error">{error}</p> : null}
             <button className="login-submit" type="submit" disabled={busy}>
               {busy ? "Checking…" : "Verify"}
-            </button>
-            <button
-              className="login-submit"
-              type="button"
-              disabled={busy}
-              onClick={resend}
-              style={{ background: "#fff", color: "#0e7490" }}
-            >
-              Resend code
             </button>
             <button
               className="login-submit"
@@ -4429,30 +4407,31 @@ function kindCaption(kind: string): string {
   return kind || "Login";
 }
 
+function plainHubError(raw: string): string {
+  return reviewSubmissionMessage(raw).replace(/^Please review your submission:\s*/, "");
+}
+
 function SetPasswordApp() {
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [mobile, setMobile] = useState("");
-  const [showMobile, setShowMobile] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [totp, setTotp] = useState<TotpStatus | null>(null);
+  const [setup, setSetup] = useState<TotpSetup | null>(null);
+  const [code, setCode] = useState("");
+  const [totpError, setTotpError] = useState<string | null>(null);
+  const [totpOk, setTotpOk] = useState<string | null>(null);
+  const [totpBusy, setTotpBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    getPersonSecurity()
+    getTotpStatus()
       .then((row) => {
-        if (cancelled) return;
-        if (row.mobile_phone == null) {
-          setShowMobile(false);
-          setMobile("");
-          return;
-        }
-        setShowMobile(true);
-        setMobile(row.mobile_phone || "");
+        if (!cancelled) setTotp(row);
       })
-      .catch((e: Error) => {
-        if (!cancelled) setError(reviewSubmissionMessage(e.message));
+      .catch((err: Error) => {
+        if (!cancelled) setTotpError(plainHubError(err.message));
       });
     return () => {
       cancelled = true;
@@ -4475,11 +4454,20 @@ function SetPasswordApp() {
     e.preventDefault();
     setError(null);
     setOk(null);
+    const newPassword = next.trim();
+    const again = confirm.trim();
+    if (!newPassword && !again) {
+      setOk("Password unchanged.");
+      return;
+    }
+    if (!newPassword || !again) {
+      setError("Enter the new password in both fields, or leave both blank.");
+      return;
+    }
     setBusy(true);
     setPersonPassword({
-      new_password: next,
-      confirm,
-      ...(showMobile ? { mobile_phone: mobile.trim() } : {}),
+      new_password: newPassword,
+      confirm: again,
     })
       .then(() => {
         setOk("Password saved.");
@@ -4488,6 +4476,56 @@ function SetPasswordApp() {
       })
       .catch((err: Error) => setError(reviewSubmissionMessage(err.message)))
       .finally(() => setBusy(false));
+  }
+
+  function beginSetup() {
+    setTotpError(null);
+    setTotpOk(null);
+    setTotpBusy(true);
+    startTotp()
+      .then((row) => {
+        setSetup(row);
+        setCode("");
+      })
+      .catch((err: Error) => setTotpError(plainHubError(err.message)))
+      .finally(() => setTotpBusy(false));
+  }
+
+  function confirmSetup(e: FormEvent) {
+    e.preventDefault();
+    if (!setup) return;
+    setTotpError(null);
+    setTotpOk(null);
+    setTotpBusy(true);
+    confirmTotp({ enroll_token: setup.enroll_token, code: code.trim() })
+      .then(() => getTotpStatus())
+      .then((row) => {
+        setSetup(null);
+        setCode("");
+        setTotp(row);
+        if (!row.enrolled) {
+          setTotpError("The code matched but the secret is not stored. Set it up again.");
+          return;
+        }
+        setTotpOk("Authenticator is on. The next sign-in asks for the code from the app.");
+      })
+      .catch((err: Error) => setTotpError(plainHubError(err.message)))
+      .finally(() => setTotpBusy(false));
+  }
+
+  function turnOff() {
+    setTotpError(null);
+    setTotpOk(null);
+    setTotpBusy(true);
+    clearTotp()
+      .then(() => {
+        setSetup(null);
+        setCode("");
+        setTotp((prev) => (prev ? { ...prev, enrolled: false } : prev));
+        setTotpOk("Authenticator is off. Sign-in is the password only.");
+      })
+      .catch((err: Error) => setTotpError(plainHubError(err.message)))
+      .finally(() => setTotpBusy(false));
   }
 
   return (
@@ -4503,68 +4541,134 @@ function SetPasswordApp() {
             </button>
           </div>
         </div>
-        {showMobile ? (
-          <p className="win-hint">
-            Mobile phone number activates two-step login by sending a 6-digit code via SMS
-          </p>
-        ) : null}
       </aside>
       <main className="terms-main password-main">
-        <form onSubmit={submit} className="login-card password-card">
+        <div className="login-card password-card">
           <h1 className="password-title">Set password</h1>
-          <label className="login-label">
-            New password
-            <input
-              className="login-input"
-              type="password"
-              autoComplete="new-password"
-              value={next}
-              onChange={(e) => setNext(e.target.value)}
-              disabled={busy}
-              required
-            />
-          </label>
-          <label className="login-label">
-            Confirm new password
-            <input
-              className="login-input"
-              type="password"
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              disabled={busy}
-              required
-            />
-          </label>
-          {showMobile ? (
+          <form onSubmit={submit} className="password-form">
+            <p className="login-muted">
+              Leave both fields blank to keep the current password.
+            </p>
             <label className="login-label">
-              Mobile phone (optional)
+              New password
               <input
                 className="login-input"
-                type="tel"
-                placeholder="+31612345678"
-                value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
+                type="password"
+                autoComplete="new-password"
+                value={next}
+                onChange={(e) => setNext(e.target.value)}
                 disabled={busy}
               />
             </label>
+            <label className="login-label">
+              Confirm new password
+              <input
+                className="login-input"
+                type="password"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                disabled={busy}
+              />
+            </label>
+            {error ? <p className="login-error">{error}</p> : null}
+            {ok ? <p className="ok">{ok}</p> : null}
+            <div className="password-actions">
+              <button
+                className="password-knob password-knob-cancel"
+                type="button"
+                disabled={busy}
+                onClick={() => openView("main")}
+              >
+                Cancel
+              </button>
+              <button className="password-knob password-knob-save" type="submit" disabled={busy}>
+                {busy ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </form>
+          {totp?.eligible ? (
+            <section className="totp-block">
+              <h2 className="password-title">Authenticator</h2>
+              {!totp.column_ready ? (
+                <p className="login-muted">
+                  The authenticator column is not on this login yet. Run hub/sql/totp.sql in SSMS,
+                  then open this page again.
+                </p>
+              ) : setup ? (
+                <form onSubmit={confirmSetup} className="password-form">
+                  <p className="login-muted">
+                    Scan this with an authenticator app, then enter the 6-digit code and press
+                    Confirm. That is what stores the secret. A password is not required.
+                  </p>
+                  <img className="totp-qr" src={setup.qr} alt="Authenticator QR code" />
+                  <p className="login-muted">If the camera cannot scan, type this secret into the app.</p>
+                  <p className="totp-secret">{setup.secret_groups}</p>
+                  <label className="login-label">
+                    Code from the app
+                    <input
+                      className="login-input"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      disabled={totpBusy}
+                      required
+                    />
+                  </label>
+                  <div className="password-actions">
+                    <button
+                      className="password-knob password-knob-cancel"
+                      type="button"
+                      disabled={totpBusy}
+                      onClick={() => {
+                        setSetup(null);
+                        setCode("");
+                        setTotpError(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button className="password-knob password-knob-save" type="submit" disabled={totpBusy}>
+                      {totpBusy ? "Checking…" : "Confirm"}
+                    </button>
+                  </div>
+                </form>
+              ) : totp.enrolled ? (
+                <>
+                  <p className="login-muted">
+                    Authenticator is on. The next sign-in asks for the code from the app.
+                  </p>
+                  <button
+                    className="password-knob password-knob-cancel"
+                    type="button"
+                    disabled={totpBusy}
+                    onClick={turnOff}
+                  >
+                    {totpBusy ? "Saving…" : "Turn off authenticator"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="login-muted">
+                    An authenticator app can be the second step for this login. Until you confirm a
+                    code, sign-in stays on the password.
+                  </p>
+                  <button
+                    className="password-knob password-knob-save"
+                    type="button"
+                    disabled={totpBusy}
+                    onClick={beginSetup}
+                  >
+                    {totpBusy ? "Preparing…" : "Set up authenticator"}
+                  </button>
+                </>
+              )}
+            </section>
           ) : null}
-          {error ? <p className="login-error">{error}</p> : null}
-          {ok ? <p className="ok">{ok}</p> : null}
-          <div className="password-actions">
-            <button
-              className="password-knob password-knob-cancel"
-              type="button"
-              disabled={busy}
-              onClick={() => openView("main")}
-            >
-              Cancel
-            </button>
-            <button className="password-knob password-knob-save" type="submit" disabled={busy}>
-              {busy ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </form>
+          {totpError ? <p className="login-error">{totpError}</p> : null}
+          {totpOk ? <p className="ok">{totpOk}</p> : null}
+        </div>
       </main>
     </div>
   );

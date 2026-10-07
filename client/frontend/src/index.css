@@ -1773,6 +1773,37 @@ textarea.cell-edit {
   box-shadow: none;
 }
 
+.password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.totp-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #c5d4dc;
+}
+
+.totp-qr {
+  width: 180px;
+  height: 180px;
+  align-self: center;
+  background: #fff;
+  image-rendering: pixelated;
+}
+
+.totp-secret {
+  margin: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .password-title {
   margin: 0 0 0.15rem;
   font-size: 1.05rem;

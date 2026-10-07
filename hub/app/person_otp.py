@@ -1,10 +1,10 @@
-"""Person login OTP: signed token + Twilio SMS.
+"""Login second step: authenticator TOTP, plus the old Twilio sender.
 
-No extra SQL table: the code hash lives in a short-lived JWT (``otp_token``).
-A non-empty ``dbo.person.mobile_phone`` means this person uses the second step.
+The live login path checks a stored ``totp_secret``. Twilio is unused there.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import logging
@@ -13,11 +13,14 @@ import secrets
 import threading
 import time
 from typing import Any
+from urllib.parse import quote
 
 import jwt
 
 OTP_TTL_SEC = 300
 OTP_RESEND_SEC = 45
+ENROLL_TTL_SEC = 600
+TOTP_STEP_SEC = 30
 _DEFAULT_OTP_SECRET = "dev-insecure-hub-otp-secret-32b!"
 _log = logging.getLogger(__name__)
 
@@ -158,3 +161,106 @@ def issue_and_send(username: str, phone: str) -> dict[str, Any]:
     if not sent:
         payload["dev_code"] = code
     return payload
+
+
+def generate_totp_secret() -> str:
+    """160-bit base32 secret, no padding. This is the enrollment key."""
+    return base64.b32encode(secrets.token_bytes(20)).decode("ascii").rstrip("=")
+
+
+def secret_groups(secret: str) -> str:
+    """Four-character groups for typing the secret by hand."""
+    compact = "".join(str(secret or "").split()).upper()
+    return " ".join(compact[i : i + 4] for i in range(0, len(compact), 4))
+
+
+def otpauth_uri(username: str, secret: str) -> str:
+    """``otpauth://totp/Agrolav:<username>?secret=...&issuer=Agrolav``."""
+    name = str(username or "").strip()
+    key = "".join(str(secret or "").split()).upper()
+    label = "Agrolav:" + quote(name, safe="")
+    return f"otpauth://totp/{label}?secret={key}&issuer=Agrolav"
+
+
+def qr_data_uri(text: str) -> str:
+    """SVG data URI for an authenticator app to scan."""
+    import segno
+
+    return segno.make(str(text or ""), error="m").svg_data_uri(scale=4)
+
+
+def _b32decode(secret: str) -> bytes:
+    compact = "".join(str(secret or "").split()).upper().rstrip("=")
+    if not compact or any(ch not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" for ch in compact):
+        raise OtpError("Authenticator secret is not valid", status=400)
+    pad = "=" * ((8 - len(compact) % 8) % 8)
+    return base64.b32decode(compact + pad, casefold=True)
+
+
+def hotp(key: bytes, counter: int) -> str:
+    """Six-digit HOTP (RFC 4226) with SHA-1."""
+    digest = hmac.new(key, int(counter).to_bytes(8, "big"), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    binary = int.from_bytes(digest[offset : offset + 4], "big") & 0x7FFFFFFF
+    return f"{binary % 1_000_000:06d}"
+
+
+def totp_matches(secret: str, code: str, *, now: int | None = None, window: int = 1) -> bool:
+    """True when ``code`` matches the secret at ``now``, plus or minus ``window`` steps."""
+    digits = "".join(ch for ch in str(code or "") if ch.isdigit())
+    if len(digits) != 6:
+        return False
+    try:
+        key = _b32decode(secret)
+    except (OtpError, ValueError):
+        return False
+    moment = int(now if now is not None else time.time())
+    step = moment // TOTP_STEP_SEC
+    for delta in range(-int(window), int(window) + 1):
+        if hmac.compare_digest(hotp(key, step + delta), digits):
+            return True
+    return False
+
+
+def encode_login_token(username: str, *, now: int | None = None) -> str:
+    """Short-lived JWT that names the username. The code is not inside it."""
+    issued = int(now if now is not None else time.time())
+    payload = {"u": str(username).strip(), "p": "login", "exp": issued + OTP_TTL_SEC}
+    return jwt.encode(payload, otp_secret(), algorithm="HS256")
+
+
+def username_from_login_token(token: str) -> str | None:
+    try:
+        payload = jwt.decode(str(token or ""), otp_secret(), algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return None
+    if str(payload.get("p") or "") != "login":
+        return None
+    name = str(payload.get("u") or "").strip()
+    return name or None
+
+
+def encode_enroll_token(username: str, secret: str, *, now: int | None = None) -> str:
+    """Signed pending secret. It is not written to SQL until the first code matches."""
+    issued = int(now if now is not None else time.time())
+    payload = {
+        "u": str(username).strip(),
+        "p": "enroll",
+        "s": "".join(str(secret or "").split()).upper(),
+        "exp": issued + ENROLL_TTL_SEC,
+    }
+    return jwt.encode(payload, otp_secret(), algorithm="HS256")
+
+
+def enroll_from_token(token: str) -> tuple[str, str] | None:
+    try:
+        payload = jwt.decode(str(token or ""), otp_secret(), algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return None
+    if str(payload.get("p") or "") != "enroll":
+        return None
+    name = str(payload.get("u") or "").strip()
+    secret = str(payload.get("s") or "").strip()
+    if not name or not secret:
+        return None
+    return name, secret

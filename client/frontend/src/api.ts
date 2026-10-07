@@ -607,6 +607,38 @@ export function setPersonPassword(body: {
   return sendJson("/api/auth/password", "POST", body);
 }
 
+export interface TotpStatus {
+  eligible: boolean;
+  enrolled: boolean;
+  column_ready: boolean;
+}
+
+export interface TotpSetup {
+  enroll_token: string;
+  otpauth_uri: string;
+  secret_groups: string;
+  qr: string;
+}
+
+export function getTotpStatus(): Promise<TotpStatus> {
+  return getJson("/api/auth/totp");
+}
+
+export function startTotp(): Promise<TotpSetup> {
+  return sendJson("/api/auth/totp/start", "POST", {});
+}
+
+export function confirmTotp(body: {
+  enroll_token: string;
+  code: string;
+}): Promise<{ ok: boolean; enrolled: boolean }> {
+  return sendJson("/api/auth/totp/confirm", "POST", body);
+}
+
+export function clearTotp(): Promise<{ ok: boolean; enrolled: boolean }> {
+  return sendJson("/api/auth/totp/clear", "POST", {});
+}
+
 export function logout(): Promise<{ ok: boolean; auth_required: boolean; authenticated: boolean }> {
   return sendJson("/api/logout", "POST", {});
 }

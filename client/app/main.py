@@ -405,6 +405,67 @@ def api_person_password(body: PasswordChangeRequest, request: Request) -> dict[s
         raise _hub_error(err) from err
 
 
+@app.get("/api/auth/totp")
+def api_totp_status(request: Request) -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+    import urllib.parse
+
+    username = _session_username(request)
+    try:
+        return hub_request(
+            "GET",
+            f"/api/auth/totp?{urllib.parse.urlencode({'username': username})}",
+        )
+    except Exception as err:
+        raise _hub_error(err) from err
+
+
+@app.post("/api/auth/totp/start")
+def api_totp_start(request: Request) -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+
+    username = _session_username(request)
+    try:
+        return hub_request("POST", "/api/auth/totp/start", body={"username": username})
+    except Exception as err:
+        raise _hub_error(err) from err
+
+
+class TotpConfirmBody(BaseModel):
+    enroll_token: str
+    code: str = ""
+
+
+@app.post("/api/auth/totp/confirm")
+def api_totp_confirm(body: TotpConfirmBody, request: Request) -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+
+    username = _session_username(request)
+    try:
+        return hub_request(
+            "POST",
+            "/api/auth/totp/confirm",
+            body={
+                "username": username,
+                "enroll_token": body.enroll_token,
+                "code": body.code,
+            },
+        )
+    except Exception as err:
+        raise _hub_error(err) from err
+
+
+@app.post("/api/auth/totp/clear")
+def api_totp_clear(request: Request) -> dict[str, Any]:
+    from app.centrale_sync import hub_request
+
+    username = _session_username(request)
+    try:
+        return hub_request("POST", "/api/auth/totp/clear", body={"username": username})
+    except Exception as err:
+        raise _hub_error(err) from err
+
+
 @app.post("/api/logout")
 def api_logout(request: Request, response: Response) -> dict[str, Any]:
     from app.auth import COOKIE_NAME, auth_enabled, cookie_kwargs, decode_session

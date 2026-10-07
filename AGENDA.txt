@@ -2,13 +2,14 @@ AGENDA
 
 
 1. direct catgorie: niet G/P
-2. klein/grooot geen 0 alleen -1
+2. klein/groot geen 0 alleen -1
 
-17.597,76
+
 
 
 3. notificatie van gebruik
-4. in aparte tabel alle directe categorisaties bijhouden ivm reset
+4. alle transaction tabellen in één
+
 
 
 
@@ -40,6 +41,16 @@ NL84INGB0002801129	Centrale SIa
 77.63.121.130	mobiel Juleon
 81.23.245.2	Udenhout
 92.70.11.161	Jan Luijkenstraat
+
+
+
+0. geldautomaat: a booking of 'hd' 1053-44-25 with bank_type='Geldautomaat' is categorized as 1057 due to the associated 'cash' on 1057-44-25 
+1. workunit-hd
+1a. a booking of 1056-21-18 with counterparty 1053-44-25 is categorized as 1111-NULL-25
+1b. the inverse booking (44->21) is categorized as cp (1110 for country 4)
+2. workunit-central
+2a. a booking of 1056-21-18 with counterparty 'source' (1051-18-NULL) is categorized as 1101-NULL-18
+2b. the other way round as 'cp' (1110 for country 4)
 
 
 

@@ -329,6 +329,119 @@ def login_mobile_phone(user: dict[str, Any] | None) -> str | None:
     return text or None
 
 
+def totp_eligible(user: dict[str, Any] | None) -> bool:
+    """Person in a country without ``has_balance``, or unit in a country with it."""
+    if not user:
+        return False
+    kind = login_kind(user)
+    if kind not in ("person", "unit"):
+        return False
+    from app.sql_catalog import country_has_balance
+
+    balance = country_has_balance(str(user.get("country") or ""))
+    if kind == "unit":
+        return balance
+    return not balance
+
+
+def _totp_column_present(kind: str) -> bool:
+    table = _LOGIN_TABLES.get(kind)
+    if table not in ("dbo.person", "dbo.unit"):
+        return False
+    init_user_store()
+    cursor = _sql_connect().cursor()
+    cursor.execute(f"SELECT COL_LENGTH(N'{table}', N'totp_secret')")
+    row = cursor.fetchone()
+    return bool(row and row[0])
+
+
+def totp_column_ready(user: dict[str, Any] | None) -> bool:
+    if not user:
+        return False
+    return _totp_column_present(login_kind(user))
+
+
+def login_totp_secret(user: dict[str, Any] | None) -> str | None:
+    """Stored authenticator secret, or ``None`` when this login has none.
+
+    A missing column is an empty secret. Any other SQL error propagates, so a
+    dead connection cannot skip the second step.
+    """
+    if not totp_eligible(user):
+        return None
+    kind = login_kind(user)
+    if not _totp_column_present(kind):
+        return None
+    table = _LOGIN_TABLES[kind]
+    name = str((user or {}).get("username") or "").strip()
+    if not name:
+        return None
+    init_user_store()
+    cursor = _sql_connect().cursor()
+    cursor.execute(
+        f"SELECT totp_secret FROM {table} WHERE username = ? COLLATE Latin1_General_CI_AI",
+        (name,),
+    )
+    row = cursor.fetchone()
+    text = str((row[0] if row else "") or "").strip()
+    return text or None
+
+
+def set_totp_secret(*, username: str, secret: str | None) -> None:
+    """Write or clear ``totp_secret`` on an eligible person or unit login."""
+    name = (username or "").strip()
+    user = find_user(name)
+    if user is None:
+        raise ValueError("Unknown login")
+    if not totp_eligible(user):
+        raise ValueError("This login does not use an authenticator")
+    kind = login_kind(user)
+    if not _totp_column_present(kind):
+        raise ValueError("Add totp_secret first. Run hub/sql/totp.sql in SSMS.")
+    stored = "".join(str(secret or "").split()).upper() or None
+    # The row username can differ in spacing from the session name. Write by id.
+    ident = int(user.get("id") or 0)
+    if ident <= 0:
+        raise ValueError("Unknown login")
+    table = _LOGIN_TABLES[kind]
+    key = "id" if kind == "person" else "unit_id"
+    with _LOCK:
+        init_user_store()
+        conn = _sql_connect()
+        # A previous request on this thread can leave autocommit off. An UPDATE
+        # in that transaction is invisible to SSMS and can roll back.
+        conn.autocommit = True
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"UPDATE {table} SET totp_secret = ? WHERE {key} = ?",
+                (stored, ident),
+            )
+        except Exception as exc:
+            text = str(exc).lower()
+            if "totp_secret" in text or "invalid column" in text:
+                raise ValueError(
+                    "Add totp_secret first. Run hub/sql/totp.sql in SSMS."
+                ) from exc
+            raise
+        cursor.execute(
+            f"SELECT totp_secret FROM {table} WHERE {key} = ?",
+            (ident,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError("Unknown login")
+        got = "".join(str(row[0] or "").split()).upper() or None
+        if got != stored:
+            raise ValueError("The authenticator secret was not stored.")
+        try:
+            _sql_connect().commit()
+        except Exception:
+            # The hub connection is autocommit, so the UPDATE is already durable.
+            pass
+    print(f"totp: stored username={name!r} enrolled={stored is not None}", flush=True)
+
+
 def _require_password_column(cursor: Any, table: str) -> None:
     cursor.execute("SELECT COL_LENGTH(?, ?)", (table, "password_hash"))
     row = cursor.fetchone()

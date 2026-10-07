@@ -188,32 +188,46 @@ def api_auth_login(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app import hub_ip, user_store
-    from app.person_otp import OtpError, issue_and_send
 
     hub_ip.record_visit(body.client_ip, None, login_page=True, path="/api/auth/login")
-    user = user_store.authenticate_public(body.username, body.password)
+    # An authenticator secret on an eligible login starts the second step.
+    # An empty secret is password only. This route does not read a phone or call Twilio.
+    try:
+        user = user_store.authenticate_public(body.username, body.password)
+    except Exception as exc:
+        if "closed connection" not in str(exc).lower():
+            import traceback
+
+            traceback.print_exc()
+            raise
+        user_store.reset_sql_connection()
+        user = user_store.authenticate_public(body.username, body.password)
     if user is None:
         raise HTTPException(status_code=401, detail="invalid username or password")
-    raw = user_store.find_user(body.username)
-    if raw is None:
-        raw = user_store.find_user(str(user.get("username") or ""))
+    try:
+        raw = user_store.find_user(body.username)
+        if raw is None:
+            raw = user_store.find_user(str(user.get("username") or ""))
+    except Exception as exc:
+        if "closed connection" not in str(exc).lower():
+            import traceback
+
+            traceback.print_exc()
+            raise
+        user_store.reset_sql_connection()
+        raw = user_store.find_user(body.username)
+        if raw is None:
+            raw = user_store.find_user(str(user.get("username") or ""))
     if raw is not None and not hub_ip.login_ip_allowed(raw, body.client_ip):
         raise HTTPException(
             status_code=403,
             detail="This login is not allowed from your IP address",
         )
     name = str((user.get("username") if user else None) or body.username or "").strip()
-    person_row = raw if raw is not None else None
-    phone = ""
-    if person_row is not None and str(person_row.get("account") or "").strip():
-        phone = user_store.unit_mobile_phone(name) or ""
-    elif person_row is not None and user_store._is_person_user(person_row):
-        phone = user_store.person_mobile_phone(name) or ""
-    if phone:
-        try:
-            return issue_and_send(name, phone)
-        except OtpError as exc:
-            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    if raw is not None and user_store.login_totp_secret(raw):
+        from app.person_otp import encode_login_token
+
+        return {"otp_required": True, "otp_token": encode_login_token(name)}
     hub_ip.record_visit(body.client_ip, name, login_page=True, path="/api/auth/login", status=200)
     _refresh_afschrijvingen(user)
     return {"user": user}
@@ -231,13 +245,16 @@ def api_auth_otp_verify(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app import hub_ip, user_store
-    from app.person_otp import verify_otp_token
+    from app.person_otp import totp_matches, username_from_login_token
 
     hub_ip.record_visit(body.client_ip, None, login_page=True, path="/api/auth/otp/verify")
-    username = verify_otp_token(body.otp_token, body.code)
+    username = username_from_login_token(body.otp_token)
     if username is None:
         raise HTTPException(status_code=401, detail="invalid or expired code")
     raw = user_store.find_user(username)
+    secret = user_store.login_totp_secret(raw) if raw is not None else None
+    if not secret or not totp_matches(secret, body.code):
+        raise HTTPException(status_code=401, detail="invalid or expired code")
     if raw is None:
         raise HTTPException(status_code=401, detail="invalid or expired code")
     if not hub_ip.login_ip_allowed(raw, body.client_ip):
@@ -258,19 +275,10 @@ def api_auth_otp_resend(
     body: AuthOtpRequest,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    from app import user_store
-    from app.person_otp import OtpError, issue_and_send, username_from_otp_token
-
-    username = username_from_otp_token(body.otp_token)
-    if username is None:
-        raise HTTPException(status_code=401, detail="invalid or expired code")
-    phone = user_store.unit_mobile_phone(username) or user_store.person_mobile_phone(username)
-    if not phone:
-        raise HTTPException(status_code=400, detail="no mobile phone on this person")
-    try:
-        return issue_and_send(username, phone)
-    except OtpError as exc:
-        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    raise HTTPException(
+        status_code=400,
+        detail="Enter the code from the authenticator app",
+    )
 
 
 class AuthPasswordRequest(BaseModel):
@@ -335,6 +343,117 @@ def api_auth_person_security(
         "username": str(user.get("username") or ""),
         "mobile_phone": phone,
     }
+
+
+class TotpConfirmRequest(BaseModel):
+    username: str
+    enroll_token: str
+    code: str = ""
+
+
+class TotpUserRequest(BaseModel):
+    username: str
+
+
+def _totp_status(user: dict[str, Any]) -> dict[str, Any]:
+    from app import user_store
+
+    eligible = user_store.totp_eligible(user)
+    ready = user_store.totp_column_ready(user) if eligible else False
+    enrolled = bool(user_store.login_totp_secret(user)) if eligible and ready else False
+    return {
+        "eligible": eligible,
+        "enrolled": enrolled,
+        "column_ready": ready,
+    }
+
+
+@app.get("/api/auth/totp")
+def api_auth_totp_status(
+    username: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import user_store
+
+    user = user_store.find_user(username)
+    if user is None:
+        raise HTTPException(status_code=404, detail="unknown user")
+    return _totp_status(user)
+
+
+@app.post("/api/auth/totp/start")
+def api_auth_totp_start(
+    body: TotpUserRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import user_store
+    from app.person_otp import (
+        encode_enroll_token,
+        generate_totp_secret,
+        otpauth_uri,
+        qr_data_uri,
+        secret_groups,
+    )
+
+    user = user_store.find_user(body.username)
+    if user is None:
+        raise HTTPException(status_code=404, detail="unknown user")
+    if not user_store.totp_eligible(user):
+        raise HTTPException(status_code=400, detail="This login does not use an authenticator")
+    if not user_store.totp_column_ready(user):
+        raise HTTPException(
+            status_code=400,
+            detail="Add totp_secret first. Run hub/sql/totp.sql in SSMS.",
+        )
+    name = str(user.get("username") or body.username).strip()
+    secret = generate_totp_secret()
+    uri = otpauth_uri(name, secret)
+    return {
+        "enroll_token": encode_enroll_token(name, secret),
+        "otpauth_uri": uri,
+        "secret_groups": secret_groups(secret),
+        "qr": qr_data_uri(uri),
+    }
+
+
+@app.post("/api/auth/totp/confirm")
+def api_auth_totp_confirm(
+    body: TotpConfirmRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import user_store
+    from app.person_otp import enroll_from_token, totp_matches
+
+    parsed = enroll_from_token(body.enroll_token)
+    if parsed is None:
+        raise HTTPException(status_code=400, detail="That setup expired. Start again.")
+    token_user, secret = parsed
+    if token_user.casefold() != str(body.username or "").strip().casefold():
+        raise HTTPException(status_code=400, detail="That setup expired. Start again.")
+    user = user_store.find_user(body.username)
+    if user is None:
+        raise HTTPException(status_code=404, detail="unknown user")
+    if not totp_matches(secret, body.code):
+        raise HTTPException(status_code=401, detail="That code did not match")
+    try:
+        user_store.set_totp_secret(username=body.username, secret=secret)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "enrolled": True}
+
+
+@app.post("/api/auth/totp/clear")
+def api_auth_totp_clear(
+    body: TotpUserRequest,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    from app import user_store
+
+    try:
+        user_store.set_totp_secret(username=body.username, secret=None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "enrolled": False}
 
 
 @app.get("/api/auth/user")
