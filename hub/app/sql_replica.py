@@ -272,57 +272,62 @@ def load_bound_transactions(*, category_code: int | None = None) -> list[dict[st
 
     if not user_store.database_url():
         return None
-    try:
-        bound = _open_bound_scope()
-        if bound is None:
-            return None
-        where_sql, where_params = _bound_where(bound)
-        params: list[Any] = list(where_params)
-        extra = ""
-        if category_code is not None:
-            from app import runtime as paths
+    for attempt in (1, 2):
+        try:
+            bound = _open_bound_scope()
+            if bound is None:
+                return None
+            where_sql, where_params = _bound_where(bound)
+            params: list[Any] = list(where_params)
+            extra = ""
+            if category_code is not None:
+                from app import runtime as paths
 
-            country_id = _country_id_for_username(
-                bound.cursor, str(paths.BOUND_COUNTRY or "").strip()
+                country_id = _country_id_for_username(
+                    bound.cursor, str(paths.BOUND_COUNTRY or "").strip()
+                )
+                fallback = _remainder_local_code(bound.cursor, country_id)
+                if fallback is not None:
+                    extra = " AND COALESCE(d.local_code, ?) = ?"
+                    params.extend([fallback, int(category_code)])
+                else:
+                    extra = " AND d.local_code = ?"
+                    params.append(int(category_code))
+            bound.cursor.execute(
+                f"""
+                SELECT
+                    t.source_id,
+                    t.amount,
+                    t.bank_type,
+                    t.counterparty_name,
+                    t.counterparty_iban,
+                    t.description,
+                    t.booked_on,
+                    t.modification,
+                    t.hit,
+                    d.local_code,
+                    c.currency_default,
+                    a.uid,
+                    a.iban
+                FROM {bound.table} t
+                JOIN dbo.person p ON p.id = t.person_id
+                JOIN dbo.country c ON c.country_id = p.country_id
+                LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
+                LEFT JOIN dbo.account a ON a.account_id = t.account_id
+                WHERE {where_sql}{extra}
+                ORDER BY t.booked_on DESC, t.source_id DESC
+                """,
+                tuple(params),
             )
-            fallback = _remainder_local_code(bound.cursor, country_id)
-            if fallback is not None:
-                extra = " AND COALESCE(d.local_code, ?) = ?"
-                params.extend([fallback, int(category_code)])
-            else:
-                extra = " AND d.local_code = ?"
-                params.append(int(category_code))
-        bound.cursor.execute(
-            f"""
-            SELECT
-                t.source_id,
-                t.amount,
-                t.bank_type,
-                t.counterparty_name,
-                t.counterparty_iban,
-                t.description,
-                t.booked_on,
-                t.modification,
-                t.hit,
-                d.local_code,
-                c.currency_default,
-                a.uid,
-                a.iban
-            FROM {bound.table} t
-            JOIN dbo.person p ON p.id = t.person_id
-            JOIN dbo.country c ON c.country_id = p.country_id
-            LEFT JOIN dbo.dim_category d ON d.category_id = t.category_id
-            LEFT JOIN dbo.account a ON a.account_id = t.account_id
-            WHERE {where_sql}{extra}
-            ORDER BY t.booked_on DESC, t.source_id DESC
-            """,
-            tuple(params),
-        )
-        fetched = bound.cursor.fetchall()
-    except Exception as exc:  # noqa: BLE001
-        print(f"sql replica: failed to load bookings: {exc}")
-        return []
-    return [_booked_row_shape(item) for item in fetched]
+            fetched = bound.cursor.fetchall()
+            return [_booked_row_shape(item) for item in fetched]
+        except Exception as exc:  # noqa: BLE001
+            print(f"sql replica: failed to load bookings: {exc}")
+            if attempt == 1:
+                user_store.reset_sql_connection()
+                continue
+            return []
+    return []
 
 
 def _booked_row_shape(item: Any) -> dict[str, Any]:

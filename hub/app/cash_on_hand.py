@@ -61,22 +61,16 @@ def assign_bound_cash_on_hand() -> int:
     bound = _open_bound_scope()
     if bound is None:
         return 0
-    try:
-        if bound.country_id is None:
-            return 0
-        return assign_cash_on_hand(
-            bound.cursor,
-            bound.table,
-            int(bound.country_id),
-            person_id=int(bound.person_id),
-            year=int(bound.year),
-            account_id=bound.account_id,
-        )
-    finally:
-        try:
-            bound.conn.close()
-        except Exception:
-            pass
+    if bound.country_id is None:
+        return 0
+    return assign_cash_on_hand(
+        bound.cursor,
+        bound.table,
+        int(bound.country_id),
+        person_id=int(bound.person_id),
+        year=int(bound.year),
+        account_id=bound.account_id,
+    )
 
 
 def _assign_account(
