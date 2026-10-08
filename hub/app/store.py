@@ -28,8 +28,8 @@ def _data_root_json_blocked(path: Path) -> bool:
         return False
 
 _lock = threading.Lock()
-# label -> last_seen monotonic time (force-kill never calls session/end)
-_local_sessions: dict[str, float] = {}
+# label -> (last_seen monotonic time, username). Force-kill never calls session/end.
+_local_sessions: dict[str, tuple[float, str]] = {}
 _SESSION_TTL_SEC = 20.0
 _file_meta: dict[str, dict[str, Any]] = {}  # key -> {revision, source, mtime}
 _events: list[dict[str, Any]] = []
@@ -50,9 +50,33 @@ _PERSON_DATA_FILES = _YEAR_FILES | {PERSONAL_CATEGORIES}
 MERGED_CENTER = SHARED_META_CENTER
 
 
+def _session_username(username: str | None) -> str:
+    who = (username or "").strip()
+    if not who or len(who) > 128 or "\n" in who or "\r" in who:
+        return ""
+    return who
+
+
+def _session_key(label: str, username: str) -> str:
+    who = _session_username(username)
+    if not who:
+        return label
+    return f"{label} [{who}]"
+
+
+def _logged_in_usernames() -> list[str]:
+    """Unique login names, in case-insensitive order. Blank process sessions are omitted."""
+    names: dict[str, str] = {}
+    for _seen, who in _local_sessions.values():
+        key = who.casefold()
+        if key and key not in names:
+            names[key] = who
+    return [names[key] for key in sorted(names)]
+
+
 def _prune_sessions_unlocked(now: float | None = None) -> None:
     cutoff = (now if now is not None else time.monotonic()) - _SESSION_TTL_SEC
-    stale = [label for label, seen in _local_sessions.items() if seen < cutoff]
+    stale = [label for label, (seen, _who) in _local_sessions.items() if seen < cutoff]
     for label in stale:
         _local_sessions.pop(label, None)
 
@@ -62,6 +86,7 @@ def get_status(*, country: str | None = None) -> dict[str, Any]:
         _prune_sessions_unlocked()
         return {
             "local_sessions": sorted(_local_sessions.keys()),
+            "logged_in_usernames": _logged_in_usernames(),
             "event_count": len(_events),
             "latest_event_id": (_events[-1]["id"] if _events else 0),
             "countries": list_countries(),
@@ -71,19 +96,23 @@ def get_status(*, country: str | None = None) -> dict[str, Any]:
         }
 
 
-def local_session_start(client_addr: str) -> dict[str, Any]:
+def local_session_start(client_addr: str, username: str = "") -> dict[str, Any]:
     """Register / refresh a connected client (``ip:port (center)``)."""
-    label = _clean_client_addr(client_addr)
+    label = _session_key(_clean_client_addr(client_addr), username)
+    who = _session_username(username)
     with _lock:
         _prune_sessions_unlocked()
-        _local_sessions[label] = time.monotonic()
+        _local_sessions[label] = (time.monotonic(), who)
     return get_status()
 
 
-def local_session_end(client_addr: str) -> dict[str, Any]:
+def local_session_end(client_addr: str, username: str = "") -> dict[str, Any]:
     label = _clean_client_addr(client_addr)
+    who = _session_username(username)
     with _lock:
-        _local_sessions.pop(label, None)
+        _local_sessions.pop(_session_key(label, who), None)
+        if who:
+            _local_sessions.pop(label, None)
         _prune_sessions_unlocked()
     return get_status()
 

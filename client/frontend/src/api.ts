@@ -560,6 +560,8 @@ export interface CentraleSyncStatus {
   has_secrets?: boolean;
   /** People whose bank consent just completed via hub callback. */
   consent_ready?: ConsentReadyPerson[];
+  /** Other logins with a live session. The current username is omitted. */
+  logged_in_usernames?: string[];
 }
 
 export interface AuthMeResponse {

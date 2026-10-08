@@ -199,6 +199,28 @@ html.refresh-busy body::before {
   min-width: 11rem;
 }
 
+.logged-in-users {
+  flex: 0 0 auto;
+  margin-left: 0.35rem;
+}
+
+.logged-in-users .center-switcher-trigger {
+  min-width: 2.6rem;
+  justify-content: center;
+  user-select: none;
+}
+
+.logged-in-users .center-switcher-menu {
+  left: auto;
+  right: 0;
+  min-width: 8rem;
+}
+
+.logged-in-users-menu li {
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+}
+
 .center-switcher-chevron {
   line-height: 1;
   opacity: 0.75;

@@ -608,6 +608,27 @@ def api_centrale_status(request: Request) -> dict[str, Any]:
         status["full_menu"] = False
         status["menu_items"] = []
     session = getattr(request.state, "session", None)
+    me = ""
+    if isinstance(session, dict):
+        me = str(session.get("username") or "").strip()
+    if not me:
+        me = str(status.get("username") or "").strip()
+    me_key = me.casefold()
+    others: list[str] = []
+    try:
+        from app.centrale_sync import hub_request
+
+        hub_status = hub_request("GET", "/api/status", timeout=5.0)
+        raw_names = hub_status.get("logged_in_usernames") if isinstance(hub_status, dict) else None
+        if isinstance(raw_names, list):
+            others = [
+                str(name).strip()
+                for name in raw_names
+                if str(name or "").strip() and str(name).strip().casefold() != me_key
+            ]
+    except Exception as exc:
+        print(f"logged-in users: {exc}")
+    status["logged_in_usernames"] = others
     if isinstance(session, dict) and session.get("administrator"):
         status["administrator"] = True
     cfg = load_config()

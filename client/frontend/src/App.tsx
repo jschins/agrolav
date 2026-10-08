@@ -1450,6 +1450,41 @@ function ActionsMenu({
   );
 }
 
+function LoggedInUsers({ names }: { names: string[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="center-switcher logged-in-users">
+      <button
+        type="button"
+        className="center-switcher-trigger"
+        aria-expanded={open}
+        aria-label={`${names.length} other users logged in`}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setOpen(true);
+        }}
+        onPointerUp={() => setOpen(false)}
+        onPointerCancel={() => setOpen(false)}
+        onLostPointerCapture={() => setOpen(false)}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        <span className="center-switcher-chevron" aria-hidden>
+          ▾
+        </span>
+        <span className="center-switcher-label">{names.length}</span>
+      </button>
+      {open ? (
+        <ul className="center-switcher-menu logged-in-users-menu" role="list">
+          {names.map((name) => (
+            <li key={name}>{name}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function isLogoutItem(item: HeaderAction): boolean {
   if (item.id === "logout") return true;
   const label = item.label.trim().toLowerCase();
@@ -2417,6 +2452,7 @@ function SyncNotifyShell({
               </button>
             ))}
           </div>
+          <LoggedInUsers names={status?.logged_in_usernames ?? []} />
         </div>
       )}
       {refusal && !isCountry && (

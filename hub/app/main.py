@@ -847,8 +847,9 @@ def api_local_session_start(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        label = _client_session_label(request, center, body or SessionPayload())
-        return store.local_session_start(label)
+        payload = body or SessionPayload()
+        label = _client_session_label(request, center, payload)
+        return store.local_session_start(label, payload.username or "")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -861,8 +862,9 @@ def api_local_session_end(
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     try:
-        label = _client_session_label(request, center, body or SessionPayload())
-        return store.local_session_end(label)
+        payload = body or SessionPayload()
+        label = _client_session_label(request, center, payload)
+        return store.local_session_end(label, payload.username or "")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -876,8 +878,9 @@ def api_local_session_heartbeat(
 ) -> dict[str, Any]:
     """Refresh last-seen so force-killed clients drop after TTL."""
     try:
-        label = _client_session_label(request, center, body or SessionPayload())
-        return store.local_session_start(label)
+        payload = body or SessionPayload()
+        label = _client_session_label(request, center, payload)
+        return store.local_session_start(label, payload.username or "")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
