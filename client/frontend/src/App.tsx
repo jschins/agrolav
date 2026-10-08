@@ -2444,22 +2444,62 @@ function isoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-const WIPE_STATEMENTS =
-  "Remove all bank statements; leave categorizations untouched";
-const WIPE_CATEGORIES =
-  "Clear categories, cross-postings; keep terms, statements";
-const WIPE_ALL =
-  "Clear categories, cross-postings, terms, and statements";
-const WIPE_JOURNAL = "Remove all manual journal entries";
-const WIPE_AFSCHRIJVINGEN = "Remove all automatic journal entries";
+const WIPE_ITEMS: { key: keyof WipeFlags; en: string; nl: string }[] = [
+  { key: "afschrijvingen", en: "Wipe automatic journal entries", nl: "Wis automatische journaalposten" },
+  { key: "journal", en: "Wipe manual journal entries", nl: "Wis handmatige journaalposten" },
+  { key: "statements", en: "Wipe bank statements", nl: "Wis bankafschriften" },
+  {
+    key: "categories_open",
+    en: "Wipe categorization where modification < 2",
+    nl: "Wis categorisatie voor modification < 2",
+  },
+  {
+    key: "categories_cross",
+    en: "Wipe categorization of cross-postings and current accounts",
+    nl: "Wis categorisatie voor kruisposten en rekening courant",
+  },
+  { key: "categories_all", en: "Wipe all categorization", nl: "Wis alle categorisatie" },
+  { key: "terms_general", en: "Wipe general terms", nl: "Wis G-termen" },
+  { key: "terms_personal", en: "Wipe personal terms", nl: "Wis P-termen" },
+  {
+    key: "modification_open",
+    en: "Set every modification below 2 to -1 and clear hits",
+    nl: "Zet alle modification < 2 op -1 & wis hits",
+  },
+  {
+    key: "modification_all",
+    en: "Set every modification to -1 and clear hits",
+    nl: "Zet alle modification op -1 & wis hits",
+  },
+];
 
 type WipeFlags = {
   statements: boolean;
-  categorizations: boolean;
   journal: boolean;
   afschrijvingen: boolean;
-  reset_all: boolean;
+  categories_open: boolean;
+  categories_cross: boolean;
+  categories_all: boolean;
+  terms_general: boolean;
+  terms_personal: boolean;
+  modification_open: boolean;
+  modification_all: boolean;
 };
+
+function emptyWipeFlags(): WipeFlags {
+  return {
+    statements: false,
+    journal: false,
+    afschrijvingen: false,
+    categories_open: false,
+    categories_cross: false,
+    categories_all: false,
+    terms_general: false,
+    terms_personal: false,
+    modification_open: false,
+    modification_all: false,
+  };
+}
 
 function RecalcChoices({
   terms,
@@ -2505,12 +2545,9 @@ function WipeChoices({
   onCancel: () => void;
   onRun: (choices: WipeFlags) => void;
 }) {
-  const [statements, setStatements] = useState(false);
-  const [categorizations, setCategorizations] = useState(false);
-  const [journal, setJournal] = useState(false);
-  const [afschrijvingen, setAfschrijvingen] = useState(false);
-  const [resetAll, setResetAll] = useState(false);
-  const anyChecked = statements || categorizations || journal || afschrijvingen || resetAll;
+  const [flags, setFlags] = useState<WipeFlags>(emptyWipeFlags);
+  const anyChecked = WIPE_ITEMS.some((item) => flags[item.key]);
+  const dutch = uiIsDutch(terms);
   return (
     <div className="priority-rules-overlay" onClick={onCancel}>
       <div
@@ -2519,54 +2556,24 @@ function WipeChoices({
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
-        <label className="wipe-choice">
-          <input
-            type="checkbox"
-            checked={statements}
-            onChange={(e) => setStatements(e.target.checked)}
-          />
-          {tableHeaderTerm(terms, WIPE_STATEMENTS)}
-        </label>
-        <label className="wipe-choice">
-          <input
-            type="checkbox"
-            checked={categorizations}
-            onChange={(e) => setCategorizations(e.target.checked)}
-          />
-          {tableHeaderTerm(terms, WIPE_CATEGORIES)}
-        </label>
-        <label className="wipe-choice">
-          <input
-            type="checkbox"
-            checked={resetAll}
-            onChange={(e) => setResetAll(e.target.checked)}
-          />
-          {tableHeaderTerm(terms, WIPE_ALL)}
-        </label>
-        <label className="wipe-choice">
-          <input
-            type="checkbox"
-            checked={journal}
-            onChange={(e) => setJournal(e.target.checked)}
-          />
-          {tableHeaderTerm(terms, WIPE_JOURNAL)}
-        </label>
-        <label className="wipe-choice">
-          <input
-            type="checkbox"
-            checked={afschrijvingen}
-            onChange={(e) => setAfschrijvingen(e.target.checked)}
-          />
-          {tableHeaderTerm(terms, WIPE_AFSCHRIJVINGEN)}
-        </label>
+        {WIPE_ITEMS.map((item) => (
+          <label className="wipe-choice" key={item.key}>
+            <input
+              type="checkbox"
+              checked={flags[item.key]}
+              onChange={(e) =>
+                setFlags((prev) => ({ ...prev, [item.key]: e.target.checked }))
+              }
+            />
+            {wipeItemLabel(terms, item, dutch)}
+          </label>
+        ))}
         <div className="wipe-choice-actions">
           <button
             type="button"
             className="priority-rules-close"
             disabled={!anyChecked}
-            onClick={() =>
-              onRun({ statements, categorizations, journal, afschrijvingen, reset_all: resetAll })
-            }
+            onClick={() => onRun(flags)}
           >
             OK
           </button>
@@ -2662,6 +2669,16 @@ function tableHeaderTerm(
 ): string {
   const label = terms?.[key]?.trim();
   return label || key;
+}
+
+function wipeItemLabel(
+  terms: Record<string, string> | undefined,
+  item: { en: string; nl: string },
+  dutch: boolean
+): string {
+  const label = terms?.[item.en]?.trim();
+  if (label && label !== item.en) return label;
+  return dutch ? item.nl : item.en;
 }
 
 function RichLabel({ text }: { text: string }) {

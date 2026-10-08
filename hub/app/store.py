@@ -740,6 +740,13 @@ def wipe_year(
     journal: bool = False,
     afschrijvingen: bool = False,
     reset_all: bool = False,
+    categories_open: bool = False,
+    categories_cross: bool = False,
+    categories_all: bool = False,
+    terms_general: bool = False,
+    terms_personal: bool = False,
+    modification_open: bool = False,
+    modification_all: bool = False,
     whole_country: bool = False,
 ) -> dict[str, Any]:
     """Remove bank statements, reset categories, and/or clear journal tables."""
@@ -778,6 +785,13 @@ def wipe_year(
             journal=journal,
             afschrijvingen=afschrijvingen,
             reset_all=reset_all,
+            categories_open=categories_open,
+            categories_cross=categories_cross,
+            categories_all=categories_all,
+            terms_general=terms_general,
+            terms_personal=terms_personal,
+            modification_open=modification_open,
+            modification_all=modification_all,
         )
         announced = announce_mutation(
             primary,

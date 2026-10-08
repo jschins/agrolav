@@ -685,6 +685,11 @@ def wipe_country_year(
     return _sql_retry(_run)
 
 
+# Cross-posting and current-account roles. sia and sib count as rekening
+# courant. siasib and cash stay.
+_CROSS_CATEGORY_ROLES = ("cp", "rc", "sia", "sib")
+
+
 def clear_bookings(
     country: str,
     *,
@@ -697,19 +702,29 @@ def clear_bookings(
     journal: bool = False,
     afschrijvingen: bool = False,
     reset_all: bool = False,
+    categories_open: bool = False,
+    categories_cross: bool = False,
+    categories_all: bool = False,
+    terms_general: bool = False,
+    terms_personal: bool = False,
+    modification_open: bool = False,
+    modification_all: bool = False,
 ) -> dict[str, Any]:
-    """Drop bank statements, reset categories, and/or clear journal tables.
+    """Drop statements, categories, terms, modification, and journal rows.
 
     ``whole_country`` updates every row of ``dbo.transaction_{country}``.
     Otherwise the rows are limited to ``account``, ``person``, or ``center``.
-    Terms (``dbo.category_term``) are not touched. ``categorizations`` sets
-    ``modification = -1`` and ``category_id`` to ``category_role = remainder``
-    on every row except a hand row (``modification`` 2, 3, or 4).
-    Those keep their category and their description. ``reset_all`` sets the
-    same two fields on every row in scope, hand rows included. ``journal``
-    deletes every ``dbo.journal`` row for this country. ``afschrijvingen``
-    deletes every ``dbo.afschrijvingen`` row for this country. Those tables
-    are country-wide, not person or account.
+    A category wipe sets ``category_id`` to ``category_role = remainder`` and
+    leaves ``modification``. ``categories_open`` does that where
+    ``modification < 2``. ``categories_cross`` does it where the current
+    category role is cp, rc, sia, or sib. ``categories_all`` does it on every
+    row in scope. ``modification_open`` sets ``modification = -1`` and
+    ``hit = NULL`` where ``modification < 2``. ``modification_all`` does that
+    on every row. ``terms_general`` deletes G-terms (``person_id`` NULL) for
+    this country. ``terms_personal`` deletes P-terms for the people in scope;
+    an account wipe limits that to ``account_id`` when the column exists.
+    ``journal`` and ``afschrijvingen`` delete the country-wide rows.
+    ``categorizations`` and ``reset_all`` remain for older callers.
     """
     from app import user_store
     from app.sql_replica import _transaction_table
@@ -719,10 +734,33 @@ def clear_bookings(
     table = _transaction_table(name)
     if not name or not table:
         raise ValueError(f"Unknown country {country!r}")
-    if not statements and not categorizations and not journal and not afschrijvingen and not reset_all:
+    chosen = (
+        statements,
+        categorizations,
+        journal,
+        afschrijvingen,
+        reset_all,
+        categories_open,
+        categories_cross,
+        categories_all,
+        terms_general,
+        terms_personal,
+        modification_open,
+        modification_all,
+    )
+    if not any(chosen):
         raise ValueError("Choose at least one wipe action")
     if not _sql_ready():
         raise RuntimeError("SQL is not configured")
+
+    def _and(where_sql: str, extra: str) -> str:
+        if where_sql:
+            return f"{where_sql} AND {extra}"
+        return f" WHERE {extra}"
+
+    def _aliased(where_sql: str, alias: str) -> str:
+        text = where_sql.replace("account_id", f"{alias}.account_id")
+        return text.replace("person_id", f"{alias}.person_id")
 
     def _run() -> dict[str, Any]:
         cursor = _cursor()
@@ -749,23 +787,47 @@ def clear_bookings(
             whole_country=whole_country,
         )
         tx_count = 0
-        if statements:
-            from app.category_hand import forget_wiped_statements
-
-            forget_wiped_statements(cursor, country_id, table, where_sql, where_params)
-        if categorizations or reset_all:
+        needs_remainder = (
+            categorizations
+            or reset_all
+            or categories_open
+            or categories_cross
+            or categories_all
+        )
+        remainder_id = None
+        if needs_remainder:
             remainder_id, _remainder_code = require_remainder_row(country_id, cursor)
+        if categories_open:
+            open_sql = _and(where_sql, "modification < 2")
+            cursor.execute(
+                f"UPDATE {table} SET category_id = ?{open_sql}",
+                (remainder_id, *where_params),
+            )
+        if categories_cross:
+            roles = ",".join("?" * len(_CROSS_CATEGORY_ROLES))
+            cross_where = _aliased(where_sql, "t")
+            cursor.execute(
+                f"UPDATE t SET category_id = ? "
+                f"FROM {table} t "
+                f"JOIN dbo.dim_category d ON d.category_id = t.category_id "
+                f"{cross_where}"
+                + (" AND " if cross_where else " WHERE ")
+                + f"d.category_role IN ({roles})",
+                (remainder_id, *where_params, *_CROSS_CATEGORY_ROLES),
+            )
+        if categories_all:
+            cursor.execute(
+                f"UPDATE {table} SET category_id = ?{where_sql}",
+                (remainder_id, *where_params),
+            )
+        if categorizations or reset_all:
             if reset_all:
                 cursor.execute(
                     f"UPDATE {table} SET modification = -1, category_id = ?, hit = NULL{where_sql}",
                     (remainder_id, *where_params),
                 )
             else:
-                hand_kept = "modification < 2"
-                if where_sql:
-                    kept_sql = f"{where_sql} AND {hand_kept}"
-                else:
-                    kept_sql = f" WHERE {hand_kept}"
+                kept_sql = _and(where_sql, "modification < 2")
                 cursor.execute(
                     f"UPDATE {table} SET modification = -1, hit = NULL{kept_sql}",
                     where_params,
@@ -774,7 +836,21 @@ def clear_bookings(
                     f"UPDATE {table} SET category_id = ?{kept_sql}",
                     (remainder_id, *where_params),
                 )
+        if modification_open:
+            open_sql = _and(where_sql, "modification < 2")
+            cursor.execute(
+                f"UPDATE {table} SET modification = -1, hit = NULL{open_sql}",
+                where_params,
+            )
+        if modification_all:
+            cursor.execute(
+                f"UPDATE {table} SET modification = -1, hit = NULL{where_sql}",
+                where_params,
+            )
         if statements:
+            from app.category_hand import forget_wiped_statements
+
+            forget_wiped_statements(cursor, country_id, table, where_sql, where_params)
             cursor.execute(f"SELECT COUNT(*) FROM {table}{where_sql}", where_params)
             tx_count = int(cursor.fetchone()[0])
             cursor.execute(f"DELETE FROM {table}{where_sql}", where_params)
@@ -815,7 +891,27 @@ def clear_bookings(
                 "WHERE d.country_id = ?",
                 (int(country_id),),
             )
-        if person_ids and (statements or categorizations or reset_all):
+        if terms_general or terms_personal:
+            _wipe_terms(
+                cursor,
+                country_id=country_id,
+                person_ids=person_ids,
+                account_ids=account_ids,
+                account_scoped=bool((account or "").strip()) and not whole_country,
+                general=terms_general,
+                personal=terms_personal,
+            )
+        bookings_changed = (
+            statements
+            or categorizations
+            or reset_all
+            or categories_open
+            or categories_cross
+            or categories_all
+            or modification_open
+            or modification_all
+        )
+        if person_ids and bookings_changed:
             _rebuild_category_totals(cursor, table, country_id, person_ids, spaar_source_exclude_clause)
         user_store._sql_connect().commit()
         return {
@@ -826,9 +922,83 @@ def clear_bookings(
             "reset_all": bool(reset_all),
             "journal": bool(journal),
             "afschrijvingen": bool(afschrijvingen),
+            "categories_open": bool(categories_open),
+            "categories_cross": bool(categories_cross),
+            "categories_all": bool(categories_all),
+            "terms_general": bool(terms_general),
+            "terms_personal": bool(terms_personal),
+            "modification_open": bool(modification_open),
+            "modification_all": bool(modification_all),
         }
 
     return _sql_retry(_run)
+
+
+def _wipe_terms(
+    cursor: Any,
+    *,
+    country_id: int,
+    person_ids: list[int],
+    account_ids: list[int],
+    account_scoped: bool,
+    general: bool,
+    personal: bool,
+) -> None:
+    """Delete G-terms for the country and P-terms for the people in scope."""
+    cursor.execute("SELECT OBJECT_ID(N'dbo.category_term', N'U')")
+    if cursor.fetchone()[0] is None:
+        raise ValueError("dbo.category_term is missing")
+    if general:
+        cursor.execute(
+            """
+            DELETE t
+            FROM dbo.category_term t
+            JOIN dbo.dim_category d ON d.category_id = t.category_id
+            WHERE t.person_id IS NULL AND d.country_id = ?
+            """,
+            (int(country_id),),
+        )
+        if term_change_table(cursor):
+            cursor.execute(
+                """
+                DELETE tc
+                FROM dbo.term_change tc
+                JOIN dbo.dim_category d ON d.category_id = tc.category_id
+                WHERE tc.person_id IS NULL AND d.country_id = ?
+                """,
+                (int(country_id),),
+            )
+    if not personal or not person_ids:
+        return
+    marks = ",".join("?" * len(person_ids))
+    params: list[Any] = list(person_ids)
+    account_sql = ""
+    cursor.execute("SELECT COL_LENGTH(N'dbo.category_term', N'account_id')")
+    has_account = cursor.fetchone()[0] is not None
+    if account_scoped and has_account and account_ids:
+        acc = ",".join("?" * len(account_ids))
+        account_sql = f" AND t.account_id IN ({acc})"
+        params.extend(account_ids)
+    cursor.execute(
+        f"DELETE t FROM dbo.category_term t "
+        f"WHERE t.person_id IN ({marks}){account_sql}",
+        tuple(params),
+    )
+    if not term_change_table(cursor):
+        return
+    change_params: list[Any] = list(person_ids)
+    change_sql = ""
+    if account_scoped and account_ids:
+        cursor.execute("SELECT COL_LENGTH(N'dbo.term_change', N'account_id')")
+        if cursor.fetchone()[0] is not None:
+            acc = ",".join("?" * len(account_ids))
+            change_sql = f" AND tc.account_id IN ({acc})"
+            change_params.extend(account_ids)
+    cursor.execute(
+        f"DELETE tc FROM dbo.term_change tc "
+        f"WHERE tc.person_id IN ({marks}){change_sql}",
+        tuple(change_params),
+    )
 
 
 def assign_small_expenses(

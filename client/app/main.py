@@ -1070,6 +1070,13 @@ class WipeYearRequest(BaseModel):
     journal: bool = False
     afschrijvingen: bool = False
     reset_all: bool = False
+    categories_open: bool = False
+    categories_cross: bool = False
+    categories_all: bool = False
+    terms_general: bool = False
+    terms_personal: bool = False
+    modification_open: bool = False
+    modification_all: bool = False
     whole_country: bool = False
 
 
@@ -1157,6 +1164,13 @@ def api_wipe_year(body: WipeYearRequest) -> dict[str, Any]:
         "journal": body.journal,
         "afschrijvingen": body.afschrijvingen,
         "reset_all": body.reset_all,
+        "categories_open": body.categories_open,
+        "categories_cross": body.categories_cross,
+        "categories_all": body.categories_all,
+        "terms_general": body.terms_general,
+        "terms_personal": body.terms_personal,
+        "modification_open": body.modification_open,
+        "modification_all": body.modification_all,
     }
     if cfg.access == ACCESS_COUNTRY:
         payload["whole_country"] = True

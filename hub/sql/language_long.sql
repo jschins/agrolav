@@ -329,6 +329,28 @@ WHERE NOT EXISTS (
 );
 GO
 
+INSERT INTO dbo.language (term_lang1, term_lang2)
+SELECT v.term_lang1, v.term_lang2
+FROM (VALUES
+    ('Wipe automatic journal entries', 'Wis automatische journaalposten'),
+    ('Wipe manual journal entries', 'Wis handmatige journaalposten'),
+    ('Wipe bank statements', 'Wis bankafschriften'),
+    ('Wipe categorization where modification < 2', 'Wis categorisatie voor modification < 2'),
+    (
+        'Wipe categorization of cross-postings and current accounts',
+        'Wis categorisatie voor kruisposten en rekening courant'
+    ),
+    ('Wipe all categorization', 'Wis alle categorisatie'),
+    ('Wipe general terms', 'Wis G-termen'),
+    ('Wipe personal terms', 'Wis P-termen'),
+    ('Set every modification below 2 to -1 and clear hits', 'Zet alle modification < 2 op -1 & wis hits'),
+    ('Set every modification to -1 and clear hits', 'Zet alle modification op -1 & wis hits')
+) AS v (term_lang1, term_lang2)
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.language l WHERE l.term_lang1 = v.term_lang1
+);
+GO
+
 INSERT INTO dbo.language_long (term_key, term_lang1, term_lang2)
 SELECT v.term_key, v.term_lang1, v.term_lang2
 FROM (VALUES

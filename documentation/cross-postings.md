@@ -182,7 +182,7 @@ rc[account_id] = hd[account_id]
 
 
 
-# Cursor's proposal
+# Extended rules table
 
 `dbo.cp_rules` holds one row per booking. The category ids stay in `dbo.dim_category`. `tie_booking` equals `tie_other`: that field on this booking’s bank equals that field on the other bank. `write_as = other.assoc_cat_id` is the category that field names on the other bank. `write_as = role` finds the `dim_category` row with that `category_role`. `role_account` is `booking` or `other`: the row’s `account_id` is this bank’s or the other’s. `role_assoc` is the field that row’s `assoc_cat_id` must equal. `booking_role = unit` means role `unit`. The script is `hub/sql/cp_rules.sql`. Bereken kruisposten reads this table. A missing table runs no rule.
 

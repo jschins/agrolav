@@ -295,10 +295,15 @@ export function smallExpenses(body: {
 
 export function wipeYear(body: {
   statements: boolean;
-  categorizations: boolean;
   journal: boolean;
   afschrijvingen: boolean;
-  reset_all: boolean;
+  categories_open: boolean;
+  categories_cross: boolean;
+  categories_all: boolean;
+  terms_general: boolean;
+  terms_personal: boolean;
+  modification_open: boolean;
+  modification_all: boolean;
   person?: string;
   account?: string;
 }): Promise<{
