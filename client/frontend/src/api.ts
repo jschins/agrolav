@@ -598,8 +598,6 @@ export function resendLoginOtp(otp_token: string): Promise<OtpChallenge> {
 
 export interface PersonSecurity {
   username: string;
-  /** ``null`` on center and country logins, which have no mobile phone. */
-  mobile_phone: string | null;
 }
 
 export function getPersonSecurity(): Promise<PersonSecurity> {
@@ -609,8 +607,7 @@ export function getPersonSecurity(): Promise<PersonSecurity> {
 export function setPersonPassword(body: {
   new_password: string;
   confirm: string;
-  mobile_phone?: string;
-}): Promise<{ ok: boolean; mobile_phone?: string }> {
+}): Promise<{ ok: boolean }> {
   return sendJson("/api/auth/password", "POST", body);
 }
 

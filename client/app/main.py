@@ -360,7 +360,6 @@ def api_login_otp_resend(body: OtpVerifyRequest) -> dict[str, Any]:
 class PasswordChangeRequest(BaseModel):
     new_password: str
     confirm: str
-    mobile_phone: str | None = None
 
 
 @app.get("/api/auth/person-security")
@@ -397,8 +396,6 @@ def api_person_password(body: PasswordChangeRequest, request: Request) -> dict[s
                 detail="Log in again, then set the password",
             )
         payload["administrator_username"] = admin_name
-    if body.mobile_phone is not None:
-        payload["mobile_phone"] = body.mobile_phone
     try:
         return hub_request("POST", "/api/auth/password", body=payload)
     except Exception as err:

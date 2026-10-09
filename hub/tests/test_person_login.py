@@ -8,7 +8,6 @@ from app.user_store import (
     credentials_match,
     default_password_hash,
     login_kind,
-    normalize_mobile_phone,
     password_for_username,
     set_administrator_password,
 )
@@ -95,22 +94,6 @@ class LoginKindTests(unittest.TestCase):
         self.assertEqual(login_kind({"person": "hd", "center": "sib"}), "person")
         self.assertEqual(login_kind({"person": "", "center": "sib"}), "center")
         self.assertEqual(login_kind({"person": "", "center": ""}), "country")
-
-
-class MobilePhoneTests(unittest.TestCase):
-    def test_empty_is_none(self):
-        self.assertIsNone(normalize_mobile_phone(""))
-        self.assertIsNone(normalize_mobile_phone("  "))
-
-    def test_e164(self):
-        self.assertEqual(normalize_mobile_phone("+31612345678"), "+31612345678")
-        self.assertEqual(normalize_mobile_phone("+31 6 1234 5678"), "+31612345678")
-        self.assertEqual(normalize_mobile_phone("0612345678"), "+31612345678")
-        self.assertEqual(normalize_mobile_phone("0031612345678"), "+31612345678")
-
-    def test_rejects_local(self):
-        with self.assertRaises(ValueError):
-            normalize_mobile_phone("12345")
 
 
 class OtpTokenTests(unittest.TestCase):

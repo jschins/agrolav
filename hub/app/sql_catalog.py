@@ -4487,11 +4487,16 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
         from app import user_store
         from app.sql_replica import _transaction_table
 
-        conn = user_store._sql_connect()
+        shared = user_store._sql_connect()
+        if not shared.autocommit:
+            try:
+                shared.rollback()
+            except Exception:
+                pass
+            shared.autocommit = True
+        conn = user_store.new_sql_connection(autocommit=False)
         cursor = conn.cursor()
-        was = conn.autocommit
         try:
-            conn.autocommit = False
             country_id = _country_id_for(cursor, name)
             if country_id is None:
                 raise ValueError(f"Unknown country: {name}")
@@ -4529,17 +4534,20 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
             allocated: list[dict[str, Any]] = []
             for item in parsed:
                 cid = item["category_id"]
-                if cid is None:
-                    raise ValueError("Each category needs a numeric id")
                 code = int(item["local_code"])
-                if cid in protected_ids or (
-                    cid not in existing and cid in taken_ids
-                ):
-                    raise ValueError(f"Category id {cid} is already in use")
                 if code in protected_codes:
                     raise ValueError(
                         f"Category code {code:04d} is already in use"
                     )
+                if cid is None:
+                    cid = _new_booking_category_id(taken_ids, code, lo, hi)
+                    taken_ids.add(cid)
+                    allocated.append({**item, "category_id": cid, "is_new": True})
+                    continue
+                if cid in protected_ids or (
+                    cid not in existing and cid in taken_ids
+                ):
+                    raise ValueError(f"Category id {cid} is already in use")
                 if cid in existing:
                     item = {**item, "is_new": False}
                 else:
@@ -4622,18 +4630,35 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
                     },
                 )
             for item in allocated:
+                if item["is_remainder"]:
+                    continue
                 cid = int(item["category_id"])
                 cursor.execute(
                     """
                     UPDATE dbo.dim_category
-                    SET local_code = ?, label = ?, category_role = ?
+                    SET local_code = ?,
+                        label = ?,
+                        category_role = CASE
+                            WHEN LOWER(LTRIM(RTRIM(category_role))) = N'remainder'
+                            THEN NULL
+                            ELSE category_role
+                        END
                     WHERE category_id = ?
                     """,
                     int(item["local_code"]),
                     str(item["label"]),
-                    "remainder" if item["is_remainder"] else None,
                     cid,
                 )
+            cursor.execute(
+                """
+                UPDATE dbo.dim_category
+                SET local_code = ?, label = ?, category_role = N'remainder'
+                WHERE category_id = ?
+                """,
+                int(remainder_item["local_code"]),
+                str(remainder_item["label"]),
+                int(remainder_item["category_id"]),
+            )
             conn.commit()
             _CAT_CACHE.clear()
         except Exception:
@@ -4644,7 +4669,7 @@ def save_booking_categories(country: str, items: list[dict[str, Any]]) -> dict[s
             raise
         finally:
             try:
-                conn.autocommit = was
+                conn.close()
             except Exception:
                 pass
         return booking_categories_payload(name)
@@ -4667,12 +4692,15 @@ def _parse_catalog_items(
         if not isinstance(raw, dict):
             raise ValueError("Each category must be an object")
         cid_raw = raw.get("category_id")
-        try:
-            cid = int(cid_raw)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("Each category needs a numeric id") from exc
-        if cid_raw in (None, "", 0) or cid < 1:
-            raise ValueError("Each category needs a numeric id")
+        if cid_raw in (None, "", 0):
+            cid = None
+        else:
+            try:
+                cid = int(cid_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Each category needs a numeric id") from exc
+            if cid < 1:
+                raise ValueError("Each category needs a numeric id")
         try:
             code = int(raw.get("local_code"))
         except (TypeError, ValueError) as exc:
@@ -4682,12 +4710,13 @@ def _parse_catalog_items(
         label = str(raw.get("label") or "").strip()
         if not label:
             raise ValueError("Each category needs a label")
-        if cid in ids:
+        if cid is not None and cid in ids:
             raise ValueError(f"Category id {cid} is already in use")
         if code in codes:
             raise ValueError(f"Category code {code:0{width}d} is already in use")
         codes.add(code)
-        ids.add(cid)
+        if cid is not None:
+            ids.add(cid)
         remainder = bool(raw.get("is_remainder"))
         if remainder:
             remainders += 1
@@ -4716,6 +4745,10 @@ def _sql_in(ids: list[int]) -> tuple[str, list[int]]:
     return placeholders, [int(i) for i in ids]
 
 
+def _sql_ident_ok(name: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name or ""))
+
+
 def _remap_category_fks(
     cursor,
     *,
@@ -4723,20 +4756,81 @@ def _remap_category_fks(
     deleted_ids: list[int],
     remainder_id: int,
 ) -> None:
+    """Point leftover rows at unclassified, then drop rows that cannot move.
+
+    A foreign key still naming a deleted ``category_id`` aborts the whole
+    save, so the label and code edits in the same submit never commit.
+    """
     placeholders, values = _sql_in(deleted_ids)
     params = [remainder_id, *values]
-    cursor.execute(
-        f"UPDATE {table} SET category_id = ? WHERE category_id IN ({placeholders})",
-        params,
-    )
-    cursor.execute(
-        f"DELETE FROM dbo.category_term WHERE category_id IN ({placeholders})",
-        values,
-    )
-    cursor.execute("SELECT OBJECT_ID(N'dbo.category_total', N'U')")
+    cursor.execute("SELECT OBJECT_ID(?, N'U')", (table,))
     if cursor.fetchone()[0]:
         cursor.execute(
-            f"DELETE FROM dbo.category_total WHERE category_id IN ({placeholders})",
+            f"UPDATE {table} SET category_id = ? WHERE category_id IN ({placeholders})",
+            params,
+        )
+    cursor.execute(
+        """
+        SELECT s.name, t.name, c.name, c.is_nullable
+        FROM sys.foreign_keys fk
+        JOIN sys.foreign_key_columns fc
+          ON fc.constraint_object_id = fk.object_id
+        JOIN sys.tables t ON t.object_id = fk.parent_object_id
+        JOIN sys.schemas s ON s.schema_id = t.schema_id
+        JOIN sys.columns c
+          ON c.object_id = fc.parent_object_id
+         AND c.column_id = fc.parent_column_id
+        WHERE fk.referenced_object_id = OBJECT_ID(N'dbo.dim_category')
+        """
+    )
+    seen: set[tuple[str, str, str]] = set()
+    drop_rows = {"category_term", "category_total", "term_change", "mapping", "mapping_banks"}
+    for schema, table_name, column, nullable in cursor.fetchall():
+        schema_s = str(schema or "")
+        table_s = str(table_name or "")
+        column_s = str(column or "")
+        key = (schema_s, table_s, column_s)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not (
+            _sql_ident_ok(schema_s)
+            and _sql_ident_ok(table_s)
+            and _sql_ident_ok(column_s)
+        ):
+            continue
+        qualified = f"{schema_s}.{table_s}"
+        if qualified.lower() == "dbo.dim_category" and column_s.lower() == "assoc_cat_id":
+            cursor.execute(
+                f"UPDATE dbo.dim_category SET assoc_cat_id = NULL "
+                f"WHERE assoc_cat_id IN ({placeholders})",
+                values,
+            )
+            continue
+        if table_s.lower() in drop_rows:
+            cursor.execute(
+                f"DELETE FROM {qualified} WHERE {column_s} IN ({placeholders})",
+                values,
+            )
+            continue
+        if qualified.lower() == table.lower() and column_s.lower() == "category_id":
+            continue
+        if nullable:
+            cursor.execute(
+                f"UPDATE {qualified} SET {column_s} = NULL "
+                f"WHERE {column_s} IN ({placeholders})",
+                values,
+            )
+            continue
+        cursor.execute(
+            f"UPDATE {qualified} SET {column_s} = ? "
+            f"WHERE {column_s} IN ({placeholders})",
+            params,
+        )
+    cursor.execute("SELECT OBJECT_ID(N'dbo.term_change', N'U')")
+    if cursor.fetchone()[0]:
+        cursor.execute(
+            f"DELETE FROM dbo.term_change WHERE category_id IN ({placeholders})",
             values,
         )
 

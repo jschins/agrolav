@@ -72,6 +72,7 @@ import {
 import type {
   AccountGroup,
   CatalogCategory,
+  CatalogResponse,
   MatrixResponse,
   RefreshPersonResult,
   SettingsResponse,
@@ -4280,27 +4281,42 @@ type CatalogDraft = {
   local_code: string;
   label: string;
   is_remainder: boolean;
+  deleted: boolean;
 };
+
+function catalogSignature(rows: CatalogDraft[]): string {
+  return JSON.stringify(
+    rows.map((row) => ({
+      category_id: row.category_id,
+      local_code: row.local_code,
+      label: row.label,
+      is_remainder: row.is_remainder,
+      deleted: row.deleted,
+    }))
+  );
+}
 
 function catalogDraftConflict(rows: CatalogDraft[]): string | null {
   const ids = new Set<number>();
   const codes = new Set<number>();
   for (const row of rows) {
-    const id = Number.parseInt(row.category_id, 10);
+    if (row.deleted) continue;
+    const idText = row.category_id.trim();
+    const id = idText ? Number.parseInt(idText, 10) : Number.NaN;
     const code = Number.parseInt(row.local_code, 10);
-    if (!Number.isFinite(id) || id < 1) {
+    if (idText && (!Number.isFinite(id) || id < 1)) {
       return "Each category needs a numeric id";
     }
     if (!Number.isFinite(code) || code < 1) {
       return "Each category needs a numeric code";
     }
-    if (ids.has(id)) {
+    if (Number.isFinite(id) && ids.has(id)) {
       return `Category id ${id} is already in use`;
     }
     if (codes.has(code)) {
       return `Category code ${code} is already in use`;
     }
-    ids.add(id);
+    if (Number.isFinite(id)) ids.add(id);
     codes.add(code);
   }
   return null;
@@ -4339,6 +4355,7 @@ function catalogToDraft(rows: CatalogCategory[]): CatalogDraft[] {
     local_code: String(row.local_code).padStart(4, "0"),
     label: String(row.label ?? "").trim(),
     is_remainder: Boolean(row.is_remainder),
+    deleted: false,
   }));
 }
 
@@ -4349,16 +4366,25 @@ function CategoriesApp() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [baseline, setBaseline] = useState("");
   const channelRef = useRef<BroadcastChannel | null>(null);
   const nextKey = useRef(1);
+  const leaveToMatrixRef = useRef<() => void>(() => {});
+  const dirty = baseline !== "" && catalogSignature(draft) !== baseline;
+
+  function showCatalog(data: CatalogResponse) {
+    const next = catalogToDraft(data.categories || []);
+    setCountry(data.country || "");
+    setDraft(next);
+    setBaseline(catalogSignature(next));
+  }
 
   useEffect(() => {
     let cancelled = false;
     getCatalog()
       .then((data) => {
         if (cancelled) return;
-        setCountry(data.country || "");
-        setDraft(catalogToDraft(data.categories || []));
+        showCatalog(data);
         setLoaded(true);
       })
       .catch((e: Error) => {
@@ -4384,7 +4410,7 @@ function CategoriesApp() {
       const key = e.key.toLowerCase();
       if (key === "m") {
         e.preventDefault();
-        openView("main");
+        leaveToMatrixRef.current();
       } else if (key === "t") {
         e.preventDefault();
         openView("terms");
@@ -4428,41 +4454,58 @@ function CategoriesApp() {
           local_code: String(code).padStart(4, "0"),
           label: "",
           is_remainder: rows.length === 0,
+          deleted: false,
         },
       ];
     });
   }
 
-  function removeRow(key: string) {
+  function markDeleted(key: string) {
     setSaved(false);
     setDraft((rows) => {
-      const next = rows.filter((row) => row.key !== key);
-      if (next.length && !next.some((row) => row.is_remainder)) {
-        next[0] = { ...next[0], is_remainder: true };
+      const target = rows.find((row) => row.key === key);
+      if (!target) return rows;
+      const deleted = !target.deleted;
+      let next = rows.map((row) => (row.key === key ? { ...row, deleted } : row));
+      const kept = next.filter((row) => !row.deleted);
+      if (!kept.length) return rows;
+      if (!kept.some((row) => row.is_remainder)) {
+        const keepKey = kept[0].key;
+        next = next.map((row) => ({ ...row, is_remainder: row.key === keepKey }));
       }
       return next;
     });
   }
 
+  function leaveToMatrix() {
+    if (dirty && !window.confirm("discard changes?")) return;
+    openView("main");
+  }
+  leaveToMatrixRef.current = leaveToMatrix;
+
   function save() {
     setError(null);
     setSaved(false);
-    const conflict = catalogDraftConflict(draft);
+    const kept = draft.filter((row) => !row.deleted);
+    const conflict = catalogDraftConflict(kept);
     if (conflict) {
       setError(`Please review your submission: ${conflict}`);
       return;
     }
     setBusy(true);
-    const payload: CatalogCategory[] = draft.map((row) => ({
-      category_id: Number.parseInt(row.category_id, 10),
-      local_code: Number.parseInt(row.local_code, 10),
-      label: row.label.trim(),
-      is_remainder: row.is_remainder,
-    }));
+    const payload: CatalogCategory[] = kept.map((row) => {
+      const id = Number.parseInt(row.category_id, 10);
+      return {
+        category_id: Number.isFinite(id) && id >= 1 ? id : null,
+        local_code: Number.parseInt(row.local_code, 10),
+        label: row.label.trim(),
+        is_remainder: row.is_remainder,
+      };
+    });
     saveCatalog(payload)
+      .then(() => getCatalog())
       .then((data) => {
-        setCountry(data.country || country);
-        setDraft(catalogToDraft(data.categories || []));
+        showCatalog(data);
         setSaved(true);
         channelRef.current?.postMessage("recalculated");
       })
@@ -4478,15 +4521,16 @@ function CategoriesApp() {
             <span className="sidebar-field-legend" aria-hidden="true">
               {"\u00a0"}
             </span>
-            <button type="button" className="sidebar-knob" onClick={() => openView("main")}>
+            <button type="button" className="sidebar-knob" onClick={leaveToMatrix}>
               Matrix (Alt+M)
             </button>
           </div>
         </div>
         <p className="win-hint">
-          Category window for {country || "this country"}. Code and id must
-          both be unused when you add a category. Changing a label keeps
-          bookings on that category. Deleting a category moves leftover
+          Category window for {country || "this country"}. Delete turns a row
+          red. Save writes the list, then reloads it from the database. A blank
+          id is filled in then; code and id must both be unused. Changing a
+          label keeps bookings on that category. A red row moves leftover
           bookings to unclassified.
         </p>
         <div className="sidebar-field">
@@ -4507,7 +4551,7 @@ function CategoriesApp() {
             disabled={busy || draft.length === 0}
             onClick={save}
           >
-            {busy ? "Submitting…" : "Submit"}
+            {busy ? "Saving…" : "Save"}
           </button>
         </div>
       </aside>
@@ -4528,13 +4572,14 @@ function CategoriesApp() {
               </thead>
               <tbody>
                 {draft.map((row) => (
-                  <tr key={row.key}>
+                  <tr key={row.key} className={row.deleted ? "catalog-row-deleted" : undefined}>
                     <td>
                       <input
                         className="catalog-code"
                         inputMode="numeric"
                         maxLength={4}
                         value={row.local_code}
+                        disabled={row.deleted}
                         onChange={(e) => patchRow(row.key, { local_code: e.target.value })}
                       />
                     </td>
@@ -4543,6 +4588,7 @@ function CategoriesApp() {
                         className="catalog-id"
                         inputMode="numeric"
                         value={row.category_id}
+                        disabled={row.deleted}
                         onChange={(e) => patchRow(row.key, { category_id: e.target.value })}
                       />
                     </td>
@@ -4550,6 +4596,7 @@ function CategoriesApp() {
                       <input
                         className="catalog-label"
                         value={row.label}
+                        disabled={row.deleted}
                         onChange={(e) => patchRow(row.key, { label: e.target.value })}
                       />
                     </td>
@@ -4557,7 +4604,8 @@ function CategoriesApp() {
                       <input
                         type="radio"
                         name="catalog-remainder"
-                        checked={row.is_remainder}
+                        checked={row.is_remainder && !row.deleted}
+                        disabled={row.deleted}
                         onChange={() => patchRow(row.key, { is_remainder: true })}
                       />
                     </td>
@@ -4565,8 +4613,10 @@ function CategoriesApp() {
                       <button
                         type="button"
                         className="catalog-delete"
-                        disabled={draft.length === 1}
-                        onClick={() => removeRow(row.key)}
+                        disabled={
+                          !row.deleted && draft.filter((item) => !item.deleted).length <= 1
+                        }
+                        onClick={() => markDeleted(row.key)}
                       >
                         Delete
                       </button>

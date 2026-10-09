@@ -162,26 +162,6 @@ def default_password_hash(username: str) -> str:
     return hash_password(password_for_username(username))
 
 
-_E164 = re.compile(r"^\+[1-9]\d{7,14}$")
-
-
-def normalize_mobile_phone(value: str | None) -> str | None:
-    """E.164 (``+`` then 8–15 digits) or ``None`` if empty. Raises ``ValueError``.
-
-    Also accepts ``0031…`` and a Dutch national ``06…`` (stored as ``+316…``).
-    """
-    text = str(value or "").strip().replace(" ", "").replace("-", "")
-    if not text:
-        return None
-    if text.startswith("00"):
-        text = "+" + text[2:]
-    elif text.startswith("06") and text[2:].isdigit() and 8 <= len(text) <= 10:
-        text = "+31" + text[1:]
-    if not _E164.fullmatch(text):
-        raise ValueError("Mobile phone must be international, e.g. +31612345678")
-    return text
-
-
 def credentials_match(
     password: str,
     *,
@@ -234,12 +214,6 @@ def person_password_hash(username: str) -> str | None:
     return text or None
 
 
-def person_mobile_phone(username: str) -> str | None:
-    raw = _person_column(username, "mobile_phone")
-    text = str(raw or "").strip()
-    return text or None
-
-
 def _unit_column(username: str, column: str) -> Any:
     name = (username or "").strip()
     if not name:
@@ -261,12 +235,6 @@ def _unit_column(username: str, column: str) -> Any:
 
 def unit_password_hash(username: str) -> str | None:
     raw = _unit_column(username, "password_hash")
-    text = str(raw or "").strip()
-    return text or None
-
-
-def unit_mobile_phone(username: str) -> str | None:
-    raw = _unit_column(username, "mobile_phone")
     text = str(raw or "").strip()
     return text or None
 
@@ -295,7 +263,7 @@ def login_kind(user: dict[str, Any] | None) -> str:
 def _login_column(kind: str, username: str, column: str) -> Any:
     table = _LOGIN_TABLES.get(kind)
     name = (username or "").strip()
-    if table is None or column not in ("password_hash", "mobile_phone") or not name:
+    if table is None or column != "password_hash" or not name:
         return None
     init_user_store()
     cursor = _sql_connect().cursor()
@@ -316,15 +284,6 @@ def login_password_hash(user: dict[str, Any] | None) -> str | None:
     if not user:
         return None
     raw = _login_column(login_kind(user), str(user.get("username") or ""), "password_hash")
-    text = str(raw or "").strip()
-    return text or None
-
-
-def login_mobile_phone(user: dict[str, Any] | None) -> str | None:
-    """Person and unit only. Center and country have no mobile phone."""
-    if not user or login_kind(user) not in ("person", "unit"):
-        return None
-    raw = _login_column(login_kind(user), str(user.get("username") or ""), "mobile_phone")
     text = str(raw or "").strip()
     return text or None
 
@@ -695,6 +654,20 @@ def _sql_connect():
     return conn
 
 
+def new_sql_connection(*, autocommit: bool):
+    """A connection of our own. The per-thread one stays on autocommit.
+
+    Category saves must not join a transaction left open on the shared
+    connection: those writes stay invisible to SSMS and roll back later.
+    """
+    _sql_connect()
+    if not _WORKING_URL:
+        raise RuntimeError("SQL Server is not configured")
+    return _pyodbc().connect(
+        _sql_url_with_mars(_WORKING_URL), autocommit=autocommit, timeout=30
+    )
+
+
 def reset_sql_connection() -> None:
     """Drop this thread's dead pyodbc connection so the next call reconnects."""
     global _SQL
@@ -987,7 +960,6 @@ def upsert_user(
     center: str = "",
     country: str = "",
     person: str = "",
-    mobile_phone: str | None = None,
 ) -> dict[str, Any]:
     """Insert or update a user. Does not change ``format`` or ``password_hash`` on update."""
     name = (username or "").strip()
@@ -998,7 +970,6 @@ def upsert_user(
     country_s = _empty_to_null(country)
     person_s = _empty_to_null(person)
     today = _utc_today()
-    mobile = normalize_mobile_phone(mobile_phone)
     with _LOCK:
         init_user_store()
         cursor = _sql_connect().cursor()
@@ -1043,8 +1014,8 @@ def upsert_user(
                 """
                 INSERT INTO dbo.person
                     (username, title, country_id, center_id,
-                     created_at, password_hash, mobile_phone)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                     created_at, password_hash)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -1053,7 +1024,6 @@ def upsert_user(
                     center_id,
                     today,
                     default_password_hash(name),
-                    mobile,
                 ),
             )
         _sql_connect().commit()
@@ -1069,7 +1039,6 @@ def upsert_personal_login(
     person: str,
     country: str = "",
     title: str = "",
-    mobile_phone: str | None = None,
 ) -> dict[str, Any]:
     folder = (person or "").strip()
     ws = (center or "").strip()
@@ -1084,7 +1053,6 @@ def upsert_personal_login(
         center=ws,
         country=country_s,
         person=folder,
-        mobile_phone=mobile_phone,
     )
 
 
@@ -1097,7 +1065,6 @@ def create_manual_person(
     account_number: str,
     initial_balance: str = "0",
     country: str = "",
-    mobile_phone: str | None = None,
 ) -> dict[str, Any]:
     """Create a manual-upload person with a single opening-balance account."""
     name = (person or "").strip()
@@ -1122,7 +1089,6 @@ def create_manual_person(
 
     country_s = (country or active_country() or resolve_country_for_center(ws) or "").strip()
     today = _utc_today()
-    mobile = normalize_mobile_phone(mobile_phone)
     with _LOCK:
         init_user_store()
         cursor = _sql_connect().cursor()
@@ -1138,9 +1104,9 @@ def create_manual_person(
             """
             INSERT INTO dbo.person
                 (username, title, country_id, center_id,
-                 created_at, password_hash, mobile_phone)
+                 created_at, password_hash)
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -1149,7 +1115,6 @@ def create_manual_person(
                 center_id,
                 today,
                 default_password_hash(name),
-                mobile,
             ),
         )
         person_id = int(cursor.fetchone()[0])
@@ -1241,33 +1206,6 @@ def set_administrator_password(
             raise ValueError("Unknown login")
         _sql_connect().commit()
     return {"ok": True}
-
-
-def set_person_mobile(*, username: str, mobile_phone: str | None) -> dict[str, Any]:
-    """Store or clear ``mobile_phone`` on a person or unit login."""
-    name = (username or "").strip()
-    user = find_user(name)
-    if user is None:
-        raise ValueError("Unknown login")
-    kind = login_kind(user)
-    if kind not in ("person", "unit"):
-        return {"ok": True, "mobile_phone": ""}
-    mobile = normalize_mobile_phone(mobile_phone)
-    table = _LOGIN_TABLES[kind]
-    with _LOCK:
-        init_user_store()
-        cursor = _sql_connect().cursor()
-        cursor.execute(
-            f"""
-            UPDATE {table} SET mobile_phone = ?
-            WHERE username = ? COLLATE Latin1_General_CI_AI
-            """,
-            (mobile, name),
-        )
-        if cursor.rowcount == 0:
-            raise ValueError("Unknown login")
-        _sql_connect().commit()
-    return {"ok": True, "mobile_phone": mobile or ""}
 
 
 def set_user_format(*, username: str, format: str) -> dict[str, Any] | None:

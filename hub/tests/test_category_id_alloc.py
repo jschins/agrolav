@@ -31,11 +31,24 @@ class CategoryIdAllocTests(unittest.TestCase):
 
 
 class CatalogParseTests(unittest.TestCase):
+    def test_blank_id_is_assigned_later(self) -> None:
+        parsed = _parse_catalog_items(
+            [
+                {
+                    "local_code": 12,
+                    "label": "A",
+                    "is_remainder": True,
+                }
+            ]
+        )
+        self.assertIsNone(parsed[0]["category_id"])
+
     def test_requires_id_and_refuses_duplicate_id_or_code(self) -> None:
         with self.assertRaisesRegex(ValueError, "numeric id"):
             _parse_catalog_items(
                 [
                     {
+                        "category_id": "nope",
                         "local_code": 12,
                         "label": "A",
                         "is_remainder": True,

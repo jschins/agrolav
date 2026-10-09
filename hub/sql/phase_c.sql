@@ -82,7 +82,6 @@ CREATE TABLE dbo.person (
     center_id INT NOT NULL,
     created_at DATE NOT NULL,
     password_hash NVARCHAR(256) NULL,
-    mobile_phone NVARCHAR(32) NULL,
     CONSTRAINT fk_person_country FOREIGN KEY (country_id) REFERENCES dbo.country (country_id),
     CONSTRAINT fk_person_center FOREIGN KEY (center_id) REFERENCES dbo.center (center_id)
 );

@@ -285,7 +285,6 @@ class AuthPasswordRequest(BaseModel):
     username: str
     new_password: str
     confirm: str
-    mobile_phone: str | None = None
     administrator_username: str | None = None
 
 
@@ -304,22 +303,11 @@ def api_auth_password(
                 new=body.new_password,
                 confirm=body.confirm,
             )
-        result = user_store.set_person_password(
+        return user_store.set_person_password(
             username=body.username,
             new=body.new_password,
             confirm=body.confirm,
         )
-        user = user_store.find_user(body.username)
-        if (
-            body.mobile_phone is not None
-            and user is not None
-            and user_store.login_kind(user) in ("person", "unit")
-        ):
-            user_store.set_person_mobile(
-                username=body.username, mobile_phone=body.mobile_phone
-            )
-            result["mobile_phone"] = user_store.login_mobile_phone(user) or ""
-        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -334,15 +322,7 @@ def api_auth_person_security(
     user = user_store.find_user(username)
     if user is None:
         raise HTTPException(status_code=404, detail="unknown user")
-    phone: str | None
-    if user_store.login_kind(user) in ("person", "unit"):
-        phone = user_store.login_mobile_phone(user) or ""
-    else:
-        phone = None
-    return {
-        "username": str(user.get("username") or ""),
-        "mobile_phone": phone,
-    }
+    return {"username": str(user.get("username") or "")}
 
 
 class TotpConfirmRequest(BaseModel):
@@ -1379,7 +1359,6 @@ class CreatePersonRequest(BaseModel):
     aspsp: str = "ING"
     initial_balance: str | None = None
     account_number: str | None = None
-    mobile_phone: str | None = None
 
 
 class BootstrapFetchRequest(BaseModel):
@@ -2117,7 +2096,6 @@ def api_create_person(
             aspsp=body.aspsp,
             initial_balance=body.initial_balance,
             account_number=body.account_number,
-            mobile_phone=body.mobile_phone,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -2473,7 +2451,6 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
             <p class="field-hint">__USERNAME_HINT__</p>
           </td>
         </tr>
-        <tr><th>mobile phone</th><td><input id="mobilePhone" type="tel" placeholder="+31612345678"/></td></tr>
         <tr id="rowHolder"><th>account holder name</th><td><input id="accountHolder" type="text"/></td></tr>
         <tr id="rowAccountNumber" style="display:none"><th>account number</th><td><input id="accountNumber" type="text"/></td></tr>
         <tr id="rowInitial" style="display:none"><th>initial balance</th><td><input id="initialBalance" type="text" value="0.00"/></td></tr>
@@ -2616,8 +2593,6 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         mode: modeValue,
         title: document.getElementById("displayName").value.trim(),
       };
-      const mobile = document.getElementById("mobilePhone").value.trim();
-      if (mobile) body.mobile_phone = mobile;
       if (modeValue === "manual-upload") {
         body.account_name = document.getElementById("accountHolder").value.trim();
         body.initial_balance = document.getElementById("initialBalance").value;

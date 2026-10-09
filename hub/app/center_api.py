@@ -880,7 +880,6 @@ def create_person(
     aspsp: str = "ING",
     initial_balance: str | None = None,
     account_number: str | None = None,
-    mobile_phone: str | None = None,
 ) -> dict[str, Any]:
     """Create a person in SQL Server (agrolav-sql)."""
     person_name = _valid_person_name(person)
@@ -900,9 +899,6 @@ def create_person(
     aspsp_s = (aspsp or "ING").strip()
     if not aspsp_s:
         raise ValueError("aspsp is required")
-    from app.user_store import normalize_mobile_phone
-
-    mobile = normalize_mobile_phone(mobile_phone)
 
     with _center_scope(center) as ws:
         from app import user_store
@@ -921,7 +917,6 @@ def create_person(
                     person=person_name,
                     country=country_name,
                     title=display_name,
-                    mobile_phone=mobile,
                 )
                 user_store.set_user_format(username=person_name, format=aspsp_s)
                 return {
@@ -941,7 +936,6 @@ def create_person(
                     account_name=holder,
                     account_number=account_no,
                     initial_balance=initial_balance or "0",
-                    mobile_phone=mobile,
                 )
                 store.announce_mutation(ws, [f"{person_name}/"], source="central")
                 return {

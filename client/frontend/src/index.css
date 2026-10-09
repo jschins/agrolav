@@ -1393,6 +1393,17 @@ textarea.cell-edit {
   padding: 0.2rem 0.5rem;
 }
 
+.catalog-row-deleted td {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.catalog-row-deleted input {
+  color: #b91c1c;
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
 .ip-target,
 .ip-address {
   box-sizing: border-box;
