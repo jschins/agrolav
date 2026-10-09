@@ -1,7 +1,8 @@
-"""Raw Rabobank download.
+"""Rabobank bookings.
 
-``dbo.account.format`` = Rabobank is saved as Enable Banking returns it.
-Nothing is simplified and nothing is written to the transaction tables.
+``dbo.account.format`` = Rabobank uses the same Enable Banking fields as ING.
+The counterparty IBAN is read from ``debtor_account`` / ``creditor_account``,
+because Rabobank does not put it in the remittance text.
 """
 from __future__ import annotations
 
@@ -78,20 +79,53 @@ def split_accounts(
     return rabobank, other
 
 
-def collect_raw(
+def _compact_iban(value: object) -> str:
+    return "".join(str(value or "").split()).upper()
+
+
+def counterparty_iban(transaction: dict[str, Any]) -> str:
+    """Other party's IBAN. The account's own IBAN is not a counterparty."""
+    from app.core.categorize import _tx_field
+
+    indicator = str(
+        _tx_field(transaction, "credit_debit_indicator", "creditDebitIndicator") or ""
+    ).strip().upper()
+    key = "debtor_account" if indicator == "CRDT" else "creditor_account"
+    block = transaction.get(key) or {}
+    if not isinstance(block, dict):
+        return ""
+    iban = _compact_iban(block.get("iban"))
+    own = _compact_iban(transaction.get("_own_iban"))
+    if not iban or iban == own:
+        return ""
+    return iban
+
+
+def simplify_rabobank(transaction: dict[str, Any]) -> dict[str, Any]:
+    """ING simplification, then the Rabobank counterparty IBAN when needed."""
+    from app.core.categorize import simplify_transaction
+
+    record = simplify_transaction(transaction)
+    if not str(record.get("iban") or "").strip():
+        record["iban"] = counterparty_iban(transaction)
+    return record
+
+
+def download_transactions(
     accounts: list[dict[str, Any]],
     *,
     date_from: str | None,
     date_to: str | None,
-    person: str,
     fetch: TransactionFetch,
-) -> tuple[dict[str, Any], list[str]]:
-    """Transaction objects for each account, with no local tags added."""
+    index_by_uid: dict[str, int] | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Tagged transaction copies for the requested period. Dates are not clamped."""
     from app.core.enable_banking import EnableBankingError
 
-    exported: list[dict[str, Any]] = []
+    indexes = index_by_uid or {}
+    tagged: list[dict[str, Any]] = []
     errors: list[str] = []
-    for account in accounts:
+    for position, account in enumerate(accounts):
         uid = str(account.get("uid") or "").strip()
         label = str(account.get("iban") or account.get("name") or uid or "account")
         if not uid:
@@ -102,21 +136,46 @@ def collect_raw(
         except EnableBankingError as exc:
             errors.append(f"{label}: {exc}")
             continue
-        exported.append(
-            {
-                "uid": uid,
-                "iban": str(account.get("iban") or ""),
-                "name": str(account.get("name") or ""),
-                "transactions": list(batch) if isinstance(batch, list) else [],
-            }
-        )
-    if not exported and errors:
+        index = indexes.get(uid, position)
+        own = _compact_iban(account.get("iban"))
+        for item in batch if isinstance(batch, list) else []:
+            if not isinstance(item, dict):
+                continue
+            copy = dict(item)
+            copy["_account_index"] = index
+            copy["_account_uid"] = uid
+            copy["_own_iban"] = own
+            tagged.append(copy)
+    if not tagged and errors:
         raise EnableBankingError("; ".join(errors))
-    document = {
-        "aspsp": "Rabobank",
-        "person": person,
-        "date_from": date_from or "",
-        "date_to": date_to or "",
-        "accounts": exported,
-    }
-    return document, errors
+    return tagged, errors
+
+
+def store_transactions(
+    raw_transactions: list[dict[str, Any]],
+    *,
+    inserted_by_uid: dict[str, int] | None = None,
+    inserted_source_ids: list[str] | None = None,
+    categorize: bool = True,
+) -> dict[str, str]:
+    """Store Rabobank rows the same way as an ING download."""
+    from app.core.categorize import MOD_UNCALCULATED, recategorize_transactions, remainder_category_code
+    from app.sql_replica import ingest_bound_transactions
+
+    rows: list[dict[str, Any]] = []
+    for transaction in raw_transactions:
+        if not isinstance(transaction, dict):
+            continue
+        record = simplify_rabobank(transaction)
+        record["category"] = remainder_category_code() or 0
+        record["hit"] = None
+        record["modification"] = MOD_UNCALCULATED
+        rows.append(record)
+    ingest_bound_transactions(
+        rows,
+        inserted_by_uid=inserted_by_uid,
+        inserted_source_ids=inserted_source_ids,
+    )
+    if not categorize:
+        return {}
+    return recategorize_transactions()

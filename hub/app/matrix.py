@@ -672,67 +672,60 @@ def _bank_refresh_one(
         )
 
     from app.core.rabobank_export import (
-        collect_raw,
+        download_transactions,
         load_account_formats,
         split_accounts,
+        store_transactions,
     )
-    from app.core.single_client import SingleDockerClient, load_profile
+    from app.core.single_client import (
+        SingleDockerClient,
+        _refresh_account_balances,
+        account_index_by_uid,
+        load_profile,
+    )
 
     linked = enabled_bank_accounts()
     rabobank_accounts, other_accounts = split_accounts(
         linked, load_account_formats(pack.person_name)
     )
-    export_payload: dict[str, Any] | None = None
-    export_errors: list[str] = []
+    rabobank_raw: list[dict[str, Any]] = []
+    rabobank_errors: list[str] = []
     if rabobank_accounts:
         profile = load_profile()
         client = SingleDockerClient.from_profile(profile)
-        export_payload, export_errors = collect_raw(
+        rabobank_raw, rabobank_errors = download_transactions(
             rabobank_accounts,
             date_from=date_from,
             date_to=date_to,
-            person=pack.person_name,
             fetch=lambda uid, start, end: client.get_transactions(
                 uid, date_from=start, date_to=end
             ),
+            index_by_uid=account_index_by_uid(),
         )
-        for err in export_errors:
+        for err in rabobank_errors:
             warnings.append(f"{pack.person_name}: {err}")
-        warnings.append(
-            f"{pack.person_name}: Rabobank data was not stored; save the downloaded file."
-        )
+        try:
+            _refresh_account_balances(
+                client,
+                [str(account.get("uid") or "") for account in rabobank_accounts if account.get("uid")],
+            )
+        except Exception:
+            pass
 
-    if rabobank_accounts and not other_accounts:
-        result = {
-            "person_name": pack.person_name,
-            "skipped": False,
-            "source": "rabobank-export",
-            "transaction_count": 0,
-            "date_from": date_from,
-            "date_to": date_to,
-            "warnings": export_errors,
-            "account_errors": export_errors,
-            "accounts": [],
-            "inserted_source_ids": [],
-            "rabobank_export": export_payload,
-        }
-        if new_year:
-            result["new_year"] = True
-        return result, warnings
-
-    if rabobank_accounts:
-        include_uids = {
-            str(account.get("uid") or "")
-            for account in other_accounts
-            if str(account.get("uid") or "")
-        }
+    fetched = None
+    if other_accounts or not rabobank_accounts:
+        include_uids = None
+        if rabobank_accounts:
+            include_uids = {
+                str(account.get("uid") or "")
+                for account in other_accounts
+                if str(account.get("uid") or "")
+            }
         fetched = fetch_transactions(
             date_from=date_from,
             date_to=date_to,
             include_uids=include_uids,
         )
-    else:
-        fetched = fetch_transactions(date_from=date_from, date_to=date_to)
     accounts = enabled_bank_accounts()
     from app import user_store
     from app.enable_sql import upsert_person_accounts
@@ -745,36 +738,43 @@ def _bank_refresh_one(
 
     inserted_by_uid: dict[str, int] = {}
     inserted_source_ids: list[str] = []
-    process_transactions(
-        fetched.transactions,
-        new_year=bool(new_year),
-        inserted_by_uid=inserted_by_uid,
-        inserted_source_ids=inserted_source_ids,
-        categorize=categorize,
-    )
+    if fetched is not None:
+        process_transactions(
+            fetched.transactions,
+            new_year=bool(new_year),
+            inserted_by_uid=inserted_by_uid,
+            inserted_source_ids=inserted_source_ids,
+            categorize=categorize,
+        )
+        if fetched.warnings:
+            for item in fetched.warnings:
+                warnings.append(f"{pack.person_name}: {item}")
+        if fetched.account_errors:
+            for err in fetched.account_errors:
+                warnings.append(f"{pack.person_name}: {err}")
+    if rabobank_raw:
+        store_transactions(
+            rabobank_raw,
+            inserted_by_uid=inserted_by_uid,
+            inserted_source_ids=inserted_source_ids,
+            categorize=categorize,
+        )
 
-    if fetched.warnings:
-        for w in fetched.warnings:
-            warnings.append(f"{pack.person_name}: {w}")
-    if fetched.account_errors:
-        for err in fetched.account_errors:
-            warnings.append(f"{pack.person_name}: {err}")
+    bank_count = len(fetched.transactions) if fetched is not None else 0
     result: dict[str, Any] = {
         "person_name": pack.person_name,
         "skipped": False,
         "source": "bank",
-        "transaction_count": len(fetched.transactions),
-        "date_from": fetched.date_from,
-        "date_to": fetched.date_to,
-        "warnings": fetched.warnings,
-        "account_errors": fetched.account_errors,
+        "transaction_count": bank_count + len(rabobank_raw),
+        "date_from": fetched.date_from if fetched is not None else date_from,
+        "date_to": fetched.date_to if fetched is not None else date_to,
+        "warnings": list(fetched.warnings) if fetched is not None else rabobank_errors,
+        "account_errors": list(fetched.account_errors) if fetched is not None else rabobank_errors,
         "accounts": _read_account_lines(inserted_by_uid),
         "inserted_source_ids": inserted_source_ids,
     }
     if new_year:
         result["new_year"] = True
-    if export_payload is not None:
-        result["rabobank_export"] = export_payload
     return result, warnings
 
 
@@ -782,7 +782,7 @@ def _record_account_last_booked(
     person: str, result: dict[str, Any], *, stamp: str | None = None
 ) -> None:
     """Persist ``dbo.account.last_booked`` after a successful refresh (date only)."""
-    if result.get("skipped") or result.get("source") == "rabobank-export":
+    if result.get("skipped"):
         return
     from app import user_store
 
