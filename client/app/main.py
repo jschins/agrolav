@@ -1239,12 +1239,27 @@ def api_wipe_year(body: WipeYearRequest) -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+def _psu_forward(request: Request) -> dict[str, str]:
+    """Browser address and agent, so Rabobank treats the click as online."""
+    from shared.http_ip import request_client_ip
+
+    headers: dict[str, str] = {}
+    ip = request_client_ip(request)
+    agent = request.headers.get("user-agent") or ""
+    if ip and ip != "unknown":
+        headers["X-Psu-Ip-Address"] = ip
+    if agent.strip():
+        headers["X-Psu-User-Agent"] = agent.strip()[:512]
+    return headers
+
+
 @app.post("/api/refresh")
-def api_refresh(body: RefreshRequest | None = None) -> dict[str, Any]:
+def api_refresh(request: Request, body: RefreshRequest | None = None) -> dict[str, Any]:
     from app.centrale_sync import configured_person, hub_post, scope_refresh
     import urllib.parse
 
     req = body or RefreshRequest()
+    psu = _psu_forward(request)
     try:
         person = configured_person()
         if person:
@@ -1256,12 +1271,14 @@ def api_refresh(body: RefreshRequest | None = None) -> dict[str, Any]:
                     "new_year": req.new_year,
                 },
                 timeout=300.0,
+                headers_extra=psu,
             )
         else:
             result = hub_post(
                 "/refresh",
                 {"date_from": req.date_from, "date_to": req.date_to},
                 timeout=300.0,
+                headers_extra=psu,
             )
         scoped = scope_refresh(result) if isinstance(result, dict) else result
         if isinstance(scoped, dict):
@@ -1280,7 +1297,11 @@ def api_refresh(body: RefreshRequest | None = None) -> dict[str, Any]:
 
 
 @app.post("/api/refresh/{person_name}")
-def api_refresh_person(person_name: str, body: PersonRefreshRequest | None = None) -> dict[str, Any]:
+def api_refresh_person(
+    person_name: str,
+    request: Request,
+    body: PersonRefreshRequest | None = None,
+) -> dict[str, Any]:
     from app.centrale_sync import hub_post, require_person, scope_refresh
     import urllib.parse
 
@@ -1295,6 +1316,7 @@ def api_refresh_person(person_name: str, body: PersonRefreshRequest | None = Non
                 "new_year": req.new_year,
             },
             timeout=1200.0,
+            headers_extra=_psu_forward(request),
         )
         scoped = scope_refresh(result) if isinstance(result, dict) else result
         if isinstance(scoped, dict):

@@ -1815,15 +1815,27 @@ def api_add_term(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+def _bind_download_psu(request: Request):
+    from app.core.rabobank_export import bind_psu
+
+    return bind_psu(
+        request.headers.get("x-psu-ip-address") or "",
+        request.headers.get("x-psu-user-agent") or "",
+    )
+
+
 @app.post("/api/local/{center}/refresh")
 def api_refresh(
     center: str,
+    request: Request,
     body: RefreshRequest | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app import center_api
+    from app.core.rabobank_export import reset_psu
 
     req = body or RefreshRequest()
+    token = _bind_download_psu(request)
     try:
         return center_api.refresh(
             center,
@@ -1838,18 +1850,23 @@ def api_refresh(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        reset_psu(token)
 
 
 @app.post("/api/local/{center}/refresh/{person_name}")
 def api_refresh_person(
     center: str,
     person_name: str,
+    request: Request,
     body: PersonRefreshRequest | None = None,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from app import center_api
+    from app.core.rabobank_export import reset_psu
 
     req = body or PersonRefreshRequest()
+    token = _bind_download_psu(request)
     try:
         return center_api.refresh_person(
             center,
@@ -1868,6 +1885,8 @@ def api_refresh_person(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        reset_psu(token)
 
 
 @app.post("/api/shutdown")

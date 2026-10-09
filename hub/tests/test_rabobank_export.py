@@ -1,11 +1,14 @@
 """Rabobank bookings keep the ING reader and fill the counterparty IBAN."""
 import unittest
+from datetime import date
 
 from app.core.enable_banking import EnableBankingError
 from app.core.rabobank_export import (
     download_transactions,
+    fetch_ranged,
     format_for_account,
     is_rabobank_format,
+    period_windows,
     simplify_rabobank,
     split_accounts,
 )
@@ -43,6 +46,48 @@ class RabobankFormatTests(unittest.TestCase):
         rabobank, other = split_accounts(accounts, formats)
         self.assertEqual([item["uid"] for item in rabobank], ["rabo"])
         self.assertEqual([item["uid"] for item in other], ["ing", "blank"])
+
+
+class RabobankWindowTests(unittest.TestCase):
+    def test_january_2025_starts_at_the_fifteen_month_limit(self):
+        windows, notes = period_windows("2025-01-01", "2026-10-09", today=date(2026, 10, 9))
+        self.assertEqual(windows[0][0], "2025-07-09")
+        self.assertEqual(windows[-1][1], "2026-10-09")
+        self.assertTrue(any("raised to 2025-07-09" in note for note in notes))
+        for start, end in windows:
+            span = (date.fromisoformat(end) - date.fromisoformat(start)).days + 1
+            self.assertLessEqual(span, 90)
+
+    def test_pages_follow_the_continuation_key_and_retry_a_rate_limit(self):
+        calls: list[tuple[str, str, str | None]] = []
+
+        class Client:
+            def get_transaction_page(self, uid, *, date_from, date_to, continuation_key):
+                calls.append((date_from, date_to, continuation_key))
+                if len(calls) == 1:
+                    raise EnableBankingError(
+                        "GET /transactions failed: 429 ASPSP_RATE_LIMIT_EXCEEDED"
+                    )
+                if continuation_key is None and date_from == "2025-07-09":
+                    return {
+                        "transactions": [{"entry_reference": "1"}],
+                        "continuation_key": "next",
+                    }
+                return {"transactions": [{"entry_reference": "2"}], "continuation_key": None}
+
+        rows, notes = fetch_ranged(
+            Client(),
+            "uid",
+            "2025-07-09",
+            "2025-07-10",
+            today=date(2026, 10, 9),
+            sleep=lambda _seconds: None,
+        )
+        self.assertEqual(notes, [])
+        self.assertEqual([row["entry_reference"] for row in rows], ["1", "2"])
+        self.assertEqual(calls[0][2], None)
+        self.assertEqual(calls[1][2], None)
+        self.assertEqual(calls[2][2], "next")
 
 
 class RabobankSimplifyTests(unittest.TestCase):

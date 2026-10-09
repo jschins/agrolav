@@ -672,7 +672,9 @@ def _bank_refresh_one(
         )
 
     from app.core.rabobank_export import (
+        current_psu,
         download_transactions,
+        fetch_ranged,
         load_account_formats,
         split_accounts,
         store_transactions,
@@ -693,15 +695,23 @@ def _bank_refresh_one(
     if rabobank_accounts:
         profile = load_profile()
         client = SingleDockerClient.from_profile(profile)
+        client.use_psu(current_psu())
+        period_notes: list[str] = []
+
+        def _fetch(uid: str, start: str | None, end: str | None) -> list[dict[str, Any]]:
+            rows, notes = fetch_ranged(client, uid, start, end)
+            period_notes.extend(notes)
+            return rows
+
         rabobank_raw, rabobank_errors = download_transactions(
             rabobank_accounts,
             date_from=date_from,
             date_to=date_to,
-            fetch=lambda uid, start, end: client.get_transactions(
-                uid, date_from=start, date_to=end
-            ),
+            fetch=_fetch,
             index_by_uid=account_index_by_uid(),
         )
+        for note in period_notes:
+            warnings.append(f"{pack.person_name}: {note}")
         for err in rabobank_errors:
             warnings.append(f"{pack.person_name}: {err}")
         try:

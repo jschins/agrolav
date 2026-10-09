@@ -89,6 +89,10 @@ Once the connection has a live session:
 3. normalize and insert into `dbo.transaction_{country}`
 4. update `account.balance` and `account.last_booked`
 
+Date, amount, name, description, and id still come from the existing reader. The Rabobank step fills the counterparty IBAN from debtor_account on money in and from creditor_account on money out. The account's own IBAN is left off, so Rabobank charges, card payments, and Geldmaat withdrawals stay without a counterparty IBAN.
+
+Rabobank serves at most 15 months before today, 500 transactions a page. A request from 1/1/2025 starts at that limit and is read in 90-day pages. The browser address and user agent go with each page, so the click is not a background fetch.
+
 The frontend can scope refresh to one person (`workspace + person`) so a
 single download does not mix with the rest of the center.
 

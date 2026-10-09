@@ -3,12 +3,159 @@
 ``dbo.account.format`` = Rabobank uses the same Enable Banking fields as ING.
 The counterparty IBAN is read from ``debtor_account`` / ``creditor_account``,
 because Rabobank does not put it in the remittance text.
+
+Rabobank serves at most 15 months before today, at most 500 transactions
+per page. A longer request is cut to that start and read in 90-day pages.
 """
 from __future__ import annotations
 
+import calendar
+import time
+from contextvars import ContextVar, Token
+from datetime import date
 from typing import Any, Callable
 
 TransactionFetch = Callable[[str, str | None, str | None], list[dict[str, Any]]]
+
+HISTORY_MONTHS = 15
+CHUNK_DAYS = 90
+PAGE_PAUSE_SECONDS = 1.0
+RATE_LIMIT_WAIT_SECONDS = 5.0
+RATE_LIMIT_RETRIES = 3
+
+_psu_headers: ContextVar[dict[str, str]] = ContextVar("rabobank_psu_headers", default={})
+
+
+def bind_psu(ip: str, user_agent: str) -> Token[dict[str, str]]:
+    """Remember the browser that clicked download, for this request only."""
+    headers: dict[str, str] = {}
+    address = str(ip or "").strip()
+    agent = str(user_agent or "").strip()
+    if address and address.casefold() != "unknown":
+        headers["Psu-Ip-Address"] = address
+    if agent:
+        headers["Psu-User-Agent"] = agent[:512]
+    return _psu_headers.set(headers)
+
+
+def reset_psu(token: Token[dict[str, str]]) -> None:
+    _psu_headers.reset(token)
+
+
+def current_psu() -> dict[str, str]:
+    return dict(_psu_headers.get())
+
+
+def subtract_months(day: date, months: int) -> date:
+    month = day.month - months
+    year = day.year
+    while month <= 0:
+        month += 12
+        year -= 1
+    last = calendar.monthrange(year, month)[1]
+    return date(year, month, min(day.day, last))
+
+
+def period_windows(
+    date_from: str | None,
+    date_to: str | None,
+    *,
+    today: date | None = None,
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """90-day pages inside the 15 months Rabobank will return."""
+    from app.core.enable_banking import EnableBankingError
+    from app.core.enable_banking.transactions import date_period_chunks, parse_iso_date
+
+    ref = today or date.today()
+    end = parse_iso_date(date_to) if date_to else ref
+    if end > ref:
+        end = ref
+    start = parse_iso_date(date_from) if date_from else subtract_months(ref, HISTORY_MONTHS)
+    notes: list[str] = []
+    floor = subtract_months(ref, HISTORY_MONTHS)
+    if start < floor:
+        notes.append(
+            f"date_from {start.isoformat()} raised to {floor.isoformat()} "
+            "(Rabobank keeps 15 months)."
+        )
+        start = floor
+    if start > end:
+        raise EnableBankingError(
+            f"No Rabobank transactions in {start.isoformat()} .. {end.isoformat()}."
+        )
+    return date_period_chunks(start.isoformat(), end.isoformat(), chunk_days=CHUNK_DAYS), notes
+
+
+def _rate_limited(exc: BaseException) -> bool:
+    text = str(exc)
+    return "429" in text or "ASPSP_RATE_LIMIT_EXCEEDED" in text
+
+
+def fetch_ranged(
+    client: Any,
+    account_uid: str,
+    date_from: str | None,
+    date_to: str | None,
+    *,
+    today: date | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Read one account in 90-day pages, following each page token."""
+    from app.core.enable_banking import EnableBankingError
+    from app.core.enable_banking.transactions import dedupe_transactions
+
+    windows, notes = period_windows(date_from, date_to, today=today)
+    rows: list[dict[str, Any]] = []
+    first_call = True
+    for start, end in windows:
+        continuation: str | None = None
+        while True:
+            if not first_call:
+                sleep(PAGE_PAUSE_SECONDS)
+            first_call = False
+            page = _page_with_retry(
+                client,
+                account_uid,
+                date_from=start,
+                date_to=end,
+                continuation_key=continuation,
+                sleep=sleep,
+            )
+            batch = page.get("transactions")
+            if isinstance(batch, list):
+                rows.extend(item for item in batch if isinstance(item, dict))
+            continuation = str(page.get("continuation_key") or "").strip() or None
+            if not continuation:
+                break
+    return dedupe_transactions(rows), notes
+
+
+def _page_with_retry(
+    client: Any,
+    account_uid: str,
+    *,
+    date_from: str,
+    date_to: str,
+    continuation_key: str | None,
+    sleep: Callable[[float], None],
+) -> dict[str, Any]:
+    from app.core.enable_banking import EnableBankingError
+
+    attempt = 0
+    while True:
+        try:
+            page = client.get_transaction_page(
+                account_uid,
+                date_from=date_from,
+                date_to=date_to,
+                continuation_key=continuation_key,
+            )
+            return page if isinstance(page, dict) else {}
+        except EnableBankingError as exc:
+            if not _rate_limited(exc) or attempt >= RATE_LIMIT_RETRIES:
+                raise
+            attempt += 1
+            sleep(RATE_LIMIT_WAIT_SECONDS * attempt)
 
 
 def is_rabobank_format(value: object) -> bool:

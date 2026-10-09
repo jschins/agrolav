@@ -750,6 +750,7 @@ def hub_request(
     *,
     body: dict[str, Any] | None = None,
     timeout: float = 60.0,
+    headers_extra: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     cfg = load_config()
     if not cfg.enabled:
@@ -768,6 +769,9 @@ def hub_request(
         url = f"{cfg.url}{path}"
     if cfg.country:
         headers["X-Agrolav-Country"] = cfg.country
+    for key, value in (headers_extra or {}).items():
+        if str(value).strip():
+            headers[key] = str(value)
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -796,8 +800,20 @@ def hub_get(suffix: str, *, timeout: float = 60.0) -> dict[str, Any]:
     return hub_request("GET", center_path(suffix), timeout=timeout)
 
 
-def hub_post(suffix: str, body: dict[str, Any] | None = None, *, timeout: float = 120.0) -> dict[str, Any]:
-    return hub_request("POST", center_path(suffix), body=body, timeout=timeout)
+def hub_post(
+    suffix: str,
+    body: dict[str, Any] | None = None,
+    *,
+    timeout: float = 120.0,
+    headers_extra: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    return hub_request(
+        "POST",
+        center_path(suffix),
+        body=body,
+        timeout=timeout,
+        headers_extra=headers_extra,
+    )
 
 
 def hub_put(suffix: str, body: dict[str, Any], *, timeout: float = 120.0) -> dict[str, Any]:

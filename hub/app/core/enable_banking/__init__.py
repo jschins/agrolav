@@ -42,6 +42,7 @@ class EnableBankingClient:
         self._app_id = application_id
         self._private_key = private_key if isinstance(private_key, bytes) else private_key.encode()
         self._timeout = timeout
+        self._psu_headers: dict[str, str] = {}
 
     @classmethod
     def from_key_file(cls, application_id: str, key_path: str | Path, timeout: float = 30) -> EnableBankingClient:
@@ -68,10 +69,24 @@ class EnableBankingClient:
             "Content-Type": "application/json",
         }
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+    def use_psu(self, headers: dict[str, str]) -> None:
+        """Headers that mark this download as the user sitting at the browser."""
+        self._psu_headers = {str(key): str(value) for key, value in headers.items() if str(value).strip()}
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        extra_headers: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> Any:
         url = f"{BASE_URL}{path}"
+        headers = self._headers()
+        headers.update(self._psu_headers)
+        if extra_headers:
+            headers.update(extra_headers)
         response = requests.request(
-            method, url, headers=self._headers(), timeout=self._timeout, **kwargs
+            method, url, headers=headers, timeout=self._timeout, **kwargs
         )
         if not response.ok:
             raise EnableBankingError(
@@ -165,3 +180,22 @@ class EnableBankingClient:
             if not continuation_key:
                 break
         return all_transactions
+
+    def get_transaction_page(
+        self,
+        account_uid: str,
+        *,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        continuation_key: str | None = None,
+    ) -> dict[str, Any]:
+        """One page of ``GET /accounts/{uid}/transactions``."""
+        params: dict[str, str] = {}
+        if date_from:
+            params["date_from"] = date_from
+        if date_to:
+            params["date_to"] = date_to
+        if continuation_key:
+            params["continuation_key"] = continuation_key
+        resp = self._request("GET", f"/accounts/{account_uid}/transactions", params=params)
+        return resp if isinstance(resp, dict) else {}
