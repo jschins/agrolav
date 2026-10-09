@@ -1234,8 +1234,13 @@ def fetch_transactions(
     date_from: str | None = None,
     date_to: str | None = None,
     redirect_code: str | None = None,
+    include_uids: set[str] | None = None,
 ) -> FetchResult:
-    """Download raw transactions from the bank and return them."""
+    """Download raw transactions from the bank and return them.
+
+    ``include_uids`` limits the download to those accounts. ``None`` keeps
+    every linked account, which is the ING path.
+    """
     if not redirect_code and needs_consent_renewal():
         raise EnableBankingError(
             "Bank consent is required before transactions can be downloaded."
@@ -1243,6 +1248,12 @@ def fetch_transactions(
     profile = load_profile()
     client = SingleDockerClient.from_profile(profile)
     accounts, renewed_session = _linked_accounts(profile, client, redirect_code)
+    if include_uids is not None:
+        accounts = [
+            account
+            for account in accounts
+            if str(account.get("uid") or "") in include_uids
+        ]
     renewal_day = renewed_session or _connection_created_today(profile)
     resolved_from, resolved_to, warnings = _resolve_fetch_dates(
         date_from, date_to, renewal_day=renewal_day

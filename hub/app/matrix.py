@@ -671,7 +671,68 @@ def _bank_refresh_one(
             warnings,
         )
 
-    fetched = fetch_transactions(date_from=date_from, date_to=date_to)
+    from app.core.rabobank_export import (
+        collect_raw,
+        load_account_formats,
+        split_accounts,
+    )
+    from app.core.single_client import SingleDockerClient, load_profile
+
+    linked = enabled_bank_accounts()
+    rabobank_accounts, other_accounts = split_accounts(
+        linked, load_account_formats(pack.person_name)
+    )
+    export_payload: dict[str, Any] | None = None
+    export_errors: list[str] = []
+    if rabobank_accounts:
+        profile = load_profile()
+        client = SingleDockerClient.from_profile(profile)
+        export_payload, export_errors = collect_raw(
+            rabobank_accounts,
+            date_from=date_from,
+            date_to=date_to,
+            person=pack.person_name,
+            fetch=lambda uid, start, end: client.get_transactions(
+                uid, date_from=start, date_to=end
+            ),
+        )
+        for err in export_errors:
+            warnings.append(f"{pack.person_name}: {err}")
+        warnings.append(
+            f"{pack.person_name}: Rabobank data was not stored; save the downloaded file."
+        )
+
+    if rabobank_accounts and not other_accounts:
+        result = {
+            "person_name": pack.person_name,
+            "skipped": False,
+            "source": "rabobank-export",
+            "transaction_count": 0,
+            "date_from": date_from,
+            "date_to": date_to,
+            "warnings": export_errors,
+            "account_errors": export_errors,
+            "accounts": [],
+            "inserted_source_ids": [],
+            "rabobank_export": export_payload,
+        }
+        if new_year:
+            result["new_year"] = True
+        return result, warnings
+
+    if rabobank_accounts:
+        include_uids = {
+            str(account.get("uid") or "")
+            for account in other_accounts
+            if str(account.get("uid") or "")
+        }
+        fetched = fetch_transactions(
+            date_from=date_from,
+            date_to=date_to,
+            include_uids=include_uids,
+        )
+    else:
+        fetched = fetch_transactions(date_from=date_from, date_to=date_to)
     accounts = enabled_bank_accounts()
     from app import user_store
     from app.enable_sql import upsert_person_accounts
@@ -712,6 +773,8 @@ def _bank_refresh_one(
     }
     if new_year:
         result["new_year"] = True
+    if export_payload is not None:
+        result["rabobank_export"] = export_payload
     return result, warnings
 
 
@@ -719,7 +782,7 @@ def _record_account_last_booked(
     person: str, result: dict[str, Any], *, stamp: str | None = None
 ) -> None:
     """Persist ``dbo.account.last_booked`` after a successful refresh (date only)."""
-    if result.get("skipped"):
+    if result.get("skipped") or result.get("source") == "rabobank-export":
         return
     from app import user_store
 

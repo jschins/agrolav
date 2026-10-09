@@ -73,6 +73,7 @@ import type {
   AccountGroup,
   CatalogCategory,
   MatrixResponse,
+  RabobankExport,
   RefreshPersonResult,
   SettingsResponse,
   Transaction,
@@ -2735,6 +2736,142 @@ function ytdConsentHint(terms?: Record<string, string>): string {
     : "Use sequentially 'Invalidate consent',  'Prepare consent', and 'Download YTD'";
 }
 
+type RabobankSaveFile = {
+  person: string;
+  filename: string;
+  text: string;
+};
+
+function rabobankFilename(
+  person: string,
+  dateFrom: string,
+  dateTo: string,
+  ytd: boolean
+): string {
+  const safe = person.replace(/[^\w.-]+/g, "_") || "rabobank";
+  if (ytd) {
+    const year = dateFrom.slice(0, 4) || String(new Date().getFullYear());
+    return `rabobank-ytd-${safe}-${year}.json`;
+  }
+  return `rabobank-${safe}-${dateFrom || "from"}-${dateTo || "to"}.json`;
+}
+
+function rabobankFilesFrom(
+  results: RefreshPersonResult[] | undefined,
+  ytd: boolean
+): RabobankSaveFile[] {
+  const files: RabobankSaveFile[] = [];
+  for (const row of results || []) {
+    const doc: RabobankExport | undefined = row.rabobank_export;
+    if (!doc) continue;
+    const person = (row.person_name || doc.person || "rabobank").trim() || "rabobank";
+    const dateFrom = doc.date_from || row.date_from || "";
+    const dateTo = doc.date_to || row.date_to || "";
+    files.push({
+      person,
+      filename: rabobankFilename(person, dateFrom, dateTo, ytd),
+      text: JSON.stringify(doc, null, 2),
+    });
+  }
+  return files;
+}
+
+function stripRabobankExport(results: RefreshPersonResult[]): RefreshPersonResult[] {
+  return results.map((row) => {
+    if (!row.rabobank_export) return row;
+    const rest = { ...row };
+    delete rest.rabobank_export;
+    return rest;
+  });
+}
+
+async function writeLocalFile(filename: string, text: string): Promise<void> {
+  const picker = (
+    window as Window & {
+      showSaveFilePicker?: (options: {
+        suggestedName?: string;
+        types?: { description?: string; accept: Record<string, string[]> }[];
+      }) => Promise<{
+        createWritable: () => Promise<{
+          write: (data: string) => Promise<void>;
+          close: () => Promise<void>;
+        }>;
+      }>;
+    }
+  ).showSaveFilePicker;
+  if (typeof picker === "function") {
+    const handle = await picker({
+      suggestedName: filename,
+      types: [{ description: "JSON", accept: { "application/json": [".json"] } }],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(text);
+    await writable.close();
+    return;
+  }
+  const blob = new Blob([text], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function RabobankSaveDialog({
+  files,
+  terms,
+  onDismiss,
+  onSaved,
+}: {
+  files: RabobankSaveFile[];
+  terms: Record<string, string> | undefined;
+  onDismiss: () => void;
+  onSaved: (index: number) => void;
+}) {
+  const dutch = uiIsDutch(terms);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  async function saveAt(index: number) {
+    const file = files[index];
+    if (!file) return;
+    setSaveError(null);
+    try {
+      await writeLocalFile(file.filename, file.text);
+      onSaved(index);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setSaveError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <div className="priority-rules-overlay">
+      <div className="priority-rules-dialog wipe-choices" role="dialog" aria-modal="true">
+        <p>
+          {dutch
+            ? "Rabobank-gegevens. Kies waar het bestand wordt opgeslagen. De gegevens worden niet in de database gezet."
+            : "Rabobank data. Choose where to save the file. The data is not written to the database."}
+        </p>
+        {files.map((file, index) => (
+          <div className="wipe-choice-actions" key={`${file.filename}:${index}`}>
+            <span>{file.filename}</span>
+            <button type="button" className="priority-rules-close" onClick={() => void saveAt(index)}>
+              {dutch ? "Opslaan" : "Save"}
+            </button>
+          </div>
+        ))}
+        {saveError ? <p className="error">{saveError}</p> : null}
+        <div className="wipe-choice-actions">
+          <button type="button" className="priority-rules-close" onClick={onDismiss}>
+            {tableHeaderTerm(terms, "Cancel")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const COLUMN_HEADER_KEYS: Record<string, string> = {
   amount: "Amount",
   type: "Type",
@@ -3252,6 +3389,7 @@ function MainApp({
   const [wipePerson, setWipePerson] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [firstDownloading, setFirstDownloading] = useState(false);
+  const [rabobankFiles, setRabobankFiles] = useState<RabobankSaveFile[] | null>(null);
   const [refreshScope, setRefreshScope] = useState<RefreshStatusScope | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<StoredRefreshStatus | null>(null);
   const [hasSecrets, setHasSecrets] = useState(false);
@@ -3599,6 +3737,24 @@ function MainApp({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  function finishBankDownload(
+    res: { matrix?: MatrixResponse; results?: RefreshPersonResult[]; warnings?: string[] },
+    ytd: boolean
+  ) {
+    const files = rabobankFilesFrom(res.results, ytd);
+    const results = stripRabobankExport(res.results || []);
+    if (res.matrix) setMatrix(res.matrix);
+    const payload: StoredRefreshStatus = {
+      results,
+      warnings: res.warnings || [],
+    };
+    saveStoredRefreshStatus(payload, refreshScope);
+    setRefreshStatus(payload);
+    setSelection(null);
+    setDetail(null);
+    if (files.length) setRabobankFiles(files);
+  }
+
   function doRefresh() {
     if (refreshing) return;
     beginRefreshBusy();
@@ -3611,15 +3767,7 @@ function MainApp({
     afterPaint(() => {
       refreshAll()
         .then((res) => {
-          setMatrix(res.matrix);
-          const payload: StoredRefreshStatus = {
-            results: res.results || [],
-            warnings: res.warnings || [],
-          };
-          saveStoredRefreshStatus(payload, refreshScope);
-          setRefreshStatus(payload);
-          setSelection(null);
-          setDetail(null);
+          finishBankDownload(res, false);
         })
         .catch((e: Error) => setError(e.message))
         .finally(() => {
@@ -3675,15 +3823,7 @@ function MainApp({
       const end = isoDate(new Date());
       refreshPerson(person_name, { date_from: start, date_to: end, new_year: true })
         .then((res) => {
-          if (res.matrix) setMatrix(res.matrix);
-          const payload: StoredRefreshStatus = {
-            results: res.results || [],
-            warnings: res.warnings || [],
-          };
-          saveStoredRefreshStatus(payload, refreshScope);
-          setRefreshStatus(payload);
-          setSelection(null);
-          setDetail(null);
+          finishBankDownload(res, true);
           if (ytdNotAllowed(res, start)) {
             window.alert(ytdConsentHint(termsForUi));
           }
@@ -3871,6 +4011,20 @@ function MainApp({
             terms={termsForUi}
             onCancel={() => setWipeOpen(false)}
             onRun={runWipePerson}
+          />
+        ) : null}
+        {rabobankFiles?.length ? (
+          <RabobankSaveDialog
+            files={rabobankFiles}
+            terms={termsForUi}
+            onDismiss={() => setRabobankFiles(null)}
+            onSaved={(index) =>
+              setRabobankFiles((prev) => {
+                if (!prev) return prev;
+                const next = prev.filter((_, item) => item !== index);
+                return next.length ? next : null;
+              })
+            }
           />
         ) : null}
         {!inPView && !matrix && !error && <p>Loading…</p>}

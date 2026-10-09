@@ -737,6 +737,21 @@ def api_years() -> dict[str, Any]:
         raise _hub_error(exc) from exc
 
 
+def _results_for_debug(results: object) -> object:
+    """Drop the raw Rabobank payload from the fetch log."""
+    if not isinstance(results, list):
+        return results
+    cleaned: list[object] = []
+    for row in results:
+        if not isinstance(row, dict) or "rabobank_export" not in row:
+            cleaned.append(row)
+            continue
+        copied = {key: value for key, value in row.items() if key != "rabobank_export"}
+        copied["rabobank_export"] = True
+        cleaned.append(copied)
+    return cleaned
+
+
 def _append_enable_debug(tag: str, payload: object) -> None:
     try:
         import json
@@ -1255,7 +1270,7 @@ def api_refresh(body: RefreshRequest | None = None) -> dict[str, Any]:
                 {
                     "person": person,
                     "new_year": req.new_year,
-                    "results": scoped.get("results"),
+                    "results": _results_for_debug(scoped.get("results")),
                 },
             )
         return scoped
@@ -1290,7 +1305,7 @@ def api_refresh_person(person_name: str, body: PersonRefreshRequest | None = Non
                     "new_year": req.new_year,
                     "date_from": req.date_from,
                     "date_to": req.date_to,
-                    "results": scoped.get("results"),
+                    "results": _results_for_debug(scoped.get("results")),
                 },
             )
         return scoped

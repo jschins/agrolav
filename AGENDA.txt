@@ -1,9 +1,6 @@
 AGENDA
 
 
-2. klein/groot geen 0 alleen -1
-3. notificatie van gebruik
-4. alle transaction tabellen in één?
 
 
 

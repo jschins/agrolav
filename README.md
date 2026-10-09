@@ -3,174 +3,179 @@
 
 # Agrolav
 
-Agrolav is the bookkeeping of a stichting in the browser. After you log in you
-see a **matrix of totals**: categories down the left, accounts across the top.
-Click a number to open the bookings behind it. Categories are assigned from
-keywords (terms) in the name and description.
+Agrolav is de boekhouding van een stichting in de browser. Na het inloggen
+zie je een **matrix van totalen**: categorieën links, rekeningen bovenaan.
+Klik op een getal om de boekingen erachter te openen. Categorieën worden
+toegekend op grond van trefwoorden (termen) in de naam en de omschrijving.
 
-This page has two uses. It is the description of what you can do in the app,
-and the question box reads it together with every other markdown file in the
-repo whose name does not end in `_tech`. The language of those pages does not matter.
-Operator setup lives in `documentation/deployment_tech.md`.
+Deze pagina heeft twee gebruiken. Het is de beschrijving van wat je in de
+app kunt doen, en het vragvak leest hem samen met elk ander markdownbestand
+in de repo waarvan de naam niet op `_tech` eindigt. De taal van die pagina's
+doet er niet toe. De inrichting voor de beheerder staat in
+`documentation/deployment_tech.md`.
 
-Each later section ends with one `{en: …}` line and one `{nl: …}` line. Those
-lines are hidden in the preview. The question box counts only those terms, not
-the section text, and it does not search this opening section. The Dutch line
-translates the English line in the same order, one term for one term, with the
-same weight. Terms are separated by commas, with no space after the comma.
-`log in` is the one term that keeps a space inside it. A term may end with a
-weight, as in `category[3]`. That hit counts as 3. A term with no number counts
-as 1. A term that is also a word in the section title counts as 5. Each hit
-adds its weight, so two hits outweigh one. Every section that hits is returned,
-highest score first. The brace lines are not shown in the answer.
+Elke latere sectie eindigt met één `{en: …}`-regel en één `{nl: …}`-regel.
+Die regels zijn verborgen in het voorbeeld. Het vragvak telt alleen die
+termen, niet de tekst van de sectie, en het doorzoekt deze openingssectie
+niet. De Nederlandse regel vertaalt de Engelse regel in dezelfde volgorde,
+één term voor één term, met hetzelfde gewicht. Termen worden gescheiden door
+komma's, zonder spatie na de komma. `log in` is de enige term die een spatie
+vanbinnen houdt. Een term mag eindigen op een gewicht, zoals in `category[3]`.
+Die treffer telt als 3. Een term zonder getal telt als 1. Een term die ook een
+woord in de sectietitel is, telt als 5. Elke treffer telt zijn gewicht op,
+zodat twee treffers zwaarder wegen dan één. Elke sectie die treft, wordt
+teruggegeven, de hoogste score eerst. De accoladeregels worden niet in het
+antwoord getoond.
 
-The `{discard-en:}` and `{discard-nl:}` lines above the title are removed from
-the question first. A word is removed only on its own, so `to` does not touch
-`total`. A question with no matching term is answered with “I don't find an
-answer to that in the README.”
+De regels `{discard-en:}` en `{discard-nl:}` boven de titel worden eerst uit
+de vraag verwijderd. Een woord wordt alleen op zichzelf verwijderd, zodat
+`to` niet aan `total` komt. Een vraag zonder passende term wordt beantwoord
+met “I don't find an answer to that in the README.”
 
 ---
 
-## Log in
+## Aanmelden
 
-Open the client (locally `http://127.0.0.1:8300`). Enter your **username** and
-**password**.
+Open de client (lokaal `http://127.0.0.1:8300`). Vul je **gebruikersnaam** en
+**wachtwoord** in.
 
-There are four kinds of login. The username is the login name of that row:
+Er zijn vier soorten login. De gebruikersnaam is de loginnaam van die rij:
 
-| Login | What you see |
+| Login | Wat je ziet |
 |---|---|
 | **Stichting** | Alle rekeningen. |
 | **Sectie** | `instudo_sia` versus `instudo_sib`. |
 | **Deel** | Geconsolideerde werkeenheden versus geconsolideerde huishoudelijke diensten. |
 | **Eenheid** | Een werkeenheid of een huishoudelijke dienst. |
 
-If a mobile number is stored on a deel or eenheid login, the next step is a
-**6-digit SMS code**. Enter it, or use **Resend**. Stichting and sectie logins
-are allowed only from listed IP addresses; from anywhere else you get *This
-login is not allowed from your IP address*. Deel and eenheid logins are not
-IP-gated.
+Staat er een mobiel nummer op een deel- of eenheidslogin, dan is de volgende
+stap een **sms-code van 6 cijfers**. Vul die in, of gebruik **Opnieuw**.
+Stichting- en sectielogins zijn alleen toegestaan vanaf vermelde
+IP-adressen; van elders krijg je *This login is not allowed from your IP
+address*. Deel- en eenheidslogins worden niet op IP gecontroleerd.
 <!-- {en:log in[5],login[3],username,usernames,password[3],passwords,foundation,section,part,unit,work-unit,household,kind,kinds,sms,code,codes,resend,mobile,mobiles,number,numbers,ip,address,addresses,phone,phones} -->
 <!-- {nl:aanmelden[5],inloggen[3],gebruikersnaam,gebruikersnamen,wachtwoord[3],wachtwoorden,stichting,sectie,deel,eenheid,werkeenheid,huishoudelijke,soort,soorten,sms,code,codes,opnieuw,mobiel,mobielen,nummer,nummers,ip,adres,adressen,telefoon,telefoons} -->
 
 ---
 
-## The top bar
+## De bovenbalk
 
-On the overview these controls sit in the strip above the matrix:
+Op het overzicht staan deze bedieningen in de strook boven de matrix:
 
-- **Sectie** — stichting login only. Pick `instudo_sia` or `instudo_sib`.
-- **Year** — which booking year the matrix uses.
-- **Bank** — `consolidated` (all banks together) or one bank, when more than
-  one bank exists.
-- **menu** — actions for this login (see below).
-- **Question** — the box to the right of menu. Type a question about using
-  the program and press Enter. The answer is taken from the later sections
-  of this page and from every other markdown file whose name does not end
-  in `_tech`.
+- **Sectie** — alleen bij een stichtinglogin. Kies `instudo_sia` of `instudo_sib`.
+- **Jaar** — welk boekjaar de matrix gebruikt.
+- **Bank** — `consolidated` (alle banken samen) of één bank, wanneer er meer
+  dan één bank is.
+- **menu** — acties voor deze login (zie hieronder).
+- **Vraag** — het vak rechts van menu. Typ een vraag over het gebruik van
+  het programma en druk op Enter. Het antwoord komt uit de latere secties
+  van deze pagina en uit elk ander markdownbestand waarvan de naam niet op
+  `_tech` eindigt.
 
-The left sidebar shows the title of whoever logged in. After you open a
-category, it also shows that column and a **← Matrix** knob to go back.
+De linkerzijbalk toont de titel van wie is ingelogd. Nadat je een categorie
+opent, toont hij ook die kolom en een knop **← Matrix** om terug te gaan.
 <!-- {en:top[5],bar[5],overview,foundation,section,switch[3],year[3],years,booking,bookings,bank,banks,consolidated,menu,question,questions,answer,answers,box,help,sidebar,title,titles,matrix,knob} -->
 <!-- {nl:boven[5],balk[5],overzicht,stichting,sectie,kiezen[3],jaar[3],jaren,boeking,boekingen,bank,banken,consolidatie,menu,vraag,vragen,antwoord,antwoorden,vak,hulp,zijbalk,titel,titels,matrix,knop} -->
 
 ---
 
-## The menu
+## Het menu
 
 <!-- {en:menu[5]} -->
 <!-- {nl:menu[5]} -->
 
-### Menu items on every login
+### Menu-onderdelen bij elke login
 
-Open **menu**. What you see depends on the login. Items that do not apply are
-not listed.
+Open **menu**. Wat je ziet hangt af van de login. Onderdelen die niet van
+toepassing zijn, staan er niet bij.
 
-**⚙ Edit Terms (Alt+T)**  
-Opens the term window: keywords that assign bookings to categories. See
-[Edit Terms](#edit-terms). Shortcut: `Alt+T`.
+**⚙ Termen bewerken (Alt+T)**  
+Opent het termvenster: trefwoorden die boekingen aan categorieën toewijzen.
+Zie [Termen bewerken](#termen-bewerken). Sneltoets: `Alt+T`.
 
-**Recalculate categories**  
-Reassigns bookings from the terms, for every year in reach, and only the
-bookings in this login. An eenheid login covers that werkeenheid or that
-huishoudelijke dienst. A deel login covers geconsolideerde werkeenheden or
-geconsolideerde huishoudelijke diensten. A sectie login covers `instudo_sia`
-or `instudo_sib`. A stichting login covers alle rekeningen, which is where
-G-terms are written. A category you set by hand, and a row that came from
-Excel, stay. Use this after you change terms or the category list.
+**Categorieën herberekenen**  
+Wijst boekingen opnieuw toe op grond van de termen, voor elk jaar binnen
+bereik, en alleen de boekingen van deze login. Een eenheidslogin dekt die
+werkeenheid of die huishoudelijke dienst. Een deellogin dekt geconsolideerde
+werkeenheden of geconsolideerde huishoudelijke diensten. Een sectielogin
+dekt `instudo_sia` of `instudo_sib`. Een stichtinglogin dekt alle rekeningen,
+en daar worden de G-termen geschreven. Een categorie die je met de hand hebt
+gezet, en een rij die uit Excel komt, blijven staan. Gebruik dit nadat je
+termen of de categorielijst hebt gewijzigd.
 
-**Download transactions**  
-Fetches new bank bookings (Enable Banking). An eenheid login fetches that
-werkeenheid or huishoudelijke dienst. A deel login fetches its consolidated
-werkeenheden or its consolidated huishoudelijke diensten. A stichting or
-sectie login fetches every account in the selected sectie (`instudo_sia` or
-`instudo_sib`) that has bank consent. Accounts that upload a file are
-skipped. Someone who still needs consent is sent to the bank in a new tab;
-after consent, download continues. Shown only when this sectie has a bank
-connection.
+**Uitlezen bankafschriften**  
+Haalt nieuwe bankboekingen op (Enable Banking). Een eenheidslogin leest die
+werkeenheid of huishoudelijke dienst uit. Een deellogin leest zijn
+geconsolideerde werkeenheden of zijn geconsolideerde huishoudelijke diensten
+uit. Een stichting- of sectielogin leest elke rekening in de gekozen sectie
+(`instudo_sia` of `instudo_sib`) uit die banktoestemming heeft. Rekeningen
+die een bestand uploaden, worden overgeslagen. Wie nog toestemming nodig
+heeft, gaat in een nieuw tabblad naar de bank; na de toestemming gaat het
+uitlezen verder. Alleen zichtbaar wanneer deze sectie een bankverbinding heeft.
 
-**Add person**  
-Opens the hub page to create a deel in the current sectie. Not shown on a
-deel or eenheid login.
+**Persoon toevoegen**  
+Opent de hubpagina om een deel aan te maken in de huidige sectie. Niet
+zichtbaar bij een deel- of eenheidslogin.
 
-**Upload**  
-Opens the upload page for a spreadsheet or bank CSV. Shown when this login may
-upload files.
+**Uploaden**  
+Opent de uploadpagina voor een rekenblad of een bank-CSV. Zichtbaar wanneer
+deze login bestanden mag uploaden.
 
-**Logout**  
-Ends the browser session and returns to the login card.
+**Uitloggen**  
+Beëindigt de browsersessie en keert terug naar de inlogkaart.
 <!-- {en:item[5],items[5],menu,edit,term,terms,alt+t,window,recalculate[3],foundation,section,part,unit,download,statement,statements,transaction,transactions,consent,consents,add[3],upload,csv,spreadsheet,spreadsheets,logout[3],log,out} -->
 <!-- {nl:onderdeel[5],onderdelen[5],menu,bewerken,term,termen,alt+t,termvenster,herberekenen[3],stichting,sectie,deel,eenheid,uitlezen,bankafschrift,bankafschriften,transactie,transacties,toestemming,toestemmingen,toevoegen[3],uploaden,csv,rekenblad,rekenbladen,uitloggen[3],loggen,uit} -->
-**Prepare consent**  
-Stichting or sectie login, when this sectie has a bank connection. Asks which
-deel, then opens the bank so that deel can grant consent.
+**Bereid toestemming**  
+Stichting- of sectielogin, wanneer deze sectie een bankverbinding heeft.
+Vraagt welk deel, en opent daarna de bank zodat dat deel toestemming kan geven.
 
-**Invalidate consent**  
-Same logins. Asks which deel, asks you to confirm, then removes that
-deel’s bank consent.
+**Verwijder toestemming**  
+Dezelfde logins. Vraagt welk deel, vraagt om bevestiging, en verwijdert daarna
+de banktoestemming van dat deel.
 
-**Download YTD**  
-Same logins. Asks which deel, then fetches that deel’s statements from
-1 January of this year through today. If the bank will not give that range,
-you are told to renew consent first.
+**YTD bankafschriften**  
+Dezelfde logins. Vraagt welk deel, en haalt daarna de afschriften van dat deel
+op van 1 januari van dit jaar tot en met vandaag. Wil de bank die periode niet
+geven, dan krijg je te horen dat je eerst de toestemming moet vernieuwen.
 <!-- {en:prepare[3],consent[5],consents[5],invalidate[3],remove,download,ytd[5],year,january,renew} -->
 <!-- {nl:bereid[3],toestemming[5],toestemmingen[5],verwijder[3],verwijderen,uitlezen,ytd[5],jaar,januari,vernieuwen} -->
-**Calculate cross-postings**  
-Shown when this login has a balance sheet. Pairs internal transfers and
-writes their categories. A category set this way counts as set by hand.
+**Bereken kruisposten**  
+Zichtbaar wanneer deze login een balans heeft. Koppelt interne overboekingen
+en schrijft hun categorieën. Een categorie die zo wordt gezet, telt als met
+de hand gezet.
 
-**Smaller expenses**  
-Stichting, sectie, or deel login. Asks for a maximum amount and a category.
-Remainder bookings whose expense is smaller than that amount take the chosen
-category, and count as set by hand. **Cancel** does nothing.
+**Kleinere uitgaven**  
+Stichting-, sectie- of deellogin. Vraagt een maximaal bedrag en een categorie.
+Restboekingen waarvan de uitgave kleiner is dan dat bedrag krijgen de gekozen
+categorie, en tellen als met de hand gezet. **Annuleren** doet niets.
 
-**Smaller income**  
-The same, for remainder bookings whose income is smaller than the maximum.
+**Kleinere inkomsten**  
+Hetzelfde, voor restboekingen waarvan de inkomst kleiner is dan het maximum.
 <!-- {en:cross-postings[5],cross,posting,postings,calculate[3],internal,transfer,transfers,smaller[5],expense,expenses,income,incomes,maximum,amount,category,remainder,cancel,apply} -->
 <!-- {nl:kruisposten[5],kruis,post,posten,bereken[3],intern,overboeking,overboekingen,kleinere[5],uitgave,uitgaven,inkomst,inkomsten,maximaal,bedrag,categorie,restcategorie,annuleren,toepassen} -->
-**Back to summary**  
-Returns to the matrix. Shown while a year is selected and you are on the
-matrix menu (not on Terms, categories, IP, password, split, or a journal
-page).
+**Terug naar overzicht**  
+Keert terug naar de matrix. Zichtbaar zolang er een jaar is gekozen en je in
+het matrixmenu zit (niet op Termen, categorieën, IP, wachtwoord, splitsen of
+een journaalpagina).
 <!-- {en:back[5],summary[5],matrix,return,overview} -->
 <!-- {nl:terug[5],overzicht[5],matrix,terugkeren,samenvatting} -->
-### Edit categories and the IP allowlist
+### Categorieën bewerken en de IP-toegangslijst
 
-**Edit categories**  
-Change the stichting’s category codes and labels. See
-[Edit categories](#edit-categories).
+**Categorieën bewerken**  
+Wijzig de categoriecodes en labels van de stichting. Zie
+[Categorieën bewerken](#categorieën-bewerken).
 
-**Restrict IP access**  
-Allowlist of client IPs for stichting and sectie logins. See
-[Restrict IP access](#restrict-ip-access).
+**IP-toegang beperken**  
+Toegangslijst van client-IP's voor stichting- en sectielogins. Zie
+[IP-toegang beperken](#ip-toegang-beperken).
 <!-- {en:edit,category,categories,restrict[3],ip,access,allowlist,allowlists} -->
 <!-- {nl:bewerken,categorie,categorieën,beperken[3],ip,toegang,toegangslijst,toegangslijsten} -->
-### Wipe year
+### Jaar wissen
 
-**Wipe year**  
-Asks for a four-digit year, then asks you to confirm. Deletes that year’s
-bookings, and removes uploaded filenames for the accounts involved. This
-cannot be undone.
+**Jaar wissen**  
+Vraagt een jaar van vier cijfers, en vraagt daarna om bevestiging. Verwijdert
+de boekingen van dat jaar, en verwijdert geüploade bestandsnamen voor de
+betrokken rekeningen. Dit kan niet ongedaan worden gemaakt.
 
 - Stichting-niveau login: alle rekeningen.
 - Sectie-niveau login: `instudo_sia` versus `instudo_sib`.
@@ -178,318 +183,350 @@ cannot be undone.
 - Eenheid-niveau login: werkeenheid of huishoudelijke dienst.
 <!-- {en:wipe[5],year[5],years[5],delete,foundation,section,part,unit,work-unit,household,account,accounts} -->
 <!-- {nl:wissen[5],jaar[5],jaren[5],verwijderen,stichting,sectie,deel,eenheid,werkeenheid,huishoudelijke,rekening,rekeningen} -->
-### Set password on a deel or eenheid login
+### Wachtwoord instellen bij een deel- of eenheidslogin
 
-**Set password**  
-Change your password and optional mobile number. See
-[Set password](#set-password). The header menu is hidden on this page; use
-**Cancel** or **Matrix (Alt+M)** to leave.
+**Wachtwoord instellen**  
+Wijzig je wachtwoord en het optionele mobiele nummer. Zie
+[Wachtwoord instellen](#wachtwoord-instellen). Het kopmenu is op deze pagina
+verborgen; gebruik **Annuleren** of **Matrix (Alt+M)** om te vertrekken.
 <!-- {en:set[3],password,passwords,change} -->
 <!-- {nl:instellen[3],wachtwoord,wachtwoorden,wijzigen} -->
 
 ---
 
-## The matrix
+## De matrix
 
-Each cell is that account’s total in that category for the selected year (and
-bank view).
+Elke cel is het totaal van die rekening in die categorie voor het gekozen jaar
+(en de bankweergave).
 
-- **Click a non-empty amount** to open the booking list for that account and
-  category.
-- Empty cells and the two **footer rows** (balance and last booked date) are
-  not clickable.
-- Negative amounts are shown in red.
+- **Klik op een gevuld bedrag** om de boekingenlijst van die rekening en
+  categorie te openen.
+- Lege cellen en de twee **voettekstrijen** (saldo en laatst geboekte datum)
+  zijn niet aanklikbaar.
+- Negatieve bedragen staan in het rood.
 <!-- {en:matrix[5],cell,cells,total,totals,click,amount,amounts,open,booking,bookings,footer,footers,last,booked,empty,negative,red,balance,balances,date,dates,option,options} -->
 <!-- {nl:matrix[5],cel,cellen,totaal,totalen,klik,bedrag,bedragen,openen,boeking,boekingen,voettekst,voetteksten,laatste,geboekt,leeg,negatief,rood,saldo,saldo's,datum,optie,opties} -->
 
 ---
 
-## The booking list
+## De boekingenlijst
 
-The table lists every booking in the chosen cell. Matching terms are
-highlighted in the name and description.
+De tabel toont elke boeking in de gekozen cel. Passende termen zijn
+gemarkeerd in de naam en de omschrijving.
 
-**Left-click**
+**Linksklik**
 
-**Description** — click the text, edit, then click away or press Enter. A
-description you changed is shown in **blue**.
+**Omschrijving** — klik op de tekst, bewerk, en klik daarna weg of druk op
+Enter. Een omschrijving die je hebt gewijzigd, staat in het **blauw**.
 
-**Category (column C)** — click the code, type a valid category number, then
-click away or press Enter. An unknown code is rejected. A category you
-overrode is shown in **bold**.
+**Categorie (kolom C)** — klik op de code, typ een geldig categorienummer, en
+klik daarna weg of druk op Enter. Een onbekende code wordt geweigerd. Een
+categorie die je hebt overschreven, staat in het **vet**.
 
-Other columns (date, type, IBAN, amount) are not edited with a left-click.
+Andere kolommen (datum, type, IBAN, bedrag) worden niet met een linksklik
+bewerkt.
 <!-- {en:booking[5],bookings[5],list[5],lists[5],highlighted,description,descriptions,blue,text,left-click,left,click,category,categories,code,codes,c,bold,date,dates,iban,amount,amounts,column[5],columns[5],option,options} -->
 <!-- {nl:boeking[5],boekingen[5],lijst[5],lijsten[5],gemarkeerd,omschrijving,omschrijvingen,blauw,tekst,linksklik,links,klik,categorie,categorieën,code,codes,c,vet,datum,datums,iban,bedrag,bedragen,kolom[5],kolommen[5],optie,opties} -->
-### Right-click the amount
+### Rechtsklik op het bedrag
 
-Right-click the **amount** to **split** that booking. You leave the list and
-open the split page.
+Klik met rechts op het **bedrag** om die boeking te **splitsen**. Je verlaat
+de lijst en opent de splitpagina.
 
-The original amount stays the remainder: extra lines you add are subtracted
-from it, so the total never changes.
+Het oorspronkelijke bedrag blijft het restbedrag: extra regels die je
+toevoegt, worden ervan afgetrokken, zodat het totaal nooit verandert.
 
-- **Add line** — another description and amount.
-- Edit descriptions and amounts in the table; delete a line with its button.
-- **Save** — writes the split and returns to the matrix.
-- **Matrix (Alt+M)** — leave without saving.
+- **Regel toevoegen** — nog een omschrijving en bedrag.
+- Bewerk omschrijvingen en bedragen in de tabel; verwijder een regel met zijn knop.
+- **Opslaan** — schrijft de splitsing en keert terug naar de matrix.
+- **Matrix (Alt+M)** — vertrek zonder op te slaan.
 <!-- {en:split,splits,right-click[5],amount[5],amounts[5],remainder,remainders,add,line,lines,delete,save,leave,alt+m,option,options} -->
 <!-- {nl:splitsen,splitsingen,rechtsklik[5],bedrag[5],bedragen[5],restbedrag,restbedragen,toevoegen,regel,regels,verwijderen,opslaan,verlaten,alt+m,optie,opties} -->
-### Right-click a name or description
+### Rechtsklik op een naam of omschrijving
 
-Right-click a **word** in the **name** or **description**. A small menu opens
-on that word (you can edit the phrase in the box at the top).
+Klik met rechts op een **woord** in de **naam** of de **omschrijving**. Er
+opent een klein menu op dat woord (je kunt de frase bewerken in het vak
+bovenaan).
 
-Tick **G** (general) or **P** (personal) on a category row:
+Vink **G** (gemeenschappelijk) of **P** (persoonlijk) aan op een categorierij:
 
-- **G** — the term applies to every account in this stichting or sectie.
-- **P** — the term applies only to this deel or eenheid.
+- **G** — de term geldt voor elke rekening in deze stichting of sectie.
+- **P** — de term geldt alleen voor dit deel of deze eenheid.
 
-The word is saved at once. **cancel** or click outside the menu to close it
-without assigning. Other bookings keep their category until the next menu
-click.
+Het woord wordt meteen opgeslagen. **annuleren**, of klik buiten het menu om
+het te sluiten zonder toe te wijzen. Andere boekingen houden hun categorie tot
+de volgende menuklik.
 <!-- {en:right-click[5],word,words,menu,name[5],names[5],general,personal,cancel,term[5],terms[5],save} -->
 <!-- {nl:klik,rechts[5],woord,woorden,menu,naam[5],namen[5],gemeenschappelijk,persoonlijk,annuleren,term[5],termen[5],opslaan} -->
 
 ---
 
-## Edit Terms
+## Termen bewerken
 
-**menu → ⚙ Edit Terms**, or `Alt+T`. **Matrix (Alt+M)** (or `Ctrl+Tab`)
-returns to the overview. Edits save as soon as you leave a field; matching
-bookings update in the background.
+**menu → ⚙ Termen bewerken**, of `Alt+T`. **Matrix (Alt+M)** (of `Ctrl+Tab`)
+keert terug naar het overzicht. Wijzigingen worden opgeslagen zodra je een
+veld verlaat; passende boekingen worden op de achtergrond bijgewerkt.
 
-The window has four columns. Click a category in the first. The second and
-fourth columns then show that category’s terms.
+Het venster heeft vier kolommen. Klik op een categorie in de eerste. De
+tweede en de vierde kolom tonen dan de termen van die categorie.
 
-**Category**  
-The categories a booking can take a term for. Categories a booking cannot
-take are not listed. The terms in the other columns belong to the category
-you click.
+**Categorie**  
+De categorieën waarvoor een boeking een term kan krijgen. Categorieën die een
+boeking niet kan krijgen, staan er niet bij. De termen in de andere kolommen
+horen bij de categorie waarop je klikt.
 
-**General**  
-Keywords for the selected category. They apply to alle rekeningen of the
-stichting, in both secties. A personal term beats a general one.
+**Gemeenschappelijk**  
+Trefwoorden voor de gekozen categorie. Ze gelden voor alle rekeningen van de
+stichting, in beide secties. Een persoonlijke term wint van een
+gemeenschappelijke.
 
-**Deel**, or **Account** when terms are stored per account  
-Who the personal terms belong to. An eenheid login lists only that
-werkeenheid or huishoudelijke dienst. A deel login lists its consolidated
-werkeenheden or its consolidated huishoudelijke diensten. A stichting or
-sectie login lists the accounts in the sectie now selected (`instudo_sia`
-or `instudo_sib`). When the heading is Account, each row is one account,
-and the sectie name is the first row, marked sectie. The fourth column then
-shows every personal term on any of those accounts. A term you add is
-written on each of them. A term you delete is removed from each of them.
+**Deel**, of **Rekening** wanneer termen per rekening worden bewaard  
+Bij wie de persoonlijke termen horen. Een eenheidslogin toont alleen die
+werkeenheid of huishoudelijke dienst. Een deellogin toont zijn geconsolideerde
+werkeenheden of zijn geconsolideerde huishoudelijke diensten. Een stichting-
+of sectielogin toont de rekeningen in de nu gekozen sectie (`instudo_sia` of
+`instudo_sib`). Wanneer het opschrift Rekening is, is elke rij één rekening,
+en is de sectienaam de eerste rij, gemarkeerd als sectie. De vierde kolom
+toont dan elke persoonlijke term op een van die rekeningen. Een term die je
+toevoegt, wordt op elk van hen geschreven. Een term die je verwijdert, wordt
+van elk van hen verwijderd.
 
-**Personal**  
-Keywords for the selected category and for the deel or account selected
-in the third column. They apply only there.
+**Persoonlijk**  
+Trefwoorden voor de gekozen categorie en voor het deel of de rekening die in
+de derde kolom is gekozen. Ze gelden alleen daar.
 
-- Type in **+ term** and press Enter (or leave the field) to add a keyword.
-- Edit an existing term and leave the field to save.
-- **×** deletes that term.
+- Typ in **+ term** en druk op Enter (of verlaat het veld) om een trefwoord toe te voegen.
+- Bewerk een bestaande term en verlaat het veld om op te slaan.
+- **×** verwijdert die term.
 <!-- {en:edit[5],term[5],terms[5],page,alt+t,ctrl+tab,window,background,four,column[5],columns[5],category,categories,general,foundation,section,part,unit,account,accounts,personal,add,plus,delete,change} -->
 <!-- {nl:bewerken[5],term[5],termen[5],pagina,alt+t,ctrl+tab,termvenster,achtergrond,vier,kolom[5],kolommen[5],categorie,categorieën,gemeenschappelijk,stichting,sectie,deel,eenheid,rekening,rekeningen,persoonlijk,toevoegen,plus,verwijderen,wijzig} -->
-### How terms match
+### Hoe termen overeenkomen
 
-A term matches a whole word in the booking’s name and description. A word
-ends at a space, a dot, a dash, or other punctuation (slash, comma, colon,
-apostrophe, asterisk, plus, brackets). A digit or an underscore stays inside
-the word.
+Een term komt overeen met een heel woord in de naam en de omschrijving van de
+boeking. Een woord eindigt bij een spatie, een punt, een streepje of andere
+leestekens (schuine streep, komma, dubbele punt, apostrof, sterretje, plus,
+haakjes). Een cijfer of een onderstreping blijft binnen het woord.
 
-`#` stands for zero or more letters, dots, or asterisks inside one
-space-separated piece. It does not cross a space. A dash inside that piece
-is skipped, so `albert#heijn` still matches `albert-heijn`.
+`#` staat voor nul of meer letters, punten of sterretjes binnen één stuk dat
+door spaties is gescheiden. Het gaat niet over een spatie heen. Een streepje
+binnen dat stuk wordt overgeslagen, zodat `albert#heijn` nog steeds overeenkomt
+met `albert-heijn`.
 
-`&&` means both phrases must match, in either order, and they need not sit
-next to each other. For example `heijn && machtiging`. The separator is
-space, `&&`, space.
+`&&` betekent dat beide frases moeten overeenkomen, in willekeurige volgorde,
+en ze hoeven niet naast elkaar te staan. Bijvoorbeeld `heijn && machtiging`.
+Het scheidingsteken is spatie, `&&`, spatie.
 
-Priority, highest first:
+Voorrang, de hoogste eerst:
 
-1. A **personal** term beats every **general** term.
-2. An `&&` term beats a single phrase.
-3. **Activa/passiva** beats **lasten/baten**. Activa and passiva are category
-   codes below 3000. Lasten and baten are codes of 3000 or above.
-4. The later category name wins, then the later term. Later is dictionary
-   order of the text, not the time the term was saved. `1110 Kruisposten`
-   beats `1052 Spaarrekening`. In the same category, `spaarrekening` beats
-   `oranje`.
+1. Een **persoonlijke** term wint van elke **gemeenschappelijke** term.
+2. Een `&&`-term wint van een enkele frase.
+3. **Activa/passiva** wint van **lasten/baten**. Activa en passiva zijn
+   categoriecodes onder 3000. Lasten en baten zijn codes van 3000 of hoger.
+4. De latere categorienaam wint, daarna de latere term. Later is de
+   woordenboekvolgorde van de tekst, niet het tijdstip waarop de term is
+   opgeslagen. `1110 Kruisposten` wint van `1052 Spaarrekening`. In dezelfde
+   categorie wint `spaarrekening` van `oranje`.
 
-The stored hit is `P:` plus the term, or `G:` plus the term. If nothing
-matches, the booking stays in the remainder category and the hit is empty.
+De opgeslagen treffer is `P:` plus de term, of `G:` plus de term. Komt niets
+overeen, dan blijft de boeking in de restcategorie en is de treffer leeg.
 <!-- {en:terms[5],word,dash,dot,hash,wildcard,asterisk,&&,heijn,direct-debit,both,phrases,priority,hit,P,G,remainder,match[5],rules,assets,liabilities,costs,revenues,rank} -->
 <!-- {nl:termen[5],woord,streepje,punt,hekje,jokerteken,sterretje,&&,heijn,machtiging,beide,zinnen,voorrang,treffer,P,G,restcategorie,overeenkomen[5],voorrangsregels,activa,passiva,lasten,baten,prioriteit} -->
 
-### Term definition strategy
+### Strategie voor het definiëren van termen
 
-Define terms in this order.
+Definieer termen in deze volgorde.
 
-1. Run **Calculate cross-postings** first. It pairs internal transfers and
-   writes their categories. Those rows count as set by hand, so a later term
-   does not move them.
-2. Define the **general** terms as completely as you can. A general term has
-   the lowest precedence. Inside the general list, an `&&` term beats a
-   single phrase, so use `&&` when one general term should win over another.
-3. Then define the **personal** terms. A personal term beats every general
-   term. If that word also sits in a description next to a general term, the
-   booking leaves the category the general term had given it. Restrict the
-   personal term to one account when you can. It then touches fewer
-   statements than the same term on every account of a sectie.
-4. When a personal term should apply to every account of a sectie, write it
-   on the sectie row. It is copied onto each account of that sectie. Deleting
-   it from the sectie row removes it from those accounts.
-5. Last, run **Smaller expenses** and **Smaller income**. Each asks for a
-   maximum and a category. Remainder bookings smaller than that maximum take
-   the chosen category and count as set by hand. The categories you still
-   review then hold the larger amounts. The smaller ones, which move the
-   result less, are already stored, so the balance sheet is faster to prepare.
+1. Draai eerst **Bereken kruisposten**. Dat koppelt interne overboekingen en
+   schrijft hun categorieën. Die rijen tellen als met de hand gezet, zodat een
+   latere term ze niet verplaatst.
+2. Definieer de **gemeenschappelijke** termen zo volledig als je kunt. Een
+   gemeenschappelijke term heeft de laagste voorrang. Binnen de
+   gemeenschappelijke lijst wint een `&&`-term van een enkele frase, dus
+   gebruik `&&` wanneer de ene gemeenschappelijke term van de andere moet
+   winnen.
+3. Definieer daarna de **persoonlijke** termen. Een persoonlijke term wint van
+   elke gemeenschappelijke term. Staat dat woord ook in een omschrijving naast
+   een gemeenschappelijke term, dan verlaat de boeking de categorie die de
+   gemeenschappelijke term had gegeven. Beperk de persoonlijke term tot één
+   rekening wanneer dat kan. Hij raakt dan minder afschriften dan dezelfde
+   term op elke rekening van een sectie.
+4. Moet een persoonlijke term voor elke rekening van een sectie gelden, schrijf
+   hem dan op de sectierij. Hij wordt gekopieerd naar elke rekening van die
+   sectie. Verwijderen van de sectierij haalt hem ook van die rekeningen weg.
+5. Draai tot slot **Kleinere uitgaven** en **Kleinere inkomsten**. Elk vraagt
+   een maximum en een categorie. Restboekingen kleiner dan dat maximum krijgen
+   de gekozen categorie en tellen als met de hand gezet. De categorieën die je
+   nog nakijkt, houden dan de grotere bedragen. De kleinere, die het resultaat
+   minder bewegen, zijn al opgeslagen, zodat de balans sneller klaar is.
 <!-- {en:strategy[5],order,first,cross-postings[5],general[5],precedence,&&,personal[5],particular,account,section,restrict,smaller[5],expenses,income,balance,sheet,maximum,remainder} -->
 <!-- {nl:strategie[5],volgorde,eerst,kruisposten[5],gemeenschappelijk[5],voorrang,&&,persoonlijk[5],bijzonder,rekening,sectie,beperken,kleinere[5],uitgaven,inkomsten,balans,blad,maximaal,restcategorie} -->
 
 ---
 
-## Edit categories
+## Categorieën bewerken
 
-**menu → Edit categories** (stichting or sectie login). **Matrix (Alt+M)** goes
-back.
+**menu → Categorieën bewerken** (stichting- of sectielogin). **Matrix (Alt+M)**
+gaat terug.
 
-Each row is a booking category: **code**, **label**, and which row is
-**Unclassified** (the remainder). Changing a label keeps existing bookings on
-that category. **Add category** appends a row. **Delete** removes a category
-and moves leftover bookings to unclassified. **Submit** writes the list.
+Elke rij is een boekingscategorie: **code**, **label**, en welke rij
+**Niet ingedeeld** is (de restcategorie). Een label wijzigen houdt bestaande
+boekingen op die categorie. **Categorie toevoegen** voegt een rij toe.
+**Verwijderen** haalt een categorie weg en verplaatst overgebleven boekingen
+naar niet ingedeeld. **Indienen** schrijft de lijst.
 <!-- {en:edit[5],category[5],categories[5],page,add,delete,submit} -->
 <!-- {nl:bewerken[5],categorie[5],categorieën[5],pagina,toevoegen,verwijderen,indienen} -->
 
+## Categorieën die een boeking niet kan krijgen
+
+Een boeking kan niet worden toegewezen aan eigen vermogen, of aan een lopende
+betaalrekening. Die bedragen worden berekend, of ze komen van de bank. Een
+spaarrekening (mirror) kan wel een term krijgen. De restcategorie ontvangt
+een boeking waarop geen term past.
+<!-- {en:cannot[5],assign,bank,account,mirror,no,hit,equity,capital} -->
+<!-- {nl:onmogelijk[5],toewijzen,bank,rekening,spaarrekening,geen,treffer,eigen,vermogen} -->
+
+## Het categorietotaal komt niet overeen met de som van de leden
+
+Het categorietotaal kom om meerdere redenen afwijken van de som van de getoonde bedragen:
+- wanneer een ander centrum ook bijdraagt aan het totaal
+- wanneer een journaalpost bijdraagt aan het totaal
+- voor cumulatieve activa: wanneer een beginwaarde bijdraagt aan het totaal
+
+<!-- {en:category[5],total[5],does[5],not[5],match[5],equal[5],unequal[5],differs,differ,contribute,contributes}>
+<!-- {nl:categorietotaal[5],klopt[5],niet[5],komt[5],overeen[5],afwijken, wijkt,bijdragen,draagt,beginwaarde}>
+
+
+
 ---
 
-## Restrict IP access
+## IP-toegang beperken
 
-**menu → Restrict IP access** (stichting or sectie login). Deel and eenheid
-logins are never IP-gated.
+**menu → IP-toegang beperken** (stichting- of sectielogin). Deel- en
+eenheidslogins worden nooit op IP gecontroleerd.
 
-Pick a **Login** (the stichting or a sectie), type an IPv4 or IPv6 address,
-**Add IP**. The table lists current addresses; remove one with its button.
+Kies een **Login** (de stichting of een sectie), typ een IPv4- of
+IPv6-adres, **IP toevoegen**. De tabel toont de huidige adressen; verwijder
+er een met zijn knop.
 
-An empty list on this page means **no** address is allowed for that login,
-unless the same address is also on the egress_ip list (edited in SSMS,
-not here). The allowed set is the sum of the two lists. If both are empty,
-no stichting or sectie login works at all.
+Een lege lijst op deze pagina betekent dat **geen** adres is toegestaan voor
+die login, tenzij hetzelfde adres ook op de egress_ip-lijst staat (bewerkt in
+SSMS, niet hier). De toegestane verzameling is de som van de twee lijsten.
+Zijn beide leeg, dan werkt geen enkele stichting- of sectielogin.
 <!-- {en:restrict[5],page,add,ipv4,ipv6,remove,empty,list,administrator,ssms,ip[5]} -->
 <!-- {nl:beperken[5],pagina,toevoegen,ipv4,ipv6,verwijderen,leeg,lijst,beheerder,ssms,ip[5]} -->
 
 ---
 
-## Set password
+## Wachtwoord instellen
 
-**menu → Set password** (deel or eenheid login).
+**menu → Wachtwoord instellen** (deel- of eenheidslogin).
 
-Enter the current password, the new password twice, and optionally a **mobile
-phone** (`+316…` or `06…`). A mobile number turns on SMS two-step login.
+Vul het huidige wachtwoord in, het nieuwe wachtwoord tweemaal, en eventueel
+een **mobiele telefoon** (`+316…` of `06…`). Een mobiel nummer zet het
+inloggen in twee stappen per sms aan.
 
-**Save** writes the change. **Cancel** (or **Matrix (Alt+M)**) returns to the
-matrix without saving.
+**Opslaan** schrijft de wijziging. **Annuleren** (of **Matrix (Alt+M)**) keert
+terug naar de matrix zonder op te slaan.
 <!-- {en:save,password[5],cancel,mobile,phone,sms,login} -->
 <!-- {nl:opslaan,wachtwoord[5],annuleren,mobiel,telefoon,sms,inloggen} -->
 
 ---
 
-## Upload and download
+## Uploaden en downloaden
 
-**Upload** is for a login that pastes a bank CSV or spreadsheet rather than
-connecting a bank. Pick the year and format on the upload page.
+**Uploaden** is voor een login die een bank-CSV of een rekenblad plakt in
+plaats van een bank te koppelen. Kies het jaar en het formaat op de
+uploadpagina.
 
-**Download transactions** pulls from the bank when consent is in place. An
-eenheid login fetches that werkeenheid or huishoudelijke dienst. A deel
-login fetches its consolidated group. A stichting or sectie login fetches
-every account in the selected sectie that has consent. The first time, the bank
-site may open for authorization; after you approve, Agrolav fetches the
-range and fills the matrix.
+**Uitlezen bankafschriften** haalt op bij de bank wanneer de toestemming er
+is. Een eenheidslogin leest die werkeenheid of huishoudelijke dienst uit. Een
+deellogin leest zijn geconsolideerde groep uit. Een stichting- of sectielogin
+leest elke rekening in de gekozen sectie uit die toestemming heeft. De eerste
+keer kan de banksite opengaan voor machtiging; nadat je goedkeurt, haalt
+Agrolav de periode op en vult de matrix.
 <!-- {en:upload[5],page,bank,csv,download[5],from,authorization,authorisation,consent,give} -->
 <!-- {nl:uploaden[5],pagina,bank,csv,downloaden[5],van,machtiging,autorisatie,toestemming,geven} -->
 
 ---
 
-## Keyboard
+## Toetsenbord
 
-| Shortcut | Action |
+| Sneltoets | Actie |
 |---|---|
-| `Alt+T` | Edit Terms |
-| `Alt+M` | Back to the matrix (from Terms, categories, IP, password, split) |
-| `Alt+C` | Edit categories (from the matrix, when that menu item exists) |
-| Enter | Confirm an in-cell edit |
+| `Alt+T` | Termen bewerken |
+| `Alt+M` | Terug naar de matrix (vanuit Termen, categorieën, IP, wachtwoord, splitsen) |
+| `Alt+C` | Categorieën bewerken (vanuit de matrix, wanneer dat menu-onderdeel bestaat) |
+| Enter | Bevestig een bewerking in een cel |
 <!-- {en:keyboard[5],shortcut,alt+c,enter,key} -->
 <!-- {nl:toetsenbord[5],sneltoets,alt+c,enter,toets} -->
 
 ---
 
-## Background rescore after saving a term
+## Achtergrondprocedure na het opslaan van een term
 
-A right-click in the booking list only saves the word and queues a pass.
-Repeated right-clicks do the same. The pass runs when you click a menu item.
-The top bar shows “background procedure running: please wait…”, and the menu
-command runs only after the pass succeeds. Several terms saved in a burst are
-one pass. The terms window itself waits for the pass before it returns.
+Een rechtsklik in de boekingenlijst slaat alleen het woord op en zet een
+ronde in de wachtrij. Herhaalde rechtsklikken doen hetzelfde. De ronde draait
+wanneer je op een menu-onderdeel klikt. De bovenbalk toont “background
+procedure running: please wait…”, en het menucommando draait pas nadat de
+ronde is gelukt. Meerdere termen die in één keer zijn opgeslagen, zijn één
+ronde. Het termvenster zelf wacht op de ronde voordat het terugkeert.
 
-This pass is not **Recalculate**. Recalculate clears hits and scores again
-for every year: that eenheid on an eenheid login, that deel’s consolidated
-werkeenheden or huishoudelijke diensten on a deel login, or every account in
-the selected sectie on a stichting or sectie login. The pass after a term edit
-leaves a category you set by hand (shown **bold**) where it is, leaves Excel
-rows where they are, and walks only each account’s latest booking year. A
-description you edited (shown **blue**) is still scored; the description
-stays.
+Deze ronde is niet **Categorieën herberekenen**. Herberekenen wist treffers
+en scoort opnieuw voor elk jaar: die eenheid bij een eenheidslogin, de
+geconsolideerde werkeenheden of huishoudelijke diensten van dat deel bij een
+deellogin, of elke rekening in de gekozen sectie bij een stichting- of
+sectielogin. De ronde na een termwijziging laat een categorie die je met de
+hand hebt gezet (getoond in het **vet**) staan, laat Excelrijen staan, en
+loopt alleen het laatste boekjaar van elke rekening langs. Een omschrijving
+die je hebt bewerkt (getoond in het **blauw**) wordt nog steeds gescoord; de
+omschrijving blijft.
 
-A personal term rescores that deel or eenheid, or that account when terms are
-stored per account. A general term rescores alle rekeningen of the stichting.
-One general term in a burst widens the whole burst to that scope. Earlier years
-are not touched.
+Een persoonlijke term herscoort dat deel of die eenheid, of die rekening
+wanneer termen per rekening worden bewaard. Een gemeenschappelijke term
+herscoort alle rekeningen van de stichting. Eén gemeenschappelijke term in
+een reeks verbreedt de hele reeks tot dat bereik. Eerdere jaren worden niet
+aangeraakt.
 <!-- {en:background,procedure,please,wait,queued,menu,click,recalculate,difference,bold,category,blue,description,excel,latest,year,personal,scope,general,foundation,section,part,unit} -->
 <!-- {nl:achtergrond,procedure,alstublieft,wachten,wachtrij,menu,klik,herberekenen,verschil,vet,categorie,blauw,omschrijving,excel,laatste,jaar,persoonlijk,bereik,gemeenschappelijk,stichting,sectie,deel,eenheid} -->
-## Categories a booking cannot take
 
-A booking cannot be assigned to eigen vermogen, or to a live checking
-account. Those amounts are computed, or they come from the bank. A
-spaarrekening (mirror) can take a term. The remainder category receives a
-booking that no term matches.
-<!-- {en:cannot[5],assign,bank,account,mirror,no,hit,equity,capital} -->
-<!-- {nl:onmogelijk[5],toewijzen,bank,rekening,spaarrekening,geen,treffer,eigen,vermogen} -->
-## The name in the left panel
+## De naam in het linkerpaneel
 
-The heading is the title stored for the login: the eenheid, the deel, the
-sectie, or the stichting. It is not the username.
+De kop is de titel die bij de login is opgeslagen: de eenheid, het deel, de
+sectie of de stichting. Het is niet de gebruikersnaam.
 
-An eenheid login with two or more accounts gets a second line. On
-**Consolidated** that line is the word Consolidatie (or Consolidated). On
-one account it is that account’s name. One account, or a deel, sectie, or
-stichting login, shows the title only. The browser tab uses the title without
-the second line.
+Een eenheidslogin met twee of meer rekeningen krijgt een tweede regel. Bij
+**Consolidated** is die regel het woord Consolidatie (of Consolidated). Bij
+één rekening is het de naam van die rekening. Eén rekening, of een deel-,
+sectie- of stichtinglogin, toont alleen de titel. Het browsertabblad gebruikt
+de titel zonder de tweede regel.
 <!-- {en:sidebar,title,subtitle,account,name[5],several,accounts,consolidated} -->
 <!-- {nl:zijbalk,titel,ondertitel,rekening,naam[5],meerdere,rekeningen,consolidatie} -->
-## The balance sheet window
+## Het balansvenster
 
-**menu → Balance sheet** opens the sheet in its own window. A second click
-uses that same window. **Logout** closes it. In the sheet, Escape closes an
-open category first; with none open, Escape returns to the bookkeeping
-window.
+**menu → Balans** opent het blad in een eigen venster. Een tweede klik
+gebruikt datzelfde venster. **Uitloggen** sluit het. In het blad sluit Escape
+eerst een open categorie; is er geen open, dan keert Escape terug naar het
+boekhoudvenster.
 
-On the sheet, eigen vermogen is **bold black** when it still equals the
-year’s opening amount, and **bold red** when it does not.
+Op het blad is eigen vermogen **vet zwart** wanneer het nog gelijk is aan het
+beginbedrag van het jaar, en **vet rood** wanneer dat niet zo is.
 
-Where the menu offers them, **Manual journal posts** and **Automatic journal
-posts** open from the same menu. **Export balance sheet** downloads the
-workbook.
+Waar het menu ze aanbiedt, openen **Handmatige journaalposten** en
+**Automatische journaalposten** vanuit hetzelfde menu. **Balans exporteren**
+downloadt het werkboek.
 <!-- {en:balance[5],sheet[5],escape,logout,window[5],bold,black,red,opening,manual,journal,automatic,export,equity,capital} -->
 <!-- {nl:balans[5],blad[5],escape,uitloggen,balansvenster[5],vet,zwart,rood,beginstand,handmatig,journaal,automatisch,exporteren,eigen,vermogen} -->
-## Meals
+## Maaltijden
 
-The meal sheet is a separate page, not part of this matrix:
-`https://expenses.apsurt.nl/maaltijden`. Its login is not the bookkeeping
-login. A week runs Sunday to Saturday. **Dag** shows today, **Week** shows
-the seven days, **Reserveren** shows only your own row.
+Het maaltijdenblad is een aparte pagina, geen deel van deze matrix:
+`https://expenses.apsurt.nl/maaltijden`. De login daarvan is niet de
+boekhoudlogin. Een week loopt van zondag tot zaterdag. **Dag** toont vandaag,
+**Week** toont de zeven dagen, **Reserveren** toont alleen je eigen rij.
 
-Each day has five meals, **O M A L P** (standing for `Ontbijt`, `Middag`, `Avond`, `Laat`, and `Pakket`, respectively). A click switches a cell between an empty circle and a full one. You can change only your own row. The login `admin` is not a
-row; it edits the extra counts for the current week.
+Elke dag heeft vijf maaltijden, **O M A L P** (voor respectievelijk
+`Ontbijt`, `Middag`, `Avond`, `Laat` en `Pakket`). Een klik wisselt een cel
+tussen een lege cirkel en een volle. Je kunt alleen je eigen rij wijzigen.
+De login `admin` is geen rij; die bewerkt de extra aantallen voor de huidige
+week.
 <!-- {en:meals[5],meal,sheet,eat,reserve,view,O,M,A,L,P} -->
 <!-- {nl:maaltijden[5],maaltijd,blad,eten,reserveren,weergave,O,M,A,L,P} -->
 

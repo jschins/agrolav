@@ -18,6 +18,21 @@ export interface RefreshAccountResult {
   inserted: number;
 }
 
+export interface RabobankExportAccount {
+  uid: string;
+  iban: string;
+  name: string;
+  transactions: Record<string, unknown>[];
+}
+
+export interface RabobankExport {
+  aspsp: string;
+  person: string;
+  date_from: string;
+  date_to: string;
+  accounts: RabobankExportAccount[];
+}
+
 export interface RefreshPersonResult {
   person_name: string;
   skipped: boolean;
@@ -31,6 +46,7 @@ export interface RefreshPersonResult {
   authorization_url?: string | null;
   new_year?: boolean;
   enable_debug?: Record<string, unknown>;
+  rabobank_export?: RabobankExport;
 }
 
 export interface RefreshResponse {
