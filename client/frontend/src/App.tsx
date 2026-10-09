@@ -2481,6 +2481,44 @@ function isoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function slashDate(d: Date): string {
+  return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+}
+
+function ytdDefaultDates(): { begin: string; end: string } {
+  const today = new Date();
+  return { begin: `1/1/${today.getFullYear()}`, end: slashDate(today) };
+}
+
+function parseUserDate(text: string): string | null {
+  const trimmed = text.trim();
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
+  const dmy = /^(\d{1,2})[/. -](\d{1,2})[/. -](\d{4})$/.exec(trimmed);
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  if (iso) {
+    year = Number(iso[1]);
+    month = Number(iso[2]);
+    day = Number(iso[3]);
+  } else if (dmy) {
+    day = Number(dmy[1]);
+    month = Number(dmy[2]);
+    year = Number(dmy[3]);
+  } else {
+    return null;
+  }
+  const parsed = new Date(year, month - 1, day);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+  return isoDate(parsed);
+}
+
 const WIPE_ITEMS: { key: keyof WipeFlags; en: string; nl: string }[] = [
   { key: "afschrijvingen", en: "Wipe automatic journal entries", nl: "Wis automatische journaalposten" },
   { key: "journal", en: "Wipe manual journal entries", nl: "Wis handmatige journaalposten" },
@@ -2868,6 +2906,87 @@ function RabobankSaveDialog({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function YtdPeriodDialog({
+  terms,
+  onCancel,
+  onApply,
+}: {
+  terms: Record<string, string> | undefined;
+  onCancel: () => void;
+  onApply: (dateFrom: string, dateTo: string) => void;
+}) {
+  const [defaults] = useState(ytdDefaultDates);
+  const [begin, setBegin] = useState(defaults.begin);
+  const [end, setEnd] = useState(defaults.end);
+  const [dateError, setDateError] = useState<string | null>(null);
+  const dutch = uiIsDutch(terms);
+
+  function apply(e: FormEvent) {
+    e.preventDefault();
+    const from = parseUserDate(begin.trim() || defaults.begin);
+    const to = parseUserDate(end.trim() || defaults.end);
+    if (!from || !to) {
+      setDateError(dutch ? "Gebruik een datum zoals 1/1/2026." : "Use a date such as 1/1/2026.");
+      return;
+    }
+    if (from > to) {
+      setDateError(
+        dutch ? "De begindatum ligt na de einddatum." : "The begin date is after the end date."
+      );
+      return;
+    }
+    onApply(from, to);
+  }
+
+  const applyLabel = (() => {
+    const label = tableHeaderTerm(terms, "Apply");
+    if (label !== "Apply") return label;
+    return dutch ? "Toepassen" : "Apply";
+  })();
+
+  return (
+    <div className="priority-rules-overlay" onClick={onCancel}>
+      <form
+        className="priority-rules-dialog wipe-choices"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={apply}
+      >
+        <label className="wipe-choice small-expense-field">
+          Begin
+          <input
+            className="login-input"
+            type="text"
+            value={begin}
+            placeholder={defaults.begin}
+            onChange={(e) => setBegin(e.target.value)}
+          />
+        </label>
+        <label className="wipe-choice small-expense-field">
+          {dutch ? "Einde" : "End"}
+          <input
+            className="login-input"
+            type="text"
+            value={end}
+            placeholder={defaults.end}
+            onChange={(e) => setEnd(e.target.value)}
+          />
+        </label>
+        {dateError ? <p className="error">{dateError}</p> : null}
+        <div className="wipe-choice-actions">
+          <button type="submit" className="priority-rules-close">
+            {applyLabel}
+          </button>
+          <button type="button" className="priority-rules-close" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -3390,6 +3509,7 @@ function MainApp({
   const [refreshing, setRefreshing] = useState(false);
   const [firstDownloading, setFirstDownloading] = useState(false);
   const [rabobankFiles, setRabobankFiles] = useState<RabobankSaveFile[] | null>(null);
+  const [ytdOpen, setYtdOpen] = useState(false);
   const [refreshScope, setRefreshScope] = useState<RefreshStatusScope | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<StoredRefreshStatus | null>(null);
   const [hasSecrets, setHasSecrets] = useState(false);
@@ -3811,6 +3931,13 @@ function MainApp({
 
   function doYtdDownload() {
     if (refreshing || firstDownloading) return;
+    setError(null);
+    setYtdOpen(true);
+  }
+
+  function runYtdDownload(start: string, end: string) {
+    setYtdOpen(false);
+    if (refreshing || firstDownloading) return;
     const person_name = pickManagedPerson();
     if (!person_name) return;
     beginRefreshBusy();
@@ -3819,8 +3946,6 @@ function MainApp({
       setError(null);
     });
     afterPaint(() => {
-      const start = `${new Date().getFullYear()}-01-01`;
-      const end = isoDate(new Date());
       refreshPerson(person_name, { date_from: start, date_to: end, new_year: true })
         .then((res) => {
           finishBankDownload(res, true);
@@ -4011,6 +4136,13 @@ function MainApp({
             terms={termsForUi}
             onCancel={() => setWipeOpen(false)}
             onRun={runWipePerson}
+          />
+        ) : null}
+        {ytdOpen ? (
+          <YtdPeriodDialog
+            terms={termsForUi}
+            onCancel={() => setYtdOpen(false)}
+            onApply={runYtdDownload}
           />
         ) : null}
         {rabobankFiles?.length ? (
