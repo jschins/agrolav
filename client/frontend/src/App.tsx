@@ -6191,7 +6191,7 @@ function PTable({
           className={`num category-pick${catModified ? " category-modified" : ""}`}
           onClick={() => setPicker(t)}
         >
-          <span className="editable">{formatCell(t.category)}</span>
+          <span className="editable">{formatCategoryCode(t.category)}</span>
         </td>
       );
     }
@@ -7080,6 +7080,14 @@ function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function formatCategoryCode(value: unknown): string {
+  const text = formatCell(value).trim();
+  if (!text) return "";
+  const n = Number(text);
+  if (!Number.isFinite(n)) return text;
+  return String(Math.trunc(n)).padStart(4, "0");
 }
 
 function EditableField({

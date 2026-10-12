@@ -499,9 +499,10 @@ def _load_nonbank_category_rows(
             "ORDER BY date, amount",
             (country_id, bound.year, id_a, id_b),
         )
-        for n, (booked_on, cat_id, amount, description) in enumerate(
+        for n, (booked_on, stored_id, amount, description) in enumerate(
             bound.cursor.fetchall(), start=1
         ):
+            local = codes.get(int(stored_id)) if stored_id is not None else None
             rows.append(
                 {
                     "id": f"b{n}",
@@ -512,7 +513,7 @@ def _load_nonbank_category_rows(
                     "iban": "",
                     "description": _json_text(description),
                     "date": _json_date(booked_on),
-                    "category": int(cat_id) if cat_id is not None else category_code,
+                    "category": int(local) if local is not None else int(category_code),
                     "modification": -1,
                     "hit": None,
                     "account_uid": "",
