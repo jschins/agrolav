@@ -8,10 +8,12 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 
-from app.catalog import add_book
+from app.catalog import add_book, load_catalog, update_voorraad
 
 _ROOT = Path(__file__).resolve().parent.parent
 _MENU = "Voeg nieuw boek toe"
+_STOCK = "Beheer voorraad"
+_MENUS = (("/", _MENU), ("/voorraad", _STOCK))
 _FIELDS = (
     ("slug", "slug", True),
     ("titel", "titel", True),
@@ -26,13 +28,17 @@ _FIELDS = (
 )
 
 
-def _page(body: str) -> str:
+def _page(body: str, title: str, active: str) -> str:
+    links = []
+    for href, label in _MENUS:
+        mark = ' class="selected"' if href == active else ""
+        links.append(f'<a{mark} href="{href}">{label}</a>')
     return f"""<!DOCTYPE html>
 <html lang="nl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{_MENU} — De Boog</title>
+<title>{escape(title)} — De Boog</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:ital,wght@0,400;0,500;1,400&family=Alegreya:ital,wght@0,500;0,600;1,500&family=Crimson+Pro:ital,wght@0,400;0,500;1,400&display=swap">
@@ -83,15 +89,16 @@ header.bar {{
   text-decoration: none;
   color: inherit;
 }}
+nav {{ display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }}
 nav a {{
   font-family: "Alegreya Sans", sans-serif;
   font-size: 0.95rem;
   text-decoration: none;
   color: inherit;
-  background: var(--border);
   border-radius: 4px;
   padding: 0.35rem 0.55rem;
 }}
+nav a.selected {{ background: var(--border); }}
 .wrap {{ max-width: 40rem; margin: 0 auto; padding: 2rem 1.5rem 4rem; }}
 label {{ display: block; margin: 0.9rem 0 0.25rem; font-family: "Alegreya Sans", sans-serif; }}
 input {{
@@ -125,13 +132,66 @@ input {{
   padding: 1.2rem 1.3rem;
   margin-top: 1rem;
 }}
+table.plain {{ border-collapse: collapse; width: 100%; background: var(--card); }}
+table.plain th, table.plain td {{
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}}
+main.rekening-wide {{
+  width: calc(100vw - 3rem);
+  max-width: none;
+  margin: 0 auto;
+  padding: 2rem 0 3rem;
+}}
+table.plain.wide {{
+  width: 100%;
+  max-width: none;
+  table-layout: fixed;
+}}
+table.plain.wide th,
+table.plain.wide td {{
+  padding: 0.12rem 0.45rem;
+  line-height: 1.15;
+}}
+table.plain.wide input[type="number"] {{
+  width: 100%;
+  max-width: none;
+  padding: 0.05rem 0.35rem;
+  line-height: 1.15;
+  font-size: 1rem;
+}}
+td.clip {{ position: relative; overflow: visible; }}
+td.clip span {{
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}}
+td.clip:hover::after {{
+  content: attr(data-full);
+  position: absolute;
+  left: 0;
+  top: calc(100% - 0.15rem);
+  z-index: 4;
+  max-width: 70vw;
+  padding: 0.35rem 0.55rem;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--foreground);
+  border-radius: 4px;
+  white-space: normal;
+  box-shadow: 0 2px 8px rgba(34, 28, 21, 0.12);
+}}
 </style>
 </head>
 <body>
 <header class="bar">
   <div class="bar-row">
     <a class="mark" href="/">De Boog</a>
-    <nav><a href="/">{_MENU}</a></nav>
+    <nav>
+      {"".join(links)}
+    </nav>
   </div>
 </header>
 {body}
@@ -174,7 +234,7 @@ def form_page(values: dict[str, str], error: str = "") -> str:
   </form>
 </main>
 """
-    return _page(body)
+    return _page(body, _MENU, "/")
 
 
 def done_page(titel: str, cover: str) -> str:
@@ -189,7 +249,48 @@ def done_page(titel: str, cover: str) -> str:
   </div>
 </main>
 """
-    return _page(body)
+    return _page(body, "Boek toegevoegd", "/")
+
+
+def _clip(text: str) -> str:
+    shown = escape(text)
+    return f'<td class="clip" data-full="{shown}"><span>{shown}</span></td>'
+
+
+def stock_page(catalog_path: Path, error: str = "") -> str:
+    catalog = load_catalog(catalog_path)
+    rows = []
+    for book in catalog.books:
+        if book.ebook():
+            continue
+        rows.append(
+            "<tr>"
+            f"{_clip(book.titel)}"
+            f"{_clip(book.auteur)}"
+            "<td><input type=\"number\" min=\"0\" step=\"1\" "
+            f'name="voorraad-{escape(book.slug)}" value="{book.voorraad}"></td>'
+            "</tr>"
+        )
+    notice = f'<p class="error">{escape(error)}</p>' if error else ""
+    body = f"""
+<main class="rekening-wide">
+  <h1>{_STOCK}</h1>
+  {notice}
+  <form method="post" action="/voorraad">
+    <table class="plain wide">
+      <colgroup>
+        <col style="width:46%">
+        <col style="width:30%">
+        <col style="width:24%">
+      </colgroup>
+      <thead><tr><th>Titel</th><th>Auteur</th><th>Voorraad</th></tr></thead>
+      <tbody>{"".join(rows)}</tbody>
+    </table>
+    <p><button class="btn" type="submit">Opslaan</button></p>
+  </form>
+</main>
+"""
+    return _page(body, _STOCK, "/voorraad")
 
 
 def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
@@ -238,6 +339,28 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
         except ValueError as exc:
             return HTMLResponse(form_page(values, str(exc)), status_code=400)
         return HTMLResponse(done_page(values["titel"], Path(filename).name))
+
+    @app.get("/voorraad", response_class=HTMLResponse)
+    def show_stock() -> str:
+        return stock_page(catalog_path)
+
+    @app.post("/voorraad", response_class=HTMLResponse)
+    async def save_stock(request: Request) -> HTMLResponse:
+        form = await request.form()
+        catalog = load_catalog(catalog_path)
+        amounts: dict[str, int] = {}
+        try:
+            for book in catalog.books:
+                if book.ebook():
+                    continue
+                amount = _whole(_value(form, f"voorraad-{book.slug}"), "voorraad")
+                if amount is None:
+                    raise ValueError(f"voorraad voor {book.slug} ontbreekt.")
+                amounts[book.slug] = amount
+            update_voorraad(catalog_path, amounts)
+        except ValueError as exc:
+            return HTMLResponse(stock_page(catalog_path, str(exc)), status_code=400)
+        return HTMLResponse(stock_page(catalog_path))
 
     return app
 

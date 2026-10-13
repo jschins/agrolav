@@ -272,3 +272,38 @@ def add_book(
         dest.unlink(missing_ok=True)
         temporary.unlink(missing_ok=True)
         raise
+
+
+def update_voorraad(catalog_path: Path, amounts: dict[str, int]) -> None:
+    """Replace the stock of each paper book. E-books are left unchanged."""
+    original = catalog_path.read_text(encoding="utf-8")
+    raw = json.loads(original)
+    books = raw.get("books")
+    if not isinstance(books, list):
+        raise ValueError("catalog.json heeft geen lijst boeken.")
+    paper: set[str] = set()
+    for item in books:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("formaat") or "").strip().casefold() == "e-book":
+            continue
+        slug = str(item.get("slug") or "")
+        if slug not in amounts:
+            raise ValueError(f"voorraad voor {slug} ontbreekt.")
+        amount = amounts[slug]
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount < 0:
+            raise ValueError(f"voorraad voor {slug} moet een geheel getal van 0 of meer zijn.")
+        item["voorraad"] = amount
+        paper.add(slug)
+    unknown = set(amounts) - paper
+    if unknown:
+        raise ValueError("Onbekend boek in de voorraad.")
+    temporary = catalog_path.with_suffix(".json.tmp")
+    try:
+        temporary.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(catalog_path)
+        load_catalog(catalog_path)
+    except Exception:
+        catalog_path.write_text(original, encoding="utf-8")
+        temporary.unlink(missing_ok=True)
+        raise

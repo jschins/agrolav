@@ -67,6 +67,7 @@ class AdminTests(unittest.TestCase):
             home = client.get("/")
             self.assertEqual(home.status_code, 200)
             self.assertNotIn("Voeg nieuw boek toe", home.text)
+            self.assertNotIn("Beheer voorraad", home.text)
             self.assertNotIn("9100", home.text)
 
     def test_form_lists_the_catalog_fields_and_a_png_upload(self) -> None:
@@ -155,3 +156,40 @@ class AdminTests(unittest.TestCase):
                 )
             self.assertFalse((directory / "files" / "geen.png").exists())
             self.assertIsNone(load_catalog(catalog).by_slug("geen-png"))
+
+    def test_stock_page_edits_voorraad_and_skips_ebooks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            catalog = _catalog(directory)
+            raw = json.loads(catalog.read_text(encoding="utf-8"))
+            raw["books"].append(
+                {
+                    "slug": "digitaal",
+                    "titel": "Digitaal boek",
+                    "auteur": "Schrijver",
+                    "genre": "Genre",
+                    "formaat": "e-book",
+                    "tijdvak": "nu",
+                    "ISBN": "",
+                    "prijs_cent_excl": 100,
+                    "cover": "bestaand.png",
+                }
+            )
+            catalog.write_text(json.dumps(raw), encoding="utf-8")
+            client = TestClient(create_admin_app(catalog, directory / "files"))
+            page = client.get("/voorraad")
+            self.assertEqual(page.status_code, 200)
+            self.assertIn("Beheer voorraad", page.text)
+            self.assertIn(">Titel</th>", page.text)
+            self.assertIn(">Auteur</th>", page.text)
+            self.assertIn(">Voorraad</th>", page.text)
+            self.assertNotIn(">Aantal</th>", page.text)
+            self.assertIn('name="voorraad-bestaand" value="1"', page.text)
+            self.assertIn("Bestaand", page.text)
+            self.assertNotIn("Digitaal boek", page.text)
+            self.assertIn('class="selected" href="/voorraad"', page.text)
+            saved = client.post("/voorraad", data={"voorraad-bestaand": "4"})
+            self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertIn('name="voorraad-bestaand" value="4"', saved.text)
+            self.assertEqual(load_catalog(catalog).by_slug("bestaand").voorraad, 4)
+            self.assertIsNone(load_catalog(catalog).by_slug("digitaal").voorraad)
