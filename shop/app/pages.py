@@ -153,6 +153,20 @@ h1 {{ font-size: clamp(2.6rem, 5vw, 4.4rem); max-width: 14ch; }}
   grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
   gap: 1rem;
 }}
+.rail {{
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 1rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 0.75rem;
+}}
+.rail > .book {{
+  flex: 0 0 16rem;
+  width: 16rem;
+  scroll-snap-align: start;
+}}
 .book {{
   display: block;
   text-decoration: none;
@@ -331,15 +345,6 @@ def _featured(catalog: Catalog) -> Book:
 def home_page(catalog: Catalog, cart_count: int) -> str:
     featured = _featured(catalog)
     picks = "".join(_book_card(book) for book in catalog.staff_picks())
-    genres = "".join(
-        f'<a href="/planken?genre={escape(name)}"><div class="mono">{count}</div><h3>{escape(name)}</h3></a>'
-        for name, count in catalog.genres()
-    )
-    events = "".join(
-        f'<article class="event"><div class="mono">{escape(event.when)}</div>'
-        f"<div><h3>{escape(event.title)}</h3><p>{escape(event.summary)}</p></div></article>"
-        for event in catalog.events[:2]
-    )
     quote = ""
     if catalog.quote:
         quote = (
@@ -366,12 +371,7 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
   </div>
   <div class="wrap" id="keuzes">
     {_head("Keuze van de winkel", "Op de toontafel")}
-    <div class="shelf">{picks}</div>
-    {_head("Planken", "Bladeren per genre")}
-    <div class="genres">{genres}</div>
-    {_head("Agenda", "In de winkel")}
-    <div class="events">{events}</div>
-    <p><a href="/agenda">De hele agenda</a></p>
+    <div class="rail">{picks}</div>
   </div>
   {quote}
 </main>
