@@ -14,6 +14,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 _MENU = "Voeg nieuw boek toe"
 _STOCK = "Beheer voorraad"
 _CATALOG = "Beheer catalogus"
+_EDIT = "Wijzig boek"
 _MENUS = (("/", _MENU), ("/voorraad", _STOCK), ("/catalogus", _CATALOG))
 _FIELDS = (
     ("slug", "slug", True),
@@ -213,7 +214,15 @@ def _whole(raw: str, label: str) -> int | None:
     return int(raw)
 
 
-def form_page(values: dict[str, str], error: str = "", original_slug: str = "", cover_name: str = "") -> str:
+def form_page(
+    values: dict[str, str],
+    error: str = "",
+    original_slug: str = "",
+    cover_name: str = "",
+    title: str = _MENU,
+    active: str = "/",
+    action: str = "/",
+) -> str:
     fields = []
     for key, label, required in _FIELDS:
         mark = " *" if required else ""
@@ -235,9 +244,9 @@ def form_page(values: dict[str, str], error: str = "", original_slug: str = "", 
     )
     body = f"""
 <main class="wrap">
-  <h1>{_MENU}</h1>
+  <h1>{escape(title)}</h1>
   {notice}
-  <form method="post" action="/" enctype="multipart/form-data" class="sheet">
+  <form method="post" action="{escape(action)}" enctype="multipart/form-data" class="sheet">
     {kept}
     {"".join(fields)}
     <p class="hint">voorraad mag leeg blijven als formaat e-book is. badge mag leeg blijven; center zet het boek in het midden van de carrousel.</p>
@@ -248,7 +257,7 @@ def form_page(values: dict[str, str], error: str = "", original_slug: str = "", 
   </form>
 </main>
 """
-    return _page(body, _MENU, "/")
+    return _page(body, title, active)
 
 
 def done_page(titel: str, cover: str) -> str:
@@ -329,7 +338,7 @@ def catalog_page(catalog_path: Path, query: dict[str, str]) -> str:
         titel = str(item.get("titel") or slug)
         auteur = str(item.get("auteur") or "")
         rows.append(
-            f'<li><a href="/?boek={escape(slug)}">{escape(titel)} — {escape(auteur)}</a></li>'
+            f'<li><a href="/catalogus/{escape(slug)}">{escape(titel)} — {escape(auteur)}</a></li>'
         )
     results = "<ul>" + "".join(rows) + "</ul>" if rows else "<p>Geen boeken.</p>"
     body = f"""
@@ -357,24 +366,77 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
                 return item
         return None
 
-    @app.get("/", response_class=HTMLResponse)
-    def show(boek: str = "") -> str:
-        if not boek:
-            return form_page({})
-        item = raw_book(boek)
-        if item is None:
-            return form_page({}, "Dit boek staat niet in de catalogus.")
+    def edit_page(slug: str, values: dict[str, str] | None = None, error: str = "") -> str:
+        item = raw_book(slug)
+        if item is None and values is None:
+            return catalog_page(catalog_path, {})
+        cover = str(item.get("cover") or "") if item else ""
+        filled = _book_values(item) if values is None and item else values or {}
         return form_page(
-            _book_values(item),
-            original_slug=boek,
-            cover_name=str(item.get("cover") or ""),
+            filled,
+            error,
+            original_slug=slug,
+            cover_name=cover,
+            title=_EDIT,
+            active="/catalogus",
+            action=f"/catalogus/{slug}",
         )
+
+    @app.get("/", response_class=HTMLResponse)
+    def show() -> str:
+        return form_page({})
 
     @app.post("/", response_class=HTMLResponse)
     async def save(request: Request) -> HTMLResponse:
         form = await request.form()
         values = {key: _value(form, key) for key, _label, _required in _FIELDS}
-        original = _value(form, "oorspronkelijke_slug")
+        upload = form.get("cover")
+        filename = ""
+        payload = b""
+        if upload is not None and hasattr(upload, "read"):
+            filename = str(getattr(upload, "filename", "") or "")
+            payload = await upload.read()
+            close = getattr(upload, "close", None)
+            if close is not None:
+                await close()
+        try:
+            price = _whole(values["prijs_cent_excl"], "prijs_cent_excl")
+            if price is None:
+                raise ValueError("prijs_cent_excl is verplicht.")
+            voorraad = _whole(values["voorraad"], "voorraad")
+            if not filename or not payload:
+                raise ValueError("Kies een png-omslag.")
+            add_book(
+                catalog_path,
+                files_dir,
+                slug=values["slug"],
+                titel=values["titel"],
+                auteur=values["auteur"],
+                genre=values["genre"],
+                formaat=values["formaat"],
+                tijdvak=values["tijdvak"],
+                isbn=values["ISBN"],
+                prijs_cent_excl=price,
+                voorraad=voorraad,
+                badge=values["badge"],
+                cover_name=filename,
+                cover_bytes=payload,
+            )
+        except ValueError as exc:
+            return HTMLResponse(form_page(values, str(exc)), status_code=400)
+        return HTMLResponse(done_page(values["titel"], Path(filename).name))
+
+    @app.get("/catalogus/{slug}", response_class=HTMLResponse)
+    def show_edit(slug: str) -> HTMLResponse:
+        item = raw_book(slug)
+        if item is None:
+            return HTMLResponse(catalog_page(catalog_path, {}), status_code=404)
+        return HTMLResponse(edit_page(slug))
+
+    @app.post("/catalogus/{slug}", response_class=HTMLResponse)
+    async def save_edit(slug: str, request: Request) -> HTMLResponse:
+        form = await request.form()
+        values = {key: _value(form, key) for key, _label, _required in _FIELDS}
         upload = form.get("cover")
         filename = ""
         payload = b""
@@ -401,37 +463,20 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
                 voorraad=voorraad,
                 badge=values["badge"],
             )
-            if original:
-                if filename and payload:
-                    replace_book(
-                        catalog_path,
-                        files_dir,
-                        original_slug=original,
-                        cover_name=filename,
-                        cover_bytes=payload,
-                        **fields,
-                    )
-                else:
-                    replace_book(catalog_path, files_dir, original_slug=original, **fields)
-            else:
-                if not filename or not payload:
-                    raise ValueError("Kies een png-omslag.")
-                add_book(
+            if filename and payload:
+                replace_book(
                     catalog_path,
                     files_dir,
+                    original_slug=slug,
                     cover_name=filename,
                     cover_bytes=payload,
                     **fields,
                 )
+            else:
+                replace_book(catalog_path, files_dir, original_slug=slug, **fields)
         except ValueError as exc:
-            kept = raw_book(original) if original else None
-            cover = str(kept.get("cover") or "") if kept else ""
-            return HTMLResponse(
-                form_page(values, str(exc), original_slug=original, cover_name=cover),
-                status_code=400,
-            )
-        cover = Path(filename).name if filename else str((raw_book(values["slug"]) or {}).get("cover") or "")
-        return HTMLResponse(done_page(values["titel"], cover))
+            return HTMLResponse(edit_page(slug, values, str(exc)), status_code=400)
+        return HTMLResponse(edit_page(values["slug"]))
 
     @app.get("/catalogus", response_class=HTMLResponse)
     def show_catalog(request: Request) -> str:

@@ -205,19 +205,22 @@ class AdminTests(unittest.TestCase):
             self.assertIn("Beheer catalogus", page.text)
             for name in ("slug", "titel", "auteur", "genre", "formaat", "tijdvak", "ISBN", "prijs_cent_excl", "cover", "voorraad"):
                 self.assertIn(f'name="{name}"', page.text)
-            self.assertIn('href="/?boek=bestaand"', page.text)
+            self.assertIn('href="/catalogus/bestaand"', page.text)
             missed = client.get("/catalogus", params={"auteur": "niemand"})
             self.assertIn("Geen boeken.", missed.text)
-            self.assertNotIn('href="/?boek=bestaand"', missed.text)
-            opened = client.get("/", params={"boek": "bestaand"})
+            self.assertNotIn('href="/catalogus/bestaand"', missed.text)
+            opened = client.get("/catalogus/bestaand")
+            self.assertIn("<h1>Wijzig boek</h1>", opened.text)
+            self.assertIn("<title>Wijzig boek — De Boog</title>", opened.text)
+            self.assertIn('class="selected" href="/catalogus"', opened.text)
             self.assertIn('name="titel" value="Bestaand"', opened.text)
-            self.assertIn('name="oorspronkelijke_slug" value="bestaand"', opened.text)
+            self.assertIn('name="auteur" value="Auteur"', opened.text)
+            self.assertIn('name="prijs_cent_excl" value="100"', opened.text)
             self.assertIn("bestaand.png", opened.text)
             self.assertNotIn("required", opened.text.split('name="cover"', 1)[-1][:80])
             saved = client.post(
-                "/",
+                "/catalogus/bestaand",
                 data={
-                    "oorspronkelijke_slug": "bestaand",
                     "slug": "bestaand",
                     "titel": "Gewijzigd",
                     "auteur": "Auteur",
