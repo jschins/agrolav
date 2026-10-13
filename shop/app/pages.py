@@ -460,11 +460,11 @@ def _cover(book: Book) -> str:
     label = "" if _centered(book) else book.badge
     badge = f'<span class="badge">{escape(label)}</span>' if label else ""
     return (
-        f'<div class="cover"><img src="/omslag/{escape(book.slug)}" alt="{escape(book.title)}"></div>'
+        f'<div class="cover"><img src="/omslag/{escape(book.slug)}" alt="{escape(book.titel)}"></div>'
         f'<div class="mono">{escape(book.genre)}</div>'
-        f"<h3>{escape(book.title)}</h3>"
-        f"<p>{escape(book.author)}</p>"
-        f'<p class="price">{escape(euro(book.price_cents))}</p>'
+        f"<h3>{escape(book.titel)}</h3>"
+        f"<p>{escape(book.auteur)}</p>"
+        f'<p class="price">{escape(euro(book.prijs_cent_excl))}</p>'
         f"{badge}"
     )
 
@@ -473,8 +473,8 @@ def _book_card(book: Book, week: bool = False) -> str:
     mark = ' data-week="1"' if week else ""
     return (
         f'<a class="card book" href="/boeken/{escape(book.slug)}"'
-        f' data-genre="{escape(book.genre)}" data-auteur="{escape(book.author)}"'
-        f' data-tijdvak="{escape(book.tijdvak)}" data-format="{escape(book.format)}"{mark}>'
+        f' data-genre="{escape(book.genre)}" data-auteur="{escape(book.auteur)}"'
+        f' data-tijdvak="{escape(book.tijdvak)}" data-formaat="{escape(book.formaat)}"{mark}>'
         f"{_cover(book)}</a>"
     )
 
@@ -623,16 +623,16 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
     featured = _featured(catalog)
     cards = "".join(_book_card(book, week=book.slug == featured.slug) for book in catalog.books)
     genres = sorted({book.genre for book in catalog.books}, key=str.casefold)
-    auteurs = sorted({book.author for book in catalog.books}, key=str.casefold)
+    auteurs = sorted({book.auteur for book in catalog.books}, key=str.casefold)
     tijdvakken = sorted({book.tijdvak for book in catalog.books}, key=str.casefold)
-    formats = sorted({book.format for book in catalog.books}, key=str.casefold)
+    formaten = sorted({book.formaat for book in catalog.books}, key=str.casefold)
     body = f"""
 <main class="home-main">
   <div class="home-filters">
     {_choices("genre", genres)}
     {_choices("auteur", auteurs)}
     {_choices("tijdvak", tijdvakken)}
-    {_choices("format", formats)}
+    {_choices("formaat", formaten)}
   </div>
   <p class="home-empty">De Boog verkoopt geen boeken die aan deze combinatie van selectiecriteria voldoen</p>
   <div class="rail home" id="home-rail">{cards}</div>
@@ -687,15 +687,15 @@ def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
   <div class="buy-row">
     <div class="card book buy-card">{_cover(book)}</div>
     <div class="buy-fields">
-      <p><span class="mono">Titel</span> {escape(book.title)}</p>
-      <p><span class="mono">Auteur</span> {escape(book.author)}</p>
+      <p><span class="mono">Titel</span> {escape(book.titel)}</p>
+      <p><span class="mono">Auteur</span> {escape(book.auteur)}</p>
       <p><span class="mono">Genre</span> {escape(book.genre)}</p>
       <p><span class="mono">Tijdvak</span> {escape(book.tijdvak)}</p>
-      <p><span class="mono">Format</span> {escape(book.format)}</p>
+      <p><span class="mono">Formaat</span> {escape(book.formaat)}</p>
       <p><span class="mono">ISBN</span> {escape(book.isbn)}</p>
       <p><span class="mono">Samenvatting</span> {escape(book.summary)}</p>
-      <p><span class="mono">Prijs</span> {escape(euro(book.price_cents))}</p>
-      <p><span class="mono">Voorraad</span> {book.voorraad}</p>
+      <p><span class="mono">Prijs</span> {escape(euro(book.prijs_cent_excl))}</p>
+      {"" if book.voorraad is None else f'<p><span class="mono">Voorraad</span> {book.voorraad}</p>'}
       {badge}
       <p>Papieren exemplaar. Betaling met iDEAL via Mollie.</p>
       <form method="post" action="/winkelwagen" class="actions">
@@ -707,7 +707,7 @@ def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
   </div>
 </main>
 """
-    return page(book.title, catalog, body, cart_count)
+    return page(book.titel, catalog, body, cart_count)
 
 
 def cart_page(catalog: Catalog, books: list[Book], cart_count: int) -> str:
@@ -717,15 +717,15 @@ def cart_page(catalog: Catalog, books: list[Book], cart_count: int) -> str:
     else:
         rows = "".join(
             "<div class=\"event\">"
-            f"<div><a href=\"/boeken/{escape(book.slug)}\">{escape(book.title)}</a>"
-            f"<div class=\"mono\">{escape(book.author)}</div></div>"
-            f"<div><span class=\"price\">{escape(euro(book.price_cents))}</span>"
+            f"<div><a href=\"/boeken/{escape(book.slug)}\">{escape(book.titel)}</a>"
+            f"<div class=\"mono\">{escape(book.auteur)}</div></div>"
+            f"<div><span class=\"price\">{escape(euro(book.prijs_cent_excl))}</span>"
             f"<form method=\"post\" action=\"/winkelwagen/verwijderen\">"
             f"<input type=\"hidden\" name=\"slug\" value=\"{escape(book.slug)}\">"
             f"<button class=\"btn ghost\" type=\"submit\">Weghalen</button></form></div></div>"
             for book in books
         )
-        total = sum(book.price_cents for book in books)
+        total = sum(book.prijs_cent_excl for book in books)
         pay = (
             f"<p class=\"price\">Totaal {escape(euro(total))}</p>"
             f"<p><a class=\"btn\" href=\"/afrekenen\">Afrekenen</a></p>"
@@ -755,9 +755,9 @@ def checkout_page(
     slug: str = "",
 ) -> str:
     lines = "".join(
-        f"<li>{escape(book.title)} — {escape(euro(book.price_cents))}</li>" for book in books
+        f"<li>{escape(book.titel)} — {escape(euro(book.prijs_cent_excl))}</li>" for book in books
     )
-    total = sum(book.price_cents for book in books)
+    total = sum(book.prijs_cent_excl for book in books)
     vat = ""
     if catalog.vat_label:
         vat = f"<p>{escape(catalog.vat_label)}</p>"
@@ -840,13 +840,14 @@ def _clip(text: str) -> str:
 def rekening_page(catalog: Catalog, counts: dict[str, int], cart_count: int, error: str = "") -> str:
     rows = "".join(
         "<tr>"
-        f"{_clip(book.title)}"
-        f"{_clip(book.author)}"
+        f"{_clip(book.titel)}"
+        f"{_clip(book.auteur)}"
         f"<td>{book.voorraad}</td>"
         "<td><input type=\"number\" min=\"0\" step=\"1\" "
         f'name="aantal-{escape(book.slug)}" value="{counts.get(book.slug, 0)}"></td>'
         "</tr>"
         for book in catalog.books
+        if not book.ebook()
     )
     notice = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""

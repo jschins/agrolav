@@ -275,7 +275,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                 400,
             )
         priced = [
-            (title, aantal, catalog.by_slug(slug).price_cents)
+            (title, aantal, catalog.by_slug(slug).prijs_cent_excl)
             for slug, title, aantal in lines
             if catalog.by_slug(slug) is not None
         ]
@@ -390,7 +390,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                 ),
                 503,
             )
-        items = [OrderItem(slug=book.slug, title=book.title, price_cents=book.price_cents) for book in books]
+        items = [OrderItem(slug=book.slug, title=book.titel, price_cents=book.prijs_cent_excl) for book in books]
         amount = sum(item.price_cents for item in items)
         order_id = uuid.uuid4().hex
         token = secrets.token_urlsafe(32)

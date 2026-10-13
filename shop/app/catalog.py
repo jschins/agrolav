@@ -1,4 +1,4 @@
-"""Paper-book catalog loaded from catalog.json. Prices are VAT-inclusive euro cents."""
+"""Paper-book catalog loaded from catalog.json. Book prices are prijs_cent_excl, in euro cents."""
 from __future__ import annotations
 
 import json
@@ -13,17 +13,20 @@ _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 @dataclass(frozen=True)
 class Book:
     slug: str
-    title: str
-    author: str
+    titel: str
+    auteur: str
     genre: str
     tijdvak: str
-    format: str
+    formaat: str
     isbn: str
     summary: str
-    price_cents: int
+    prijs_cent_excl: int
     cover: str
-    voorraad: int
+    voorraad: int | None = None
     badge: str = ""
+
+    def ebook(self) -> bool:
+        return self.formaat.casefold() == "e-book"
 
 
 @dataclass(frozen=True)
@@ -101,37 +104,40 @@ def load_catalog(path: Path) -> Catalog:
             raise ValueError(f"invalid book slug: {slug!r}")
         if slug in seen:
             raise ValueError(f"duplicate book slug: {slug}")
-        price = item.get("price_cents")
+        price = item.get("prijs_cent_excl")
         if not isinstance(price, int) or isinstance(price, bool) or price <= 0:
-            raise ValueError(f"price_cents for {slug} must be a positive integer")
+            raise ValueError(f"prijs_cent_excl for {slug} must be a positive integer")
         genre = str(item.get("genre") or "").strip()
         if not genre:
             raise ValueError(f"genre for {slug} is required")
         tijdvak = str(item.get("tijdvak") or "").strip()
         if not tijdvak:
             raise ValueError(f"tijdvak for {slug} is required")
-        book_format = str(item.get("format") or "").strip()
-        if not book_format:
-            raise ValueError(f"format for {slug} is required")
+        formaat = str(item.get("formaat") or "").strip()
+        if not formaat:
+            raise ValueError(f"formaat for {slug} is required")
         cover = str(item.get("cover") or "").strip()
         if not cover or any(mark in cover for mark in ("/", "\\", "..")):
             raise ValueError(f"cover for {slug} must be a file name in shop/files")
         if not (path.parent / "files" / cover).is_file():
             raise ValueError(f"cover for {slug} is missing: {cover}")
-        voorraad = item.get("voorraad")
-        if not isinstance(voorraad, int) or isinstance(voorraad, bool) or voorraad < 0:
+        voorraad = item.get("voorraad", None)
+        if voorraad is None:
+            if formaat.casefold() != "e-book":
+                raise ValueError(f"voorraad for {slug} must be a whole number of 0 or more")
+        elif not isinstance(voorraad, int) or isinstance(voorraad, bool) or voorraad < 0:
             raise ValueError(f"voorraad for {slug} must be a whole number of 0 or more")
         books.append(
             Book(
                 slug=slug,
-                title=str(item["title"]).strip(),
-                author=str(item["author"]).strip(),
+                titel=str(item["titel"]).strip(),
+                auteur=str(item["auteur"]).strip(),
                 genre=genre,
                 tijdvak=tijdvak,
-                format=book_format,
+                formaat=formaat,
                 isbn=str(item.get("ISBN") or item.get("isbn") or "").strip(),
                 summary=str(item.get("summary") or "").strip(),
-                price_cents=price,
+                prijs_cent_excl=price,
                 cover=cover,
                 voorraad=voorraad,
                 badge=str(item.get("badge") or "").strip(),

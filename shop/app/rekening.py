@@ -104,6 +104,8 @@ def load_counts(value: str | None, secret: str, known: set[str]) -> dict[str, in
 def counts_from_form(form, books) -> tuple[dict[str, int] | None, str]:
     counts: dict[str, int] = {}
     for book in books:
+        if book.ebook():
+            continue
         raw = str(form.get(f"aantal-{book.slug}") or "").strip()
         if raw == "":
             counts[book.slug] = 0
@@ -122,9 +124,11 @@ def counts_from_form(form, books) -> tuple[dict[str, int] | None, str]:
 def order_lines(catalog_books, counts: dict[str, int]) -> list[tuple[str, str, int]]:
     lines: list[tuple[str, str, int]] = []
     for book in catalog_books:
+        if book.ebook():
+            continue
         aantal = counts.get(book.slug, 0)
         if aantal > 0:
-            lines.append((book.slug, book.title, aantal))
+            lines.append((book.slug, book.titel, aantal))
     return lines
 
 

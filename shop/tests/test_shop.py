@@ -31,10 +31,10 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(vat_cents(875, catalog.vat_rate), 72)
         self.assertEqual(euro(875), "€ 8,75")
         self.assertEqual(euro(1475), "€ 14,75")
-        titles = {book.title: book for book in catalog.books}
+        titles = {book.titel: book for book in catalog.books}
         self.assertEqual(set(titles), {"De innerlijke rust", "De Dialoog"})
-        self.assertEqual(titles["De innerlijke rust"].author, "Jacques Philippe")
-        self.assertEqual(titles["De Dialoog"].author, "Catharina van Siena")
+        self.assertEqual(titles["De innerlijke rust"].auteur, "Jacques Philippe")
+        self.assertEqual(titles["De Dialoog"].auteur, "Catharina van Siena")
         for book in catalog.books:
             cover = _ROOT / "files" / book.cover
             self.assertTrue(cover.is_file())
@@ -92,14 +92,14 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn(">genre</button>", home.text)
             self.assertIn(">auteur</button>", home.text)
             self.assertIn(">tijdvak</button>", home.text)
-            self.assertIn(">format</button>", home.text)
+            self.assertIn(">formaat</button>", home.text)
             self.assertNotIn(">author</button>", home.text)
             self.assertEqual(home.text.count("Alle (geen selectie)"), 4)
-            self.assertIn('data-format="e-book"', home.text)
-            self.assertIn('data-format="papier"', home.text)
+            self.assertIn('data-formaat="e-book"', home.text)
+            self.assertIn('data-formaat="papier"', home.text)
             self.assertIn("Biografie", home.text)
             self.assertIn("middeleeuwen", home.text)
-            self.assertIn('data-tijdvak="modern"', home.text)
+            self.assertIn('data-tijdvak="modern (16e-19e eeuw)"', home.text)
             self.assertIn('data-auteur="Jacques Philippe"', home.text)
             self.assertIn("is-out", home.text)
             self.assertIn(
@@ -303,6 +303,8 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn(">10</td>", sheet.text)
             self.assertNotIn('name="voorraad"', sheet.text)
             self.assertIn("De Dialoog", sheet.text)
+            self.assertNotIn("sales-devote-leven", sheet.text)
+            self.assertNotIn("Inleiding tot het devote leven", sheet.text)
             self.assertIn("Bestellen", sheet.text)
 
             started = client.post(
