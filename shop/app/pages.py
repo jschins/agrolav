@@ -12,7 +12,7 @@ _FONTS = (
 )
 
 
-def page(title: str, catalog: Catalog, body: str, cart_count: int, active: str = "", show_footer: bool = True) -> str:
+def page(title: str, catalog: Catalog, body: str, cart_count: int, active: str = "", show_footer: bool = True, root_class: str = "") -> str:
     footer = ""
     if show_footer:
         footer = f"""<footer class="band">
@@ -25,7 +25,7 @@ def page(title: str, catalog: Catalog, body: str, cart_count: int, active: str =
   </div>
 </footer>"""
     return f"""<!DOCTYPE html>
-<html lang="nl">
+<html lang="nl"{f' class="{root_class}"' if root_class else ""}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -50,6 +50,16 @@ def page(title: str, catalog: Catalog, body: str, cart_count: int, active: str =
   --destructive: hsl(0 52.1% 36.9%);
 }}
 * {{ box-sizing: border-box; }}
+html {{ background: var(--background); }}
+html.home {{
+  height: 100%;
+  overflow: hidden;
+}}
+html.home body {{
+  height: 100%;
+  overflow: hidden;
+  zoom: 0.9;
+}}
 body {{
   margin: 0;
   background: var(--background);
@@ -190,7 +200,7 @@ main.home-main {{
   align-items: center;
   min-height: 0;
   gap: 1.25rem;
-  padding: 1.5rem calc(50vw - 8rem);
+  padding: 1.5rem calc(50% - 8rem);
   overflow-x: auto;
   scroll-snap-type: none;
   scrollbar-width: none;
@@ -639,7 +649,7 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
 </main>
 {_CAROUSEL}
 """
-    return page(catalog.shop_name, catalog, body, cart_count, menu_href("home"), show_footer=False)
+    return page(catalog.shop_name, catalog, body, cart_count, menu_href("home"), show_footer=False, root_class="home")
 
 
 def events_page(catalog: Catalog, cart_count: int) -> str:
