@@ -473,7 +473,8 @@ def _book_card(book: Book, week: bool = False) -> str:
     mark = ' data-week="1"' if week else ""
     return (
         f'<a class="card book" href="/boeken/{escape(book.slug)}"'
-        f' data-genre="{escape(book.genre)}" data-author="{escape(book.author)}"{mark}>'
+        f' data-genre="{escape(book.genre)}" data-auteur="{escape(book.author)}"'
+        f' data-tijdvak="{escape(book.tijdvak)}"{mark}>'
         f"{_cover(book)}</a>"
     )
 
@@ -515,6 +516,8 @@ _CAROUSEL = """
   var startX = 0;
   var startScroll = 0;
   var dragged = false;
+  var pressCard = null;
+  var suppressClick = false;
   function centerWeek() {
     var week = rail.querySelector("[data-week]");
     if (!week || week.classList.contains("is-out")) {
@@ -524,16 +527,15 @@ _CAROUSEL = """
     rail.scrollLeft = week.offsetLeft - (rail.clientWidth - week.offsetWidth) / 2;
   }
   function applyFilters() {
-    var genre = "";
-    var author = "";
+    var selected = [];
     document.querySelectorAll(".filter").forEach(function (filter) {
-      var value = filter.dataset.value || "";
-      if (filter.dataset.name === "genre") genre = value;
-      if (filter.dataset.name === "author") author = value;
+      selected.push({ name: filter.dataset.name, value: filter.dataset.value || "" });
     });
     var shown = 0;
     rail.querySelectorAll(".book").forEach(function (card) {
-      var show = (!genre || card.dataset.genre === genre) && (!author || card.dataset.author === author);
+      var show = selected.every(function (item) {
+        return !item.value || card.dataset[item.name] === item.value;
+      });
       card.classList.toggle("is-out", !show);
       if (show) shown += 1;
     });
@@ -573,8 +575,10 @@ _CAROUSEL = """
   rail.addEventListener("dragstart", function (event) { event.preventDefault(); });
   rail.addEventListener("pointerdown", function (event) {
     if (event.pointerType === "touch" || event.button !== 0) return;
+    pressCard = event.target.closest("a.book");
     down = true;
     dragged = false;
+    suppressClick = false;
     startX = event.clientX;
     startScroll = rail.scrollLeft;
     rail.classList.add("dragging");
@@ -590,13 +594,25 @@ _CAROUSEL = """
     down = false;
     rail.classList.remove("dragging");
   }
-  rail.addEventListener("pointerup", endDrag);
-  rail.addEventListener("pointercancel", endDrag);
+  rail.addEventListener("pointerup", function () {
+    var card = pressCard;
+    var moved = dragged;
+    pressCard = null;
+    endDrag();
+    suppressClick = moved;
+    if (moved || !card || card.classList.contains("is-out")) return;
+    window.location.assign(card.getAttribute("href"));
+  });
+  rail.addEventListener("pointercancel", function () {
+    pressCard = null;
+    suppressClick = dragged;
+    endDrag();
+  });
   rail.addEventListener("click", function (event) {
-    if (!dragged) return;
+    if (!suppressClick) return;
     event.preventDefault();
     event.stopPropagation();
-    dragged = false;
+    suppressClick = false;
   }, true);
 })();
 </script>
@@ -607,12 +623,14 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
     featured = _featured(catalog)
     cards = "".join(_book_card(book, week=book.slug == featured.slug) for book in catalog.books)
     genres = sorted({book.genre for book in catalog.books}, key=str.casefold)
-    authors = sorted({book.author for book in catalog.books}, key=str.casefold)
+    auteurs = sorted({book.author for book in catalog.books}, key=str.casefold)
+    tijdvakken = sorted({book.tijdvak for book in catalog.books}, key=str.casefold)
     body = f"""
 <main class="home-main">
   <div class="home-filters">
     {_choices("genre", genres)}
-    {_choices("author", authors)}
+    {_choices("auteur", auteurs)}
+    {_choices("tijdvak", tijdvakken)}
   </div>
   <p class="home-empty">De Boog verkoopt geen boeken die aan deze combinatie van selectiecriteria voldoen</p>
   <div class="rail home" id="home-rail">{cards}</div>
@@ -670,6 +688,7 @@ def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
       <p><span class="mono">Titel</span> {escape(book.title)}</p>
       <p><span class="mono">Auteur</span> {escape(book.author)}</p>
       <p><span class="mono">Genre</span> {escape(book.genre)}</p>
+      <p><span class="mono">Tijdvak</span> {escape(book.tijdvak)}</p>
       <p><span class="mono">ISBN</span> {escape(book.isbn)}</p>
       <p><span class="mono">Samenvatting</span> {escape(book.summary)}</p>
       <p><span class="mono">Prijs</span> {escape(euro(book.price_cents))}</p>

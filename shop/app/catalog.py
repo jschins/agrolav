@@ -16,6 +16,7 @@ class Book:
     title: str
     author: str
     genre: str
+    tijdvak: str
     isbn: str
     summary: str
     price_cents: int
@@ -105,6 +106,9 @@ def load_catalog(path: Path) -> Catalog:
         genre = str(item.get("genre") or "").strip()
         if not genre:
             raise ValueError(f"genre for {slug} is required")
+        tijdvak = str(item.get("tijdvak") or "").strip()
+        if not tijdvak:
+            raise ValueError(f"tijdvak for {slug} is required")
         cover = str(item.get("cover") or "").strip()
         if not cover or any(mark in cover for mark in ("/", "\\", "..")):
             raise ValueError(f"cover for {slug} must be a file name in shop/files")
@@ -119,6 +123,7 @@ def load_catalog(path: Path) -> Catalog:
                 title=str(item["title"]).strip(),
                 author=str(item["author"]).strip(),
                 genre=genre,
+                tijdvak=tijdvak,
                 isbn=str(item.get("ISBN") or item.get("isbn") or "").strip(),
                 summary=str(item["summary"]).strip(),
                 price_cents=price,

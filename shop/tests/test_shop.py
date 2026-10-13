@@ -1,6 +1,7 @@
 """Shop pages, cart, Mollie confirmation, and a paper order after payment."""
 from __future__ import annotations
 
+import subprocess
 import unittest
 from decimal import Decimal
 from pathlib import Path
@@ -89,9 +90,14 @@ class ShopFlowTests(unittest.TestCase):
             self.assertNotIn("Het boek van deze week", home.text)
             self.assertIn('class="selected" href="/"', home.text)
             self.assertIn(">genre</button>", home.text)
-            self.assertIn(">author</button>", home.text)
-            self.assertEqual(home.text.count("Alle (geen selectie)"), 2)
+            self.assertIn(">auteur</button>", home.text)
+            self.assertIn(">tijdvak</button>", home.text)
+            self.assertNotIn(">author</button>", home.text)
+            self.assertEqual(home.text.count("Alle (geen selectie)"), 3)
             self.assertIn("Biografie", home.text)
+            self.assertIn("middeleeuwen", home.text)
+            self.assertIn('data-tijdvak="modern"', home.text)
+            self.assertIn('data-auteur="Jacques Philippe"', home.text)
             self.assertIn("is-out", home.text)
             self.assertIn(
                 "De Boog verkoopt geen boeken die aan deze combinatie van selectiecriteria voldoen",
@@ -111,6 +117,30 @@ class ShopFlowTests(unittest.TestCase):
             self.assertEqual(cover.status_code, 200)
             self.assertIn("image/png", cover.headers["content-type"])
             self.assertTrue(cover.content.startswith(b"\x89PNG"))
+
+    def test_clicking_a_book_card_opens_its_buying_page(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            client, _mollie = self._client(Path(tmp))
+            home = client.get("/")
+            self.assertEqual(home.status_code, 200)
+            completed = subprocess.run(
+                ["node", str(Path(__file__).resolve().parent / "click_book.mjs")],
+                input=home.text,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(
+                completed.stdout,
+                "click /boeken/innerlijke-rust\ndrag stayed\ndrag click blocked\n",
+            )
+            buying = client.get("/boeken/innerlijke-rust")
+            self.assertEqual(buying.status_code, 200)
+            self.assertIn("Koop dit exemplaar", buying.text)
+            self.assertIn("buy-card", buying.text)
 
     def test_book_page_cart_and_paid_order_keeps_the_address(self) -> None:
         import tempfile
