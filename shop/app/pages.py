@@ -299,6 +299,40 @@ table.plain th, table.plain td {{
   vertical-align: middle;
 }}
 table.plain input[type="number"] {{ width: 5rem; max-width: 5rem; }}
+main.rekening-wide {{
+  width: calc(100vw - 3rem);
+  max-width: none;
+  margin: 0 auto;
+  padding: 2rem 0 3rem;
+}}
+table.plain.wide {{
+  width: 100%;
+  max-width: none;
+  table-layout: fixed;
+}}
+table.plain.wide input[type="number"] {{ width: 100%; max-width: none; }}
+td.clip {{ position: relative; overflow: visible; }}
+td.clip span {{
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}}
+td.clip:hover::after {{
+  content: attr(data-full);
+  position: absolute;
+  left: 0;
+  top: calc(100% - 0.15rem);
+  z-index: 4;
+  max-width: 70vw;
+  padding: 0.35rem 0.55rem;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--foreground);
+  border-radius: 4px;
+  white-space: normal;
+  box-shadow: 0 2px 8px rgba(34, 28, 21, 0.12);
+}}
 .invoice-head p {{ margin: 0.35rem 0; }}
 main.invoice {{
   display: flex;
@@ -648,11 +682,16 @@ def message_page(catalog: Catalog, title: str, text: str, cart_count: int) -> st
     return page(title, catalog, body, cart_count)
 
 
+def _clip(text: str) -> str:
+    shown = escape(text)
+    return f'<td class="clip" data-full="{shown}"><span>{shown}</span></td>'
+
+
 def rekening_page(catalog: Catalog, counts: dict[str, int], cart_count: int, error: str = "") -> str:
     rows = "".join(
         "<tr>"
-        f"<td>{escape(book.title)}</td>"
-        f"<td>{escape(book.author)}</td>"
+        f"{_clip(book.title)}"
+        f"{_clip(book.author)}"
         f"<td>{book.voorraad}</td>"
         "<td><input type=\"number\" min=\"0\" step=\"1\" "
         f'name="aantal-{escape(book.slug)}" value="{counts.get(book.slug, 0)}"></td>'
@@ -661,12 +700,18 @@ def rekening_page(catalog: Catalog, counts: dict[str, int], cart_count: int, err
     )
     notice = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""
-<main class="wrap narrow">
+<main class="rekening-wide">
   <h1>Rekening</h1>
   <hr class="rule">
   {notice}
   <form method="post" action="/rekening/bestellen">
-    <table class="plain">
+    <table class="plain wide">
+      <colgroup>
+        <col style="width:46%">
+        <col style="width:30%">
+        <col style="width:12%">
+        <col style="width:12%">
+      </colgroup>
       <thead><tr><th>Titel</th><th>Auteur</th><th>Voorraad</th><th>Aantal</th></tr></thead>
       <tbody>{rows}</tbody>
     </table>
