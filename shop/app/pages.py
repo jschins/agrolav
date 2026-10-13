@@ -1,6 +1,7 @@
 """Storefront pages. Colors are the Colophon editorial-classic backgrounds."""
 from __future__ import annotations
 
+import re
 from html import escape
 
 from app.catalog import Book, Catalog, euro
@@ -466,12 +467,18 @@ def _centered(book: Book) -> bool:
     return book.badge.casefold() == "center"
 
 
+def _card_label(text: str) -> str:
+    """Card line without parenthetical notes, such as a century range."""
+    return re.sub(r"\s*\([^)]*\)", "", text).strip()
+
+
 def _cover(book: Book) -> str:
     label = "" if _centered(book) else book.badge
     badge = f'<span class="badge">{escape(label)}</span>' if label else ""
     return (
         f'<div class="cover"><img src="/omslag/{escape(book.slug)}" alt="{escape(book.titel)}"></div>'
-        f'<div class="mono">{escape(book.genre)}</div>'
+        f'<div class="mono">{escape(_card_label(book.tijdvak))}</div>'
+        f'<div class="mono">{escape(_card_label(book.genre))}</div>'
         f"<h3>{escape(book.titel)}</h3>"
         f"<p>{escape(book.auteur)}</p>"
         f'<p class="price">{escape(euro(book.prijs_cent_excl))}</p>'

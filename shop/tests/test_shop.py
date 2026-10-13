@@ -106,6 +106,12 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn("middeleeuwen", home.text)
             self.assertIn('data-tijdvak="modern (16e-19e eeuw)"', home.text)
             self.assertIn('data-auteur="Jacques Philippe"', home.text)
+            self.assertIn(
+                '<div class="mono">hedendaags</div><div class="mono">Spiritualiteit</div>',
+                home.text,
+            )
+            self.assertNotIn('<div class="mono">hedendaags (20e-21e eeuw)</div>', home.text)
+            self.assertIn(">hedendaags (20e-21e eeuw)</button>", home.text)
             self.assertIn("is-out", home.text)
             self.assertIn(
                 "De Boog verkoopt geen boeken die aan deze combinatie van selectiecriteria voldoen",
