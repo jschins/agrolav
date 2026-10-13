@@ -174,3 +174,101 @@ def load_catalog(path: Path) -> Catalog:
         books=tuple(books),
         events=tuple(events),
     )
+
+
+_PNG = b"\x89PNG\r\n\x1a\n"
+_COVER_NAME = re.compile(r"^[^\\/:*?\"<>|\r\n]+\.png$", re.IGNORECASE)
+
+
+def add_book(
+    catalog_path: Path,
+    files_dir: Path,
+    *,
+    slug: str,
+    titel: str,
+    auteur: str,
+    genre: str,
+    formaat: str,
+    tijdvak: str,
+    isbn: str,
+    prijs_cent_excl: int,
+    voorraad: int | None,
+    badge: str,
+    cover_name: str,
+    cover_bytes: bytes,
+) -> None:
+    """Append one book to catalog.json and store its png cover in files."""
+    slug = slug.strip()
+    titel = titel.strip()
+    auteur = auteur.strip()
+    genre = genre.strip()
+    formaat = formaat.strip()
+    tijdvak = tijdvak.strip()
+    isbn = isbn.strip()
+    badge = badge.strip()
+    cover_name = Path(cover_name).name
+    if not _SLUG.match(slug):
+        raise ValueError("slug moet uit kleine letters, cijfers en streepjes bestaan.")
+    for label, value in (
+        ("titel", titel),
+        ("auteur", auteur),
+        ("genre", genre),
+        ("formaat", formaat),
+        ("tijdvak", tijdvak),
+    ):
+        if not value:
+            raise ValueError(f"{label} is verplicht.")
+    if not isinstance(prijs_cent_excl, int) or isinstance(prijs_cent_excl, bool) or prijs_cent_excl <= 0:
+        raise ValueError("prijs_cent_excl moet een positief geheel getal zijn.")
+    if voorraad is not None and (
+        not isinstance(voorraad, int) or isinstance(voorraad, bool) or voorraad < 0
+    ):
+        raise ValueError("voorraad moet een geheel getal van 0 of meer zijn.")
+    if voorraad is None and formaat.casefold() != "e-book":
+        raise ValueError("voorraad is verplicht, behalve bij formaat e-book.")
+    if not _COVER_NAME.match(cover_name):
+        raise ValueError("Het omslag moet een png-bestandsnaam zijn, zonder map.")
+    if not cover_bytes.startswith(_PNG):
+        raise ValueError("Het bestand is geen png.")
+    files_dir.mkdir(parents=True, exist_ok=True)
+    if files_dir.resolve() != (catalog_path.parent / "files").resolve():
+        raise ValueError("Het omslag moet in de map files naast catalog.json staan.")
+    dest = (files_dir / cover_name).resolve()
+    if dest.parent != files_dir.resolve():
+        raise ValueError("Het omslag moet in de map files staan.")
+    if dest.exists():
+        raise ValueError("Dit omslagbestand staat al in files.")
+    original = catalog_path.read_text(encoding="utf-8")
+    raw = json.loads(original)
+    books = raw.get("books")
+    if not isinstance(books, list):
+        raise ValueError("catalog.json heeft geen lijst boeken.")
+    if any(isinstance(item, dict) and str(item.get("slug")) == slug for item in books):
+        raise ValueError("Deze slug bestaat al.")
+    entry: dict = {
+        "slug": slug,
+        "titel": titel,
+        "auteur": auteur,
+        "genre": genre,
+        "formaat": formaat,
+        "tijdvak": tijdvak,
+        "ISBN": isbn,
+        "prijs_cent_excl": prijs_cent_excl,
+        "cover": cover_name,
+    }
+    if voorraad is not None:
+        entry["voorraad"] = voorraad
+    if badge:
+        entry["badge"] = badge
+    books.append(entry)
+    dest.write_bytes(cover_bytes)
+    temporary = catalog_path.with_suffix(".json.tmp")
+    try:
+        temporary.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(catalog_path)
+        load_catalog(catalog_path)
+    except Exception:
+        catalog_path.write_text(original, encoding="utf-8")
+        dest.unlink(missing_ok=True)
+        temporary.unlink(missing_ok=True)
+        raise

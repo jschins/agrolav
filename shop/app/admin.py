@@ -1,0 +1,252 @@
+"""Book entry on port 9100. The shop on port 9000 does not link here."""
+from __future__ import annotations
+
+import os
+from html import escape
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+
+from app.catalog import add_book
+
+_ROOT = Path(__file__).resolve().parent.parent
+_MENU = "Voeg nieuw boek toe"
+_FIELDS = (
+    ("slug", "slug", True),
+    ("titel", "titel", True),
+    ("auteur", "auteur", True),
+    ("genre", "genre", True),
+    ("formaat", "formaat", True),
+    ("tijdvak", "tijdvak", True),
+    ("ISBN", "ISBN", False),
+    ("prijs_cent_excl", "prijs_cent_excl", True),
+    ("voorraad", "voorraad", False),
+    ("badge", "badge", False),
+)
+
+
+def _page(body: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{_MENU} — De Boog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:ital,wght@0,400;0,500;1,400&family=Alegreya:ital,wght@0,500;0,600;1,500&family=Crimson+Pro:ital,wght@0,400;0,500;1,400&display=swap">
+<style>
+:root {{
+  --background: hsl(40 50% 92.9%);
+  --foreground: hsl(32.3 23.6% 10.8%);
+  --card: hsl(42.9 70% 96.1%);
+  --primary: hsl(262.4 52% 34.3%);
+  --primary-foreground: hsl(0 0% 100%);
+  --muted-foreground: hsl(32.7 13.9% 31%);
+  --border: hsl(42 33.9% 76.9%);
+  --secondary: hsl(338.2 13.9% 84.5%);
+  --destructive: hsl(0 52.1% 36.9%);
+}}
+* {{ box-sizing: border-box; }}
+body {{
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Crimson Pro", Georgia, serif;
+  font-size: 1.125rem;
+  line-height: 1.55;
+}}
+h1, h2 {{
+  font-family: Alegreya, Georgia, serif;
+  font-weight: 500;
+  line-height: 1.15;
+  margin: 0;
+}}
+header.bar {{
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}}
+.bar-row {{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  min-height: 4.25rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}}
+.mark {{
+  font-family: Alegreya, Georgia, serif;
+  font-size: 1.45rem;
+  text-decoration: none;
+  color: inherit;
+}}
+nav a {{
+  font-family: "Alegreya Sans", sans-serif;
+  font-size: 0.95rem;
+  text-decoration: none;
+  color: inherit;
+  background: var(--border);
+  border-radius: 4px;
+  padding: 0.35rem 0.55rem;
+}}
+.wrap {{ max-width: 40rem; margin: 0 auto; padding: 2rem 1.5rem 4rem; }}
+label {{ display: block; margin: 0.9rem 0 0.25rem; font-family: "Alegreya Sans", sans-serif; }}
+input {{
+  width: 100%;
+  max-width: 28rem;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+}}
+.hint {{ margin: 0.2rem 0 0; color: var(--muted-foreground); font-size: 1rem; }}
+.btn {{
+  display: inline-block;
+  margin-top: 1.4rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  padding: 0.65rem 1.05rem;
+  font-family: "Alegreya Sans", sans-serif;
+  font-size: 0.95rem;
+  cursor: pointer;
+}}
+.error {{ color: var(--destructive); }}
+.sheet {{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.2rem 1.3rem;
+  margin-top: 1rem;
+}}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="bar-row">
+    <a class="mark" href="/">De Boog</a>
+    <nav><a href="/">{_MENU}</a></nav>
+  </div>
+</header>
+{body}
+</body>
+</html>
+"""
+
+
+def _value(form, name: str) -> str:
+    return str(form.get(name) or "").strip()
+
+
+def _whole(raw: str, label: str) -> int | None:
+    if raw == "":
+        return None
+    if not raw.isdigit():
+        raise ValueError(f"{label} moet een geheel getal van 0 of meer zijn.")
+    return int(raw)
+
+
+def form_page(values: dict[str, str], error: str = "") -> str:
+    fields = []
+    for key, label, required in _FIELDS:
+        mark = " *" if required else ""
+        fields.append(
+            f'<label for="{key}">{escape(label)}{mark}</label>'
+            f'<input id="{key}" name="{key}" value="{escape(values.get(key, ""))}">'
+        )
+    notice = f'<p class="error">{escape(error)}</p>' if error else ""
+    body = f"""
+<main class="wrap">
+  <h1>{_MENU}</h1>
+  {notice}
+  <form method="post" action="/" enctype="multipart/form-data" class="sheet">
+    {"".join(fields)}
+    <p class="hint">voorraad mag leeg blijven als formaat e-book is. badge mag leeg blijven; center zet het boek in het midden van de carrousel.</p>
+    <label for="cover">cover</label>
+    <input id="cover" name="cover" type="file" accept="image/png,.png" required>
+    <p><button class="btn" type="submit">Opslaan</button></p>
+  </form>
+</main>
+"""
+    return _page(body)
+
+
+def done_page(titel: str, cover: str) -> str:
+    body = f"""
+<main class="wrap">
+  <h1>Boek toegevoegd</h1>
+  <div class="sheet">
+    <p>{escape(titel)} staat in catalog.json.</p>
+    <p>Het omslag staat in files/{escape(cover)}.</p>
+    <p>Herstart de winkel om het boek te zien.</p>
+    <p><a class="btn" href="/">{_MENU}</a></p>
+  </div>
+</main>
+"""
+    return _page(body)
+
+
+def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/", response_class=HTMLResponse)
+    def show() -> str:
+        return form_page({})
+
+    @app.post("/", response_class=HTMLResponse)
+    async def save(request: Request) -> HTMLResponse:
+        form = await request.form()
+        values = {key: _value(form, key) for key, _label, _required in _FIELDS}
+        upload = form.get("cover")
+        filename = ""
+        payload = b""
+        if upload is not None and hasattr(upload, "read"):
+            filename = str(getattr(upload, "filename", "") or "")
+            payload = await upload.read()
+            close = getattr(upload, "close", None)
+            if close is not None:
+                await close()
+        try:
+            price = _whole(values["prijs_cent_excl"], "prijs_cent_excl")
+            if price is None:
+                raise ValueError("prijs_cent_excl is verplicht.")
+            voorraad = _whole(values["voorraad"], "voorraad")
+            if not filename or not payload:
+                raise ValueError("Kies een png-omslag.")
+            add_book(
+                catalog_path,
+                files_dir,
+                slug=values["slug"],
+                titel=values["titel"],
+                auteur=values["auteur"],
+                genre=values["genre"],
+                formaat=values["formaat"],
+                tijdvak=values["tijdvak"],
+                isbn=values["ISBN"],
+                prijs_cent_excl=price,
+                voorraad=voorraad,
+                badge=values["badge"],
+                cover_name=filename,
+                cover_bytes=payload,
+            )
+        except ValueError as exc:
+            return HTMLResponse(form_page(values, str(exc)), status_code=400)
+        return HTMLResponse(done_page(values["titel"], Path(filename).name))
+
+    return app
+
+
+def run() -> None:
+    import uvicorn
+
+    host = os.environ.get("ADMIN_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    port = int(os.environ.get("ADMIN_PORT", "9100"))
+    catalog = Path(os.environ.get("SHOP_CATALOG", str(_ROOT / "catalog.json")))
+    files = Path(os.environ.get("SHOP_FILES_DIR", str(_ROOT / "files")))
+    uvicorn.run(create_admin_app(catalog, files), host=host, port=port)
