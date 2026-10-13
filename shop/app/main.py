@@ -40,6 +40,7 @@ from app.orders import (
     order_by_payment,
 )
 from app.pages import (
+    menu_href,
     about_page,
     book_page,
     browse_page,
@@ -208,26 +209,26 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         path, media = found
         return FileResponse(path, media_type=media, headers={"Cache-Control": "public, max-age=86400"})
 
-    @app.get("/", response_class=HTMLResponse)
+    @app.get(menu_href("home"), response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
         return html(home_page(catalog, len(cart_of(request))))
 
     @app.get("/planken")
     def browse_old(genre: str = "") -> RedirectResponse:
-        target = "/genres"
+        target = menu_href("genres")
         if genre:
-            target = "/genres?genre=" + genre
+            target = menu_href("genres") + "?genre=" + genre
         return RedirectResponse(target, status_code=301)
 
-    @app.get("/genres", response_class=HTMLResponse)
+    @app.get(menu_href("genres"), response_class=HTMLResponse)
     def browse(request: Request, genre: str = "") -> HTMLResponse:
         return html(browse_page(catalog, len(cart_of(request)), genre))
 
-    @app.get("/agenda", response_class=HTMLResponse)
+    @app.get(menu_href("agenda"), response_class=HTMLResponse)
     def events(request: Request) -> HTMLResponse:
         return html(events_page(catalog, len(cart_of(request))))
 
-    @app.get("/over", response_class=HTMLResponse)
+    @app.get(menu_href("over"), response_class=HTMLResponse)
     def about(request: Request) -> HTMLResponse:
         return html(about_page(catalog, len(cart_of(request))))
 
@@ -246,7 +247,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         )
         return response
 
-    @app.get("/rekening", response_class=HTMLResponse)
+    @app.get(menu_href("rekening"), response_class=HTMLResponse)
     def rekening(request: Request) -> HTMLResponse:
         return html(rekening_page(catalog, rekening_counts(request), len(cart_of(request))))
 
@@ -337,7 +338,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         slugs = [item for item in cart_of(request) if item != slug]
         return with_cart(RedirectResponse("/winkelwagen", status_code=303), slugs)
 
-    @app.get("/winkelwagen", response_class=HTMLResponse)
+    @app.get(menu_href("winkelwagen"), response_class=HTMLResponse)
     def show_cart(request: Request) -> HTMLResponse:
         slugs = cart_of(request)
         return html(cart_page(catalog, books_for(slugs), len(slugs)))

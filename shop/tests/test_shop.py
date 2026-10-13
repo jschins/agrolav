@@ -86,8 +86,9 @@ class ShopFlowTests(unittest.TestCase):
             genres = client.get("/genres")
             self.assertIn('class="selected" href="/genres"', genres.text)
             self.assertNotIn('class="running"', genres.text)
-            self.assertLess(home.text.find(">Over</a>"), home.text.find(">Rekening</a>"))
-            self.assertLess(home.text.find(">Rekening</a>"), home.text.find(">Winkelwagen"))
+            self.assertLess(home.text.find(">OVER</a>"), home.text.find(">REKENING</a>"))
+            self.assertLess(home.text.find(">REKENING</a>"), home.text.find(">WINKELWAGEN"))
+            self.assertIn('href="/genres">GENRES</a>', home.text)
             for path in ("/genres", "/agenda", "/over"):
                 self.assertEqual(client.get(path).status_code, 200)
             icon = client.get("/favicon.png")
@@ -280,7 +281,7 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn("Parochie Voorbeeld", page.text)
             self.assertIn("Bestelnummer 1", page.text)
             self.assertIn("Prijs exclusief BTW € 35,09", page.text)
-            self.assertIn(">Rekening</a>", page.text)
+            self.assertIn(">REKENING</a>", page.text)
             self.assertRegex(page.text, r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
             self.assertNotRegex(page.text, r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 

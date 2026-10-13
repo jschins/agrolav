@@ -310,17 +310,24 @@ main.invoice table.plain {{ margin-top: auto; }}
 """
 
 
+MENU = ("home", "genres", "agenda", "over", "rekening", "winkelwagen")
+
+
+def menu_href(address: str) -> str:
+    return "/" if address == "home" else "/" + address
+
+
+def menu_header(address: str) -> str:
+    return address.upper()
+
+
 def _nav(active: str, cart_count: int) -> str:
-    items = (
-        ("/", "Home"),
-        ("/genres", "Genres"),
-        ("/agenda", "Agenda"),
-        ("/over", "Over"),
-        ("/rekening", "Rekening"),
-        ("/winkelwagen", f"Winkelwagen ({cart_count})"),
-    )
     links = []
-    for href, label in items:
+    for address in MENU:
+        href = menu_href(address)
+        label = menu_header(address)
+        if address == "winkelwagen":
+            label = f"{label} ({cart_count})"
         mark = ' class="selected"' if href == active else ""
         links.append(f'<a{mark} href="{href}">{label}</a>')
     return "\n      ".join(links)
@@ -386,7 +393,7 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
   {quote}
 </main>
 """
-    return page(catalog.shop_name, catalog, body, cart_count, "/")
+    return page(catalog.shop_name, catalog, body, cart_count, menu_href("home"))
 
 
 def browse_page(catalog: Catalog, cart_count: int, genre: str = "") -> str:
@@ -394,18 +401,18 @@ def browse_page(catalog: Catalog, cart_count: int, genre: str = "") -> str:
     books = [book for book in catalog.books if not chosen or book.genre == chosen]
     cards = "".join(_book_card(book) for book in books) or "<p>Op deze plank ligt nog niets.</p>"
     links = "".join(
-        f'<a href="/genres?genre={escape(name)}">{escape(name)}</a>'
+        f'<a href="{menu_href("genres")}?genre={escape(name)}">{escape(name)}</a>'
         for name, _count in catalog.genres()
     )
     heading = chosen or "Alle papieren boeken"
     body = f"""
 <main class="wrap" style="padding-bottom:3rem">
   <h2>{escape(heading)}</h2>
-  <nav>{links} <a href="/genres">Alles</a></nav>
+  <nav>{links} <a href="{menu_href("genres")}">Alles</a></nav>
   <div class="shelf" style="margin-top:1.4rem">{cards}</div>
 </main>
 """
-    return page("Genres", catalog, body, cart_count, "/genres")
+    return page(menu_header("genres"), catalog, body, cart_count, menu_href("genres"))
 
 
 def events_page(catalog: Catalog, cart_count: int) -> str:
@@ -422,7 +429,7 @@ def events_page(catalog: Catalog, cart_count: int) -> str:
   <div class="events">{events}</div>
 </main>
 """
-    return page("Agenda", catalog, body, cart_count, "/agenda")
+    return page(menu_header("agenda"), catalog, body, cart_count, menu_href("agenda"))
 
 
 def about_page(catalog: Catalog, cart_count: int) -> str:
@@ -440,7 +447,7 @@ def about_page(catalog: Catalog, cart_count: int) -> str:
   </div>
 </main>
 """
-    return page("Over", catalog, body, cart_count, "/over")
+    return page(menu_header("over"), catalog, body, cart_count, menu_href("over"))
 
 
 def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
@@ -497,7 +504,7 @@ def cart_page(catalog: Catalog, books: list[Book], cart_count: int) -> str:
   {pay}
 </main>
 """
-    return page("Winkelwagen", catalog, body, cart_count, "/winkelwagen")
+    return page(menu_header("winkelwagen"), catalog, body, cart_count, menu_href("winkelwagen"))
 
 
 def checkout_page(
@@ -617,7 +624,7 @@ def rekening_page(catalog: Catalog, counts: dict[str, int], cart_count: int, err
   </form>
 </main>
 """
-    return page("Rekening", catalog, body, cart_count, "/rekening")
+    return page(menu_header("rekening"), catalog, body, cart_count, menu_href("rekening"))
 
 
 def rekening_review_page(
@@ -650,7 +657,7 @@ def rekening_review_page(
   </form>
 </main>
 """
-    return page("Bestelling", catalog, body, cart_count, "/rekening")
+    return page("Bestelling", catalog, body, cart_count, menu_href("rekening"))
 
 
 def rekening_done_page(catalog: Catalog, order: dict, cart_count: int) -> str:
@@ -674,7 +681,7 @@ def rekening_done_page(catalog: Catalog, order: dict, cart_count: int) -> str:
   </table>
 </main>
 """
-    return page("Rekening", catalog, body, cart_count, "/rekening")
+    return page(menu_header("rekening"), catalog, body, cart_count, menu_href("rekening"))
 
 
 def dev_pay_page(catalog: Catalog, payment_id: str, cart_count: int) -> str:
