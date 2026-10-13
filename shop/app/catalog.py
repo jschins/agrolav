@@ -19,6 +19,7 @@ class Book:
     summary: str
     price_cents: int
     cover: str
+    voorraad: int
     staff_pick: bool = False
     badge: str = ""
 
@@ -119,6 +120,9 @@ def load_catalog(path: Path) -> Catalog:
             raise ValueError(f"cover for {slug} must be a file name in shop/files")
         if not (path.parent / "files" / cover).is_file():
             raise ValueError(f"cover for {slug} is missing: {cover}")
+        voorraad = item.get("voorraad")
+        if not isinstance(voorraad, int) or isinstance(voorraad, bool) or voorraad < 0:
+            raise ValueError(f"voorraad for {slug} must be a whole number of 0 or more")
         books.append(
             Book(
                 slug=slug,
@@ -128,6 +132,7 @@ def load_catalog(path: Path) -> Catalog:
                 summary=str(item["summary"]).strip(),
                 price_cents=price,
                 cover=cover,
+                voorraad=voorraad,
                 staff_pick=bool(item.get("staff_pick")),
                 badge=str(item.get("badge") or "").strip(),
             )

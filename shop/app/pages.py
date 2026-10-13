@@ -653,6 +653,7 @@ def rekening_page(catalog: Catalog, counts: dict[str, int], cart_count: int, err
         "<tr>"
         f"<td>{escape(book.title)}</td>"
         f"<td>{escape(book.author)}</td>"
+        f"<td>{book.voorraad}</td>"
         "<td><input type=\"number\" min=\"0\" step=\"1\" "
         f'name="aantal-{escape(book.slug)}" value="{counts.get(book.slug, 0)}"></td>'
         "</tr>"
@@ -666,7 +667,7 @@ def rekening_page(catalog: Catalog, counts: dict[str, int], cart_count: int, err
   {notice}
   <form method="post" action="/rekening/bestellen">
     <table class="plain">
-      <thead><tr><th>Titel</th><th>Auteur</th><th>aantal</th></tr></thead>
+      <thead><tr><th>Titel</th><th>Auteur</th><th>Voorraad</th><th>Aantal</th></tr></thead>
       <tbody>{rows}</tbody>
     </table>
     <p><button class="btn" type="submit">Bestellen</button></p>
@@ -693,7 +694,7 @@ def rekening_review_page(
   <h1>Bestelling</h1>
   <hr class="rule">
   <table class="plain">
-    <thead><tr><th>Titel</th><th>aantal</th></tr></thead>
+    <thead><tr><th>Titel</th><th>Aantal</th></tr></thead>
     <tbody>{rows}</tbody>
   </table>
   <p><a class="btn ghost" href="/rekening">Wijzig bestelling</a></p>
@@ -725,7 +726,7 @@ def rekening_done_page(catalog: Catalog, order: dict, cart_count: int) -> str:
     <p>{escape(str(order.get("ordered_at") or ""))}</p>
   </div>
   <table class="plain">
-    <thead><tr><th>Titel</th><th>aantal</th></tr></thead>
+    <thead><tr><th>Titel</th><th>Aantal</th></tr></thead>
     <tbody>{rows}</tbody>
   </table>
 </main>

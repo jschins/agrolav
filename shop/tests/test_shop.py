@@ -251,7 +251,10 @@ class ShopFlowTests(unittest.TestCase):
             )
             sheet = client.get("/rekening")
             self.assertEqual(sheet.status_code, 200)
-            self.assertIn(">aantal</th>", sheet.text)
+            self.assertIn(">Aantal</th>", sheet.text)
+            self.assertIn(">Voorraad</th>", sheet.text)
+            self.assertIn(">10</td>", sheet.text)
+            self.assertNotIn('name="voorraad"', sheet.text)
             self.assertIn("De Dialoog", sheet.text)
             self.assertIn("Bestellen", sheet.text)
 
