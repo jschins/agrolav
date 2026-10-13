@@ -306,6 +306,15 @@ footer.band {{ margin-top: 0; }}
   flex-wrap: wrap;
   font-family: "Alegreya Sans", sans-serif;
 }}
+.buy-row {{
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  padding: 2rem 0 3rem;
+}}
+.buy-card {{ flex: 0 0 16rem; width: 16rem; }}
+.buy-fields {{ margin: 0; }}
+.buy-fields p {{ margin: 0.35rem 0; }}
 .narrow {{ max-width: 40rem; padding: 3rem 0 4rem; }}
 .sheet {{ padding: 1.2rem 1.3rem; margin: 1rem 0; }}
 label {{ display: block; margin: 0.9rem 0 0.25rem; font-family: "Alegreya Sans", sans-serif; }}
@@ -629,20 +638,23 @@ def about_page(catalog: Catalog, cart_count: int) -> str:
 
 def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
     label = "" if _centered(book) else book.badge
-    badge = f'<p><span class="badge">{escape(label)}</span></p>' if label else ""
+    badge = (
+        f"<p><span class=\"mono\">Badge</span> {escape(label)}</p>" if label else ""
+    )
     body = f"""
-<main class="wrap" style="padding:3rem 1.5rem 4rem">
-  <div class="hero">
-    <div class="card book" style="pointer-events:none">{_cover(book)}</div>
-    <div>
-      <p class="kicker">{escape(book.genre)}</p>
-      <h1>{escape(book.title)}</h1>
-      <hr class="rule">
-      <p>{escape(book.author)}</p>
+<main class="wrap">
+  <div class="buy-row">
+    <div class="card book buy-card">{_cover(book)}</div>
+    <div class="buy-fields">
+      <p><span class="mono">Titel</span> {escape(book.title)}</p>
+      <p><span class="mono">Auteur</span> {escape(book.author)}</p>
+      <p><span class="mono">Genre</span> {escape(book.genre)}</p>
+      <p><span class="mono">ISBN</span> {escape(book.isbn)}</p>
+      <p><span class="mono">Samenvatting</span> {escape(book.summary)}</p>
+      <p><span class="mono">Prijs</span> {escape(euro(book.price_cents))}</p>
+      <p><span class="mono">Voorraad</span> {book.voorraad}</p>
       {badge}
-      <p>{escape(book.summary)}</p>
-      <p class="price">{escape(euro(book.price_cents))}</p>
-      <p>Papieren exemplaar. Er is geen digitaal bestand.</p>
+      <p>Papieren exemplaar. Betaling met iDEAL via Mollie.</p>
       <form method="post" action="/winkelwagen" class="actions">
         <input type="hidden" name="slug" value="{escape(book.slug)}">
         <button class="btn ghost" type="submit">In de winkelwagen</button>
@@ -715,7 +727,7 @@ def checkout_page(
   <ul>{lines}</ul>
   <p class="price">Te betalen {escape(euro(total))}</p>
   {vat}
-  <p>De prijs is de prijs van de exemplaren. Het adres hieronder is het bezorgadres. Het kaartnummer vult u op de pagina van Mollie in.</p>
+  <p>De prijs is de prijs van de exemplaren. Het adres hieronder is het bezorgadres. U betaalt met iDEAL via Mollie. Deze site vraagt geen kaartnummer.</p>
   {notice}
   <form method="post" action="/afrekenen" class="card sheet">
     <input type="hidden" name="source" value="{escape(source)}">
@@ -730,7 +742,7 @@ def checkout_page(
     <input id="city" name="city" required maxlength="80" value="{escape(city)}">
     <label for="email">E-mail</label>
     <input id="email" name="email" type="email" required maxlength="200" value="{escape(email)}">
-    <p><button class="btn" type="submit">Betaal met Mollie</button></p>
+    <p><button class="btn" type="submit">Betaal met iDEAL via Mollie</button></p>
   </form>
 </main>
 """
@@ -752,7 +764,7 @@ def order_page(catalog: Catalog, order, cart_count: int) -> str:
     elif order.status == "failed":
         lead = "<h1>Betaling niet gelukt</h1><p>Er wordt niets verstuurd.</p>"
     else:
-        lead = "<h1>Betaling nog niet bevestigd</h1><p>Er wordt nog niets verstuurd. Vernieuw deze pagina nadat Mollie de betaling heeft gemeld.</p>"
+        lead = "<h1>Betaling nog niet bevestigd</h1><p>Er wordt nog niets verstuurd. Vernieuw deze pagina nadat iDEAL via Mollie de betaling heeft gemeld.</p>"
     body = f"""
 <main class="wrap narrow">
   {lead}

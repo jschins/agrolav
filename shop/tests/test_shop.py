@@ -112,25 +112,29 @@ class ShopFlowTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             client, mollie = self._client(Path(tmp))
-            page = client.get("/boeken/de-innerlijke-rust")
+            page = client.get("/boeken/innerlijke-rust")
             self.assertEqual(page.status_code, 200)
             self.assertIn("De innerlijke rust", page.text)
             self.assertIn("Koop dit exemplaar", page.text)
+            self.assertIn("buy-card", page.text)
+            self.assertIn("ISBN: 90-6257-056-9", page.text)
+            self.assertIn("Voorraad</span> 10", page.text)
+            self.assertIn("iDEAL via Mollie", page.text)
             self.assertIn("Papieren exemplaar", page.text)
             self.assertNotIn('name="card"', page.text)
             self.assertNotIn("/bestand/", page.text)
 
-            added = client.post("/winkelwagen", data={"slug": "de-innerlijke-rust"}, follow_redirects=False)
+            added = client.post("/winkelwagen", data={"slug": "innerlijke-rust"}, follow_redirects=False)
             self.assertEqual(added.status_code, 303)
             cart = client.get("/winkelwagen")
             self.assertIn("De innerlijke rust", cart.text)
             self.assertIn("€ 8,75", cart.text)
 
-            added_again = client.post("/winkelwagen", data={"slug": "de-dialoog"}, follow_redirects=False)
+            added_again = client.post("/winkelwagen", data={"slug": "catharina-dialoog"}, follow_redirects=False)
             self.assertEqual(added_again.status_code, 303)
             checkout = client.get("/afrekenen")
             self.assertEqual(checkout.status_code, 200)
-            self.assertIn("Betaal met Mollie", checkout.text)
+            self.assertIn("Betaal met iDEAL via Mollie", checkout.text)
             self.assertIn("Bezorgadres", checkout.text)
             self.assertIn('name="street"', checkout.text)
             self.assertIn('type="email"', checkout.text)
@@ -167,12 +171,12 @@ class ShopFlowTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             client, _mollie = self._client(Path(tmp))
-            checkout = client.get("/afrekenen/boek/de-dialoog")
+            checkout = client.get("/afrekenen/boek/catharina-dialoog")
             self.assertEqual(checkout.status_code, 200)
             self.assertIn("€ 14,75", checkout.text)
             started = client.post(
                 "/afrekenen",
-                data={"source": "book", "slug": "de-dialoog", **_SHIP},
+                data={"source": "book", "slug": "catharina-dialoog", **_SHIP},
                 follow_redirects=False,
             )
             from urllib.parse import urlparse
@@ -192,7 +196,7 @@ class ShopFlowTests(unittest.TestCase):
             client, mollie = self._client(Path(tmp))
             started = client.post(
                 "/afrekenen",
-                data={"source": "book", "slug": "de-innerlijke-rust", **_SHIP},
+                data={"source": "book", "slug": "innerlijke-rust", **_SHIP},
                 follow_redirects=False,
             )
             payment_id = started.headers["location"].rsplit("/", 1)[-1]
@@ -220,7 +224,7 @@ class ShopFlowTests(unittest.TestCase):
             self.assertEqual(client.post("/afrekenen", data={"source": "cart", "email": "nee"}).status_code, 400)
             started = client.post(
                 "/afrekenen",
-                data={"source": "book", "slug": "de-innerlijke-rust", **_SHIP},
+                data={"source": "book", "slug": "innerlijke-rust", **_SHIP},
                 follow_redirects=False,
             )
             payment_id = started.headers["location"].rsplit("/", 1)[-1]

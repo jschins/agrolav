@@ -384,7 +384,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             return html(
                 message_page(
                     catalog,
-                    "Mollie is nog niet ingesteld",
+                    "iDEAL via Mollie is nog niet ingesteld",
                     "Zet MOLLIE_API_KEY in de omgeving. De site vraagt zelf geen kaartnummer.",
                     count,
                 ),
@@ -422,7 +422,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         except httpx.HTTPError:
             log.exception("Mollie did not create a payment for order %s", order_id)
             return html(
-                message_page(catalog, "Betaling niet gestart", "Mollie nam de betaling niet aan. Probeer het opnieuw.", count),
+                message_page(catalog, "Betaling niet gestart", "iDEAL via Mollie nam de betaling niet aan. Probeer het opnieuw.", count),
                 502,
             )
         conn = connect(settings.db_path)

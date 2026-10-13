@@ -16,6 +16,7 @@ class Book:
     title: str
     author: str
     genre: str
+    isbn: str
     summary: str
     price_cents: int
     cover: str
@@ -118,6 +119,7 @@ def load_catalog(path: Path) -> Catalog:
                 title=str(item["title"]).strip(),
                 author=str(item["author"]).strip(),
                 genre=genre,
+                isbn=str(item.get("ISBN") or item.get("isbn") or "").strip(),
                 summary=str(item["summary"]).strip(),
                 price_cents=price,
                 cover=cover,
