@@ -92,6 +92,11 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn(">author</button>", home.text)
             self.assertEqual(home.text.count("Alle (geen selectie)"), 2)
             self.assertIn("Biografie", home.text)
+            self.assertIn("is-out", home.text)
+            self.assertIn(
+                "De Boog verkoopt geen boeken die aan deze combinatie van selectiecriteria voldoen",
+                home.text,
+            )
             self.assertNotIn('href="/genres"', home.text)
             self.assertEqual(client.get("/genres").status_code, 404)
             self.assertLess(home.text.find(">OVER</a>"), home.text.find(">REKENING</a>"))

@@ -205,6 +205,23 @@ main.home-main {{
   width: 16rem;
   scroll-snap-align: start;
 }}
+.rail.home .book.is-out {{ display: none; }}
+.home-empty {{
+  display: none;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  max-width: 36rem;
+  margin: 0;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  font-family: Alegreya, Georgia, serif;
+  font-size: clamp(1.4rem, 2.6vw, 2rem);
+  line-height: 1.35;
+}}
+main.home-main.none .home-empty {{ display: flex; }}
+main.home-main.none .rail.home {{ display: none; }}
 .book {{
   display: block;
   text-decoration: none;
@@ -500,7 +517,7 @@ _CAROUSEL = """
   var dragged = false;
   function centerWeek() {
     var week = rail.querySelector("[data-week]");
-    if (!week || week.hidden) {
+    if (!week || week.classList.contains("is-out")) {
       rail.scrollLeft = 0;
       return;
     }
@@ -514,11 +531,14 @@ _CAROUSEL = """
       if (filter.dataset.name === "genre") genre = value;
       if (filter.dataset.name === "author") author = value;
     });
+    var shown = 0;
     rail.querySelectorAll(".book").forEach(function (card) {
       var show = (!genre || card.dataset.genre === genre) && (!author || card.dataset.author === author);
-      card.hidden = !show;
+      card.classList.toggle("is-out", !show);
+      if (show) shown += 1;
     });
-    centerWeek();
+    rail.closest("main").classList.toggle("none", shown === 0);
+    if (shown) centerWeek();
   }
   document.querySelectorAll(".filter").forEach(function (filter) {
     var knob = filter.querySelector(".filter-knob");
@@ -594,6 +614,7 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
     {_choices("genre", genres)}
     {_choices("author", authors)}
   </div>
+  <p class="home-empty">De Boog verkoopt geen boeken die aan deze combinatie van selectiecriteria voldoen</p>
   <div class="rail home" id="home-rail">{cards}</div>
 </main>
 {_CAROUSEL}
