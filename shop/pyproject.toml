@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "deboog-shop"
 version = "0.1"
-description = "Digital book shop for deboog.apsurt.nl, interim on port 9000"
+description = "Paper book shop for deboog.apsurt.nl, interim on port 9000"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [

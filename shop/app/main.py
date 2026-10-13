@@ -1,20 +1,23 @@
-"""Book shop on port 9000.
+"""Paper-book shop on port 9000.
 
 Interim public address: http://expenses.apsurt.nl:9000
 Later public address: https://deboog.apsurt.nl (set SHOP_PUBLIC_BASE_URL).
 
 The process does not open the bookkeeping database. Orders are a SQLite file
 next to this app. Mollie hosts the card form and calls /mollie/webhook.
+A paid order is a paper copy sent to the address on the order. There is no download.
 """
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 import os
 import re
 import secrets
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -26,6 +29,7 @@ from app.cart import dump_cart, load_cart
 from app.catalog import Book, Catalog, load_catalog, vat_cents
 from app.mollie import DevMollie, MollieClient, Payment
 from app.orders import (
+    Address,
     Order,
     OrderItem,
     apply_payment,
@@ -36,18 +40,35 @@ from app.orders import (
     order_by_payment,
 )
 from app.pages import (
+    about_page,
     book_page,
+    browse_page,
     cart_page,
-    catalog_page,
     checkout_page,
     dev_pay_page,
+    events_page,
+    home_page,
     message_page,
     order_page,
+    rekening_done_page,
+    rekening_page,
+    rekening_review_page,
+)
+from app.rekening import (
+    append_order,
+    counts_from_form,
+    dump_counts,
+    find_company,
+    load_counts,
+    order_by_number,
+    order_lines,
+    read_rekening,
 )
 
 log = logging.getLogger("shop")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _COOKIE = "deboog_cart"
+_REKENING_COOKIE = "deboog_rekening"
 _ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -58,6 +79,7 @@ class Settings:
     data_dir: Path
     catalog_path: Path
     files_dir: Path
+    rekening_path: Path = _ROOT / "rekening.json"
     mollie_api_key: str = ""
     dev_payments: bool = False
     host: str = "127.0.0.1"
@@ -89,6 +111,7 @@ def settings_from_env() -> Settings:
         data_dir=Path(os.environ.get("SHOP_DATA_DIR", str(_ROOT / "data"))),
         catalog_path=Path(os.environ.get("SHOP_CATALOG", str(_ROOT / "catalog.json"))),
         files_dir=Path(os.environ.get("SHOP_FILES_DIR", str(_ROOT / "files"))),
+        rekening_path=Path(os.environ.get("SHOP_REKENING", str(_ROOT / "rekening.json"))),
         mollie_api_key=os.environ.get("MOLLIE_API_KEY", "").strip(),
         dev_payments=dev,
         host=os.environ.get("SHOP_HOST", "127.0.0.1").strip() or "127.0.0.1",
@@ -168,10 +191,121 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    def icon_file() -> tuple[Path, str] | None:
+        root = settings.files_dir.resolve()
+        for name, media in (("favicon.png", "image/png"), ("favicon.ico", "image/x-icon")):
+            path = (settings.files_dir / name).resolve()
+            if path.parent == root and path.is_file():
+                return path, media
+        return None
+
+    @app.get("/favicon.ico")
+    @app.get("/favicon.png")
+    def favicon() -> Response:
+        found = icon_file()
+        if found is None:
+            return Response(status_code=404)
+        path, media = found
+        return FileResponse(path, media_type=media, headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
-        slugs = cart_of(request)
-        return html(catalog_page(catalog, len(slugs)))
+        return html(home_page(catalog, len(cart_of(request))))
+
+    @app.get("/planken", response_class=HTMLResponse)
+    def browse(request: Request, genre: str = "") -> HTMLResponse:
+        return html(browse_page(catalog, len(cart_of(request)), genre))
+
+    @app.get("/agenda", response_class=HTMLResponse)
+    def events(request: Request) -> HTMLResponse:
+        return html(events_page(catalog, len(cart_of(request))))
+
+    @app.get("/over", response_class=HTMLResponse)
+    def about(request: Request) -> HTMLResponse:
+        return html(about_page(catalog, len(cart_of(request))))
+
+    def rekening_counts(request: Request) -> dict[str, int]:
+        return load_counts(request.cookies.get(_REKENING_COOKIE), settings.secret, known)
+
+    def with_rekening(response: Response, counts: dict[str, int]) -> Response:
+        response.set_cookie(
+            _REKENING_COOKIE,
+            dump_counts(counts, settings.secret),
+            max_age=14 * 24 * 3600,
+            httponly=True,
+            samesite="lax",
+            secure=settings.public_base_url.startswith("https://"),
+            path="/",
+        )
+        return response
+
+    @app.get("/rekening", response_class=HTMLResponse)
+    def rekening(request: Request) -> HTMLResponse:
+        return html(rekening_page(catalog, rekening_counts(request), len(cart_of(request))))
+
+    @app.post("/rekening/bestellen", response_class=HTMLResponse)
+    async def rekening_bestellen(request: Request) -> HTMLResponse:
+        form = await request.form()
+        count = len(cart_of(request))
+        counts, problem = counts_from_form(form, catalog.books)
+        if counts is None:
+            posted = rekening_counts(request)
+            for book in catalog.books:
+                raw = str(form.get(f"aantal-{book.slug}") or "").strip()
+                if raw.isdigit():
+                    posted[book.slug] = int(raw)
+            return html(rekening_page(catalog, posted, count, problem), 400)
+        lines = order_lines(catalog.books, counts)
+        response = html(rekening_review_page(catalog, lines, count))
+        return with_rekening(response, counts)
+
+    @app.post("/rekening/voltooi")
+    async def rekening_voltooi(request: Request) -> Response:
+        form = await request.form()
+        count = len(cart_of(request))
+        counts, problem = counts_from_form(form, catalog.books)
+        lines = order_lines(catalog.books, counts or {})
+        code = str(form.get("code") or "")
+        if counts is None:
+            return html(rekening_review_page(catalog, lines, count, code, problem), 400)
+        try:
+            ledger = read_rekening(settings.rekening_path)
+        except (OSError, json.JSONDecodeError, ValueError):
+            return html(rekening_review_page(catalog, lines, count, code, "rekening.json kan niet worden gelezen."), 500)
+        company = find_company(ledger, code)
+        if company is None:
+            return html(
+                rekening_review_page(catalog, lines, count, code.strip(), "Deze code hoort niet bij een bedrijf."),
+                400,
+            )
+        priced = [
+            (title, aantal, catalog.by_slug(slug).price_cents)
+            for slug, title, aantal in lines
+            if catalog.by_slug(slug) is not None
+        ]
+        record = append_order(settings.rekening_path, company, priced, catalog.vat_rate, datetime.now())
+        response = RedirectResponse(f"/rekening/bestelling/{record['number']}", status_code=303)
+        response.delete_cookie(_REKENING_COOKIE, path="/")
+        return response
+
+    @app.get("/rekening/bestelling/{number}", response_class=HTMLResponse)
+    def rekening_bestelling(request: Request, number: int) -> HTMLResponse:
+        record = order_by_number(settings.rekening_path, number)
+        count = len(cart_of(request))
+        if record is None:
+            return html(message_page(catalog, "Onbekende bestelling", "Deze rekening staat niet in het bestand.", count), 404)
+        return html(rekening_done_page(catalog, record, count))
+
+    @app.get("/omslag/{slug}")
+    def cover(slug: str) -> Response:
+        item = catalog.by_slug(slug)
+        if item is None:
+            return Response(status_code=404)
+        path = (settings.files_dir / item.cover).resolve()
+        root = settings.files_dir.resolve()
+        if path.parent != root or not path.is_file():
+            return Response(status_code=404)
+        return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/boeken/{slug}", response_class=HTMLResponse)
     def book(request: Request, slug: str) -> HTMLResponse:
@@ -214,16 +348,17 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         item = catalog.by_slug(slug)
         if item is None:
             return html(message_page(catalog, "Onbekend boek", "Dit boek staat niet in de catalogus.", len(cart_of(request))), 404)
-        return html(checkout_page(catalog, [item], "book", len(cart_of(request))))
+        return html(checkout_page(catalog, [item], "book", len(cart_of(request)), slug=item.slug))
 
     @app.post("/afrekenen")
     async def start_payment(request: Request) -> Response:
         form = await request.form()
         email = str(form.get("email") or "").strip()
         source = str(form.get("source") or "")
+        posted_slug = str(form.get("slug") or "")
         count = len(cart_of(request))
         if source == "book":
-            item = catalog.by_slug(str(form.get("slug") or ""))
+            item = catalog.by_slug(posted_slug)
             books = [item] if item is not None else []
         elif source == "cart":
             books = books_for(cart_of(request))
@@ -231,8 +366,24 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             books = []
         if not books:
             return html(message_page(catalog, "Geen boeken", "Er is niets om af te rekenen.", count), 400)
-        if not _EMAIL.match(email) or len(email) > 200:
-            return html(checkout_page(catalog, books, source if source in {"book", "cart"} else "cart", count, "Vul een geldig e-mailadres in."), 400)
+        address, problem = _shipping(form, email)
+        if address is None:
+            return html(
+                checkout_page(
+                    catalog,
+                    books,
+                    source if source in {"book", "cart"} else "cart",
+                    count,
+                    problem,
+                    name=str(form.get("name") or ""),
+                    street=str(form.get("street") or ""),
+                    postcode=str(form.get("postcode") or ""),
+                    city=str(form.get("city") or ""),
+                    email=email,
+                    slug=posted_slug,
+                ),
+                400,
+            )
         if mollie is None:
             return html(
                 message_page(
@@ -243,10 +394,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                 ),
                 503,
             )
-        items = [
-            OrderItem(slug=book.slug, title=book.title, price_cents=book.price_cents, filename=book.filename)
-            for book in books
-        ]
+        items = [OrderItem(slug=book.slug, title=book.title, price_cents=book.price_cents) for book in books]
         amount = sum(item.price_cents for item in items)
         order_id = uuid.uuid4().hex
         token = secrets.token_urlsafe(32)
@@ -257,6 +405,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                 order_id=order_id,
                 token=token,
                 email=email,
+                address=address,
                 items=items,
                 amount_cents=amount,
                 vat_cents=vat_cents(amount, catalog.vat_rate),
@@ -320,31 +469,6 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    @app.get("/bestelling/{order_id}/bestand/{slug}")
-    def download(order_id: str, slug: str, token: str = "") -> Response:
-        conn = connect(settings.db_path)
-        try:
-            order = get_order(conn, order_id)
-        finally:
-            conn.close()
-        if order is None or not token or not hmac.compare_digest(order.token, token):
-            return html(message_page(catalog, "Onbekende bestelling", "Deze bestelling is niet gevonden.", 0), 404)
-        item = next((entry for entry in order.items if entry.slug == slug), None)
-        if item is None:
-            return html(message_page(catalog, "Onbekend bestand", "Dit boek hoort niet bij de bestelling.", 0), 404)
-        if order.status != "paid":
-            return html(message_page(catalog, "Nog niet betaald", "De download komt beschikbaar nadat Mollie de betaling bevestigt.", 0), 403)
-        path = (settings.files_dir / item.filename).resolve()
-        root = settings.files_dir.resolve()
-        if path.parent != root or not path.is_file():
-            return html(message_page(catalog, "Bestand ontbreekt", "Het digitale bestand staat nog niet klaar.", 0), 404)
-        return FileResponse(
-            path,
-            filename=item.filename,
-            content_disposition_type="attachment",
-            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
-        )
-
     if isinstance(mollie, DevMollie):
 
         @app.get("/dev/betalen/{payment_id}", response_class=HTMLResponse)
@@ -373,6 +497,24 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             return RedirectResponse(f"/bestelling/{order.id}?token={order.token}", status_code=303)
 
     return app
+
+
+def _shipping(form, email: str) -> tuple[Address | None, str]:
+    name = str(form.get("name") or "").strip()
+    street = str(form.get("street") or "").strip()
+    postcode = str(form.get("postcode") or "").strip()
+    city = str(form.get("city") or "").strip()
+    if not _EMAIL.match(email) or len(email) > 200:
+        return None, "Vul een geldig e-mailadres in."
+    if not 2 <= len(name) <= 80:
+        return None, "Vul de naam voor de bezorging in."
+    if not 4 <= len(street) <= 120:
+        return None, "Vul de straat en het huisnummer in."
+    if not 4 <= len(postcode) <= 12:
+        return None, "Vul de postcode in."
+    if not 2 <= len(city) <= 80:
+        return None, "Vul de plaats in."
+    return Address(name=name, street=street, postcode=postcode, city=city), ""
 
 
 def run() -> None:

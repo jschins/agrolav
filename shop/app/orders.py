@@ -13,7 +13,14 @@ class OrderItem:
     slug: str
     title: str
     price_cents: int
-    filename: str
+
+
+@dataclass(frozen=True)
+class Address:
+    name: str
+    street: str
+    postcode: str
+    city: str
 
 
 @dataclass(frozen=True)
@@ -26,6 +33,7 @@ class Order:
     items: tuple[OrderItem, ...]
     amount_cents: int
     vat_cents: int
+    address: Address
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -43,10 +51,14 @@ def connect(path: Path) -> sqlite3.Connection:
             items_json TEXT NOT NULL,
             amount_cents INTEGER NOT NULL,
             vat_cents INTEGER NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            address_json TEXT NOT NULL DEFAULT '{}'
         )
         """
     )
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(orders)")}
+    if "address_json" not in columns:
+        conn.execute("ALTER TABLE orders ADD COLUMN address_json TEXT NOT NULL DEFAULT '{}'")
     return conn
 
 
@@ -56,24 +68,26 @@ def insert_order(
     order_id: str,
     token: str,
     email: str,
+    address: Address,
     items: list[OrderItem],
     amount_cents: int,
     vat_cents: int,
 ) -> None:
     payload = [
-        {
-            "slug": item.slug,
-            "title": item.title,
-            "price_cents": item.price_cents,
-            "filename": item.filename,
-        }
+        {"slug": item.slug, "title": item.title, "price_cents": item.price_cents}
         for item in items
     ]
+    posted = {
+        "name": address.name,
+        "street": address.street,
+        "postcode": address.postcode,
+        "city": address.city,
+    }
     conn.execute(
         """
         INSERT INTO orders
-            (id, token, email, status, mollie_id, items_json, amount_cents, vat_cents, created_at)
-        VALUES (?, ?, ?, 'open', NULL, ?, ?, ?, ?)
+            (id, token, email, status, mollie_id, items_json, amount_cents, vat_cents, created_at, address_json)
+        VALUES (?, ?, ?, 'open', NULL, ?, ?, ?, ?, ?)
         """,
         (
             order_id,
@@ -83,6 +97,7 @@ def insert_order(
             amount_cents,
             vat_cents,
             datetime.now(timezone.utc).isoformat(),
+            json.dumps(posted),
         ),
     )
     conn.commit()
@@ -93,8 +108,25 @@ def attach_payment(conn: sqlite3.Connection, order_id: str, mollie_id: str) -> N
     conn.commit()
 
 
+def _address_from_json(raw: object) -> Address:
+    data = json.loads(raw) if isinstance(raw, str) and raw else {}
+    if not isinstance(data, dict):
+        data = {}
+    return Address(
+        name=str(data.get("name") or ""),
+        street=str(data.get("street") or ""),
+        postcode=str(data.get("postcode") or ""),
+        city=str(data.get("city") or ""),
+    )
+
+
 def _order_from_row(row: sqlite3.Row) -> Order:
-    items = tuple(OrderItem(**item) for item in json.loads(row["items_json"]))
+    items = tuple(
+        OrderItem(slug=item["slug"], title=item["title"], price_cents=int(item["price_cents"]))
+        for item in json.loads(row["items_json"])
+    )
+    keys = row.keys()
+    address_raw = row["address_json"] if "address_json" in keys else "{}"
     return Order(
         id=row["id"],
         token=row["token"],
@@ -104,6 +136,7 @@ def _order_from_row(row: sqlite3.Row) -> Order:
         items=items,
         amount_cents=row["amount_cents"],
         vat_cents=row["vat_cents"],
+        address=_address_from_json(address_raw),
     )
 
 

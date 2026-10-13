@@ -1,26 +1,39 @@
 {
   "shop_name": "De Boog",
-  "seller_line": "Verkocht door een wederverkoper, met toestemming van de rechthebbende. De verkoper is niet de uitgever.",
+  "seller_line": "Papieren boeken. De prijs is de prijs van het exemplaar, inclusief btw. Na betaling wordt het naar het opgegeven adres gestuurd.",
   "vat_rate": 0.09,
-  "vat_label": "btw 9% (digitale boeken, Nederland), inbegrepen in de prijs",
+  "vat_label": "btw 9% (papieren boeken, Nederland), inbegrepen in de prijs",
+  "place": "Keizersgracht 218-B, Amsterdam",
+  "hours": "Di–vr 11:00–12:15 · zo 11:15–13:15",
+  "hero_kicker": "Papieren boeken",
+  "hero_title": "Twee exemplaren op de toontafel.",
+  "hero_text": "De innerlijke rust en De Dialoog, op papier. Er is geen digitaal bestand: u koopt een exemplaar, en dat exemplaar wordt bezorgd.",
+  "quote": "Een exemplaar dat u in de hand kunt houden.",
+  "quote_by": "De Boog",
+  "about": "De Boog verkoopt deze twee papieren boeken. Er is geen download en geen e-boek in deze winkel.\n\nElk exemplaar gaat na betaling naar het adres dat u bij het afrekenen opgeeft. De betaling loopt via Mollie. Deze site vraagt geen kaartnummer.",
+  "events": [],
   "books": [
     {
-      "slug": "voorbeeld-eerste-boek",
-      "title": "Voorbeeld: Het eerste boek",
-      "author": "Voorbeeld Auteur",
-      "rights_holder": "Voorbeeld Uitgeverij",
-      "summary": "Dit is een voorbeeldpagina. Vervang deze tekst door de aankondiging van een boek dat u met toestemming mag verkopen.\n\nDe pagina is de advertentie. De knop Koop opent de afrekenpagina en daarna de betaalpagina van Mollie.",
-      "price_cents": 1250,
-      "filename": "voorbeeld-eerste-boek.txt"
+      "slug": "de-innerlijke-rust",
+      "title": "De innerlijke rust",
+      "author": "Jacques Philippe",
+      "genre": "Spiritualiteit",
+      "summary": "Papieren uitgave, zachte kaft, tweede druk. Over het bewaren van de vrede van het hart.",
+      "price_cents": 875,
+      "cover": "Jacques Philippe - De innerlijke rust.png",
+      "staff_pick": true,
+      "badge": "Boek van de week"
     },
     {
-      "slug": "voorbeeld-tweede-boek",
-      "title": "Voorbeeld: Het tweede boek",
-      "author": "Voorbeeld Auteur",
-      "rights_holder": "Voorbeeld Uitgeverij",
-      "summary": "Tweede voorbeeld, zodat de winkelwagen meer dan één digitaal boek kan bevatten. Er is geen verzending: na betaling volgt een download.",
-      "price_cents": 875,
-      "filename": "voorbeeld-tweede-boek.txt"
+      "slug": "de-dialoog",
+      "title": "De Dialoog",
+      "author": "Catharina van Siena",
+      "genre": "Spiritualiteit",
+      "summary": "Papieren uitgave van De Dialoog, zachte kaft, tweede druk.",
+      "price_cents": 1475,
+      "cover": "Catharina van Siena - De Dialoog.png",
+      "staff_pick": true,
+      "badge": "Tweede druk"
     }
   ]
 }

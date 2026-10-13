@@ -1,0 +1,56 @@
+{
+  "companies": [
+    {
+      "name": "Eerste bedrijf",
+      "code": "AAAA",
+      "bank_account": "NL54INGB0000000000",
+      "address": "Eekstraat 1, 1234 AB Eekstad"
+    },
+    {
+      "name": "Tweede bedrijf",
+      "code": "BBBB",
+      "bank_account": "NL52INGB1110000000",
+      "address": "Eekstraat 11, 1234 AB Eekstad"
+    }
+  ],
+  "orders": [
+    {
+      "number": 1,
+      "code": "AAAA",
+      "company": "Eerste bedrijf",
+      "address": "Eekstraat 1, 1234 AB Eekstad",
+      "bank_account": "NL54INGB0000000000",
+      "ordered_at": "2026-10-13 10:39",
+      "total_price_cents": 44610,
+      "lines": [
+        {
+          "title": "De innerlijke rust",
+          "aantal": 5
+        },
+        {
+          "title": "De Dialoog",
+          "aantal": 30
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "code": "BBBB",
+      "company": "Tweede bedrijf",
+      "address": "Eekstraat 11, 1234 AB Eekstad",
+      "bank_account": "NL52INGB1110000000",
+      "ordered_at": "2026-10-13 10:50",
+      "total_price_cents": 2156,
+      "lines": [
+        {
+          "title": "De innerlijke rust",
+          "aantal": 1
+        },
+        {
+          "title": "De Dialoog",
+          "aantal": 1
+        }
+      ]
+    }
+  ]
+}
