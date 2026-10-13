@@ -20,7 +20,6 @@ class Book:
     price_cents: int
     cover: str
     voorraad: int
-    staff_pick: bool = False
     badge: str = ""
 
 
@@ -68,10 +67,6 @@ class Catalog:
         for book in self.books:
             counts[book.genre] = counts.get(book.genre, 0) + 1
         return sorted(counts.items(), key=lambda item: (-item[1], item[0].casefold()))
-
-    def staff_picks(self) -> list[Book]:
-        picked = [book for book in self.books if book.staff_pick]
-        return picked or list(self.books[:4])
 
 
 def vat_cents(amount_cents: int, rate: Decimal) -> int:
@@ -133,7 +128,6 @@ def load_catalog(path: Path) -> Catalog:
                 price_cents=price,
                 cover=cover,
                 voorraad=voorraad,
-                staff_pick=bool(item.get("staff_pick")),
                 badge=str(item.get("badge") or "").strip(),
             )
         )

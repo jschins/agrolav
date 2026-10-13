@@ -22,9 +22,7 @@
       "summary": "Papieren uitgave, zachte kaft, tweede druk",
       "price_cents": 875,
       "cover": "Jacques Philippe - De innerlijke rust.png",
-      "staff_pick": false,
-      "voorraad": 10,
-      "badge": "Boek van de week"
+      "voorraad": 10
     },
     {
       "slug": "catharina-dialoog",
@@ -35,9 +33,7 @@
       "summary": "Papieren uitgave van De Dialoog, zachte kaft, tweede druk",
       "price_cents": 1475,
       "cover": "Catharina van Siena - De Dialoog.png",
-      "staff_pick": true,
-      "voorraad": 10,
-      "badge": "Tweede druk"
+      "voorraad": 10
     },
     {
       "slug": "bernal-escriva",
@@ -48,9 +44,7 @@
       "summary": "Papieren uitgave van De Dialoog, zachte kaft, tweede druk",
       "price_cents": 1475,
       "cover": "S. Bernal - Mgr. Escriva de Balaguer.png",
-      "staff_pick": false,
-      "voorraad": 10,
-      "badge": "Tweede druk"
+      "voorraad": 10
     },
     {
       "slug": "beteta-jpii",
@@ -61,9 +55,7 @@
       "summary": "Papieren uitgave van De Dialoog, zachte kaft, eerste druk",
       "price_cents": 375,
       "cover": "P. Beteta - Wat moet ik doen.png",
-      "staff_pick": true,
-      "voorraad": 10,
-      "badge": "Eerste druk"
+      "voorraad": 10
     },
     {
       "slug": "pitre-geestelijk-leven",
@@ -74,9 +66,8 @@
       "summary": "Papieren uitgave van De Dialoog, zachte kaft, eerste druk",
       "price_cents": 2275,
       "cover": "Brant Pitre - Inleiding tot het geestelijk leven.png",
-      "staff_pick": true,
       "voorraad": 10,
-      "badge": "Eerste druk"
+      "badge": "center"
     },
     {
       "slug": "morales-theologie",
@@ -87,9 +78,7 @@
       "summary": "Papieren uitgave van De Dialoog, zachte kaft, eerste druk",
       "price_cents": 2275,
       "cover": "Jose Morales - Inleiding tot de Theologie.png",
-      "staff_pick": true,
-      "voorraad": 10,
-      "badge": "Eerste druk"
+      "voorraad": 10
     },
     {
       "slug": "carceles-avonturen",
@@ -100,9 +89,7 @@
       "summary": "Papieren uitgave van De Dialoog, zachte kaft, eerste druk",
       "price_cents": 2275,
       "cover": "Miguel Angel Carceles - De avonturen van Josemaria.png",
-      "staff_pick": true,
-      "voorraad": 10,
-      "badge": "Eerste druk"
+      "voorraad": 10
     },
     {
       "slug": "sarah-benedictus",
@@ -113,9 +100,7 @@
       "summary": "Papieren uitgave van De Dialoog, zachte kaft, eerste druk",
       "price_cents": 2275,
       "cover": "Robert Sarah - Hij heeft ons zoveel gegeven.png",
-      "staff_pick": true,
-      "voorraad": 10,
-      "badge": "Eerste druk"
+      "voorraad": 10
     }
   ]
 }

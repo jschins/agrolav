@@ -310,7 +310,18 @@ table.plain.wide {{
   max-width: none;
   table-layout: fixed;
 }}
-table.plain.wide input[type="number"] {{ width: 100%; max-width: none; }}
+table.plain.wide th,
+table.plain.wide td {{
+  padding: 0.12rem 0.45rem;
+  line-height: 1.15;
+}}
+table.plain.wide input[type="number"] {{
+  width: 100%;
+  max-width: none;
+  padding: 0.05rem 0.35rem;
+  line-height: 1.15;
+  font-size: 1rem;
+}}
 td.clip {{ position: relative; overflow: visible; }}
 td.clip span {{
   display: block;
@@ -386,8 +397,13 @@ def _nav(active: str, cart_count: int) -> str:
     return "\n      ".join(links)
 
 
+def _centered(book: Book) -> bool:
+    return book.badge.casefold() == "center"
+
+
 def _cover(book: Book) -> str:
-    badge = f'<span class="badge">{escape(book.badge)}</span>' if book.badge else ""
+    label = "" if _centered(book) else book.badge
+    badge = f'<span class="badge">{escape(label)}</span>' if label else ""
     return (
         f'<div class="cover"><img src="/omslag/{escape(book.slug)}" alt="{escape(book.title)}"></div>'
         f'<div class="mono">{escape(book.genre)}</div>'
@@ -412,10 +428,9 @@ def _head(label: str, heading: str) -> str:
 
 def _featured(catalog: Catalog) -> Book:
     for book in catalog.books:
-        if "week" in book.badge.casefold():
+        if _centered(book):
             return book
-    picks = catalog.staff_picks()
-    return picks[0]
+    return catalog.books[0]
 
 
 _CAROUSEL = """
@@ -534,7 +549,8 @@ def about_page(catalog: Catalog, cart_count: int) -> str:
 
 
 def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
-    badge = f'<p><span class="badge">{escape(book.badge)}</span></p>' if book.badge else ""
+    label = "" if _centered(book) else book.badge
+    badge = f'<p><span class="badge">{escape(label)}</span></p>' if label else ""
     body = f"""
 <main class="wrap" style="padding:3rem 1.5rem 4rem">
   <div class="hero">
