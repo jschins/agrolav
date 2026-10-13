@@ -178,11 +178,17 @@ h1 {{ font-size: clamp(2.6rem, 5vw, 4.4rem); max-width: 14ch; }}
   scroll-snap-type: x mandatory;
   padding-bottom: 0.75rem;
 }}
+main.home-main {{
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 4.25rem);
+}}
 .rail.home {{
   position: relative;
   width: 100%;
+  flex: 1;
   align-items: center;
-  min-height: calc(100vh - 4.25rem);
+  min-height: 0;
   gap: 1.25rem;
   padding: 1.5rem calc(50vw - 8rem);
   overflow-x: auto;
@@ -227,19 +233,43 @@ h1 {{ font-size: clamp(2.6rem, 5vw, 4.4rem); max-width: 14ch; }}
   font-family: "Alegreya Sans", sans-serif;
   font-size: 0.78rem;
 }}
-.genres {{
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  background: var(--border);
-  border: 1px solid var(--border);
+.home-filters {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.7rem 1.5rem 0;
 }}
-.genres a {{
+.filter {{ position: relative; }}
+.filter-menu {{
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 3;
+  min-width: 16rem;
+  max-height: 18rem;
+  overflow: auto;
+  margin: 0.3rem 0 0;
+  padding: 0.25rem 0;
+  list-style: none;
   background: var(--card);
-  text-decoration: none;
-  padding: 1.4rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(34, 28, 21, 0.12);
 }}
-.genres a:hover {{ background: var(--secondary); }}
+.filter.open .filter-menu {{ display: block; }}
+.filter-menu button {{
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}}
+.filter-menu button:hover {{ background: var(--secondary); }}
 .band {{
   background: var(--secondary);
   margin-top: 3.5rem;
@@ -353,7 +383,6 @@ main.invoice {{
 main.invoice table.plain {{ margin-top: auto; }}
 @media (max-width: 800px) {{
   .hero {{ grid-template-columns: 1fr; }}
-  .genres {{ grid-template-columns: 1fr; }}
   .event {{ grid-template-columns: 1fr; }}
 }}
 </style>
@@ -374,7 +403,7 @@ main.invoice table.plain {{ margin-top: auto; }}
 """
 
 
-MENU = ("home", "genres", "agenda", "over", "rekening", "winkelwagen")
+MENU = ("home", "agenda", "over", "rekening", "winkelwagen")
 
 
 def menu_href(address: str) -> str:
@@ -416,7 +445,25 @@ def _cover(book: Book) -> str:
 
 def _book_card(book: Book, week: bool = False) -> str:
     mark = ' data-week="1"' if week else ""
-    return f'<a class="card book" href="/boeken/{escape(book.slug)}"{mark}>{_cover(book)}</a>'
+    return (
+        f'<a class="card book" href="/boeken/{escape(book.slug)}"'
+        f' data-genre="{escape(book.genre)}" data-author="{escape(book.author)}"{mark}>'
+        f"{_cover(book)}</a>"
+    )
+
+
+def _choices(name: str, options: list[str]) -> str:
+    rows = ['<li><button type="button" data-value="">Alle (geen selectie)</button></li>']
+    for option in options:
+        rows.append(
+            f'<li><button type="button" data-value="{escape(option)}">{escape(option)}</button></li>'
+        )
+    return (
+        f'<div class="filter" data-name="{escape(name)}">'
+        f'<button type="button" class="btn ghost filter-knob">{escape(name)}</button>'
+        f'<ul class="filter-menu">{"".join(rows)}</ul>'
+        f"</div>"
+    )
 
 
 def _head(label: str, heading: str) -> str:
@@ -444,9 +491,54 @@ _CAROUSEL = """
   var dragged = false;
   function centerWeek() {
     var week = rail.querySelector("[data-week]");
-    if (!week) return;
+    if (!week || week.hidden) {
+      rail.scrollLeft = 0;
+      return;
+    }
     rail.scrollLeft = week.offsetLeft - (rail.clientWidth - week.offsetWidth) / 2;
   }
+  function applyFilters() {
+    var genre = "";
+    var author = "";
+    document.querySelectorAll(".filter").forEach(function (filter) {
+      var value = filter.dataset.value || "";
+      if (filter.dataset.name === "genre") genre = value;
+      if (filter.dataset.name === "author") author = value;
+    });
+    rail.querySelectorAll(".book").forEach(function (card) {
+      var show = (!genre || card.dataset.genre === genre) && (!author || card.dataset.author === author);
+      card.hidden = !show;
+    });
+    centerWeek();
+  }
+  document.querySelectorAll(".filter").forEach(function (filter) {
+    var knob = filter.querySelector(".filter-knob");
+    var name = filter.dataset.name;
+    knob.addEventListener("click", function (event) {
+      event.stopPropagation();
+      var open = filter.classList.contains("open");
+      document.querySelectorAll(".filter.open").forEach(function (other) {
+        other.classList.remove("open");
+      });
+      if (!open) filter.classList.add("open");
+    });
+    filter.querySelectorAll(".filter-menu button").forEach(function (choice) {
+      choice.addEventListener("click", function (event) {
+        event.stopPropagation();
+        var value = choice.getAttribute("data-value") || "";
+        if (value) filter.dataset.value = value;
+        else delete filter.dataset.value;
+        knob.textContent = value ? name + ": " + value : name;
+        filter.classList.remove("open");
+        applyFilters();
+      });
+    });
+  });
+  document.addEventListener("click", function () {
+    document.querySelectorAll(".filter.open").forEach(function (filter) {
+      filter.classList.remove("open");
+    });
+  });
   centerWeek();
   window.addEventListener("resize", centerWeek);
   rail.addEventListener("dragstart", function (event) { event.preventDefault(); });
@@ -485,32 +577,19 @@ _CAROUSEL = """
 def home_page(catalog: Catalog, cart_count: int) -> str:
     featured = _featured(catalog)
     cards = "".join(_book_card(book, week=book.slug == featured.slug) for book in catalog.books)
+    genres = sorted({book.genre for book in catalog.books}, key=str.casefold)
+    authors = sorted({book.author for book in catalog.books}, key=str.casefold)
     body = f"""
-<main>
+<main class="home-main">
+  <div class="home-filters">
+    {_choices("genre", genres)}
+    {_choices("author", authors)}
+  </div>
   <div class="rail home" id="home-rail">{cards}</div>
 </main>
 {_CAROUSEL}
 """
     return page(catalog.shop_name, catalog, body, cart_count, menu_href("home"), show_footer=False)
-
-
-def browse_page(catalog: Catalog, cart_count: int, genre: str = "") -> str:
-    chosen = genre.strip()
-    books = [book for book in catalog.books if not chosen or book.genre == chosen]
-    cards = "".join(_book_card(book) for book in books) or "<p>Op deze plank ligt nog niets.</p>"
-    links = "".join(
-        f'<a href="{menu_href("genres")}?genre={escape(name)}">{escape(name)}</a>'
-        for name, _count in catalog.genres()
-    )
-    heading = chosen or "Alle papieren boeken"
-    body = f"""
-<main class="wrap" style="padding-bottom:3rem">
-  <h2>{escape(heading)}</h2>
-  <nav>{links} <a href="{menu_href("genres")}">Alles</a></nav>
-  <div class="shelf" style="margin-top:1.4rem">{cards}</div>
-</main>
-"""
-    return page(menu_header("genres"), catalog, body, cart_count, menu_href("genres"))
 
 
 def events_page(catalog: Catalog, cart_count: int) -> str:

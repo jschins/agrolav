@@ -43,7 +43,6 @@ from app.pages import (
     menu_href,
     about_page,
     book_page,
-    browse_page,
     cart_page,
     checkout_page,
     dev_pay_page,
@@ -212,17 +211,6 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
     @app.get(menu_href("home"), response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
         return html(home_page(catalog, len(cart_of(request))))
-
-    @app.get("/planken")
-    def browse_old(genre: str = "") -> RedirectResponse:
-        target = menu_href("genres")
-        if genre:
-            target = menu_href("genres") + "?genre=" + genre
-        return RedirectResponse(target, status_code=301)
-
-    @app.get(menu_href("genres"), response_class=HTMLResponse)
-    def browse(request: Request, genre: str = "") -> HTMLResponse:
-        return html(browse_page(catalog, len(cart_of(request)), genre))
 
     @app.get(menu_href("agenda"), response_class=HTMLResponse)
     def events(request: Request) -> HTMLResponse:

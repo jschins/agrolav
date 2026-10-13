@@ -62,12 +62,6 @@ class Catalog:
             found.append(book)
         return found
 
-    def genres(self) -> list[tuple[str, int]]:
-        counts: dict[str, int] = {}
-        for book in self.books:
-            counts[book.genre] = counts.get(book.genre, 0) + 1
-        return sorted(counts.items(), key=lambda item: (-item[1], item[0].casefold()))
-
 
 def vat_cents(amount_cents: int, rate: Decimal) -> int:
     """VAT part of a VAT-inclusive amount, rounded to the cent."""
