@@ -12,7 +12,18 @@ _FONTS = (
 )
 
 
-def page(title: str, catalog: Catalog, body: str, cart_count: int, active: str = "") -> str:
+def page(title: str, catalog: Catalog, body: str, cart_count: int, active: str = "", show_footer: bool = True) -> str:
+    footer = ""
+    if show_footer:
+        footer = f"""<footer class="band">
+  <div class="wrap foot">
+    <div>
+      <strong>{escape(catalog.shop_name)}</strong>
+      <div>{escape(catalog.place)}</div>
+    </div>
+    <div>{escape(catalog.hours)}</div>
+  </div>
+</footer>"""
     return f"""<!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -167,6 +178,22 @@ h1 {{ font-size: clamp(2.6rem, 5vw, 4.4rem); max-width: 14ch; }}
   scroll-snap-type: x mandatory;
   padding-bottom: 0.75rem;
 }}
+.rail.home {{
+  position: relative;
+  width: 100%;
+  align-items: center;
+  min-height: calc(100vh - 4.25rem);
+  gap: 1.25rem;
+  padding: 1.5rem calc(50vw - 8rem);
+  overflow-x: auto;
+  scroll-snap-type: none;
+  scrollbar-width: none;
+  cursor: grab;
+  user-select: none;
+}}
+.rail.home::-webkit-scrollbar {{ display: none; }}
+.rail.home.dragging {{ cursor: grabbing; }}
+.rail.home img {{ pointer-events: none; -webkit-user-drag: none; }}
 .rail > .book {{
   flex: 0 0 16rem;
   width: 16rem;
@@ -296,15 +323,7 @@ main.invoice table.plain {{ margin-top: auto; }}
   </div>
 </header>
 {body}
-<footer class="band">
-  <div class="wrap foot">
-    <div>
-      <strong>{escape(catalog.shop_name)}</strong>
-      <div>{escape(catalog.place)}</div>
-    </div>
-    <div>{escape(catalog.hours)}</div>
-  </div>
-</footer>
+{footer}
 </body>
 </html>
 """
@@ -345,8 +364,9 @@ def _cover(book: Book) -> str:
     )
 
 
-def _book_card(book: Book) -> str:
-    return f'<a class="card book" href="/boeken/{escape(book.slug)}">{_cover(book)}</a>'
+def _book_card(book: Book, week: bool = False) -> str:
+    mark = ' data-week="1"' if week else ""
+    return f'<a class="card book" href="/boeken/{escape(book.slug)}"{mark}>{_cover(book)}</a>'
 
 
 def _head(label: str, heading: str) -> str:
@@ -364,36 +384,65 @@ def _featured(catalog: Catalog) -> Book:
     return picks[0]
 
 
+_CAROUSEL = """
+<script>
+(function () {
+  var rail = document.getElementById("home-rail");
+  if (!rail) return;
+  var down = false;
+  var startX = 0;
+  var startScroll = 0;
+  var dragged = false;
+  function centerWeek() {
+    var week = rail.querySelector("[data-week]");
+    if (!week) return;
+    rail.scrollLeft = week.offsetLeft - (rail.clientWidth - week.offsetWidth) / 2;
+  }
+  centerWeek();
+  window.addEventListener("resize", centerWeek);
+  rail.addEventListener("dragstart", function (event) { event.preventDefault(); });
+  rail.addEventListener("pointerdown", function (event) {
+    if (event.pointerType === "touch" || event.button !== 0) return;
+    down = true;
+    dragged = false;
+    startX = event.clientX;
+    startScroll = rail.scrollLeft;
+    rail.classList.add("dragging");
+    rail.setPointerCapture(event.pointerId);
+  });
+  rail.addEventListener("pointermove", function (event) {
+    if (!down) return;
+    var dx = event.clientX - startX;
+    if (Math.abs(dx) > 5) dragged = true;
+    rail.scrollLeft = startScroll - dx;
+  });
+  function endDrag() {
+    down = false;
+    rail.classList.remove("dragging");
+  }
+  rail.addEventListener("pointerup", endDrag);
+  rail.addEventListener("pointercancel", endDrag);
+  rail.addEventListener("click", function (event) {
+    if (!dragged) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragged = false;
+  }, true);
+})();
+</script>
+"""
+
+
 def home_page(catalog: Catalog, cart_count: int) -> str:
     featured = _featured(catalog)
-    picks = "".join(_book_card(book) for book in catalog.staff_picks())
-    quote = ""
-    if catalog.quote:
-        quote = (
-            f'<section class="band"><div class="wrap"><blockquote>{escape(catalog.quote)}'
-            f"<cite>{escape(catalog.quote_by)}</cite></blockquote></div></section>"
-        )
+    cards = "".join(_book_card(book, week=book.slug == featured.slug) for book in catalog.books)
     body = f"""
 <main>
-  <div class="wrap hero">
-    <div>
-      <p class="kicker">{escape(catalog.hero_kicker)}</p>
-      <h1>{escape(catalog.hero_title)}</h1>
-      <hr class="rule">
-      <p class="lede">{escape(catalog.hero_text)}</p>
-    </div>
-    <aside class="card week">
-      <a class="book" href="/boeken/{escape(featured.slug)}">{_cover(featured)}</a>
-    </aside>
-  </div>
-  <div class="wrap" id="keuzes">
-    {_head("Keuze van de winkel", "Op de toontafel")}
-    <div class="rail">{picks}</div>
-  </div>
-  {quote}
+  <div class="rail home" id="home-rail">{cards}</div>
 </main>
+{_CAROUSEL}
 """
-    return page(catalog.shop_name, catalog, body, cart_count, menu_href("home"))
+    return page(catalog.shop_name, catalog, body, cart_count, menu_href("home"), show_footer=False)
 
 
 def browse_page(catalog: Catalog, cart_count: int, genre: str = "") -> str:

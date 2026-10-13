@@ -23,6 +23,7 @@
       "price_cents": 875,
       "cover": "Jacques Philippe - De innerlijke rust.png",
       "staff_pick": false,
+      "voorraad": 10,
       "badge": "Boek van de week"
     },
     {
@@ -35,6 +36,7 @@
       "price_cents": 1475,
       "cover": "Catharina van Siena - De Dialoog.png",
       "staff_pick": true,
+      "voorraad": 10,
       "badge": "Tweede druk"
     },
     {
@@ -47,6 +49,7 @@
       "price_cents": 1475,
       "cover": "S. Bernal - Mgr. Escriva de Balaguer.png",
       "staff_pick": false,
+      "voorraad": 10,
       "badge": "Tweede druk"
     },
     {
@@ -59,6 +62,7 @@
       "price_cents": 375,
       "cover": "P. Beteta - Wat moet ik doen.png",
       "staff_pick": true,
+      "voorraad": 10,
       "badge": "Eerste druk"
     },
     {
@@ -71,6 +75,7 @@
       "price_cents": 2275,
       "cover": "Brant Pitre - Inleiding tot het geestelijk leven.png",
       "staff_pick": true,
+      "voorraad": 10,
       "badge": "Eerste druk"
     },
     {
@@ -83,6 +88,7 @@
       "price_cents": 2275,
       "cover": "Jose Morales - Inleiding tot de Theologie.png",
       "staff_pick": true,
+      "voorraad": 10,
       "badge": "Eerste druk"
     },
     {
@@ -95,6 +101,7 @@
       "price_cents": 2275,
       "cover": "Miguel Angel Carceles - De avonturen van Josemaria.png",
       "staff_pick": true,
+      "voorraad": 10,
       "badge": "Eerste druk"
     },
     {
@@ -107,6 +114,7 @@
       "price_cents": 2275,
       "cover": "Robert Sarah - Hij heeft ons zoveel gegeven.png",
       "staff_pick": true,
+      "voorraad": 10,
       "badge": "Eerste druk"
     }
   ]
