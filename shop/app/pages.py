@@ -192,7 +192,31 @@ h1 {{ font-size: clamp(2.6rem, 5vw, 4.4rem); max-width: 14ch; }}
 main.home-main {{
   display: flex;
   flex-direction: column;
+  position: relative;
   min-height: calc(100vh - 4.25rem);
+  --edge: max(1.5rem, calc((100% - 72rem) / 2 + 1.5rem));
+}}
+main.home-main::before,
+main.home-main::after {{
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--edge);
+  z-index: 1;
+  pointer-events: none;
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}}
+main.home-main::before {{
+  left: 0;
+  mask-image: linear-gradient(to right, #000, transparent);
+  -webkit-mask-image: linear-gradient(to right, #000, transparent);
+}}
+main.home-main::after {{
+  right: 0;
+  mask-image: linear-gradient(to left, #000, transparent);
+  -webkit-mask-image: linear-gradient(to left, #000, transparent);
 }}
 .rail.home {{
   position: relative;
@@ -264,7 +288,10 @@ main.home-main.none .rail.home {{ display: none; }}
 .home-filters {{
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.75rem;
+  max-width: 72rem;
+  margin: 0 auto;
   padding: 0.7rem 1.5rem 0;
 }}
 .filter {{ position: relative; }}

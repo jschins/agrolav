@@ -1,5 +1,5 @@
 {
-  "shop_name": "De Boog",
+  "shop_name": "Uitgeverij De Boog",
   "seller_line": "Papieren boeken. De prijs is de prijs van het exemplaar, inclusief btw. Na betaling wordt het naar het opgegeven adres gestuurd.",
   "vat_rate": 0.09,
   "vat_label": "btw 9% (papieren boeken, Nederland), inbegrepen in de prijs",
@@ -9,8 +9,8 @@
   "hero_title": "Twee exemplaren op de toontafel",
   "hero_text": "De innerlijke rust en De Dialoog, op papier. Er is geen digitaal bestand: u koopt een exemplaar, en dat exemplaar wordt bezorgd.",
   "quote": "Een exemplaar dat u in de hand kunt houden.",
-  "quote_by": "De Boog",
-  "about": "De Boog verkoopt papieren boeken en e-books, aan privé klanten en aan winkels.\n\nElk exemplaar gaat na betaling naar het adres dat u bij het afrekenen opgeeft. De betaling loopt via Mollie. Deze site vraagt geen kaartnummer.",
+  "quote_by": "Uitgeverij De Boog",
+  "about": "Uitgeverij De Boog verkoopt papieren boeken en e-books, aan privé klanten en aan winkels.\n\nElk exemplaar gaat na betaling naar het adres dat u bij het afrekenen opgeeft. De betaling loopt via Mollie. Deze site vraagt geen kaartnummer.",
   "events": [],
   "books": [
     {

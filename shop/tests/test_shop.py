@@ -90,6 +90,8 @@ class ShopFlowTests(unittest.TestCase):
             self.assertNotIn("Het boek van deze week", home.text)
             self.assertIn('<html lang="nl" class="home">', home.text)
             self.assertIn("zoom: 0.9", home.text)
+            self.assertIn("backdrop-filter: blur(22px)", home.text)
+            self.assertIn("linear-gradient(to right, #000, transparent)", home.text)
             self.assertIn("html.home {", home.text)
             self.assertIn('class="selected" href="/"', home.text)
             over = client.get("/over")
