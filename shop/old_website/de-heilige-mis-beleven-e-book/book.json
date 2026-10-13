@@ -1,0 +1,41 @@
+{
+  "slug": "de-heilige-mis-beleven-e-book",
+  "titel": "De heilige Mis beleven (e-book)",
+  "auteur": "Javier Echevarria",
+  "genre": "E-book, Sacramenten",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "97890.6257091.1",
+  "prijs_cent": 760,
+  "cover": "0-221.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "een persoonlijke ontmoeting met God",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "7.6",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "De schrijver wil priesters en leken stof ter overweging bij de heilige Mis aanbieden, een handreiking die nauwkeurig de liturgische riten volgt.\n\nEn sterke drijfveer hierbij was, zoals hij schrijft: \"dat bij mij en bij veel anderen deze grote wens van de heilige Jozefmaria in vervulling mag gaan: 'Bovenal moeten wij gehecht zijn aan de heilige Mis, het centrum van onze dag. Als wij de Mis goed beleven, dan kunnen we niet anders dan de rest van de dag doorbrengen met onze gedachten bij God, ervoor zorgen dat wij bij Hem blijven, werken zoals Hij, beminnen zoals Hij'.\"\n\nIn de Inleiding zegt hij verder: \"Met deze bladzijden wil ik uiting geven aan mijn verlangen de aanbevelingen van de heilige Vader te steunen, waarbij ik de heilige Drieeenheid smeek dat zij door tussenkomst van de maagd Maria een heilzaam effect op mijn lezers mogen hebben.\"",
+  "korte_tekst": "Als wij de Mis goed beleven, dan kunnen we niet anders dan de rest van de dag doorbrengen met onze gedachten bij God.",
+  "velden": {
+    "ondertitel": "een persoonlijke ontmoeting met God",
+    "isbn": "97890.6257091.1",
+    "uitvoering": "E-book",
+    "aantal_paginas": "208",
+    "speelduur": "",
+    "leesproef": "5893",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-221.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-221.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-heilige-mis-beleven-e-book/"
+}

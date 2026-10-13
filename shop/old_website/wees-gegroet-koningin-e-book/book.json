@@ -1,0 +1,41 @@
+{
+  "slug": "wees-gegroet-koningin-e-book",
+  "titel": "Wees gegroet Koningin (e-book)",
+  "auteur": "Scott Hahn",
+  "genre": "E-book, Maria Fatima Lourdes, Scott Hahn",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90.6257.060.7",
+  "prijs_cent": 780,
+  "cover": "0-195.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "De Moeder van God in het Woord van God",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "7.8",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Scott Hahn vertelt zijn verhaal op een persoonlijke en bescheiden wijze, zich altijd bewust\n\n van de foutieve interpretaties inzake de Mariale leer en devotie, die hij ooit, in zijn jeugdige antikatholieke dagen, aanhing.\n\nDoor het schrijven van dit boek heeft hij de gelegenheid om deze interpretaties te corrigeren. Maar zijn belangrijkste motief is om te schrijven voor alle christenen die willen luisteren, met name voor zijn medekatholieken, want hij wil dat zij de plaats van Maria in hun leven gaan waarderen.\n\n(Uit het Voorwoord)\n\n'Scott Hahn heeft de wonderen, die God in Maria heeft bewerkstelligd, overwogen. En hij wil deze met ons delen. Hij nodigt ons uit om met liefde op te zien naar onze moeder en koningin. Zij is het model en voorbeeld voor al haar kinderen. Eens zal zij ons bij de hand nemen en ons liefdevol leiden naar de Vader, de Zoon, en de heilige Geest'.",
+  "korte_tekst": "Scott Hahn vertelt zijn verhaal op een persoonlijke en bescheiden wijze, zich altijd bewust\n\n van de foutieve interpretaties inzake de Mariale leer en devotie, die hij ooit, in zijn jeugdige antikatholieke dagen, aanhing.",
+  "velden": {
+    "ondertitel": "De Moeder van God in het Woord van God",
+    "isbn": "90.6257.060.7",
+    "uitvoering": "E-book",
+    "aantal_paginas": "144",
+    "speelduur": "",
+    "leesproef": "6643",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-195.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-195.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/wees-gegroet-koningin-e-book/"
+}

@@ -1,0 +1,41 @@
+{
+  "slug": "de-weg-e-book",
+  "titel": "De Weg (e-book)",
+  "auteur": "Jozefmaria Escriva",
+  "genre": "E-book, Gebed meditatief, Van Jozefmaria Escriva",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-014-3",
+  "prijs_cent": 750,
+  "cover": "0-167.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "7.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "\"Mgr. Escrivá heeft iets geschreven, dat meer is dan een meesterwerk; hij heeft zijn inspiratie regelrecht uit zijn hart geput; de korte paragrafen, die samen De Weg vormen, gaan ook regelrecht naar het hart van de lezer\" (L' Osservatore Romano 24-3-1950).\n\nDe Weg is niet enkel een weergave van de spiritualiteit van het Opus Dei, de door de heilige Jozefmaria gestichte instelling. Zijn belangrijkste eigenschap is dat het het woord van Christus verkondigt, dat geen dood woord is maar een levende werkelijkheid, in staat om het leven te veranderen van iedere mens die zijn hart daarvoor niet sluit.\n\nVan dit boek zijn meer dan 4,5 miljoen exemplaren in 45 talen gedrukt.",
+  "korte_tekst": "999 korte paragrafen, regelrecht uit het hart, om met God in ons persoonlijk gebed te bespreken.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-014-3",
+    "uitvoering": "E-book",
+    "aantal_paginas": "343",
+    "speelduur": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}",
+    "leesproef": "6325"
+  },
+  "images": [
+    {
+      "file": "0-167.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-167.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-weg-e-book/"
+}

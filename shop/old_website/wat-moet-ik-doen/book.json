@@ -1,0 +1,41 @@
+{
+  "slug": "wat-moet-ik-doen",
+  "titel": "Wat moet ik doen",
+  "auteur": "P. Beteta",
+  "genre": "Christelijk leven, Jeugd en jongeren",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-158-1",
+  "prijs_cent": 375,
+  "cover": "0-61.jpg",
+  "voorraad": 896,
+  "status": "publish",
+  "ondertitel": "Johannes Paulus II tot de jongeren",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "3.75",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Dit boek bevat een selectie van teksten uit de ontmoetingen van paus Johannes Paulus II met jongeren van de hele wereld. Hij behandelt de verschillende soorten roeping: volledige overgave midden in de wereld, huwelijk, priesterschap, religieuze leven.\n\nDe woorden van de paus zijn een uitstekende gids om diep in ons hart te ontdekken wat God van ons wil.",
+  "korte_tekst": "Paus Johannes Paulus II (1920-2005) legt de jongeren uit hoe mooi het is geroepen te worden en hoe je er aan kunt beantwoorden.",
+  "velden": {
+    "ondertitel": "Johannes Paulus II tot de jongeren",
+    "isbn": "90-6257-158-1",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "60",
+    "speelduur": "",
+    "leesproef": "6059",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-61.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-61.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/wat-moet-ik-doen/"
+}

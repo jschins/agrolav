@@ -1,0 +1,41 @@
+{
+  "slug": "de-kerststal-van-god-e-book",
+  "titel": "De Kerststal van God (e-book)",
+  "auteur": "Enrique Monasterio",
+  "genre": "E-book, Kinderboeken",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-032-1",
+  "prijs_cent": 650,
+  "cover": "0-160.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "6.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "De kerststal van God is een boek voor Kerstmis en voor iedere andere dag van het jaar. De lezer merkt onmiddellijk dat deze kerststal de pracht is waarmee God het heelal wilde bekronen, met het oog op de Menswording van Zijn eengeboren Zoon.\n\nMet 23 oorspronkelijke paginagrote full-color illustraties door de Spaanse kunstenaresse Hortensia Nuñez",
+  "korte_tekst": "Nog voor de schepping wist God al hoe zijn Kerststal er uit zou komen te zien.\n\nOnderhoudend en opvoedend sprookje.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-032-1",
+    "uitvoering": "E-book",
+    "aantal_paginas": "144",
+    "speelduur": "",
+    "leesproef": "5922",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-160.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-160.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-kerststal-van-god-e-book/"
+}

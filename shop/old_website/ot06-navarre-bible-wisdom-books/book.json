@@ -1,0 +1,76 @@
+{
+  "slug": "ot06-navarre-bible-wisdom-books",
+  "titel": "OT06 Navarre Bible Wisdom Books",
+  "auteur": "",
+  "genre": "Bijbel, Harde kaft",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-741-2",
+  "prijs_cent": 4500,
+  "cover": "0-140.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Harde kaft",
+  "uitgelicht": [],
+  "prijs": "45",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Bevat de boeken; Job, Spreuken, Prediker (Ecclesiastes), Wijsheid, Ecclesiasticus (Wijsheid van Jezus Sirach).",
+  "korte_tekst": "Bevat de boeken; Job, Spreuken, Prediker (Ecclesiastes), Wijsheid, Ecclesiasticus (Wijsheid van Jezus Sirach).",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-741-2",
+    "uitvoering": "Harde kaft",
+    "aantal_paginas": "560",
+    "speelduur": "",
+    "ff_builder_status": "{\"usage\":\"never\"}",
+    "leesproef": "",
+    "slide_template": "default"
+  },
+  "images": [
+    {
+      "file": "0-140.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-140.jpg",
+      "alt": ""
+    },
+    {
+      "file": "2-57.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/2-57.jpg",
+      "alt": ""
+    },
+    {
+      "file": "3-58.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/3-58.jpg",
+      "alt": ""
+    },
+    {
+      "file": "4-57.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/4-57.jpg",
+      "alt": ""
+    },
+    {
+      "file": "5-58.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/5-58.jpg",
+      "alt": ""
+    },
+    {
+      "file": "6-54.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/6-54.jpg",
+      "alt": ""
+    },
+    {
+      "file": "7-50.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/7-50.jpg",
+      "alt": ""
+    },
+    {
+      "file": "8-41.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/8-41.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/ot06-navarre-bible-wisdom-books/"
+}

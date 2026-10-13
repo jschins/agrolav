@@ -1,0 +1,41 @@
+{
+  "slug": "trouwen-of-samenwonen-e-book",
+  "titel": "Trouwen of Samenwonen (e-book)",
+  "auteur": "Anthony Garascia",
+  "genre": "E-book, Huwelijk gezin opvoeding",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "",
+  "prijs_cent": 235,
+  "cover": "0-198.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "2.35",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Dit boekje is zowel voor stellen die reeds samenwonen als voor elk verloofd stel dat een kerkelijk huwelijk wenst, een hulpmiddel om met andere ogen naar dit onderwerp te kijken. Het boekje bevat:\n\nEen andere kijk op de acht meest gebruikelijke opvattingen inzake het samenwonen.\nBruikbare beschrijvingen van negen mogelijke problemen die, door samen te wonen, in de toekomst veroorzaakt kunnen worden.\n\nTevens zijn vragen bijgevoegd om stellen te helpen een inschatting te maken van hun eigen situatie. Acht positieve stappen die stellen kunnen zetten om hun kans op toekomstig geluk zo groot mogelijk te maken.",
+  "korte_tekst": "Mgr. Hurkmans schrijft: Dit boekje is dienstbaar voor zowel samenwonenden als kerkelijke bedienaren. Reden voor mij om dit boekje dan ook van harte bij u aan te bevelen.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "",
+    "uitvoering": "E-book",
+    "aantal_paginas": "48",
+    "speelduur": "",
+    "leesproef": "6220",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-198.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-198.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/trouwen-of-samenwonen-e-book/"
+}

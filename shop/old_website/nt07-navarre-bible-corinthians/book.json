@@ -1,0 +1,40 @@
+{
+  "slug": "nt07-navarre-bible-corinthians",
+  "titel": "NT07 Navarre Bible Corinthians",
+  "auteur": "- -",
+  "genre": "Bijbel",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-065-5",
+  "prijs_cent": 1850,
+  "cover": "0-23.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "18.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Het enorme aantal uitgebreide voetnoten neemt bijna de helft van het boek in beslag. Toch is er nog ruimte voor een schitterende verhandeling over de Goddelijke inspiratie van de H.Schrift.",
+  "korte_tekst": "De eerste en tweede brief van de H. Paulus aan de Korintiërs.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-065-5",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-23.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-23.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/nt07-navarre-bible-corinthians/"
+}

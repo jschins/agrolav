@@ -1,0 +1,41 @@
+{
+  "slug": "ik-heb-dorst",
+  "titel": "Ik heb dorst",
+  "auteur": "Jacques Gauthier",
+  "genre": "Bijzondere levens, Lijden",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "9,79E+12",
+  "prijs_cent": 975,
+  "cover": "scannen0000-21.jpg",
+  "voorraad": 11,
+  "status": "publish",
+  "ondertitel": "Thérèse van Lisieux en Moeder Teresa van Calcutta",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "9.75",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Op 4 september a.s. wordt Moeder Teresa van Calcutta heiligverklaard, precies één de dag vóór haar 19e sterfdag. Naar aanleiding van deze historische gebeurtenis brengt Betsaida, in samenwerking met het Katholiek Alpha Centrum en met De Boog, een boek uit over deze grote heilige.\n\nJacques Gauthier plaats in Ik heb dorst Moeder Teresa en de heilige Thérèse van Lisieux naast elkaar. Gauthier bespreekt het verlangen naar God van deze heiligen, dat hen beiden gemaakt heeft tot patrones van de missiën.",
+  "korte_tekst": "Een toegankelijk boek dat een absolute aanrader is voor ieder die de heilige Moeder Teresa van binnen uit wil begrijpen.",
+  "velden": {
+    "ondertitel": "Thérèse van Lisieux en Moeder Teresa van Calcutta",
+    "isbn": "9,79E+12",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "133",
+    "speelduur": "",
+    "leesproef": "5912",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "scannen0000-21.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/scannen0000-21.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/ik-heb-dorst/"
+}

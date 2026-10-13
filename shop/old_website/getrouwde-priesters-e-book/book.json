@@ -1,0 +1,41 @@
+{
+  "slug": "getrouwde-priesters-e-book",
+  "titel": "Getrouwde priesters (e-book)",
+  "auteur": "Arturo Cattaneo",
+  "genre": "E-book, Sacramenten",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "9,79E+12",
+  "prijs_cent": 940,
+  "cover": "0-227.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "30 prangende vragen over het celibaat",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "9.4",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Wij willen onze lezers uitleggen waarom het celibaat voor de Kerk zo belangrijk is. Voor dit doel worden de meest veelvuldige en kritische bezwaren tegen het celibaat van de priester, volgens verschillende thematische aspecten gesorteerd en beantwoord. Om het lezen te vergemakkelijken, zijn de antwoorden bewust strak gehouden. Op het eind van het boek zijn bovendien uittreksels samengesteld uit de belangrijkste leerstellige documenten en een bibliografie, voor al degenen die zich uitvoeriger met het thema willen bezighouden.\n\nThematische aspecten: Het celibaat van de priester historisch bezien - De theologische motivatie - Gevoelsleven en seksualiteit - Het onderkennen en begeleiden van een roeping - Het celibaat in het leven van de priester - Celibaat en inculturatie.\n\nHet boek werd onder meer uitgebreid en positief besproken in Osservatore Romano door Kard. Peter Erdo, Primaat van Hongarije en voorzitter van de koepel van de Europese bisschopconferenties, met de wens van een ruime verspreiding.",
+  "korte_tekst": "Uitleg waarom het celibaat voor de Kerk zo belangrijk is.",
+  "velden": {
+    "ondertitel": "30 prangende vragen over het celibaat",
+    "isbn": "9,79E+12",
+    "uitvoering": "E-book",
+    "aantal_paginas": "169",
+    "speelduur": "",
+    "leesproef": "6558",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-227.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-227.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/getrouwde-priesters-e-book/"
+}

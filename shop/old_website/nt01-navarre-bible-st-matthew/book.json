@@ -1,0 +1,40 @@
+{
+  "slug": "nt01-navarre-bible-st-matthew",
+  "titel": "NT01 Navarre Bible St Matthew",
+  "auteur": "",
+  "genre": "Bijbel",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-058-2",
+  "prijs_cent": 1850,
+  "cover": "0-42.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "18.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Een bijzonder interessante inleiding geeft bijzonderheden over de persoon van de evangelist en tevens dieper inzicht in de goddelijke inspiratie die de hand van de schrijver bewogen heeft.",
+  "korte_tekst": "H.Evangelie volgens de H. Mattheus.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-058-2",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-42.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-42.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/nt01-navarre-bible-st-matthew/"
+}

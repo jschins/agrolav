@@ -1,0 +1,41 @@
+{
+  "slug": "hoe-bidden-wij-goed-e-book",
+  "titel": "Hoe bidden wij goed (e-book)",
+  "auteur": "F. Luna",
+  "genre": "E-book, Gebed meditatief",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-160-3",
+  "prijs_cent": 255,
+  "cover": "0-151.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "2.55",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Francesco Luna voert de lezer hier naar de praktijk van het meditatieve gebed en de beleving van Gods liefdevolle tegenwoordigheid tijdens de dagelijkse bezigheden. Op deze wijze kunnen we beter inzien wat God op elk moment van ons vraagt.",
+  "korte_tekst": "Een boekje om te leren contemplatief te zijn gedurende de dag.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-160-3",
+    "uitvoering": "E-book",
+    "aantal_paginas": "94",
+    "speelduur": "",
+    "leesproef": "6354",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-151.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-151.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/hoe-bidden-wij-goed-e-book/"
+}

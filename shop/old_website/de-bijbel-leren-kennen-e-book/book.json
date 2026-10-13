@@ -1,0 +1,41 @@
+{
+  "slug": "de-bijbel-leren-kennen-e-book",
+  "titel": "De Bijbel leren kennen (e-book)",
+  "auteur": "Josemaría Monforte",
+  "genre": "Bijbel, E-book",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "9,79E+12",
+  "prijs_cent": 760,
+  "cover": "0-203.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "Inleiding tot de Heilige Schrift",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "7.6",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "De Bijbel is het toppunt van Gods openbaring aan de mens in de geschiedenis. De Bijbel is een literair werk, een specifieke vorm van literatuur, dat een goddelijke heilsboodschap bevat, bedoeld voor alle mensen.\n\nHet eerste deel van dit boek gaat over de goddelijke samenstelling van de Bijbel en zijn menselijke kader: de geschiedenis van de mensen en het schrijfproces van de heilige boeken.\n\nHet tweede deel betreft het literaire aspect van de Bijbel en haar bijzondere kenmerken. Ze is door God geïnspireerd; ze is de geloofsregel en de canon van de gelovigen; ze is uniek en heilig, aangezien God haar auteur is; ze is ten slotte menselijk, dat wil zeggen door mensen geschreven in\n\nmenselijke bewoordingen die interpretatie behoeven.\n\nHet derde deel gaat over haar heilsboodschap. Het goddelijke verlossingsplan, dat in het begin van de mensheid ontstond, ontwikkelt zich in de Bijbel verder en bereikt haar hoogtepunt in Jezus van Nazareth, de mensgeworden Zoon van God. Naast andere taken bewaart de kerk van Christus de goddelijke openbaring in het algemeen en de heilige Schrift in het bijzonder, waarbij zij\n\nzorg draagt dat Gods Woord overal wordt doorgegeven.\n\nEen Bijbelse chronologie en een korte bibliografie besluiten het boek dat ook als tekstboek geschikt is.",
+  "korte_tekst": "De Bijbel is het toppunt van Gods openbaring aan de mens in de geschiedenis. Dit boek gaat over de goddelijke samenstelling van de Bijbel en zijn menselijke kader, het literaire aspect van de Bijbel en haar bijzondere kenmerken en over haar heilsbood",
+  "velden": {
+    "ondertitel": "Inleiding tot de Heilige Schrift",
+    "isbn": "9,79E+12",
+    "uitvoering": "E-book",
+    "aantal_paginas": "176",
+    "speelduur": "",
+    "leesproef": "5984",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-203.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-203.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-bijbel-leren-kennen-e-book/"
+}

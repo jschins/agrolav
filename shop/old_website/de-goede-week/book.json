@@ -1,0 +1,41 @@
+{
+  "slug": "de-goede-week",
+  "titel": "De Goede Week",
+  "auteur": "Javier Echevarria",
+  "genre": "Gebed meditatief, Lijden",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-054-2",
+  "prijs_cent": 200,
+  "cover": "0-76.jpg",
+  "voorraad": 68,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "2",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Overwegingen voor elke dag van de Goede Week, van Palmzondag tot Pasen, geschreven door de prelaat van het Opus Dei. Hij volgt de liturgische teksten en maakt ook gebruik van citaten van paus Johannes Paulus II en van de heilige Jozefmaria Escrivá. Ze zijn uitgezonden door het Amerikaanse radio- en televisiestation Eternal World Television Network (EWTN) van 4 tot en met 11 april 2004.",
+  "korte_tekst": "Overwegingen van de prelaat van het Opus Dei voor elke dag van de Goede Week, van Palmzondag tot Pasen.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-054-2",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "32",
+    "speelduur": "",
+    "leesproef": "8288",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"used\"}"
+  },
+  "images": [
+    {
+      "file": "0-76.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-76.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-goede-week/"
+}

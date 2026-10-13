@@ -1,0 +1,41 @@
+{
+  "slug": "de-smidse-e-book",
+  "titel": "De Smidse (e-book)",
+  "auteur": "Jozefmaria Escriva",
+  "genre": "E-book, Gebed meditatief, Van Jozefmaria Escriva",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-159-x",
+  "prijs_cent": 790,
+  "cover": "0-165.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "7.9",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Het overwegen van de punten van dit boek 'van vuur' dient ook in ons de liefde tot God te doen ontvlammen. Dit was de wens van de schrijver, die in de proloog als volgt verwoordt: \"Waarom zou ik jouw ziel - die van zuiver goud is - dan niet meenemen naar de smidse, haar met vuur en hamer bewerken, en van dit ruwe goud een schitterend juweel maken, om aam mijn God en jouw God aan te bieden?\"",
+  "korte_tekst": "De Smidse vormt samen met \"De Weg\" en \"De Voor\" een trilogie. Het geestelijke leven van de auteur staat centraal. Boek met ruim 1000 korte, diepzinnige overwegingen rond dertien thema's.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-159-x",
+    "uitvoering": "E-book",
+    "aantal_paginas": "351",
+    "speelduur": "",
+    "leesproef": "6348",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-165.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-165.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-smidse-e-book/"
+}

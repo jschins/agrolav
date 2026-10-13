@@ -1,0 +1,40 @@
+{
+  "slug": "nt12-navarre-bible-revelation",
+  "titel": "NT12 Navarre Bible Revelation",
+  "auteur": "- -",
+  "genre": "Bijbel",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-089-2",
+  "prijs_cent": 1850,
+  "cover": "0-25.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "18.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Misschien wel de moeilijkste van de canonieke boeken uit het Nieuwe Testament. Gelukkig is er een bijna overvloedige reeks van voetnoten, die minstens de helft van het boek in beslag nemen.",
+  "korte_tekst": "De Apokalips of openbaring van de H. Johannes.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-089-2",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-25.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-25.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/nt12-navarre-bible-revelation/"
+}

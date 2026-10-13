@@ -1,0 +1,41 @@
+{
+  "slug": "kinderen-van-god-e-book",
+  "titel": "Kinderen van God (e-book)",
+  "auteur": "Juan Francisco Pozo",
+  "genre": "Christelijk leven, E-book",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "9,79E+12",
+  "prijs_cent": 580,
+  "cover": "0-204.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "Het genadeleven",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "5.8",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Dit boek legt de Katholieke leer over de genade uit aan de hand van de gelijkenis van de verloren zoon, zijn broer en de barmhartige Vader (Lucas 15,11-32). De opeenvolgende hoofdstukken, en een inleiding, gaan over:\n\nde roeping van de mens (de mens, zijn oorsprong en zijn toekomst, het leven van de geest en het leven in de Geest, het Goede Nieuws);\nde rechtvaardiging (zonde, genade, vergeving, innerlijke vernieuwing);\nhet genadeleven (de wegen van de genade, de medewerking van de vrijheid, de gaven van de heilige Geest);\nde genade en de werken (invloed van de genade op het menselijk handelen, de menselijke en bovennatuurlijke persoonlijkheid);\nde Christelijke heiligheid (de 'coördinaten' van de heiligheid, het gebed wordt leven, de Allerheiligste Mensheid van Christus).\n\nEen korte bibliografie besluit het boek dat ook als tekstboek geschikt is.",
+  "korte_tekst": "Dit boek legt de Katholieke leer over de genade uit aan de hand van de gelijkenis van de verloren zoon, zijn broer en de barmhartige Vader.",
+  "velden": {
+    "ondertitel": "Het genadeleven",
+    "isbn": "9,79E+12",
+    "uitvoering": "E-book",
+    "aantal_paginas": "112",
+    "speelduur": "",
+    "leesproef": "5982",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-204.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-204.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/kinderen-van-god-e-book/"
+}

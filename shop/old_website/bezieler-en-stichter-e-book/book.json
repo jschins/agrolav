@@ -1,0 +1,41 @@
+{
+  "slug": "bezieler-en-stichter-e-book",
+  "titel": "Bezieler en stichter (e-book)",
+  "auteur": "Jan Peijnenburg",
+  "genre": "E-book",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "9 789062 570881",
+  "prijs_cent": 290,
+  "cover": "0-216.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "Paus Johannes Paulus II, Mgr. J. ter Schure sdb",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "2.9",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Paus Johannes Paulus II benoemde in 1985 Mgr. J.G. ter Schure sdb tot bisschop van  s-Hertogenbosch. In datzelfde jaar bezocht de Paus, tijdens zijn bezoek aan Nederland, ook de stad  s-Hertogenbosch. In aansluiting op het pausbezoek werden door bisschop ter Schure de voorbereidingen getroffen voor de heropening van de Bossche priesteropleiding.\n\nAnno 2012 bestaat het Sint-Janscentrum, het grootseminarie van het bisdom van  s-Hertogenbosch, 25 jaar. Naar aanleiding van dit jubileum onderzocht Dr Jan Peijnenburg de verschillende aspecten die het Sint-Janscentrum met de Poolse Paus verbinden. In een kort bestek geeft het boek tevens een goed beeld van de postconciliaire ontwikkelingen rond de priesteropleidingen in Nederland.",
+  "korte_tekst": "Dit jaar (2012) bestaat Sint-Janscentrum 25 jaar. Dr Jan Peijnenburg onderzocht aspecten die dit centrum met Paus JP2 verbinden en de ontwikkelingen rond de priesteropleidingen in Nederland.",
+  "velden": {
+    "ondertitel": "Paus Johannes Paulus II, Mgr. J. ter Schure sdb",
+    "isbn": "9 789062 570881",
+    "uitvoering": "E-book",
+    "aantal_paginas": "80",
+    "speelduur": "",
+    "leesproef": "6833",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-216.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-216.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/bezieler-en-stichter-e-book/"
+}

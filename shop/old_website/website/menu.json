@@ -1,0 +1,148 @@
+{
+  "items": [
+    {
+      "titel": "Privacyverklaring",
+      "url": "https://deboog-uitgeverij.nl/privacyverklaring/",
+      "type": "post_type",
+      "object": "page"
+    },
+    {
+      "titel": "Welkom",
+      "url": "https://deboog-uitgeverij.nl/#welkom",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Welkom",
+      "url": "https://deboog-uitgeverij.nl/",
+      "type": "post_type",
+      "object": "page"
+    },
+    {
+      "titel": "Over ons",
+      "url": "https://deboog-uitgeverij.nl/over/",
+      "type": "post_type",
+      "object": "page"
+    },
+    {
+      "titel": "Bestelinformatie",
+      "url": "https://deboog-uitgeverij.nl/bestelinformatie/",
+      "type": "post_type",
+      "object": "page"
+    },
+    {
+      "titel": "Facebook",
+      "url": "#",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Winkel",
+      "url": "https://deboog-uitgeverij.nl/#",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Diensten",
+      "url": "https://deboog-uitgeverij.nl/#diensten",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Werkwijze",
+      "url": "https://deboog-uitgeverij.nl/#werkwijze",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Boeken",
+      "url": "https://deboog-uitgeverij.nl/winkel/?query_type_uitvoering=or&filter_uitvoering=zachte-kaft",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Twitter",
+      "url": "#",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Privacyverklaring",
+      "url": "https://deboog-uitgeverij.nl/privacyverklaring/",
+      "type": "post_type",
+      "object": "page"
+    },
+    {
+      "titel": "E-books",
+      "url": "https://deboog-uitgeverij.nl/winkel/?filter_uitvoering=e-book",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Over",
+      "url": "https://deboog-uitgeverij.nl/#over",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Over ons",
+      "url": "https://deboog-uitgeverij.nl/over/",
+      "type": "post_type",
+      "object": "page"
+    },
+    {
+      "titel": "Portfolio",
+      "url": "https://deboog-uitgeverij.nl/#portfolio",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Blog",
+      "url": "https://deboog-uitgeverij.nl/#blog",
+      "type": "custom",
+      "object": "custom"
+    },
+    {
+      "titel": "Contact",
+      "url": "https://deboog-uitgeverij.nl/#contact",
+      "type": "custom",
+      "object": "custom"
+    }
+  ],
+  "navigatie": [
+    "Toggle navigation",
+    "Winkelmand",
+    "Afrekenen",
+    "Welkom",
+    "Winkel",
+    "Boeken",
+    "E-books",
+    "Over ons"
+  ],
+  "footer": [
+    "Inschrijven voor onze nieuwsbrief",
+    "Laat dit veld leeg als je een mens bent:",
+    "Direct naar",
+    "Over ons",
+    "Bestelinformatie",
+    "Privacyverklaring",
+    "Betaalinformatie",
+    "IBAN",
+    "NL16 INGB0003 1211 92",
+    "t.n.v. Stichting De Boog",
+    "Contact",
+    "Stichting De Boog",
+    "Herenstraat 41-43",
+    "3512 KB Utrecht",
+    "info@deboog.nl",
+    "Wij zijn een vrijwilligersorganisatie en verzenden daarom twee keer per week — dank voor uw geduld!",
+    "Meer contactgegevens",
+    "Bezoek- en verkoopadres",
+    "Stichting Leesgoed",
+    "Keizersgracht 218-B",
+    "Amsterdam",
+    "Dinsdag t/m vrijdag tussen 11:00u tot 12:15u.",
+    "Zondag na de Hoogmis van 11:15u tot 13:15u.",
+    "Copyright: De Boog Uitgeverij"
+  ]
+}

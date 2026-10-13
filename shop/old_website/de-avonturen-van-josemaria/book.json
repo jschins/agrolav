@@ -1,0 +1,41 @@
+{
+  "slug": "de-avonturen-van-josemaria",
+  "titel": "De avonturen van Josemaria",
+  "auteur": "M.A. Carceles",
+  "genre": "Harde kaft, Kinderboeken, Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-034-8",
+  "prijs_cent": 1200,
+  "cover": "0-130.jpg",
+  "voorraad": 29,
+  "status": "publish",
+  "ondertitel": "verhalen uit het leven van Josemaría Escrivá",
+  "uitvoering": "Harde kaft",
+  "uitgelicht": [],
+  "prijs": "12",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Een rijk geïllustreerde levensbeschrijving voor kinderen met verhalen uit het leven van de Stichter van het Opus Dei.\n\nOok als voorleesboek te gebruiken.",
+  "korte_tekst": "Geïllustreerde levensbeschrijving met verhalen uit het leven van de heilige Jozefmaría.",
+  "velden": {
+    "ondertitel": "verhalen uit het leven van Josemaría Escrivá",
+    "isbn": "90-6257-034-8",
+    "uitvoering": "Harde kaft",
+    "aantal_paginas": "107",
+    "speelduur": "",
+    "leesproef": "7447",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-130.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-130.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-avonturen-van-josemaria/"
+}

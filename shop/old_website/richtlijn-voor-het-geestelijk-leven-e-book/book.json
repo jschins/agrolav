@@ -1,0 +1,41 @@
+{
+  "slug": "richtlijn-voor-het-geestelijk-leven-e-book",
+  "titel": "Richtlijn voor het geestelijk leven (e-book)",
+  "auteur": "Ludovicus Blosius",
+  "genre": "E-book, Klassiekers",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "97890.6257095.9",
+  "prijs_cent": 1100,
+  "cover": "1-85.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "11",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Verschillende jaren heb ik de Richtlijn voor het geestelijk leven en andere geestelijke werken gebruikt voor een geestelijke lezing tijdens mijn retraite en iedere keer opnieuw werd ik getroffen door de wijsheid, geestelijke diepgang en trefzekerheid van het werk van Ludovicus Blosius (Lodewijk\n\nde Blois). De geestelijke werken van deze Abt vond ik zo inspirerend dat ik ze heb als een tweede 'Navolging van Christus'.\n\nMgr. dr Jan Hendriks, bisschop van Haarlem-Amsterdam",
+  "korte_tekst": "Abt Lodovicus Blosius was tijdgenoot en goede kennis van keizer Karel V en schreef met wijsheid, geestelijke diepgang en trefzekerheid over de verschillende aspekten van het geestelijke leven.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "97890.6257095.9",
+    "uitvoering": "E-book",
+    "aantal_paginas": "256",
+    "speelduur": "",
+    "leesproef": "5899",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "1-85.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/1-85.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/richtlijn-voor-het-geestelijk-leven-e-book/"
+}

@@ -1,0 +1,41 @@
+{
+  "slug": "ware-liefde",
+  "titel": "Ware liefde",
+  "auteur": "Jason Evert",
+  "genre": "Jeugd en jongeren",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-049-6",
+  "prijs_cent": 250,
+  "cover": "0-70.jpg",
+  "voorraad": 124,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "2.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Heb je je wel eens afgevraagd ...\n\nWaarom zou ik wachten tot het huwelijk?\n\nHoe ver is te ver?\n\nNeemt kuisheid mij mijn vrijheid af?\n\nEn als wij echt van elkaar houden?\n\nHoe kan ik nee zeggen?\n\nIs romantiek zonder spijt mogelijk?\n\nHoe kom ik er weer bovenop?\n\nAls dat zo is, zoek dan niet verder. De antwoorden staan in dit boekje.\n\nAanbevolen voor jongeren.\n\nJason Evert is een veelgevraagd spreker over liefde en seksualiteit.",
+  "korte_tekst": "Als je nou de ware liefde nog niet hebt gevonden, of juist wél, of als je jezelf afvraagt of de liefde waar je van droomde wel echt bestaat, dan is dit boekje voor jou geschreven.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-049-6",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "47",
+    "speelduur": "",
+    "leesproef": "6214",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-70.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-70.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/ware-liefde/"
+}

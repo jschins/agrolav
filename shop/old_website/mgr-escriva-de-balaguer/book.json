@@ -1,0 +1,41 @@
+{
+  "slug": "mgr-escriva-de-balaguer",
+  "titel": "Mgr Escriva de Balaguer",
+  "auteur": "Salvador Bernal",
+  "genre": "Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-011-9",
+  "prijs_cent": 950,
+  "cover": "scannen0000-6.jpg",
+  "voorraad": 167,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "9.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Het boeiende leven van Mgr. Escrivá (1902 - 1975), kundig beschreven door de Spaanse journalist Salvador Bernal. Het historisch inzicht van de auteur, de ooggetuigenverslagen en de vele citaten van de Stichter van het Opus Dei zelf, maken dit boek tot een absolute 'must' voor wie meer wil weten van deze voorbeeldige priester en van zijn levenswerk.",
+  "korte_tekst": "Een absolute 'must' voor wie meer wil weten over de heilige Jozefmaría en zijn levenswerk.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-011-9",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "7473",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "scannen0000-6.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/scannen0000-6.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/mgr-escriva-de-balaguer/"
+}

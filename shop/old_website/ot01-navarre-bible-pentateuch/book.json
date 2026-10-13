@@ -1,0 +1,71 @@
+{
+  "slug": "ot01-navarre-bible-pentateuch",
+  "titel": "OT01 Navarre Bible Pentateuch",
+  "auteur": "",
+  "genre": "Bijbel, Harde kaft",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-498-7",
+  "prijs_cent": 4500,
+  "cover": "0-135.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Harde kaft",
+  "uitgelicht": [],
+  "prijs": "45",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "De commentaren zijn zelden te technisch en zo geformuleerd dat de spirituele en theologische boodschap van de Bijbel duidelijk en begrijpelijk wordt toegelicht.",
+  "korte_tekst": "Bevat: Genesis, Exodus, Leviticus, Numeri en Deuteronomium.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-498-7",
+    "uitvoering": "Harde kaft",
+    "aantal_paginas": "820",
+    "speelduur": "",
+    "leesproef": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-135.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-135.jpg",
+      "alt": ""
+    },
+    {
+      "file": "1-56.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/1-56.jpg",
+      "alt": ""
+    },
+    {
+      "file": "2-56.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/2-56.jpg",
+      "alt": ""
+    },
+    {
+      "file": "3-57.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/3-57.jpg",
+      "alt": ""
+    },
+    {
+      "file": "4-56.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/4-56.jpg",
+      "alt": ""
+    },
+    {
+      "file": "5-57.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/5-57.jpg",
+      "alt": ""
+    },
+    {
+      "file": "6-53.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/6-53.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/ot01-navarre-bible-pentateuch/"
+}

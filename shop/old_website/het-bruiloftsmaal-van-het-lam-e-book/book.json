@@ -1,0 +1,41 @@
+{
+  "slug": "het-bruiloftsmaal-van-het-lam-e-book",
+  "titel": "Het bruiloftsmaal van het Lam (e-book)",
+  "auteur": "Scott Hahn",
+  "genre": "E-book, Sacramenten, Scott Hahn",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-048-8",
+  "prijs_cent": 890,
+  "cover": "0-191.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "De Mis als hemel op aarde",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "8.9",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "'De Mis als hemel op aarde' elke keer als wij de Mis bijwonen, betreden we de hemelse liturgie die zo krachtig is beschreven in het boek Openbaring van Johannes. Het bruiloftsmaal van het Lam zal u ook helpen om het boek Openbaring beter te begrijpen in het licht van de Mis en andersom.",
+  "korte_tekst": "Een verfrissende blik op de H. Mis vanuit het boek Openbaring, door de schrijver van 'Rome ons thuis'.",
+  "velden": {
+    "ondertitel": "De Mis als hemel op aarde",
+    "isbn": "90-6257-048-8",
+    "uitvoering": "E-book",
+    "aantal_paginas": "172",
+    "speelduur": "",
+    "leesproef": "5932",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-191.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-191.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/het-bruiloftsmaal-van-het-lam-e-book/"
+}

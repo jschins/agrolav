@@ -1,0 +1,41 @@
+{
+  "slug": "wat-moet-ik-doen-e-book",
+  "titel": "Wat moet ik doen (e-book)",
+  "auteur": "P. Beteta",
+  "genre": "E-book",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-158-1",
+  "prijs_cent": 220,
+  "cover": "0-181.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "Johannes Paulus II tot de jongeren",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "2.2",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Dit boek bevat een selectie van teksten uit de ontmoetingen van paus Johannes Paulus II met jongeren van de hele wereld. Hij behandelt de verschillende soorten roeping: volledige overgave midden in de wereld, huwelijk, priesterschap, religieuze leven.\n\nDe woorden van de paus zijn een uitstekende gids om diep in ons hart te ontdekken wat God van ons wil.",
+  "korte_tekst": "Paus Johannes Paulus II (1920-2005) legt de jongeren uit hoe mooi het is geroepen te worden en hoe je er aan kunt beantwoorden.",
+  "velden": {
+    "ondertitel": "Johannes Paulus II tot de jongeren",
+    "isbn": "90-6257-158-1",
+    "uitvoering": "E-book",
+    "aantal_paginas": "60",
+    "speelduur": "",
+    "leesproef": "6058",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-181.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-181.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/wat-moet-ik-doen-e-book/"
+}

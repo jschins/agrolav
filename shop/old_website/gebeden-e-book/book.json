@@ -1,0 +1,41 @@
+{
+  "slug": "gebeden-e-book",
+  "titel": "Gebeden (e-book)",
+  "auteur": "J. van der Mee",
+  "genre": "E-book, Gebedenboeken",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-028-3",
+  "prijs_cent": 280,
+  "cover": "0-149.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "2.8",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Dit gebedenboekje bevat een ruime keuze aan dagelijkse gebeden, naast andere die betrekking hebben op de voornaamste devoties (tot de heilige Drieeenheid, Jezus Christus, de heilige Geest, Onze Lieve Vrouw, de Engelen en Sint Jozef).Een belangrijk deel is gewijd aan de viering van de sacramenten. Met illustraties.",
+  "korte_tekst": "Dagelijkse gebeden, devoties en sacramenten. Onontbeerlijk voor iedere gelovige.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-028-3",
+    "uitvoering": "E-book",
+    "aantal_paginas": "127",
+    "speelduur": "",
+    "leesproef": "6479",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-149.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-149.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/gebeden-e-book/"
+}

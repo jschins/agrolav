@@ -1,0 +1,41 @@
+{
+  "slug": "de-heilige-rozenkrans-e-book",
+  "titel": "De Heilige Rozenkrans (e-book)",
+  "auteur": "Jozefmaria Escriva",
+  "genre": "E-book, Maria Fatima Lourdes, Van Jozefmaria Escriva",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-012-7",
+  "prijs_cent": 250,
+  "cover": "0-194.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "2.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Dit boekje bevat beschouwingen over de vijftien geheimen van het leven van Jezus en Maria, zoals  die eeuwen lang overwogen zijn bij het bidden van de Rozenkrans. Voor elk mysterie staat een kleurenillustratie van de Italiaanse schilder Lorenzo Lotto (1539) \"Word klein\", zegt de schrijver ons in het voorwoord. \"Kom mee en(....) wij zullen het leven van Jezus, Maria en Jozef meebeleven\".\n\nAan dit boekje is een supplement toegevoegd met toepasselijke passages over de 5 lichtende geheimen, de litanieën en een korte handleiding voor het bidden van de Rozenkrans.",
+  "korte_tekst": "Intieme en aanmoedigende beschouwingen over de geheimen van de Rozenkrans.\n\nRijkelijk geïllustreerd.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-012-7",
+    "uitvoering": "E-book",
+    "aantal_paginas": "61",
+    "speelduur": "",
+    "leesproef": "6622",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-194.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-194.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-heilige-rozenkrans-e-book/"
+}

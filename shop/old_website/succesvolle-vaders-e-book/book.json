@@ -1,0 +1,41 @@
+{
+  "slug": "succesvolle-vaders-e-book",
+  "titel": "Succesvolle vaders (e-book)",
+  "auteur": "James B. Stenson",
+  "genre": "E-book, Huwelijk gezin opvoeding",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-055-0",
+  "prijs_cent": 390,
+  "cover": "0-192.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "Hoe vaders het karakter van hun kinderen kunnen vormen",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "3.9",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "De grootste uitdaging voor een vader is zijn kinderen goed op te voeden. Dit boekje geeft aan wat de problemen met opvoeding zijn vanuit het gezichtspunt van de vader en wat anderen met succes hebben geprobeerd en gerealiseerd om hun kinderen goed op te voeden.\n\nHet laat ondermeer zien hoe de keuze van een puber tussen godsdienstig geloof en een materialistisch geloof steunt op het godsdienstig leiderschap van zijn vader.",
+  "korte_tekst": "Hoe vaders het karakter van hun kinderen kunnen vormen. Met \"twaalf geboden\" voor vaders en een vragenlijst voor zelf-onderzoek.",
+  "velden": {
+    "ondertitel": "Hoe vaders het karakter van hun kinderen kunnen vormen",
+    "isbn": "90-6257-055-0",
+    "uitvoering": "E-book",
+    "aantal_paginas": "64",
+    "speelduur": "",
+    "leesproef": "6215",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-192.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-192.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/succesvolle-vaders-e-book/"
+}

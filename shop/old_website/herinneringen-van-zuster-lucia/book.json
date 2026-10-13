@@ -1,0 +1,41 @@
+{
+  "slug": "herinneringen-van-zuster-lucia",
+  "titel": "Herinneringen van Zuster Lucia",
+  "auteur": "Luis Kondor",
+  "genre": "Bijzondere levens, Maria Fatima Lourdes",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "97-2852-466-8",
+  "prijs_cent": 975,
+  "cover": "0-75.jpg",
+  "voorraad": 32,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "9.75",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "De bewerkte uitgave van herinneringen van de in 2005 overleden zieneres. Als slot de documentatie van het derde deel van het 'geheim' van Fatima, met een uitvoerig theologisch commentaar van kardinaal Ratzinger. Eenvoudig, indrukwekkend en onderhoudend.",
+  "korte_tekst": "De bewerkte uitgave van herinneringen van Zuster Lucia van Fatima, met slot van Kardinaal Ratzinger.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "97-2852-466-8",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "247",
+    "speelduur": "",
+    "leesproef": "6544",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-75.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-75.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/herinneringen-van-zuster-lucia/"
+}

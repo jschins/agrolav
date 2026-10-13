@@ -1,0 +1,41 @@
+{
+  "slug": "het-dagboek-van-mijn-ziel-e-book",
+  "titel": "Het dagboek van mijn ziel (e-book)",
+  "auteur": "Johannes XXIII",
+  "genre": "Bijzondere levens, E-book",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "978.98.6257.056.0",
+  "prijs_cent": 750,
+  "cover": "0000-1.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "7.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Het dagboek van mijn ziel van paus Johannes XXIII (1881- 1963) mag men gerust een uniek document noemen: al op het kleinseminarie begon hij notities te maken over zijn geestelijke vooruitgang, en hij zou dit blijven doen tot aan zijn dood als paus.\n\nVoor velen is Johannes XXIII vooral de paus van het Concilie, 'de goede paus'. Maar hoe was hij als mens? Hoe beleefde hij zelf het geloof? Deze bloemlezing uit zijn dagboek, die is ingedeeld volgens geestelijke thema’s, doet hem kennen als nooit tevoren en toont ons 'de ziel van een heilige'.",
+  "korte_tekst": "Ik begrijp wel dat men van een paus alles wil weten en dat alles van nut kan zijn voor de geschiedschrijving ... Mijn ziel ligt vervat in juist deze bladzijden, die meer over mij zeggen dan welk ander geschrift ook. Johannes XXIII",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "978.98.6257.056.0",
+    "uitvoering": "E-book",
+    "aantal_paginas": "144",
+    "speelduur": "",
+    "leesproef": "5908",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0000-1.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0000-1.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/het-dagboek-van-mijn-ziel-e-book/"
+}

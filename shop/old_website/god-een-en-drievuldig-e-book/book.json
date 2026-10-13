@@ -1,0 +1,41 @@
+{
+  "slug": "god-een-en-drievuldig-e-book",
+  "titel": "God: een en drievuldig (e-book)",
+  "auteur": "",
+  "genre": "E-book, God, Vader, Zoon en heilige Geest",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "978-90-6257-042-3",
+  "prijs_cent": 880,
+  "cover": "voorzijde-kaft-Atrium-17.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "8.80",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Dit boek wil een samenvatting geven van de katholieke leer over de allerheiligste Drie-eenheid. Het is bedoeld voor die gelovigen die God, ons in Jezus Christus geopenbaard, beter willen leren kennen en liefhebben.\n\nIn deze geseculariseerde samenleving met veranderende en strijdige culturen zijn er, gelukkig, nog veel christengelovigen die graag een wetenschappelijk gefundeerde en tegelijk ook eenvoudige kennis van het christelijk geloof willen verwerven. Het is dus van belang hun een overzicht van de geloofsinhoud en de argumenten te bieden die in de loop van de geschiedenis het meest aan de orde zijn geweest. Hun geloof en geestelijk leven zullen daardoor versterkt worden en zo kunnen zij de geopenbaarde geloofsleer ook verder verbreiden.\n\nDe tekst richt zich voorts tot hen die tijdelijk van het geloof verwijderd zijn geraakt en ernaar zouden willen terugkeren om de door Jezus Christus geopenbaarde God te herontdekken. Eveneens willen wij proberen mensen te bereiken die, zonder christen te zijn, op zoek zijn naar verhelderende inzichten en vermoeden die in de God van de christenen te kunnen vinden.\n\nGonzalo Lobo Méndez is priester, verkreeg het doctoraat in het canonieke recht aan de pauselijke universiteit van de heilige Thomas van Aquino in Rome. Hij heeft gedurende vele jaren theologie gedoceerd bij een privé-universiteit.",
+  "korte_tekst": "Dit boek wil een samenvatting geven van de katholieke leer over de allerheiligste Drie-eenheid. Het is bedoeld voor die gelovigen die God, ons in Jezus Christus geopenbaard, beter willen leren kennen en liefhebben.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "978-90-6257-042-3",
+    "uitvoering": "E-book",
+    "aantal_paginas": "248",
+    "leesproef": "6012",
+    "speelduur": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"not\"}"
+  },
+  "images": [
+    {
+      "file": "voorzijde-kaft-Atrium-17.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2021/01/voorzijde-kaft-Atrium-17.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/god-een-en-drievuldig-e-book/"
+}

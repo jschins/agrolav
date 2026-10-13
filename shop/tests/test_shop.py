@@ -85,7 +85,6 @@ class ShopFlowTests(unittest.TestCase):
             self.assertNotIn("Keizersgracht", home.text)
             self.assertNotIn("Bladeren per genre", home.text)
             self.assertNotIn("De hele agenda", home.text)
-            self.assertNotIn("Bekijk de planken", home.text)
             self.assertNotIn("Wat er ligt", home.text)
             self.assertNotIn("Het boek van deze week", home.text)
             self.assertIn('<html lang="nl" class="home">', home.text)
@@ -216,6 +215,19 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn("3512 KB", done.text)
             self.assertNotIn("/bestand/", done.text)
             self.assertEqual(len(order.items), 2)
+            self.assertEqual(order.items[0].number_of_copies, 1)
+            stored = connect(Path(tmp) / "orders.sqlite")
+            try:
+                columns = {row[1] for row in stored.execute("PRAGMA table_info(orders)")}
+                self.assertNotIn("items_json", columns)
+                lines = stored.execute(
+                    "SELECT slug, number_of_copies, price_cents_per_copy FROM order_lines WHERE order_id = ?",
+                    (order.id,),
+                ).fetchall()
+            finally:
+                stored.close()
+            self.assertEqual(len(lines), 2)
+            self.assertEqual({row["slug"] for row in lines}, {"innerlijke-rust", "catharina-dialoog"})
 
     def test_one_book_link_opens_checkout_and_dev_pay_marks_it_paid(self) -> None:
         import tempfile

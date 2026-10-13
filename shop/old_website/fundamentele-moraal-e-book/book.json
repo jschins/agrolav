@@ -1,0 +1,41 @@
+{
+  "slug": "fundamentele-moraal-e-book",
+  "titel": "Fundamentele moraal (e-book)",
+  "auteur": "Aurelio Fernández",
+  "genre": "E-book, Moraal en maatschappij",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "97890.6257.054.6",
+  "prijs_cent": 850,
+  "cover": "scannen0000-38.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "Een inleiding",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "8.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "'Wij zullen ons hier hoofdzakelijk bezig houden met de basisvraagstukken van de christelijke moraal. Daarbij leggen we de nadruk op de rationaliteit van de moraal van het Nieuwe Testament, alsmede op de basisbegrippen die haar schragen.\n\nAangezien het niet mogelijk was ze in hun ontwikkeling te schetsen, hebben we dat gemis opgevangen met een meer uitgebreid betoog over het gegeven van de Openbaring. Uiteindelijk bouwt de christen, zoals de klassieken het zeggen, zijn geloof niet op de grondbeginselen van de filosofen maar op het onderricht van Jezus.\n\nDaarom treft men in dit bescheiden werk allereerst de bijbelse doctrine met betrekking tot\n\nhet ethisch handelen van de gelovige aan, en daarna een korte uiteenzetting over de moraaltheologie. Op deze wijze hopen wij te beantwoorden aan de doelstelling van deze serie, die beoogt de \"fundamentele vragen van de theologisch wetenschap\" uiteen te zetten, \"om ze bereikbaar te maken voor de gemiddeld ontwikkelde lezer\". De schrijver hoopt vurig dat hij dit doel\n\nbereikt' (uit het voorwoord).",
+  "korte_tekst": "Basisvraagstukken van de christelijke moraal.",
+  "velden": {
+    "ondertitel": "Een inleiding",
+    "isbn": "97890.6257.054.6",
+    "uitvoering": "E-book",
+    "aantal_paginas": "216",
+    "speelduur": "",
+    "leesproef": "6006",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "scannen0000-38.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/scannen0000-38.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/fundamentele-moraal-e-book/"
+}

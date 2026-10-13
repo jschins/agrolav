@@ -1,0 +1,41 @@
+{
+  "slug": "navarre-bible-old-testament-7-volumes",
+  "titel": "Navarre Bible Old Testament 7 volumes",
+  "auteur": "",
+  "genre": "Bijbel, Harde kaft",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "",
+  "prijs_cent": 29500,
+  "cover": "Navarre_Old_Testament.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Harde kaft",
+  "uitgelicht": [],
+  "prijs": "295",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Het oude testament in zeven delen. Exegese van de bovenste plank.",
+  "korte_tekst": "Het oude testament in zeven delen. Exegese van de bovenste plank. Per pagina gemiddeld 1/3 deel voetnoten.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "",
+    "uitvoering": "Harde kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "Navarre_Old_Testament.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/Navarre_Old_Testament.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/navarre-bible-old-testament-7-volumes/"
+}

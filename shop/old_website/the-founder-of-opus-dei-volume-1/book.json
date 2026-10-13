@@ -1,0 +1,41 @@
+{
+  "slug": "the-founder-of-opus-dei-volume-1",
+  "titel": "The founder of Opus Dei Volume 1: The Early Years",
+  "auteur": "Andrés Vazquez de Prada",
+  "genre": "Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-889334-26-x",
+  "prijs_cent": 1895,
+  "cover": "0-56.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "The early years",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "18.95",
+  "voorraad_status": "outofstock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Uitgebreide levenbeschrijving over de heilige Jozefmaría vanaf zijn geboorte in 1902 tot aan het uitbreken van de Spaanse burgeroorlog in 1936.",
+  "korte_tekst": "Biografie over Jozefmaría vanaf zijn geboorte in 1902 tot aan het uitbreken van de Spaanse Burgeroorlog in 1936.",
+  "velden": {
+    "ondertitel": "The early years",
+    "isbn": "1-889334-26-x",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "672",
+    "speelduur": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}",
+    "leesproef": ""
+  },
+  "images": [
+    {
+      "file": "0-56.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-56.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/the-founder-of-opus-dei-volume-1/"
+}

@@ -1,0 +1,41 @@
+{
+  "slug": "jouw-vragen-gods-antwoorden-e-book",
+  "titel": "Jouw vragen Gods antwoorden (e-book)",
+  "auteur": "Peter Kreeft",
+  "genre": "E-book",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-039-9",
+  "prijs_cent": 590,
+  "cover": "0-183.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "5.9",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "De auteur geeft op basis van de Heilige Schrift Gods krachtige antwoorden op 64 veel vookomende vragen van jonge mensen: over de Bijbel, de dood, succes en mislukking, films en TV, trouwen, de hemel, de zonde, andere godsdiensten, bidden, evolutie, enz.\n\nSpeciaal aanbevolen voor jongeren en vormsel-voorbereiding.",
+  "korte_tekst": "Gods krachtige antwoorden op de belangrijkste en meest voorkomende vragen van jonge mensen.\n\nOok geschikt voor Vormsel voorbereiding.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-039-9",
+    "uitvoering": "E-book",
+    "aantal_paginas": "141",
+    "speelduur": "",
+    "leesproef": "6486",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-183.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-183.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/jouw-vragen-gods-antwoorden-e-book/"
+}

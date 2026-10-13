@@ -1,0 +1,41 @@
+{
+  "slug": "belijdenissen-e-book",
+  "titel": "Belijdenissen (e-book)",
+  "auteur": "Aurelius Augustinus",
+  "genre": "E-book, Klassiekers",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-161-1",
+  "prijs_cent": 600,
+  "cover": "0-158.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "In eigentijdse bewerking",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "6",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "\"Bij Augustinus vindt men altijd onmiddellijk de gepassioneerde, lijdende, vragende mens met wie iedereen zich kan identificeren\" (kardinaal Jozef Ratzinger, Zout der aarde).\n\nIedereen die oprecht zoekt naar de waarheid en de zin van het leven, heeft affiniteit met Augustinus. Daarom is het goed Augustinus toegankelijker te maken voor de hedendaagse (jonge) lezer, door een geactualiseerde en enigszins verkorte vertaling van zijn meesterwerk, de Belijdenissen, op de markt te brengen.",
+  "korte_tekst": "Belijdenissen is het meest bekende en boeiende autobiografische relaas in heel de christelijke traditie.",
+  "velden": {
+    "ondertitel": "In eigentijdse bewerking",
+    "isbn": "90-6257-161-1",
+    "uitvoering": "E-book",
+    "aantal_paginas": "286",
+    "speelduur": "",
+    "leesproef": "5876",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"used\"}"
+  },
+  "images": [
+    {
+      "file": "0-158.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-158.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/belijdenissen-e-book/"
+}

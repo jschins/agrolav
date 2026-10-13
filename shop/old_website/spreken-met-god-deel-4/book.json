@@ -1,0 +1,43 @@
+{
+  "slug": "spreken-met-god-deel-4",
+  "titel": "Spreken met God Deel  4",
+  "auteur": "Francisco Fernandez Carvajal",
+  "genre": "Gebed meditatief",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-104-2",
+  "prijs_cent": 1475,
+  "cover": "admin-ajax.jpg",
+  "voorraad": 148,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "14.75",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Het boek telt 357 blz. en bevat 60 meditaties, plus citaten- en trefwoordenregister.\n\nVoor elke zondag zijn er drie meditaties (jaar A, B en C).",
+  "korte_tekst": "Meditaties voor iedere dag van het jaar. Deel 4 Week 1 - 7 door het jaar.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-104-2",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "357",
+    "speelduur": "",
+    "uitgelichtUitgelicht": "",
+    "ff_builder_status": "{\"usage\":\"used\"}",
+    "leesproef": "",
+    "slide_template": "default",
+    "ff-layout-settings": "ff_flag_json{\"settings\":{\"layout\":\"inherit\",\"header\":\"inherit\",\"titlebar\":\"inherit\",\"footer\":\"inherit\",\"boxed_wrapper\":\"inherit\",\"builder-printing-mode\":\"in-content\"}}"
+  },
+  "images": [
+    {
+      "file": "admin-ajax.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/admin-ajax.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/spreken-met-god-deel-4/"
+}

@@ -1,0 +1,41 @@
+{
+  "slug": "de-kracht-van-god-e-book",
+  "titel": "De kracht van God (e-book)",
+  "auteur": "Flavio Capucci",
+  "genre": "E-book, Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-035-6",
+  "prijs_cent": 450,
+  "cover": "0-161.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "4.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "\"De kracht van God\" vertelt over 19 medisch onverklaarbare genezingen op voorspraak van de heilige Jozefmaria. Het boek is geschreven door Flavio Capucci, postulator van het heiligverklaringsproces van de stichter van het Opus Dei. De heilige Jozefmaria staat bekend als apostel van het gewone leven, van de dagelijkse arbeid, van de man en vrouw midden in de maatschappij. Veel mensen richten zich tot hem als een heilige vriend en voorspreker bij God.",
+  "korte_tekst": "Bestaan medisch onverklaarbare genezingen? In dit boek worden er 19 onder de loep genomen.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-035-6",
+    "uitvoering": "E-book",
+    "aantal_paginas": "139",
+    "speelduur": "",
+    "leesproef": "5928",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-161.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-161.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-kracht-van-god-e-book/"
+}

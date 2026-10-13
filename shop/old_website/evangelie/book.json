@@ -1,0 +1,41 @@
+{
+  "slug": "evangelie",
+  "titel": "Evangelie",
+  "auteur": "",
+  "genre": "Bijbel, God, Vader, Zoon en heilige Geest",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "",
+  "prijs_cent": 495,
+  "cover": "Evangelie-website.jpg",
+  "voorraad": 59,
+  "status": "publish",
+  "ondertitel": "Bron van levend water",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "4.95",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "DE BIJBEL\n\nDe Bijbel heeft een buitenkant en een binnenkant. Materieel gezien (de buitenkant) is het een verzameling boeken uit een periode die ruim 1000 jaar duurt en loopt van het eerste millennium voor Christus tot en met de eerste eeuw na Christus. Deze boeken zijn geschreven in het (bijbel)Hebreeuws, het Aramees en het (koinè) Grieks en beschrijven de ervaringen van een volk doorheen de geschiedenis. Inhoudelijk gezien (de binnenkant) gaat het om openbaring: doorheen menselijke schrijvers met al hun menselijke mogelijk- en onmogelijkheden komt God zelf aan het woord; hierin is de Bijbel uniek. De openbaring ontvouwt zich geleidelijk en bereikt een hoogtepunt in Jezus Christus. De (meeste) boeken vóór Christus worden door joden aanvaard als heilige Schrift; de boeken vóór én ná Christus (Oude en Nieuwe Testament) worden door Christenen aanvaard als Woord van God. Voor Christenen vormen de evangelies het hartstuk van de Bijbel.\n\nIn deze uitgave vind je de 4 evangelies, aangevuld met het tweede boek van Lucas: de Handelingen van de Apostelen, en de brief die de apostel Paulus beschouwt als 'zijn evangelie': de brief aan de christenen te Rome.",
+  "korte_tekst": "Evangelie - Blijde boodschap van Jezus Christus\n\nNeem het evangelie\n\ndraag het bij je\n\nen lees het elke dag:\n\nhet is Jezus\n\ndie met je spreekt\n\n(Paus Franciscus)",
+  "velden": {
+    "ondertitel": "Bron van levend water",
+    "isbn": "",
+    "uitvoering": "zachte kaft",
+    "aantal_paginas": "330",
+    "leesproef": "6551",
+    "speelduur": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "Evangelie-website.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2021/04/Evangelie-website.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/evangelie/"
+}

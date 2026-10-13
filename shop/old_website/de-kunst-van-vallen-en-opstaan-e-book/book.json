@@ -1,0 +1,41 @@
+{
+  "slug": "de-kunst-van-vallen-en-opstaan-e-book",
+  "titel": "De kunst van vallen en opstaan (e-book)",
+  "auteur": "Joseph Tissot",
+  "genre": "Christelijk leven, E-book",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-157-3",
+  "prijs_cent": 390,
+  "cover": "0-163.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "3.9",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Nieuwe Nederlandse vertaling van een klassieker van de katholieke literatuur. Tissot volgt de geschriften van de heilige Franciscus van Sales (1567-16220), bisschop van Genève en kerkleraar. Deze boodschap blijft steeds actueel, want onze fouten en gebreken hoeven ons niet neerslachtig te maken, maar kunnen daadwerkelijk een middel worden tot geestelijke vooruitgang.",
+  "korte_tekst": "Voor iedereen die valt en weer snel wil opstaan.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-157-3",
+    "uitvoering": "E-book",
+    "aantal_paginas": "159",
+    "speelduur": "",
+    "leesproef": "5874",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"used\"}"
+  },
+  "images": [
+    {
+      "file": "0-163.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-163.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-kunst-van-vallen-en-opstaan-e-book/"
+}

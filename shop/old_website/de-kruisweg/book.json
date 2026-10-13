@@ -1,0 +1,41 @@
+{
+  "slug": "de-kruisweg",
+  "titel": "De Kruisweg",
+  "auteur": "Jozefmaria Escriva",
+  "genre": "Lijden, Van Jozefmaria Escriva",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-021-6",
+  "prijs_cent": 795,
+  "cover": "0-35.jpg",
+  "voorraad": 617,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "7.95",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Elke statie wordt geintroduceerd door een afbeelding van de kruisweg die zich bevindt in de kathedraal van Antwerpen. Na de beschouwing van de statie volgen nog vijf gedachten ter overweging, die van het boek een echt meditatieboek maken.\n\n\"Is het niet waar\" zegt ons de heilige Jozefmaria, \"dat zodra je ophoudt bang te zijn voor het kruis, voor wat de mensen een kruis noemen, zodra je je ertoe aanzet de goddelijke wil te aanvaarden, dat je dan gelukkig bent en dat alle zorgen, alle zowel lichamelijke als geestelijke smarten voorbij gaan?\"",
+  "korte_tekst": "Beschouwingen over de 14 staties van de Kruisweg die de lezer bij het lijden van de Heer betrekken, alsof hij er zelf aanwezig was.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-021-6",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "123",
+    "speelduur": "",
+    "leesproef": "6347",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-35.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-35.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-kruisweg/"
+}

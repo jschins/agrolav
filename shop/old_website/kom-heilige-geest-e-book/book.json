@@ -1,0 +1,41 @@
+{
+  "slug": "kom-heilige-geest-e-book",
+  "titel": "Kom Heilige Geest (e-book)",
+  "auteur": "Francisca J. del Valle",
+  "genre": "E-book, God, Vader, Zoon en heilige Geest",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-026-7",
+  "prijs_cent": 390,
+  "cover": "0-154.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "Tien overwegingen op weg naar Pinksteren",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "3.9",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Dit boek heeft zij geschreven in de vorm van overwegingen voor de tien dagen vóór Pinksterzondag, maar kan ook op andere momenten van het jaar met groot profijt worden gebruikt, als geestelijke lezing of stof voor meditatie. In een rapport aan de aartsbisschop van Sevilla werd het waardig bevonden \"om op één lijn geplaatst te worden met de beste geschriften van onze meest verheven mystici, Johannes van het Kruis en Teresia van Avila\".",
+  "korte_tekst": "Door het meditatief lezen van dit boekje zal de heilige Geest voor ons niet langer \"de Grote onbekende\" zijn.",
+  "velden": {
+    "ondertitel": "Tien overwegingen op weg naar Pinksteren",
+    "isbn": "90-6257-026-7",
+    "uitvoering": "E-book",
+    "aantal_paginas": "127",
+    "speelduur": "",
+    "leesproef": "6612",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"used\"}"
+  },
+  "images": [
+    {
+      "file": "0-154.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-154.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/kom-heilige-geest-e-book/"
+}

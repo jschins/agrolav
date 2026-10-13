@@ -1,0 +1,40 @@
+{
+  "slug": "nt11-navarre-bible-catholic-letters",
+  "titel": "NT11 Navarre Bible Catholic Letters",
+  "auteur": "- -",
+  "genre": "Bijbel",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-087-6",
+  "prijs_cent": 1850,
+  "cover": "0-22.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "18.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Deze groep van zeven 'katholieke ’brieven' wordt zo door sommige kerkvaders (o.a. H. Origenes en H Hiëronimus) genoemd, ter onderscheiding van de brieven van H.Paulus.\n\nBevat o.m. regels voor de gelovige bijbelvertaler.",
+  "korte_tekst": "Bevat de brieven: Jak., 1 Petr., 2 Petr., 1 Joh., 2 Joh., 3 Joh. en Judas.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-087-6",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-22.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-22.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/nt11-navarre-bible-catholic-letters/"
+}

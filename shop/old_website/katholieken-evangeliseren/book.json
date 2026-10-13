@@ -1,0 +1,41 @@
+{
+  "slug": "katholieken-evangeliseren",
+  "titel": "Katholieken evangeliseren",
+  "auteur": "Scott Hahn",
+  "genre": "Kerk en evangelisatie, Scott Hahn",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "978-94-91991-24-0",
+  "prijs_cent": 1250,
+  "cover": "scannen0000-19.jpg",
+  "voorraad": 108,
+  "status": "publish",
+  "ondertitel": "Handboek voor de nieuwe evangelisatie",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "12.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Het is de opdracht waarmee u en ik zijn belast. Het doel van dit boek is om die opdracht in detail uiteen te zetten - wat zij inhoudt, hoe wij haar kunnen uitvoeren, en wat wij geacht worden te verkondigen.\n\nDit boek kan worden beschouwd als een handboek voor de nieuwe evangelisatie. Of misschien nog beter, het kan worden gezien als een handboek voor de uitvoering van onze opdracht, een gids om ons te helpen begrijpen wat het betekent om een geëvangeliseerde katholiek en een evangeliserende katholiek te zijn, en daar ook naar te leven.",
+  "korte_tekst": "De nieuwe evangelisatie is een taak waartoe Christus ons allen oproept. Het is dé grote uitdaging van de Kerk in de 21e eeuw.",
+  "velden": {
+    "ondertitel": "Handboek voor de nieuwe evangelisatie",
+    "isbn": "978-94-91991-24-0",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "182",
+    "speelduur": "",
+    "leesproef": "5965",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "scannen0000-19.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/scannen0000-19.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/katholieken-evangeliseren/"
+}

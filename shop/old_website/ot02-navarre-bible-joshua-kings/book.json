@@ -1,0 +1,66 @@
+{
+  "slug": "ot02-navarre-bible-joshua-kings",
+  "titel": "OT02 Navarre Bible Joshua-Kings",
+  "auteur": "",
+  "genre": "Bijbel, Harde kaft",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-676-9",
+  "prijs_cent": 4500,
+  "cover": "0-128.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Harde kaft",
+  "uitgelicht": [],
+  "prijs": "45",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "De commentaren zijn zelden te technisch en zo geformuleerd dat de spirituele en theologische boodschap van de Bijbel duidelijk en begrijpelijk wordt toegelicht.",
+  "korte_tekst": "Bevat het boek Jozua en het eerste en tweede boek Koningen.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-676-9",
+    "uitvoering": "Harde kaft",
+    "aantal_paginas": "640",
+    "speelduur": "",
+    "slide_template": "default",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-128.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-128.jpg",
+      "alt": ""
+    },
+    {
+      "file": "1-55.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/1-55.jpg",
+      "alt": ""
+    },
+    {
+      "file": "2-55.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/2-55.jpg",
+      "alt": ""
+    },
+    {
+      "file": "3-56.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/3-56.jpg",
+      "alt": ""
+    },
+    {
+      "file": "4-55.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/4-55.jpg",
+      "alt": ""
+    },
+    {
+      "file": "5-56.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/5-56.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/ot02-navarre-bible-joshua-kings/"
+}

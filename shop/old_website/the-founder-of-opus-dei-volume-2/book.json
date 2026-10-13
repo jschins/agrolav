@@ -1,0 +1,41 @@
+{
+  "slug": "the-founder-of-opus-dei-volume-2",
+  "titel": "The founder of Opus Dei Volume 2: God and Daring",
+  "auteur": "Andrés Vazquez de Prada",
+  "genre": "Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-889334-86-3",
+  "prijs_cent": 1895,
+  "cover": "0-57.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "God and daring",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "18.95",
+  "voorraad_status": "outofstock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Uitgebreide levenbeschrijving over de heilige Jozefmaría vanaf het uitbreken van de Spaanse burgeroorlog in 1936 tot aan zijn vertrek naar Rome in 1946.",
+  "korte_tekst": "Biografie over Jozefmaría vanaf het uitbreken van de Spaanse burgeroorlog in 1936 tot zijn vertrek naar Rome in 1946.",
+  "velden": {
+    "ondertitel": "God and daring",
+    "isbn": "1-889334-86-3",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "517",
+    "speelduur": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}",
+    "leesproef": ""
+  },
+  "images": [
+    {
+      "file": "0-57.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-57.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/the-founder-of-opus-dei-volume-2/"
+}

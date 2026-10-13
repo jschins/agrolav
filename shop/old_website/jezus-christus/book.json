@@ -1,0 +1,41 @@
+{
+  "slug": "jezus-christus",
+  "titel": "Jezus Christus",
+  "auteur": "J. Simon",
+  "genre": "God, Vader, Zoon en heilige Geest",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "978-90-6257-156-7",
+  "prijs_cent": 375,
+  "cover": "kaft-Kort-Bestek-1-website.jpg",
+  "voorraad": 27,
+  "status": "publish",
+  "ondertitel": "De verlosser van de mens",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "3.75",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Jezus heeft in een bepaalde historische tijd geleefd. Hij is mens, maar tegelijkertijd ook God. Hij heeft een heilsleer gepredikt, is voor de zonden van alle mensen aan het kruis gestorven en voor ons heil verrezen. Dit alles wordt hier eenvoudig en concreet toegelicht.\n\nDit boekje wordt gebruikt bij de internetcursus 'WaaromJezus?-rk.'",
+  "korte_tekst": "Een kort en bondig boekje over het leven van Jezus Christus met historische feiten voor iedereen die Hem nog niet kent.",
+  "velden": {
+    "ondertitel": "De verlosser van de mens",
+    "isbn": "978-90-6257-156-7",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "60",
+    "speelduur": "",
+    "leesproef": "6512",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "kaft-Kort-Bestek-1-website.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/kaft-Kort-Bestek-1-website.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/jezus-christus/"
+}

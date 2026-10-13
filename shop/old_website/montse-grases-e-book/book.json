@@ -1,0 +1,41 @@
+{
+  "slug": "montse-grases-e-book",
+  "titel": "Montse Grases (e-book)",
+  "auteur": "Edith Zeltner",
+  "genre": "Bijzondere levens, E-book, Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-163-8",
+  "prijs_cent": 220,
+  "cover": "0-157.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "Een korte schets van haar leven",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "2.2",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Wie het verhaal leest van Montse (1941-1959), een levenslustig meisje uit een talrijk gezin in Barcelona, zal getroffen worden door de wijze waarop zij wist om te gaan met ziekte, lijden en dood. Toen zij op 16 jarige leeftijd getroffen werd door botkanker, liet ze haar leven in de handen van God en kon zij veel voor de anderen betekenen.",
+  "korte_tekst": "Hoe Montse (1941 - 1959) om wist te gaan met ziekte, lijden en dood.",
+  "velden": {
+    "ondertitel": "Een korte schets van haar leven",
+    "isbn": "90-6257-163-8",
+    "uitvoering": "E-book",
+    "aantal_paginas": "88",
+    "speelduur": "",
+    "leesproef": "6207",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-157.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-157.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/montse-grases-e-book/"
+}

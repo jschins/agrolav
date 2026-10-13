@@ -1,0 +1,41 @@
+{
+  "slug": "gebeden",
+  "titel": "Gebeden",
+  "auteur": "J. van der Mee",
+  "genre": "Gebedenboeken, Sacramenten",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "978-90-6257-129-1",
+  "prijs_cent": 595,
+  "cover": "gebedenboekje.jpg",
+  "voorraad": 0,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "5.95",
+  "voorraad_status": "outofstock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Dit gebedenboekje bevat een ruime keuze aan dagelijkse gebeden, naast andere die betrekking hebben op de voornaamste devoties (tot de heilige Drieeenheid, Jezus Christus, de heilige Geest, Onze Lieve Vrouw, de Engelen en Sint Jozef).Een belangrijk deel is gewijd aan de viering van de sacramenten. In deze bijgewerkte editie zijn gebeden van zuster Faustina opgenomen. Met illustraties.",
+  "korte_tekst": "Dagelijkse gebeden, devoties en sacramenten. Onontbeerlijk voor iedere gelovige.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "978-90-6257-129-1",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "144",
+    "speelduur": "",
+    "ff_builder_status": "{\"usage\":\"never\"}",
+    "leesproef": "7737",
+    "slide_template": "default"
+  },
+  "images": [
+    {
+      "file": "gebedenboekje.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/gebedenboekje.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/gebeden/"
+}

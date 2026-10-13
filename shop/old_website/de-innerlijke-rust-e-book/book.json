@@ -1,0 +1,41 @@
+{
+  "slug": "de-innerlijke-rust-e-book",
+  "titel": "De innerlijke rust (e-book)",
+  "auteur": "Jacques Philippe",
+  "genre": "E-book, Jacques Philippe",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-056-9",
+  "prijs_cent": 525,
+  "cover": "scannen0000-32.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "5.25",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "We leven in een drukke en onrustige tijd. Onze zoektocht naar God is ook vaak onrustig en angstig in plaats van vreedzaam en vol vertrouwen. In dit boekje leert de auteur ons om in álle omstandigheden de diepe vrede van ons hart te bewaren. Vanuit Bijbel en traditie geeft hij voorbeelden hoe mensen in het verleden zijn omgegaan met eigen en andermans fouten. Heel aanmoedigend is de nadruk op de positieve kanten van het geloof: liefde, vertrouwen, en de kracht van het gebed.\n\nJacques Philippe (1947) is sinds 1976 lid van de Gemeenschap van de Zaligsprekingen waarbinnen hij verschillende functies heeft bekleed. Sinds 1985 is hij priester en geeft hij retraites, zowel in zijn geboorteland Frankrijk als daarbuiten. Hij is een geliefd auteur van boeken over spiritualiteit. Meerdere van zijn bestsellers zijn in een twintigtal talen uitgegeven, waaronder in het Nederlands: Tijd voor God, De innerlijke vrijheid, De innerlijke rust, In de school van de Heilige Geest en Geluk waar je het niet verwacht.",
+  "korte_tekst": "Dit boekje leert ons om de barrières voor onze omgang met God (dagelijkse zorgen, faalangst, vrees om te lijden) te overwinnen en zo de innerlijke rust te verkrijgen.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-056-9",
+    "uitvoering": "E-book",
+    "aantal_paginas": "96",
+    "speelduur": "",
+    "leesproef": "5882",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "scannen0000-32.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/scannen0000-32.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-innerlijke-rust-e-book/"
+}

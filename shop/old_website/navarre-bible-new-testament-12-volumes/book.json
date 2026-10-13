@@ -1,0 +1,40 @@
+{
+  "slug": "navarre-bible-new-testament-12-volumes",
+  "titel": "Navarre Bible New Testament 12 volumes",
+  "auteur": "- -",
+  "genre": "Bijbel",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "",
+  "prijs_cent": 19500,
+  "cover": "Navarre-Bible-12-delen.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "195",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Naast exegese geeft ieder deel nog een schat aan extra informatie: Een algemene inleiding in de bijbel (St. Mark) - De geschiedenis van het Nieuwe Testament (Acts) - de waarheid van de H. Schrift (Thessalonians) - enz.",
+  "korte_tekst": "Het nieuwe testament in twaalf delen. Exegese van de bovenste plank. Per pagina gemiddeld 1/3 deel voetnoten.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "Navarre-Bible-12-delen.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/Navarre-Bible-12-delen.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/navarre-bible-new-testament-12-volumes/"
+}

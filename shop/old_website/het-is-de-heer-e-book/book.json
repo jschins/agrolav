@@ -1,0 +1,41 @@
+{
+  "slug": "het-is-de-heer-e-book",
+  "titel": "Het is de Heer (e-book)",
+  "auteur": "Athanasius Schneider",
+  "genre": "E-book, Sacramenten",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "",
+  "prijs_cent": 220,
+  "cover": "0-199.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "2.2",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "\"Het boek toont duidelijk in een historisch-thelogische overweging hoe de praktijk van het ontvangen van de H. Communie op de tong en het knielen in de Kerk gedurende lange tijd is aanvaard en gepraktiseerd.\n\nNu denk ik dat het de hoogste tijd is om dergelijke goede gewoontes opnieuw te bezien en opnieuw te beoordelen en, indien nodig, de huidige praktijk te verlaten(...) De redenen voor deze aanpak moeten niet zozeer academisch maar vooral pastoraal-spiritueel zijn - kort gezegd - wat een beter geloof opbouwt.\n\nIn dit opzicht toont Mgr. Schneider een prijzenswaardige moed, omdat hij in staat is de ware betekenis van de woorden van St. Paulus te begrijpen:'maar alles dient tot opbouw te worden gedaan' (1 Kor. 14,26).\"\n\n(Uit het voorwoord van Mgr. A. Malcolm Ranijth, secretaris van de Congregatie voor de Goddelijke Eredienst en de Regeling van de Sacramenten.)",
+  "korte_tekst": "De schrijver begint deze overwegingen over de H. Communie met een herinnering aan zijn moeder en twee andere vrouwen die heldhaftig het geloof bewaarden, en anderen hielpen het te bewaren, in de Sovjetunie.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "",
+    "uitvoering": "E-book",
+    "aantal_paginas": "64",
+    "speelduur": "",
+    "leesproef": "6222",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-199.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-199.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/het-is-de-heer-e-book/"
+}

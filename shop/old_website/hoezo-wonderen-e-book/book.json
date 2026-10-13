@@ -1,0 +1,41 @@
+{
+  "slug": "hoezo-wonderen-e-book",
+  "titel": "Hoezo wonderen (e-book)",
+  "auteur": "Patrick Theillier",
+  "genre": "E-book, Maria Fatima Lourdes",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-038-0",
+  "prijs_cent": 450,
+  "cover": "0-182.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "kijk eens in Lourdes",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "4.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "In 1858 verschijnt Onze Lieve Vrouw in het Zuid-Franse stadje Lourdes meerdere malen aan een 14 jarig meisje, Bernadette Soubirous. Sinds de Kerk deze verschijningen erkend heeft (1862), bezoeken miljoenen mensen Lourdes, onder wie talrijke zieken die op voorspraak van Maria genezen worden.\n\nDit boekje beschrijft een aantal gevallen en geeft antwoord op veelgestelde vragen over wonderen.",
+  "korte_tekst": "Voor wie meer inzicht wil hebben in de wonderen en in de onverklaarbare genezingen van Lourdes.",
+  "velden": {
+    "ondertitel": "kijk eens in Lourdes",
+    "isbn": "90-6257-038-0",
+    "uitvoering": "E-book",
+    "aantal_paginas": "125",
+    "speelduur": "",
+    "leesproef": "6645",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-182.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-182.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/hoezo-wonderen-e-book/"
+}

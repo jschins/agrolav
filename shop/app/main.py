@@ -68,6 +68,22 @@ from app.rekening import (
 log = logging.getLogger("shop")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _COOKIE = "deboog_cart"
+
+
+def _order_items(books: list[Book]) -> list[OrderItem]:
+    aantal: dict[str, int] = {}
+    price: dict[str, int] = {}
+    order: list[str] = []
+    for book in books:
+        if book.slug not in aantal:
+            order.append(book.slug)
+            price[book.slug] = book.prijs_cent_excl
+            aantal[book.slug] = 0
+        aantal[book.slug] += 1
+    return [
+        OrderItem(slug=slug, number_of_copies=aantal[slug], price_cents_per_copy=price[slug])
+        for slug in order
+    ]
 _REKENING_COOKIE = "deboog_rekening"
 _ROOT = Path(__file__).resolve().parent.parent
 
@@ -390,8 +406,8 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                 ),
                 503,
             )
-        items = [OrderItem(slug=book.slug, title=book.titel, price_cents=book.prijs_cent_excl) for book in books]
-        amount = sum(item.price_cents for item in items)
+        items = _order_items(books)
+        amount = sum(item.price_cents_per_copy * item.number_of_copies for item in items)
         order_id = uuid.uuid4().hex
         token = secrets.token_urlsafe(32)
         conn = connect(settings.db_path)
@@ -408,7 +424,9 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             )
         finally:
             conn.close()
-        description = catalog.shop_name + " — " + ", ".join(item.title for item in items)
+        description = catalog.shop_name + " — " + ", ".join(
+            catalog.by_slug(item.slug).titel for item in items if catalog.by_slug(item.slug) is not None
+        )
         redirect_url = f"{settings.public_base_url}/bestelling/{order_id}?token={token}"
         webhook_url = f"{settings.public_base_url}/mollie/webhook"
         try:

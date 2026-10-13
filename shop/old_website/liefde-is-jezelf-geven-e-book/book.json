@@ -1,0 +1,41 @@
+{
+  "slug": "liefde-is-jezelf-geven-e-book",
+  "titel": "Liefde is jezelf geven (e-book)",
+  "auteur": "Stéphane Seminckx",
+  "genre": "E-book, Huwelijk gezin opvoeding",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "978-90-6257-072-0",
+  "prijs_cent": 780,
+  "cover": "scannen0000-31.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "De christelijke visie op het huwelijk",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "7.8",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Zichzelf volledig aan de ander geven, een gezin stichten dat één is, nieuw leven schenken en trouw blijven aan de huwelijkspartner tot aan de dood – ziedaar de ingrediënten van een grote liefde en van het geluk. We voelen dit allemaal intuïtief aan, en we dromen ervan zonder dat we ons daar goed bewust van zijn ... maar ook beschouwen het vaak genoeg als een onbereikbare droom, een utopie.\n\nEn toch is het mogelijk: met Christus. Vijftig jaar geleden schreef Paulus VI een profetisch document over de echtelijke liefde, de encycliek Humanae vitae. Zijn boodschap werd aangevuld en verder ontwikkeld door het onderricht van Johannes Paulus II, Benedictus XVI en Franciscus, zodat we vandaag de dag een diepgaande en moderne visie ter beschikking hebben op het christelijke huwelijk – een visie die op overtuigende wijze beantwoordt aan de meest nobele verlangens die leven in het hart van de mens.",
+  "korte_tekst": "De een diepgaande en moderne christelijke visie op het huwelijk, dat op overtuigende wijze beantwoord aan de meest nobele verlangens, die leven in het hart van de mens.",
+  "velden": {
+    "ondertitel": "De christelijke visie op het huwelijk",
+    "isbn": "978-90-6257-072-0",
+    "uitvoering": "E-book",
+    "aantal_paginas": "182",
+    "speelduur": "",
+    "leesproef": "6387",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "scannen0000-31.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/scannen0000-31.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/liefde-is-jezelf-geven-e-book/"
+}

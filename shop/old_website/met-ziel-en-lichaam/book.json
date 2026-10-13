@@ -1,0 +1,41 @@
+{
+  "slug": "met-ziel-en-lichaam",
+  "titel": "Met ziel en lichaam",
+  "auteur": "J.L. Soria",
+  "genre": "Moraal en maatschappij",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-152-2",
+  "prijs_cent": 425,
+  "cover": "0-18.jpg",
+  "voorraad": 351,
+  "status": "publish",
+  "ondertitel": "De christen en de seksualiteit",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "4.25",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "In onze tijd wordt de ware betekenis van de menselijke seksualiteit misvormd, omdat men haar losmaakt van haar wezenlijke betrekking tot de ziel. In deze context brengt dit boekje de seksualiteit naar voren als waarde en taak van heel de mens, geschapen, als man en vrouw, naar het beeld van God. Met veel praktische tips, onder meer voor de bewaking van de huwelijkstrouw.",
+  "korte_tekst": "De seksualiteit als waarde en taak van heel de persoon, ziel en lichaam, geschapen naar het beeld van God.",
+  "velden": {
+    "ondertitel": "De christen en de seksualiteit",
+    "isbn": "90-6257-152-2",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "95",
+    "speelduur": "",
+    "leesproef": "6061",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-18.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-18.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/met-ziel-en-lichaam/"
+}

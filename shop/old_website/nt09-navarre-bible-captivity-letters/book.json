@@ -1,0 +1,40 @@
+{
+  "slug": "nt09-navarre-bible-captivity-letters",
+  "titel": "NT09 Navarre Bible Captivity Letters",
+  "auteur": "- -",
+  "genre": "Bijbel",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-079-5",
+  "prijs_cent": 1850,
+  "cover": "0-21.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "18.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Ieder van de brieven aan de Efeziërs, Filippenzen en Kolossenzen wordt voorafgegegaan door een commentaar op de brief en een situatieschets ter plaatse.",
+  "korte_tekst": "De brieven van de H. Paulus aan de Efeziërs, Filippenzen, Kolossenzen en Philemon.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-079-5",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-21.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-21.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/nt09-navarre-bible-captivity-letters/"
+}

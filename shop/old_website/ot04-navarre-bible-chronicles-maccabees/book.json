@@ -1,0 +1,41 @@
+{
+  "slug": "ot04-navarre-bible-chronicles-maccabees",
+  "titel": "OT04 Navarre Bible Chronicles Maccabees",
+  "auteur": "",
+  "genre": "Bijbel, Harde kaft",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-677-7",
+  "prijs_cent": 4500,
+  "cover": "0-127.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Harde kaft",
+  "uitgelicht": [],
+  "prijs": "45",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "De commentaren zijn zelden te technisch en zo geformuleerd dat de spirituele en theologische boodschap van de Bijbel duidelijk en begrijpelijk wordt toegelicht.",
+  "korte_tekst": "Bevat de boeken 1 Kron. en 2 Kron. alsmede 1 Makk. en 2 Makk.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-677-7",
+    "uitvoering": "Harde kaft",
+    "aantal_paginas": "630",
+    "speelduur": "",
+    "leesproef": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-127.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-127.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/ot04-navarre-bible-chronicles-maccabees/"
+}

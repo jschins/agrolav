@@ -1,0 +1,40 @@
+{
+  "slug": "nt02-navarre-bible-st-mark",
+  "titel": "NT02 Navarre Bible St Mark",
+  "auteur": "- -",
+  "genre": "Bijbel",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-092-2",
+  "prijs_cent": 1850,
+  "cover": "0-29.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "18.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Als uiterst nuttige aanvulling op de relatief korte tekst van dit Evangelie vindt men een inleiding op de H. Schrift in het algemeen en een tweede inleiding op de vier Evangelies in het bijzonder.",
+  "korte_tekst": "Het H.Evangelie volgens de H. Marcus.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-092-2",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-29.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-29.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/nt02-navarre-bible-st-mark/"
+}

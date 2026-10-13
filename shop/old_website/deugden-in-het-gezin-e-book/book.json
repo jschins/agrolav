@@ -1,0 +1,41 @@
+{
+  "slug": "deugden-in-het-gezin-e-book",
+  "titel": "Deugden in het Gezin (e-book)",
+  "auteur": "Georges Chevrot",
+  "genre": "E-book, Huwelijk gezin opvoeding",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "9062570658",
+  "prijs_cent": 330,
+  "cover": "0-196.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "3.3",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Er zijn enkele kleine deugden die geen uitbundige bewondering wekken, maar als ze ontbreken worden de verhoudingen tussen de mensen dusdanig gespannen, moeizaam en zelfs stormachtig, dat dit soms rampzalige gevolgen heeft. Juist deze 'kleine deugden' maken ons dagelijks leven aangenaam en draaglijk. Daarom heeft de auteur zich in deze overwegingen vooral beziggehouden met de kleine deugden van het christelijk gezin.",
+  "korte_tekst": "De auteur richt zijn aandacht op de praktijk van de kleine deugden in het gezinsleven die onmisbaar zijn om ons dagelijks leven aangenaam te maken.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "9062570658",
+    "uitvoering": "E-book",
+    "aantal_paginas": "96",
+    "speelduur": "",
+    "leesproef": "5889",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-196.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-196.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/deugden-in-het-gezin-e-book/"
+}

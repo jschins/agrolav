@@ -1,0 +1,40 @@
+{
+  "slug": "nt03-navarre-bible-st-luke",
+  "titel": "NT03 Navarre Bible St Luke",
+  "auteur": "- -",
+  "genre": "Bijbel",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-072-8",
+  "prijs_cent": 1850,
+  "cover": "0-28.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "18.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Een uitgebreid commentaar op het Lucas evangelie vergezeld van een korte biografie van de schrijver. Belangrijk feit: de helft van gebeurtenissen die in dit evangelie werden opgetekend, staan in geen ander Evangelie vermeld.",
+  "korte_tekst": "Het H. Evangelie volgens de H. Lucas, een dokter uit Antiochië en volgeling van de H. Paulus.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-072-8",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-28.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-28.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/nt03-navarre-bible-st-luke/"
+}

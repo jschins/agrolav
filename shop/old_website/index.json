@@ -1,0 +1,3070 @@
+{
+  "source": "https://deboog-uitgeverij.nl",
+  "note": "prijs_cent is the price stored on the old site, in cents. It is not a VAT conversion. One folder per book.",
+  "books": [
+    {
+      "folder": "in-het-licht-van-het-evangelie",
+      "slug": "in-het-licht-van-het-evangelie",
+      "titel": "In het licht van het Evangelie",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-166-6",
+      "status": "private"
+    },
+    {
+      "folder": "terug-naar-het-midden",
+      "slug": "terug-naar-het-midden",
+      "titel": "Terug naar het midden",
+      "auteur": "",
+      "ISBN": "978-90-6257-165-9",
+      "status": "publish"
+    },
+    {
+      "folder": "donatie",
+      "slug": "donatie",
+      "titel": "Donatie",
+      "auteur": "",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "vrienden-en-voorsprekers",
+      "slug": "vrienden-en-voorsprekers",
+      "titel": "Vrienden en voorsprekers",
+      "auteur": "",
+      "ISBN": "978-90-6257-151-2",
+      "status": "publish"
+    },
+    {
+      "folder": "van-rede-naar-openbaring-e-book",
+      "slug": "van-rede-naar-openbaring-e-book",
+      "titel": "Van rede naar Openbaring (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-150-5",
+      "status": "publish"
+    },
+    {
+      "folder": "van-rede-naar-openbaring",
+      "slug": "van-rede-naar-openbaring",
+      "titel": "Van rede naar Openbaring",
+      "auteur": "",
+      "ISBN": "978-90-6257-150-5",
+      "status": "publish"
+    },
+    {
+      "folder": "inleiding-tot-het-geestelijk-leven",
+      "slug": "inleiding-tot-het-geestelijk-leven",
+      "titel": "Inleiding tot het geestelijk leven",
+      "auteur": "",
+      "ISBN": "9789062571482",
+      "status": "publish"
+    },
+    {
+      "folder": "mijn-zoon-carlo",
+      "slug": "mijn-zoon-carlo",
+      "titel": "Mijn zoon Carlo",
+      "auteur": "",
+      "ISBN": "9789493207592",
+      "status": "publish"
+    },
+    {
+      "folder": "waartoe-dient-de-mis",
+      "slug": "waartoe-dient-de-mis",
+      "titel": "Waartoe dient de Mis ?",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-147-5",
+      "status": "publish"
+    },
+    {
+      "folder": "het-is-waardig-en-recht",
+      "slug": "het-is-waardig-en-recht",
+      "titel": "Het is waardig en recht",
+      "auteur": "",
+      "ISBN": "978.94.93.207.356",
+      "status": "publish"
+    },
+    {
+      "folder": "hermann-steinkamp",
+      "slug": "hermann-steinkamp",
+      "titel": "Hermann Steinkamp",
+      "auteur": "Fernando Gil-Delgado",
+      "ISBN": "978-84-1368-580-9",
+      "status": "publish"
+    },
+    {
+      "folder": "een-zuivere-ziel-is-als-een-mooie-parel",
+      "slug": "een-zuivere-ziel-is-als-een-mooie-parel",
+      "titel": "Een zuivere ziel is als een mooie parel",
+      "auteur": "",
+      "ISBN": "9789062571468",
+      "status": "publish"
+    },
+    {
+      "folder": "hij-heeft-ons-zoveel-gegeven",
+      "slug": "hij-heeft-ons-zoveel-gegeven",
+      "titel": "Hij heeft ons zoveel gegeven",
+      "auteur": "",
+      "ISBN": "9789493207431",
+      "status": "publish"
+    },
+    {
+      "folder": "als-je-niet-opnieuw-geboren-wordt",
+      "slug": "als-je-niet-opnieuw-geboren-wordt",
+      "titel": "Als je niet opnieuw geboren wordt",
+      "auteur": "",
+      "ISBN": "978-90-6257-145-1",
+      "status": "publish"
+    },
+    {
+      "folder": "de-grootste-troost-komt-van-het-gebed-e-book",
+      "slug": "de-grootste-troost-komt-van-het-gebed-e-book",
+      "titel": "De grootste troost komt van het gebed (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-135-2",
+      "status": "publish"
+    },
+    {
+      "folder": "lijdt-christus-nu-nog",
+      "slug": "lijdt-christus-nu-nog",
+      "titel": "Lijdt Christus nu nog?",
+      "auteur": "",
+      "ISBN": "978-90-6257-143-7",
+      "status": "publish"
+    },
+    {
+      "folder": "heiligheid-voor-losers",
+      "slug": "heiligheid-voor-losers",
+      "titel": "Heiligheid voor losers",
+      "auteur": "",
+      "ISBN": "9789062571444",
+      "status": "publish"
+    },
+    {
+      "folder": "vreugde-alom",
+      "slug": "vreugde-alom",
+      "titel": "Vreugde alom",
+      "auteur": "",
+      "ISBN": "978-90-6257-141-3",
+      "status": "publish"
+    },
+    {
+      "folder": "bezoeken-aan-het-allerheiligste-sacrament",
+      "slug": "bezoeken-aan-het-allerheiligste-sacrament",
+      "titel": "Bezoeken aan het Allerheiligste Sacrament",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-139-0",
+      "status": "publish"
+    },
+    {
+      "folder": "de-heilige-rozenkrans-3",
+      "slug": "de-heilige-rozenkrans-3",
+      "titel": "De Heilige Rozenkrans",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-142-0",
+      "status": "publish"
+    },
+    {
+      "folder": "een-jaar-van-gods-missionaire-opdracht",
+      "slug": "een-jaar-van-gods-missionaire-opdracht",
+      "titel": "Een jaar van Gods missionaire opdracht",
+      "auteur": "",
+      "ISBN": "9789083379609",
+      "status": "publish"
+    },
+    {
+      "folder": "lessen-van-de-heilige-therese-2",
+      "slug": "lessen-van-de-heilige-therese-2",
+      "titel": "Lessen van de heilige Thérèse",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-140-6",
+      "status": "publish"
+    },
+    {
+      "folder": "de-grootste-troost-komt-van-het-gebed",
+      "slug": "de-grootste-troost-komt-van-het-gebed",
+      "titel": "De grootste troost komt van het gebed",
+      "auteur": "",
+      "ISBN": "978-90-6257-135-2",
+      "status": "publish"
+    },
+    {
+      "folder": "carlo-acutis",
+      "slug": "carlo-acutis",
+      "titel": "Carlo Acutis",
+      "auteur": "",
+      "ISBN": "978.94.91991.99.8",
+      "status": "publish"
+    },
+    {
+      "folder": "lijdt-christus-nu-nog-e-book",
+      "slug": "lijdt-christus-nu-nog-e-book",
+      "titel": "Lijdt Christus nu nog? (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-143-7",
+      "status": "publish"
+    },
+    {
+      "folder": "heiligheid-voor-losers-e-book",
+      "slug": "heiligheid-voor-losers-e-book",
+      "titel": "Heiligheid voor losers (e-book)",
+      "auteur": "",
+      "ISBN": "9789062571444",
+      "status": "publish"
+    },
+    {
+      "folder": "echtparen-laat-jullie-liefde-opbloeien",
+      "slug": "echtparen-laat-jullie-liefde-opbloeien",
+      "titel": "Echtparen, laat jullie liefde weer opbloeien !",
+      "auteur": "",
+      "ISBN": "978-90-6257-137-6",
+      "status": "publish"
+    },
+    {
+      "folder": "maria-van-nazareth",
+      "slug": "maria-van-nazareth",
+      "titel": "Maria van Nazareth",
+      "auteur": "",
+      "ISBN": "9789062571383",
+      "status": "publish"
+    },
+    {
+      "folder": "catechismus-voor-het-geestelijke-leven",
+      "slug": "catechismus-voor-het-geestelijke-leven",
+      "titel": "Catechismus voor het geestelijke leven",
+      "auteur": "",
+      "ISBN": "9789493207394",
+      "status": "publish"
+    },
+    {
+      "folder": "sycamore",
+      "slug": "sycamore",
+      "titel": "Sycamore",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-818917-7-6",
+      "status": "publish"
+    },
+    {
+      "folder": "de-wereld-van-binnenuit-veranderen",
+      "slug": "de-wereld-van-binnenuit-veranderen",
+      "titel": "De wereld van binnenuit veranderen",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-134-5",
+      "status": "publish"
+    },
+    {
+      "folder": "priester-voor-eeuwig",
+      "slug": "priester-voor-eeuwig",
+      "titel": "Priester voor eeuwig",
+      "auteur": "",
+      "ISBN": "9789493207363",
+      "status": "publish"
+    },
+    {
+      "folder": "de-aanbidding-in-het-hart-van-de-wereld-2",
+      "slug": "de-aanbidding-in-het-hart-van-de-wereld-2",
+      "titel": "Aanbidding in het hart van de wereld",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-133-8",
+      "status": "publish"
+    },
+    {
+      "folder": "iets-groots-dat-liefde-is-2e-helft-2021",
+      "slug": "iets-groots-dat-liefde-is-2e-helft-2021",
+      "titel": "Iets groots dat liefde is",
+      "auteur": "",
+      "ISBN": "9789062571321",
+      "status": "publish"
+    },
+    {
+      "folder": "katholicisme-puur-simpel-e-book",
+      "slug": "katholicisme-puur-simpel-e-book",
+      "titel": "Katholicisme puur en simpel (e-book)",
+      "auteur": "",
+      "ISBN": "9789493207110",
+      "status": "publish"
+    },
+    {
+      "folder": "lessen-van-de-heilige-therese",
+      "slug": "lessen-van-de-heilige-therese",
+      "titel": "Lessen van de heilige Thérèse (e-book)",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-140-6",
+      "status": "publish"
+    },
+    {
+      "folder": "leo-allah-mahabba-3e-kwartaal-2021",
+      "slug": "leo-allah-mahabba-3e-kwartaal-2021",
+      "titel": "Leo Allah mahabba",
+      "auteur": "",
+      "ISBN": "978-90-6257-127-7",
+      "status": "publish"
+    },
+    {
+      "folder": "kindertoewijding-2e-helft-2021",
+      "slug": "kindertoewijding-2e-helft-2021",
+      "titel": "Kindertoewijding",
+      "auteur": "",
+      "ISBN": "978-90-6257-131-4",
+      "status": "publish"
+    },
+    {
+      "folder": "deugdzaam-leiderschap-4e-kwartaal-2021",
+      "slug": "deugdzaam-leiderschap-4e-kwartaal-2021",
+      "titel": "Deugdzaam leiderschap",
+      "auteur": "",
+      "ISBN": "978-90-6257-128-4",
+      "status": "publish"
+    },
+    {
+      "folder": "waartoe-dient-de-mis-e-book",
+      "slug": "waartoe-dient-de-mis-e-book",
+      "titel": "Waartoe dient de Mis ? (e-book)",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-147-5",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kardinale-deugden-4e-kwartaal-2021",
+      "slug": "de-kardinale-deugden-4e-kwartaal-2021",
+      "titel": "De kardinale deugden",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-130-7",
+      "status": "publish"
+    },
+    {
+      "folder": "de-aanbidding-in-het-hart-van-de-wereld-e-book",
+      "slug": "de-aanbidding-in-het-hart-van-de-wereld-e-book",
+      "titel": "De aanbidding in het hart van de wereld (e-book)",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-133-8",
+      "status": "publish"
+    },
+    {
+      "folder": "gods-engelen-waken-over-ons-4e-kwartaal-2021",
+      "slug": "gods-engelen-waken-over-ons-4e-kwartaal-2021",
+      "titel": "Gods engelen waken over ons",
+      "auteur": "",
+      "ISBN": "978-90-6257-127-7",
+      "status": "publish"
+    },
+    {
+      "folder": "jozef-van-nazaret-zomer-2021",
+      "slug": "jozef-van-nazaret-zomer-2021",
+      "titel": "Jozef van Nazareth",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-126-0",
+      "status": "publish"
+    },
+    {
+      "folder": "h-thomas-van-aquino-e-book",
+      "slug": "h-thomas-van-aquino-e-book",
+      "titel": "H. Thomas van Aquino (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-125-3",
+      "status": "publish"
+    },
+    {
+      "folder": "jozef-van-nazareth-e-book",
+      "slug": "jozef-van-nazareth-e-book",
+      "titel": "Jozef van Nazareth (e-book)",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-126-0",
+      "status": "publish"
+    },
+    {
+      "folder": "katholicisme-puur-simpel",
+      "slug": "katholicisme-puur-simpel",
+      "titel": "Katholicisme puur en simpel",
+      "auteur": "",
+      "ISBN": "9789493207110",
+      "status": "publish"
+    },
+    {
+      "folder": "niet-te-geloven-teksten-over-de-eucharistie-e-book",
+      "slug": "niet-te-geloven-teksten-over-de-eucharistie-e-book",
+      "titel": "Niet te geloven!  Teksten over de Eucharistie (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-116-1",
+      "status": "publish"
+    },
+    {
+      "folder": "jezus-en-de-joodse-wortels-van-maria-e-book",
+      "slug": "jezus-en-de-joodse-wortels-van-maria-e-book",
+      "titel": "Jezus en de joodse wortels van Maria (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-124-6",
+      "status": "private"
+    },
+    {
+      "folder": "bezoeken-aan-het-allerheiligste-sacrament-e-book",
+      "slug": "bezoeken-aan-het-allerheiligste-sacrament-e-book",
+      "titel": "Bezoeken aan het Allerheiligste Sacrament (e-book)",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-139-0",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kick-van-kuisheid",
+      "slug": "de-kick-van-kuisheid",
+      "titel": "De kick van kuisheid",
+      "auteur": "",
+      "ISBN": "9789491991950",
+      "status": "publish"
+    },
+    {
+      "folder": "fake-news-ontmaskerd-de-verborgen-geschiedenis-van-het-christendom-e-book",
+      "slug": "fake-news-ontmaskerd-de-verborgen-geschiedenis-van-het-christendom-e-book",
+      "titel": "Fake news ontmaskerd. De verborgen geschiedenis van het christendom (e-book)",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-112-3",
+      "status": "publish"
+    },
+    {
+      "folder": "hongerende-zielen-e-book",
+      "slug": "hongerende-zielen-e-book",
+      "titel": "Hongerende Zielen (e-book)",
+      "auteur": "",
+      "ISBN": "90-6257-063-1",
+      "status": "publish"
+    },
+    {
+      "folder": "deugdzaam-leiderschap",
+      "slug": "deugdzaam-leiderschap",
+      "titel": "Deugdzaam leiderschap",
+      "auteur": "",
+      "ISBN": "978-90-6257-128-4",
+      "status": "publish"
+    },
+    {
+      "folder": "h-thomas-van-aquino-zomer-2021",
+      "slug": "h-thomas-van-aquino-zomer-2021",
+      "titel": "H. Thomas van Aquino",
+      "auteur": "",
+      "ISBN": "978-90-6257-125-3",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kardinale-deugden",
+      "slug": "de-kardinale-deugden",
+      "titel": "De kardinale deugden",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-130-7",
+      "status": "publish"
+    },
+    {
+      "folder": "leren-bidden-om-te-leren-beminnen-e-book",
+      "slug": "leren-bidden-om-te-leren-beminnen-e-book",
+      "titel": "Leren bidden om te leren beminnen (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-115-4",
+      "status": "publish"
+    },
+    {
+      "folder": "dietrich-von-hildebrand-het-huwelijk-verwacht-najaar-2020",
+      "slug": "dietrich-von-hildebrand-het-huwelijk-verwacht-najaar-2020",
+      "titel": "Het huwelijk",
+      "auteur": "",
+      "ISBN": "978-90-6257-120-8",
+      "status": "publish"
+    },
+    {
+      "folder": "leren-te-bidden-om-te-leren-beminnen",
+      "slug": "leren-te-bidden-om-te-leren-beminnen",
+      "titel": "Leren bidden om te leren beminnen",
+      "auteur": "Jacques Philippe",
+      "ISBN": "978-90-6257-115-4",
+      "status": "publish"
+    },
+    {
+      "folder": "jezus-en-de-joodse-wortels-van-maria",
+      "slug": "jezus-en-de-joodse-wortels-van-maria",
+      "titel": "Jezus en de joodse wortels van Maria",
+      "auteur": "",
+      "ISBN": "978-90-6257-124-6",
+      "status": "publish"
+    },
+    {
+      "folder": "evangelie",
+      "slug": "evangelie",
+      "titel": "Evangelie",
+      "auteur": "",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "de-wereld-van-binnenuit-veranderen-e-book",
+      "slug": "de-wereld-van-binnenuit-veranderen-e-book",
+      "titel": "De wereld van binnenuit veranderen (e-book)",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-134-5",
+      "status": "publish"
+    },
+    {
+      "folder": "god-een-en-drievuldig-e-book",
+      "slug": "god-een-en-drievuldig-e-book",
+      "titel": "God: een en drievuldig (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-042-3",
+      "status": "publish"
+    },
+    {
+      "folder": "god-een-en-drievuldig-2",
+      "slug": "god-een-en-drievuldig-2",
+      "titel": "God: een en drievuldig",
+      "auteur": "Gonzalo Lobo Mendez",
+      "ISBN": "978-90-6257-042-3",
+      "status": "publish"
+    },
+    {
+      "folder": "als-je-niet-opnieuw-geboren-wordt-e-book",
+      "slug": "als-je-niet-opnieuw-geboren-wordt-e-book",
+      "titel": "Als je niet opnieuw geboren wordt (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-145-1",
+      "status": "publish"
+    },
+    {
+      "folder": "god-roept",
+      "slug": "god-roept",
+      "titel": "God roept",
+      "auteur": "A. Aquiló",
+      "ISBN": "978-90-6257-122-2",
+      "status": "publish"
+    },
+    {
+      "folder": "pater-pio-wij-hebben-hem-gekend",
+      "slug": "pater-pio-wij-hebben-hem-gekend",
+      "titel": "Pater Pio. Wij hebben hem gekend",
+      "auteur": "John Schug",
+      "ISBN": "978-90-6257-119-2",
+      "status": "publish"
+    },
+    {
+      "folder": "het-huwelijk-e-book",
+      "slug": "het-huwelijk-e-book",
+      "titel": "Het huwelijk (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-120-8",
+      "status": "publish"
+    },
+    {
+      "folder": "geluk-waar-je-het-niet-verwacht-verwacht",
+      "slug": "geluk-waar-je-het-niet-verwacht-verwacht",
+      "titel": "Geluk waar je het niet verwacht",
+      "auteur": "Jacques Philippe",
+      "ISBN": "978-90-6257-121-5",
+      "status": "publish"
+    },
+    {
+      "folder": "geluk-waar-je-het-niet-verwacht-e-book",
+      "slug": "geluk-waar-je-het-niet-verwacht-e-book",
+      "titel": "Geluk waar je het niet verwacht (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-121-5",
+      "status": "publish"
+    },
+    {
+      "folder": "god-roept-zojuist-verschenen-e-book",
+      "slug": "god-roept-zojuist-verschenen-e-book",
+      "titel": "God roept (e-book)",
+      "auteur": "",
+      "ISBN": "9789062571222",
+      "status": "publish"
+    },
+    {
+      "folder": "niet-te-geloven",
+      "slug": "niet-te-geloven",
+      "titel": "Niet te geloven!  Teksten over de Eucharistie",
+      "auteur": "",
+      "ISBN": "978-90-6257-116-1",
+      "status": "publish"
+    },
+    {
+      "folder": "een-gelukkig-huwelijk-e-book",
+      "slug": "een-gelukkig-huwelijk-e-book",
+      "titel": "Een gelukkig huwelijk (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-081-2",
+      "status": "publish"
+    },
+    {
+      "folder": "fake-news-ontmaskerd-de-verborgen-geschiedenis-van-het-christendom",
+      "slug": "fake-news-ontmaskerd-de-verborgen-geschiedenis-van-het-christendom",
+      "titel": "Fake news ontmaskerd. De verborgen geschiedenis van het christendom",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-112-3",
+      "status": "publish"
+    },
+    {
+      "folder": "voor-de-christen-die-mens-wil-worden-e-book",
+      "slug": "voor-de-christen-die-mens-wil-worden-e-book",
+      "titel": "Voor de christen die mens wil worden (e-book)",
+      "auteur": "Paul Graas",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "voor-de-christen-die-mens-wil-worden",
+      "slug": "voor-de-christen-die-mens-wil-worden",
+      "titel": "Voor de christen die mens wil worden",
+      "auteur": "Paul Graas",
+      "ISBN": "978-90-6257-118-5",
+      "status": "publish"
+    },
+    {
+      "folder": "christenen-in-de-samenleving-e-book",
+      "slug": "christenen-in-de-samenleving-e-book",
+      "titel": "Christenen in de samenleving (e-book)",
+      "auteur": "Domènec Melé Carné",
+      "ISBN": "9789062570751",
+      "status": "publish"
+    },
+    {
+      "folder": "jezus-christus-en-zijn-tijd-verwacht-eind-mei-e-book",
+      "slug": "jezus-christus-en-zijn-tijd-verwacht-eind-mei-e-book",
+      "titel": "Jezus Christus en zijn tijd (e-book)",
+      "auteur": "F.J.S. Sheed",
+      "ISBN": "978-90-6257-114-7",
+      "status": "publish"
+    },
+    {
+      "folder": "uit-de-grond-van-ons-hart",
+      "slug": "uit-de-grond-van-ons-hart",
+      "titel": "Uit de grond van ons hart",
+      "auteur": "Robert Sarah",
+      "ISBN": "978-94-9199-193-6",
+      "status": "publish"
+    },
+    {
+      "folder": "pater-pio-wij-hebben-hem-gekend-verwacht-najaar-2020-e-book",
+      "slug": "pater-pio-wij-hebben-hem-gekend-verwacht-najaar-2020-e-book",
+      "titel": "Pater Pio. Wij hebben hem gekend (e-book)",
+      "auteur": "John Schug",
+      "ISBN": "978-90-6257-119-3",
+      "status": "publish"
+    },
+    {
+      "folder": "hoe-het-christendom-de-beschaving-heeft-gered",
+      "slug": "hoe-het-christendom-de-beschaving-heeft-gered",
+      "titel": "Hoe het Christendom de beschaving heeft gered",
+      "auteur": "Mike Aquilina",
+      "ISBN": "978-94-91991-90-5",
+      "status": "publish"
+    },
+    {
+      "folder": "geboden-en-deugden-e-book",
+      "slug": "geboden-en-deugden-e-book",
+      "titel": "Geboden en deugden (e-book)",
+      "auteur": "Aurelio Fernández",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "het-wordt-avond-de-dag-loopt-reeds-ten-einde",
+      "slug": "het-wordt-avond-de-dag-loopt-reeds-ten-einde",
+      "titel": "Het wordt avond, de dag loopt reeds ten einde",
+      "auteur": "Robert Sarah",
+      "ISBN": "ISBN 978-94-91991-82-0",
+      "status": "publish"
+    },
+    {
+      "folder": "ik-ben-geheel-de-uwe",
+      "slug": "ik-ben-geheel-de-uwe",
+      "titel": "Ik ben geheel de Uwe",
+      "auteur": "Faustina Kowalska",
+      "ISBN": "ISBN 978-90-6257-113-0",
+      "status": "publish"
+    },
+    {
+      "folder": "ik-ben-geheel-de-uwe-e-book",
+      "slug": "ik-ben-geheel-de-uwe-e-book",
+      "titel": "Ik ben geheel de Uwe (e-book)",
+      "auteur": "",
+      "ISBN": "ISBN 978-90-6257-113-0",
+      "status": "publish"
+    },
+    {
+      "folder": "bron-van-licht-en-waarheid-e-book",
+      "slug": "bron-van-licht-en-waarheid-e-book",
+      "titel": "Bron van Licht en Waarheid (e-book)",
+      "auteur": "",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-alle-delen-e-book",
+      "slug": "spreken-met-god-alle-delen-e-book",
+      "titel": "Spreken met God Alle delen (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "bron-van-licht-en-waarheid",
+      "slug": "bron-van-licht-en-waarheid",
+      "titel": "Bron van Licht en Waarheid",
+      "auteur": "",
+      "ISBN": "978-90-6257-099-7",
+      "status": "publish"
+    },
+    {
+      "folder": "begeleiden-onderscheiden-integreren-e-book",
+      "slug": "begeleiden-onderscheiden-integreren-e-book",
+      "titel": "Begeleiden onderscheiden integreren (e-book)",
+      "auteur": "e.a.\nJosé Granados",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "prudentius",
+      "slug": "prudentius",
+      "titel": "Prudentius - Liber Cathemerinon",
+      "auteur": "N.M. Mantje",
+      "ISBN": "978-90-6257-082-9",
+      "status": "publish"
+    },
+    {
+      "folder": "christenen-in-de-samenleving",
+      "slug": "christenen-in-de-samenleving",
+      "titel": "Christenen in de samenleving",
+      "auteur": "Domènec Melé Carné",
+      "ISBN": "9789062570751",
+      "status": "publish"
+    },
+    {
+      "folder": "vals-getuigenis",
+      "slug": "vals-getuigenis",
+      "titel": "Vals getuigenis - De waarheid achter (anti-)katholieke mythen",
+      "auteur": "Rodney Stark",
+      "ISBN": "978949199166",
+      "status": "private"
+    },
+    {
+      "folder": "genezing-van-innerlijke-wonden-e-book",
+      "slug": "genezing-van-innerlijke-wonden-e-book",
+      "titel": "Genezing van innerlijke wonden (e-book)",
+      "auteur": "Didier van Havre",
+      "ISBN": "9789062570652",
+      "status": "publish"
+    },
+    {
+      "folder": "op-koers-met-geestelijke-begeleiding-e-book",
+      "slug": "op-koers-met-geestelijke-begeleiding-e-book",
+      "titel": "Op koers met geestelijke begeleiding (e-book)",
+      "auteur": "Villahoz Antonio P.",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "geloven-vandaag-e-book",
+      "slug": "geloven-vandaag-e-book",
+      "titel": "Geloven vandaag (e-book)",
+      "auteur": "Manuel Cabello",
+      "ISBN": "978 90 6257 064 5",
+      "status": "publish"
+    },
+    {
+      "folder": "het-fundament-van-onze-hoop-e-book",
+      "slug": "het-fundament-van-onze-hoop-e-book",
+      "titel": "Het fundament van onze hoop (e-book)",
+      "auteur": "Carlos Granados García",
+      "ISBN": "9789062570621",
+      "status": "publish"
+    },
+    {
+      "folder": "honderd-jaar-fatima-e-book",
+      "slug": "honderd-jaar-fatima-e-book",
+      "titel": "Honderd jaar Fatima (e-book)",
+      "auteur": "G.J.M. van den Aardweg",
+      "ISBN": "978 90 6257 060 7",
+      "status": "publish"
+    },
+    {
+      "folder": "uit-de-pen-van-pater-pio-e-book",
+      "slug": "uit-de-pen-van-pater-pio-e-book",
+      "titel": "Uit de pen van pater Pio (e-book)",
+      "auteur": "Pater Pio",
+      "ISBN": "978-90-818917-2-1",
+      "status": "publish"
+    },
+    {
+      "folder": "gods-plan-met-je-lichaam-e-book",
+      "slug": "gods-plan-met-je-lichaam-e-book",
+      "titel": "Gods plan met je lichaam (e-book)",
+      "auteur": "Jason Evert",
+      "ISBN": "978.94.91991.28.8",
+      "status": "publish"
+    },
+    {
+      "folder": "de-rank-en-de-wijnstok-e-book",
+      "slug": "de-rank-en-de-wijnstok-e-book",
+      "titel": "De rank en de wijnstok (e-book)",
+      "auteur": "Salvatore Canals",
+      "ISBN": "97890.6257.058.4",
+      "status": "publish"
+    },
+    {
+      "folder": "fundamentele-moraal-e-book",
+      "slug": "fundamentele-moraal-e-book",
+      "titel": "Fundamentele moraal (e-book)",
+      "auteur": "Aurelio Fernández",
+      "ISBN": "97890.6257.054.6",
+      "status": "publish"
+    },
+    {
+      "folder": "meer-dan-je-durft-te-dromen-e-book",
+      "slug": "meer-dan-je-durft-te-dromen-e-book",
+      "titel": "Meer dan je durft te dromen (e-book)",
+      "auteur": "Pedro Casciaro",
+      "ISBN": "9789062570522",
+      "status": "publish"
+    },
+    {
+      "folder": "het-dagboek-van-mijn-ziel-e-book",
+      "slug": "het-dagboek-van-mijn-ziel-e-book",
+      "titel": "Het dagboek van mijn ziel (e-book)",
+      "auteur": "Johannes XXIII",
+      "ISBN": "978.98.6257.056.0",
+      "status": "publish"
+    },
+    {
+      "folder": "een-jaar-van-gods-barmhartigheid-e-book",
+      "slug": "een-jaar-van-gods-barmhartigheid-e-book",
+      "titel": "Een Jaar van Gods Barmhartigheid (e-book)",
+      "auteur": "Helen Opstal",
+      "ISBN": "978.90.6257.049.2",
+      "status": "publish"
+    },
+    {
+      "folder": "jezus-christus-en-zijn-tijd",
+      "slug": "jezus-christus-en-zijn-tijd",
+      "titel": "Jezus Christus en zijn tijd",
+      "auteur": "",
+      "ISBN": "978-90-6257-114-7",
+      "status": "publish"
+    },
+    {
+      "folder": "opvoeden-zonder-kleerscheuren-e-book",
+      "slug": "opvoeden-zonder-kleerscheuren-e-book",
+      "titel": "Opvoeden zonder kleerscheuren (e-book)",
+      "auteur": "Jason Evert",
+      "ISBN": "978.90.6257.048.5",
+      "status": "publish"
+    },
+    {
+      "folder": "de-hoop-van-het-gezin-e-book",
+      "slug": "de-hoop-van-het-gezin-e-book",
+      "titel": "De hoop van het gezin (e-book)",
+      "auteur": "Gerhard-Ludwig Müller",
+      "ISBN": "978.90.6257.046.1",
+      "status": "publish"
+    },
+    {
+      "folder": "gebeden-tot-de-heilige-geest-e-book",
+      "slug": "gebeden-tot-de-heilige-geest-e-book",
+      "titel": "Gebeden tot de Heilige Geest (e-book)",
+      "auteur": "Regis de la Haye",
+      "ISBN": "978.90.6257.043.0",
+      "status": "publish"
+    },
+    {
+      "folder": "handige-gids-bij-de-bijbel-e-book",
+      "slug": "handige-gids-bij-de-bijbel-e-book",
+      "titel": "Handige gids bij de Bijbel (e-book)",
+      "auteur": "Scott Hahn",
+      "ISBN": "978.94.91991.06.6",
+      "status": "publish"
+    },
+    {
+      "folder": "missie-voltooid-e-book",
+      "slug": "missie-voltooid-e-book",
+      "titel": "Missie voltooid (e-book)",
+      "auteur": "Hugo de Azevedo",
+      "ISBN": "978906257040.9",
+      "status": "publish"
+    },
+    {
+      "folder": "in-het-begin-schiep-god-e-book",
+      "slug": "in-het-begin-schiep-god-e-book",
+      "titel": "In het begin schiep God (e-book)",
+      "auteur": "Pedro Urbano López de Meneses",
+      "ISBN": "97890.6257.039.3",
+      "status": "publish"
+    },
+    {
+      "folder": "fundamentele-theologie-een-inleiding-e-book",
+      "slug": "fundamentele-theologie-een-inleiding-e-book",
+      "titel": "Fundamentele Theologie (e-book)",
+      "auteur": "Jutta Burggraf",
+      "ISBN": "97890.6257.038.6",
+      "status": "publish"
+    },
+    {
+      "folder": "de-dialoog-e-book",
+      "slug": "de-dialoog-e-book",
+      "titel": "De Dialoog (e-book)",
+      "auteur": "Catharina van Siena",
+      "ISBN": "97890.6257.037.9",
+      "status": "publish"
+    },
+    {
+      "folder": "getrouwde-priesters-e-book",
+      "slug": "getrouwde-priesters-e-book",
+      "titel": "Getrouwde priesters (e-book)",
+      "auteur": "Arturo Cattaneo",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "paus-franciscus-e-book",
+      "slug": "paus-franciscus-e-book",
+      "titel": "Paus Franciscus - sleutels tot zijn denken (e-book)",
+      "auteur": "Mariano Fazio",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "jezus-christus-onze-verlosser-e-book",
+      "slug": "jezus-christus-onze-verlosser-e-book",
+      "titel": "Jezus Christus onze Verlosser (e-book)",
+      "auteur": "Vicente Ferrer Barriendos",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "spirituele-theologie-e-book",
+      "slug": "spirituele-theologie-e-book",
+      "titel": "Spirituele Theologie (e-book)",
+      "auteur": "Pablo Marti",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "de-poort-van-het-geloof-e-book",
+      "slug": "de-poort-van-het-geloof-e-book",
+      "titel": "De poort van het geloof (e-book)",
+      "auteur": "Abbé Vidal",
+      "ISBN": "97890.6257096.6",
+      "status": "publish"
+    },
+    {
+      "folder": "richtlijn-voor-het-geestelijk-leven-e-book",
+      "slug": "richtlijn-voor-het-geestelijk-leven-e-book",
+      "titel": "Richtlijn voor het geestelijk leven (e-book)",
+      "auteur": "Ludovicus Blosius",
+      "ISBN": "97890.6257095.9",
+      "status": "publish"
+    },
+    {
+      "folder": "geestelijke-lauwheid-e-book",
+      "slug": "geestelijke-lauwheid-e-book",
+      "titel": "Geestelijke lauwheid (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "97890.6257080.5",
+      "status": "publish"
+    },
+    {
+      "folder": "gewoon-werk-buitengewone-genade-e-book",
+      "slug": "gewoon-werk-buitengewone-genade-e-book",
+      "titel": "Gewoon werk buitengewone genade (e-book)",
+      "auteur": "Scott Hahn",
+      "ISBN": "97890.6257093.5",
+      "status": "publish"
+    },
+    {
+      "folder": "christus-komt-langs-e-book",
+      "slug": "christus-komt-langs-e-book",
+      "titel": "Christus komt langs (e-book)",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "97890.6257073.5",
+      "status": "publish"
+    },
+    {
+      "folder": "de-heilige-mis-beleven-e-book",
+      "slug": "de-heilige-mis-beleven-e-book",
+      "titel": "De heilige Mis beleven (e-book)",
+      "auteur": "Javier Echevarria",
+      "ISBN": "97890.6257091.1",
+      "status": "publish"
+    },
+    {
+      "folder": "het-mysterie-en-de-zending-van-de-kerk-e-book",
+      "slug": "het-mysterie-en-de-zending-van-de-kerk-e-book",
+      "titel": "Het Mysterie en de Zending van de Kerk (e-book)",
+      "auteur": "José Ramón Perez Aranguena",
+      "ISBN": "90.6257.086.0",
+      "status": "publish"
+    },
+    {
+      "folder": "de-hoop-op-het-eeuwige-leven-e-book",
+      "slug": "de-hoop-op-het-eeuwige-leven-e-book",
+      "titel": "De Hoop op het Eeuwige Leven (e-book)",
+      "auteur": "Justo Luis R. Sanchez de Alva",
+      "ISBN": "97890.6257090.4",
+      "status": "publish"
+    },
+    {
+      "folder": "zin-en-praktijk-van-de-geestelijke-leiding-e-book",
+      "slug": "zin-en-praktijk-van-de-geestelijke-leiding-e-book",
+      "titel": "Zin en Praktijk van de Geestelijke Leiding (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "97890.6257092.8",
+      "status": "publish"
+    },
+    {
+      "folder": "jezus-en-de-joodse-wortels-van-de-eucharistie-e-book",
+      "slug": "jezus-en-de-joodse-wortels-van-de-eucharistie-e-book",
+      "titel": "Jezus en de joodse wortels van de eucharistie (e-book)",
+      "auteur": "Brant Pitre",
+      "ISBN": "97890.6257089.8",
+      "status": "publish"
+    },
+    {
+      "folder": "bezieler-en-stichter-e-book",
+      "slug": "bezieler-en-stichter-e-book",
+      "titel": "Bezieler en stichter (e-book)",
+      "auteur": "Jan Peijnenburg",
+      "ISBN": "9 789062 570881",
+      "status": "publish"
+    },
+    {
+      "folder": "de-verborgen-kracht-van-vriendelijkheid-e-book",
+      "slug": "de-verborgen-kracht-van-vriendelijkheid-e-book",
+      "titel": "De verborgen kracht van vriendelijkheid (e-book)",
+      "auteur": "Lawrence Lovasik",
+      "ISBN": "97890.6257084.3",
+      "status": "publish"
+    },
+    {
+      "folder": "geschiedenis-van-de-katholieke-kerk-in-de-tweede-helft-van-de-20ste-eeuw-e-book",
+      "slug": "geschiedenis-van-de-katholieke-kerk-in-de-tweede-helft-van-de-20ste-eeuw-e-book",
+      "titel": "Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw (e-book)",
+      "auteur": "José Orlandis",
+      "ISBN": "97890.6257086.7",
+      "status": "publish"
+    },
+    {
+      "folder": "inleiding-tot-de-theologie-e-book",
+      "slug": "inleiding-tot-de-theologie-e-book",
+      "titel": "Inleiding tot de Theologie (e-book)",
+      "auteur": "José Morales",
+      "ISBN": "97890.6257085.0",
+      "status": "publish"
+    },
+    {
+      "folder": "de-zeven-sacramenten-e-book",
+      "slug": "de-zeven-sacramenten-e-book",
+      "titel": "De zeven Sacramenten (e-book)",
+      "auteur": "Enrique Moline",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "tekenen-van-leven-e-book",
+      "slug": "tekenen-van-leven-e-book",
+      "titel": "Tekenen van leven (e-book)",
+      "auteur": "Scott Hahn",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "evangelisatie-en-bekering-e-book",
+      "slug": "evangelisatie-en-bekering-e-book",
+      "titel": "Evangelisatie en bekering (e-book)",
+      "auteur": "John McCloskey",
+      "ISBN": "90.6257073.9",
+      "status": "publish"
+    },
+    {
+      "folder": "van-wrok-tot-vergeving-e-book",
+      "slug": "van-wrok-tot-vergeving-e-book",
+      "titel": "Van wrok tot vergeving (e-book)",
+      "auteur": "Francisco Ugarte",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "inleiding-tot-het-devote-leven-e-book",
+      "slug": "inleiding-tot-het-devote-leven-e-book",
+      "titel": "Inleiding tot het devote leven (e-book)",
+      "auteur": "Franciscus van Sales",
+      "ISBN": "978-90-6257-123-9",
+      "status": "publish"
+    },
+    {
+      "folder": "persoonlijke-vrijheid-e-book",
+      "slug": "persoonlijke-vrijheid-e-book",
+      "titel": "Persoonlijke vrijheid (e-book)",
+      "auteur": "Jutta Burggraf",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "een-vader-die-zijn-beloftes-nakomt-e-book",
+      "slug": "een-vader-die-zijn-beloftes-nakomt-e-book",
+      "titel": "Een Vader die zijn Beloftes Nakomt (e-book)",
+      "auteur": "Scott Hahn",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "kinderen-van-god-e-book",
+      "slug": "kinderen-van-god-e-book",
+      "titel": "Kinderen van God (e-book)",
+      "auteur": "Juan Francisco Pozo",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "de-bijbel-leren-kennen-e-book",
+      "slug": "de-bijbel-leren-kennen-e-book",
+      "titel": "De Bijbel leren kennen (e-book)",
+      "auteur": "Josemaría Monforte",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "priester-zijn-e-book",
+      "slug": "priester-zijn-e-book",
+      "titel": "Priester zijn (e-book)",
+      "auteur": "Federico Suarez",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "korte-geschiedenis-van-de-katholieke-kerk-e-book",
+      "slug": "korte-geschiedenis-van-de-katholieke-kerk-e-book",
+      "titel": "Korte Geschiedenis van de Katholieke Kerk (e-book)",
+      "auteur": "José Orlandis",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "vijftig-vragen-over-jezus-e-book",
+      "slug": "vijftig-vragen-over-jezus-e-book",
+      "titel": "50 vragen over Jezus (e-book)",
+      "auteur": "Juan Chapa",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "de-katholieke-kerk-verkennen-e-book",
+      "slug": "de-katholieke-kerk-verkennen-e-book",
+      "titel": "De Katholieke Kerk verkennen (e-book)",
+      "auteur": "Marcellino D Ambrosio",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "het-is-de-heer-e-book",
+      "slug": "het-is-de-heer-e-book",
+      "titel": "Het is de Heer (e-book)",
+      "auteur": "Athanasius Schneider",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "trouwen-of-samenwonen-e-book",
+      "slug": "trouwen-of-samenwonen-e-book",
+      "titel": "Trouwen of Samenwonen (e-book)",
+      "auteur": "Anthony Garascia",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "voorbereiding-op-de-puberteit-e-book",
+      "slug": "voorbereiding-op-de-puberteit-e-book",
+      "titel": "Voorbereiding op de puberteit (e-book)",
+      "auteur": "James B. Stenson",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "deugden-in-het-gezin-e-book",
+      "slug": "deugden-in-het-gezin-e-book",
+      "titel": "Deugden in het Gezin (e-book)",
+      "auteur": "Georges Chevrot",
+      "ISBN": "9062570658",
+      "status": "publish"
+    },
+    {
+      "folder": "wees-gegroet-koningin-e-book",
+      "slug": "wees-gegroet-koningin-e-book",
+      "titel": "Wees gegroet Koningin (e-book)",
+      "auteur": "Scott Hahn",
+      "ISBN": "90.6257.060.7",
+      "status": "publish"
+    },
+    {
+      "folder": "redenen-om-te-geloven-e-book",
+      "slug": "redenen-om-te-geloven-e-book",
+      "titel": "Redenen om te geloven (e-book)",
+      "auteur": "Scott Hahn",
+      "ISBN": "90.6257.059.3",
+      "status": "publish"
+    },
+    {
+      "folder": "de-heilige-rozenkrans-e-book",
+      "slug": "de-heilige-rozenkrans-e-book",
+      "titel": "De Heilige Rozenkrans (e-book)",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-012-7",
+      "status": "publish"
+    },
+    {
+      "folder": "de-innerlijke-rust-e-book",
+      "slug": "de-innerlijke-rust-e-book",
+      "titel": "De innerlijke rust (e-book)",
+      "auteur": "Jacques Philippe",
+      "ISBN": "90-6257-056-9",
+      "status": "publish"
+    },
+    {
+      "folder": "moraal-de-kunst-van-het-leven-e-book",
+      "slug": "moraal-de-kunst-van-het-leven-e-book",
+      "titel": "Moraal De kunst van het leven (e-book)",
+      "auteur": "J.L. Lorda",
+      "ISBN": "90-6257-057-7",
+      "status": "publish"
+    },
+    {
+      "folder": "succesvolle-vaders-e-book",
+      "slug": "succesvolle-vaders-e-book",
+      "titel": "Succesvolle vaders (e-book)",
+      "auteur": "James B. Stenson",
+      "ISBN": "90-6257-055-0",
+      "status": "publish"
+    },
+    {
+      "folder": "het-bruiloftsmaal-van-het-lam-e-book",
+      "slug": "het-bruiloftsmaal-van-het-lam-e-book",
+      "titel": "Het bruiloftsmaal van het Lam (e-book)",
+      "auteur": "Scott Hahn",
+      "ISBN": "90-6257-048-8",
+      "status": "publish"
+    },
+    {
+      "folder": "en-god-zag-dat-het-heel-goed-was-e-book",
+      "slug": "en-god-zag-dat-het-heel-goed-was-e-book",
+      "titel": "En God zag dat het heel goed was (e-book)",
+      "auteur": "Everard J. de Jong",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "de-heilige-van-het-gewone-e-book",
+      "slug": "de-heilige-van-het-gewone-e-book",
+      "titel": "De Heilige van het Gewone (e-book)",
+      "auteur": "G.J.M. van den Aardweg",
+      "ISBN": "90-6257-047-X",
+      "status": "publish"
+    },
+    {
+      "folder": "tijd-voor-god-e-book",
+      "slug": "tijd-voor-god-e-book",
+      "titel": "Tijd voor God (e-book)",
+      "auteur": "Jacques Philippe",
+      "ISBN": "90-7009-29-13",
+      "status": "publish"
+    },
+    {
+      "folder": "ware-liefde-e-book",
+      "slug": "ware-liefde-e-book",
+      "titel": "Ware liefde (e-book)",
+      "auteur": "Jason Evert",
+      "ISBN": "90-6257-049-6",
+      "status": "publish"
+    },
+    {
+      "folder": "leven-in-christus-e-book",
+      "slug": "leven-in-christus-e-book",
+      "titel": "Leven in Christus (e-book)",
+      "auteur": "Raniero Cantalamessa",
+      "ISBN": "90-6257-050-X",
+      "status": "publish"
+    },
+    {
+      "folder": "jean-marie-vianney-pastoor-van-ars-e-book",
+      "slug": "jean-marie-vianney-pastoor-van-ars-e-book",
+      "titel": "Jean Marie Vianney Pastoor van Ars (e-book)",
+      "auteur": "Marc Joulin",
+      "ISBN": "90-6257-052-6",
+      "status": "publish"
+    },
+    {
+      "folder": "de-innerlijke-vrijheid-e-book",
+      "slug": "de-innerlijke-vrijheid-e-book",
+      "titel": "De innerlijke vrijheid (e-book)",
+      "auteur": "Jacques Philippe",
+      "ISBN": "97890.6257.034.8",
+      "status": "publish"
+    },
+    {
+      "folder": "liefde-is-jezelf-geven-e-book",
+      "slug": "liefde-is-jezelf-geven-e-book",
+      "titel": "Liefde is jezelf geven (e-book)",
+      "auteur": "Stéphane Seminckx",
+      "ISBN": "978-90-6257-072-0",
+      "status": "publish"
+    },
+    {
+      "folder": "zout-en-licht-e-book",
+      "slug": "zout-en-licht-e-book",
+      "titel": "Zout en licht - Overwegingen over het christelijk leven (e-book)",
+      "auteur": "José Antonio Loarte",
+      "ISBN": "978-90-6257-069-0",
+      "status": "publish"
+    },
+    {
+      "folder": "liefde-en-zelfrespect-e-book",
+      "slug": "liefde-en-zelfrespect-e-book",
+      "titel": "Liefde en zelfrespect (e-book)",
+      "auteur": "Michel Esparza",
+      "ISBN": "978-90-6257-066-9",
+      "status": "publish"
+    },
+    {
+      "folder": "levenskunst-en-levenseinde-e-book",
+      "slug": "levenskunst-en-levenseinde-e-book",
+      "titel": "Levenskunst en levenseinde (e-book)",
+      "auteur": "Daan van Schalkwijk",
+      "ISBN": "978.90.6527.070.6",
+      "status": "publish"
+    },
+    {
+      "folder": "schepping-of-toeval-e-book",
+      "slug": "schepping-of-toeval-e-book",
+      "titel": "Schepping of toeval (e-book)",
+      "auteur": "Wolfgang Kuhn",
+      "ISBN": "90-6257-045-3",
+      "status": "publish"
+    },
+    {
+      "folder": "de-mis-en-het-geestelijk-leven-e-book",
+      "slug": "de-mis-en-het-geestelijk-leven-e-book",
+      "titel": "De Mis en het geestelijk leven (e-book)",
+      "auteur": "B. Vasconcelos",
+      "ISBN": "90-6257-042-9",
+      "status": "publish"
+    },
+    {
+      "folder": "jouw-vragen-gods-antwoorden-e-book",
+      "slug": "jouw-vragen-gods-antwoorden-e-book",
+      "titel": "Jouw vragen Gods antwoorden (e-book)",
+      "auteur": "Peter Kreeft",
+      "ISBN": "90-6257-039-9",
+      "status": "publish"
+    },
+    {
+      "folder": "het-leven-na-dit-leven-e-book",
+      "slug": "het-leven-na-dit-leven-e-book",
+      "titel": "Het Leven na dit leven (e-book)",
+      "auteur": "Federico Suarez",
+      "ISBN": "9789062570713",
+      "status": "publish"
+    },
+    {
+      "folder": "hoezo-wonderen-e-book",
+      "slug": "hoezo-wonderen-e-book",
+      "titel": "Hoezo wonderen (e-book)",
+      "auteur": "Patrick Theillier",
+      "ISBN": "90-6257-038-0",
+      "status": "publish"
+    },
+    {
+      "folder": "wat-moet-ik-doen-e-book",
+      "slug": "wat-moet-ik-doen-e-book",
+      "titel": "Wat moet ik doen (e-book)",
+      "auteur": "P. Beteta",
+      "ISBN": "90-6257-158-1",
+      "status": "publish"
+    },
+    {
+      "folder": "vrienden-van-god-e-book",
+      "slug": "vrienden-van-god-e-book",
+      "titel": "Vrienden van God (e-book)",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-023-2",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-10-e-book",
+      "slug": "spreken-met-god-deel-10-e-book",
+      "titel": "Spreken met God Deel 10 (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-110-7",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-9-e-book",
+      "slug": "spreken-met-god-deel-9-e-book",
+      "titel": "Spreken met God Deel  9 (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-109-3",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-8-e-book",
+      "slug": "spreken-met-god-deel-8-e-book",
+      "titel": "Spreken met God Deel  8 (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-108-5",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-7-e-book",
+      "slug": "spreken-met-god-deel-7-e-book",
+      "titel": "Spreken met God Deel  7 (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-107-7",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-6-e-book",
+      "slug": "spreken-met-god-deel-6-e-book",
+      "titel": "Spreken met God Deel  6 (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-106-9",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-5-e-book",
+      "slug": "spreken-met-god-deel-5-e-book",
+      "titel": "Spreken met God Deel  5 (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-027-5",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-4-e-book",
+      "slug": "spreken-met-god-deel-4-e-book",
+      "titel": "Spreken met God Deel  4 (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-104-2",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-3-e-book",
+      "slug": "spreken-met-god-deel-3-e-book",
+      "titel": "Spreken met God Deel  3 (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-103-4",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-2-e-book",
+      "slug": "spreken-met-god-deel-2-e-book",
+      "titel": "Spreken met God Deel  2 (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-102-6",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-1-e-book",
+      "slug": "spreken-met-god-deel-1-e-book",
+      "titel": "Spreken met God Deel  1 (e-book)",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-101-8",
+      "status": "publish"
+    },
+    {
+      "folder": "rome-ons-thuis-e-book",
+      "slug": "rome-ons-thuis-e-book",
+      "titel": "Rome ons thuis (e-book)",
+      "auteur": "Scott Hahn",
+      "ISBN": "90-6257-029-1",
+      "status": "publish"
+    },
+    {
+      "folder": "edward-poppe-e-book",
+      "slug": "edward-poppe-e-book",
+      "titel": "Edward Poppe (e-book)",
+      "auteur": "Karl Weekers",
+      "ISBN": "97.890.6257.045.4",
+      "status": "publish"
+    },
+    {
+      "folder": "de-weg-e-book",
+      "slug": "de-weg-e-book",
+      "titel": "De Weg (e-book)",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-014-3",
+      "status": "publish"
+    },
+    {
+      "folder": "de-voor-e-book",
+      "slug": "de-voor-e-book",
+      "titel": "De Voor (e-book)",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-019-4",
+      "status": "publish"
+    },
+    {
+      "folder": "de-smidse-e-book",
+      "slug": "de-smidse-e-book",
+      "titel": "De Smidse (e-book)",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-159-x",
+      "status": "publish"
+    },
+    {
+      "folder": "de-liefde-tot-de-kerk-e-book",
+      "slug": "de-liefde-tot-de-kerk-e-book",
+      "titel": "De liefde tot de Kerk (e-book)",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-024-0",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kunst-van-vallen-en-opstaan-e-book",
+      "slug": "de-kunst-van-vallen-en-opstaan-e-book",
+      "titel": "De kunst van vallen en opstaan (e-book)",
+      "auteur": "Joseph Tissot",
+      "ISBN": "90-6257-157-3",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kruisweg-e-book",
+      "slug": "de-kruisweg-e-book",
+      "titel": "De Kruisweg (e-book)",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-021-6",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kracht-van-god-e-book",
+      "slug": "de-kracht-van-god-e-book",
+      "titel": "De kracht van God (e-book)",
+      "auteur": "Flavio Capucci",
+      "ISBN": "90-6257-035-6",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kerststal-van-god-e-book",
+      "slug": "de-kerststal-van-god-e-book",
+      "titel": "De Kerststal van God (e-book)",
+      "auteur": "Enrique Monasterio",
+      "ISBN": "90-6257-032-1",
+      "status": "publish"
+    },
+    {
+      "folder": "de-droefheid-van-christus-e-book",
+      "slug": "de-droefheid-van-christus-e-book",
+      "titel": "De droefheid van Christus (e-book)",
+      "auteur": "Thomas More",
+      "ISBN": "90-6257-162-x",
+      "status": "publish"
+    },
+    {
+      "folder": "belijdenissen-e-book",
+      "slug": "belijdenissen-e-book",
+      "titel": "Belijdenissen (e-book)",
+      "auteur": "Aurelius Augustinus",
+      "ISBN": "90-6257-161-1",
+      "status": "publish"
+    },
+    {
+      "folder": "montse-grases-e-book",
+      "slug": "montse-grases-e-book",
+      "titel": "Montse Grases (e-book)",
+      "auteur": "Edith Zeltner",
+      "ISBN": "90-6257-163-8",
+      "status": "publish"
+    },
+    {
+      "folder": "met-ziel-en-lichaam-e-book",
+      "slug": "met-ziel-en-lichaam-e-book",
+      "titel": "Met ziel en lichaam (e-book)",
+      "auteur": "J.L. Soria",
+      "ISBN": "90-6257-152-2",
+      "status": "publish"
+    },
+    {
+      "folder": "laten-zien-wat-je-kunt-e-book",
+      "slug": "laten-zien-wat-je-kunt-e-book",
+      "titel": "Laten zien wat je kunt (e-book)",
+      "auteur": "Stephan Puhl",
+      "ISBN": "90-6257-155-7",
+      "status": "publish"
+    },
+    {
+      "folder": "kom-heilige-geest-e-book",
+      "slug": "kom-heilige-geest-e-book",
+      "titel": "Kom Heilige Geest (e-book)",
+      "auteur": "Francisca J. del Valle",
+      "ISBN": "90-6257-026-7",
+      "status": "publish"
+    },
+    {
+      "folder": "jezus-christus-e-book",
+      "slug": "jezus-christus-e-book",
+      "titel": "Jezus Christus (e-book)",
+      "auteur": "J. Simon",
+      "ISBN": "978-90-6257-156-7",
+      "status": "publish"
+    },
+    {
+      "folder": "hoe-biechten-wij-goed-e-book",
+      "slug": "hoe-biechten-wij-goed-e-book",
+      "titel": "Hoe biechten wij goed (e-book)",
+      "auteur": "F. Luna",
+      "ISBN": "90-6257-025-9",
+      "status": "publish"
+    },
+    {
+      "folder": "hoe-bidden-wij-goed-e-book",
+      "slug": "hoe-bidden-wij-goed-e-book",
+      "titel": "Hoe bidden wij goed (e-book)",
+      "auteur": "F. Luna",
+      "ISBN": "90-6257-160-3",
+      "status": "publish"
+    },
+    {
+      "folder": "gesprekken-met-mgr-escriva-e-book",
+      "slug": "gesprekken-met-mgr-escriva-e-book",
+      "titel": "Gesprekken met Mgr Escriva (e-book)",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-018-6",
+      "status": "publish"
+    },
+    {
+      "folder": "gebeden-e-book",
+      "slug": "gebeden-e-book",
+      "titel": "Gebeden (e-book)",
+      "auteur": "J. van der Mee",
+      "ISBN": "90-6257-028-3",
+      "status": "private"
+    },
+    {
+      "folder": "francisco-en-jacinta-van-fatima-e-book",
+      "slug": "francisco-en-jacinta-van-fatima-e-book",
+      "titel": "Francisco en Jacinta van Fatima (e-book)",
+      "auteur": "Sonja Hissink",
+      "ISBN": "90-6257-154-9",
+      "status": "publish"
+    },
+    {
+      "folder": "manual-of-catholic-medical-ethics",
+      "slug": "manual-of-catholic-medical-ethics",
+      "titel": "Manual of Catholic Medical Ethics",
+      "auteur": "Eijk\nFleming\nHendriks\nRaymakers",
+      "ISBN": "",
+      "status": "private"
+    },
+    {
+      "folder": "hongerende-zielen",
+      "slug": "hongerende-zielen",
+      "titel": "Hongerende Zielen",
+      "auteur": "G.J.M. van den Aardweg",
+      "ISBN": "90-6257-063-1",
+      "status": "publish"
+    },
+    {
+      "folder": "navarre-bible-old-testament-7-volumes",
+      "slug": "navarre-bible-old-testament-7-volumes",
+      "titel": "Navarre Bible Old Testament 7 volumes",
+      "auteur": "",
+      "ISBN": "",
+      "status": "private"
+    },
+    {
+      "folder": "ot05-navarre-bible-minor-prophets",
+      "slug": "ot05-navarre-bible-minor-prophets",
+      "titel": "OT05 Navarre Bible Minor Prophets",
+      "auteur": "",
+      "ISBN": "1-85182-971-7",
+      "status": "private"
+    },
+    {
+      "folder": "ot03-navarre-bible-major-prophets",
+      "slug": "ot03-navarre-bible-major-prophets",
+      "titel": "OT03 Navarre Bible Major Prophets",
+      "auteur": "",
+      "ISBN": "1-85182-971-7",
+      "status": "private"
+    },
+    {
+      "folder": "tussen-de-bergen-door",
+      "slug": "tussen-de-bergen-door",
+      "titel": "Tussen de bergen door",
+      "auteur": "J. Gillissen",
+      "ISBN": "29-3027-332-1",
+      "status": "publish"
+    },
+    {
+      "folder": "the-founder-of-opus-dei-volume-3-2",
+      "slug": "the-founder-of-opus-dei-volume-3-2",
+      "titel": "The founder of Opus Dei Volume 3: The Divine ways on Earth",
+      "auteur": "Andrés Vazquez de Prada",
+      "ISBN": "1-594170-26-6",
+      "status": "private"
+    },
+    {
+      "folder": "ot06-navarre-bible-wisdom-books",
+      "slug": "ot06-navarre-bible-wisdom-books",
+      "titel": "OT06 Navarre Bible Wisdom Books",
+      "auteur": "",
+      "ISBN": "1-85182-741-2",
+      "status": "private"
+    },
+    {
+      "folder": "the-founder-of-opus-dei-volume-2-2",
+      "slug": "the-founder-of-opus-dei-volume-2-2",
+      "titel": "The founder of Opus Dei Volume 2: God and Daring",
+      "auteur": "Andrés Vazquez de Prada",
+      "ISBN": "1-889334-86-3",
+      "status": "private"
+    },
+    {
+      "folder": "the-founder-of-opus-dei-volume-1-2",
+      "slug": "the-founder-of-opus-dei-volume-1-2",
+      "titel": "The founder of Opus Dei Volume 1: The Early Years",
+      "auteur": "Andrés Vazquez de Prada",
+      "ISBN": "1-889334-26-x",
+      "status": "private"
+    },
+    {
+      "folder": "ot01-navarre-bible-pentateuch",
+      "slug": "ot01-navarre-bible-pentateuch",
+      "titel": "OT01 Navarre Bible Pentateuch",
+      "auteur": "",
+      "ISBN": "1-85182-498-7",
+      "status": "private"
+    },
+    {
+      "folder": "de-weg-2",
+      "slug": "de-weg-2",
+      "titel": "De Weg",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-017-8",
+      "status": "publish"
+    },
+    {
+      "folder": "de-voor-2",
+      "slug": "de-voor-2",
+      "titel": "De Voor",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-019-4",
+      "status": "publish"
+    },
+    {
+      "folder": "de-avonturen-van-josemaria",
+      "slug": "de-avonturen-van-josemaria",
+      "titel": "De avonturen van Josemaria",
+      "auteur": "M.A. Carceles",
+      "ISBN": "90-6257-034-8",
+      "status": "publish"
+    },
+    {
+      "folder": "ot07-navarre-bible-psalms-and-the-song-of-solomon",
+      "slug": "ot07-navarre-bible-psalms-and-the-song-of-solomon",
+      "titel": "OT07 Navarre Bible Psalms and the Song of Solomon",
+      "auteur": "",
+      "ISBN": "1-85182-678-5",
+      "status": "private"
+    },
+    {
+      "folder": "ot02-navarre-bible-joshua-kings",
+      "slug": "ot02-navarre-bible-joshua-kings",
+      "titel": "OT02 Navarre Bible Joshua-Kings",
+      "auteur": "",
+      "ISBN": "1-85182-676-9",
+      "status": "private"
+    },
+    {
+      "folder": "ot04-navarre-bible-chronicles-maccabees",
+      "slug": "ot04-navarre-bible-chronicles-maccabees",
+      "titel": "OT04 Navarre Bible Chronicles Maccabees",
+      "auteur": "",
+      "ISBN": "1-85182-677-7",
+      "status": "private"
+    },
+    {
+      "folder": "genezing-van-innerlijke-wonden",
+      "slug": "genezing-van-innerlijke-wonden",
+      "titel": "Genezing van innerlijke wonden",
+      "auteur": "Didier van Havre",
+      "ISBN": "9789062570652",
+      "status": "publish"
+    },
+    {
+      "folder": "op-koers-met-geestelijke-begeleiding",
+      "slug": "op-koers-met-geestelijke-begeleiding",
+      "titel": "Op koers met geestelijke begeleiding",
+      "auteur": "Villahoz Antonio P.",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "geloven-vandaag",
+      "slug": "geloven-vandaag",
+      "titel": "Geloven vandaag",
+      "auteur": "Manuel Cabello",
+      "ISBN": "978 90 6257 064 5",
+      "status": "publish"
+    },
+    {
+      "folder": "compendium-voor-de-nieuwe-evangelisatie",
+      "slug": "compendium-voor-de-nieuwe-evangelisatie",
+      "titel": "Compendium voor de nieuwe evangelisatie",
+      "auteur": "Mirjam Spruit",
+      "ISBN": "978.94.91991.38.7",
+      "status": "publish"
+    },
+    {
+      "folder": "het-fundament-van-onze-hoop",
+      "slug": "het-fundament-van-onze-hoop",
+      "titel": "Het fundament van onze hoop",
+      "auteur": "Carlos Granados García",
+      "ISBN": "9789062570621",
+      "status": "publish"
+    },
+    {
+      "folder": "honderd-jaar-fatima",
+      "slug": "honderd-jaar-fatima",
+      "titel": "Honderd jaar Fatima",
+      "auteur": "G.J.M. van den Aardweg",
+      "ISBN": "978 90 6257 060 7",
+      "status": "publish"
+    },
+    {
+      "folder": "god-of-niets",
+      "slug": "god-of-niets",
+      "titel": "God of niets",
+      "auteur": "Robert Sarah",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "uit-de-pen-van-pater-pio",
+      "slug": "uit-de-pen-van-pater-pio",
+      "titel": "Uit de pen van pater Pio",
+      "auteur": "Pater Pio",
+      "ISBN": "978-90-818917-2-1",
+      "status": "publish"
+    },
+    {
+      "folder": "ik-heb-dorst",
+      "slug": "ik-heb-dorst",
+      "titel": "Ik heb dorst",
+      "auteur": "Jacques Gauthier",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "gods-plan-met-je-lichaam",
+      "slug": "gods-plan-met-je-lichaam",
+      "titel": "Gods plan met je lichaam",
+      "auteur": "Jason Evert",
+      "ISBN": "978.94.91991.28.8",
+      "status": "publish"
+    },
+    {
+      "folder": "de-rank-en-de-wijnstok",
+      "slug": "de-rank-en-de-wijnstok",
+      "titel": "De rank en de wijnstok",
+      "auteur": "Salvatore Canals",
+      "ISBN": "97890.6257.058.4",
+      "status": "publish"
+    },
+    {
+      "folder": "katholieken-evangeliseren",
+      "slug": "katholieken-evangeliseren",
+      "titel": "Katholieken evangeliseren",
+      "auteur": "Scott Hahn",
+      "ISBN": "978-94-91991-24-0",
+      "status": "publish"
+    },
+    {
+      "folder": "fundamentele-moraal",
+      "slug": "fundamentele-moraal",
+      "titel": "Fundamentele moraal",
+      "auteur": "Aurelio Fernández",
+      "ISBN": "97890.6257.054.6",
+      "status": "publish"
+    },
+    {
+      "folder": "meer-dan-je-durft-te-dromen",
+      "slug": "meer-dan-je-durft-te-dromen",
+      "titel": "Meer dan je durft te dromen",
+      "auteur": "Pedro Casciaro",
+      "ISBN": "9789062570522",
+      "status": "publish"
+    },
+    {
+      "folder": "het-dagboek-van-mijn-ziel",
+      "slug": "het-dagboek-van-mijn-ziel",
+      "titel": "Het dagboek van mijn ziel",
+      "auteur": "Johannes XXIII",
+      "ISBN": "978.98.6257.056.0",
+      "status": "publish"
+    },
+    {
+      "folder": "een-jaar-van-gods-barmhartigheid",
+      "slug": "een-jaar-van-gods-barmhartigheid",
+      "titel": "Een Jaar van Gods Barmhartigheid",
+      "auteur": "Helen Opstal",
+      "ISBN": "978.90.6257.049.2",
+      "status": "publish"
+    },
+    {
+      "folder": "opvoeden-zonder-kleerscheuren",
+      "slug": "opvoeden-zonder-kleerscheuren",
+      "titel": "Opvoeden zonder kleerscheuren",
+      "auteur": "evert\nJason Evert",
+      "ISBN": "978.90.6257.048.5",
+      "status": "publish"
+    },
+    {
+      "folder": "de-hoop-van-het-gezin",
+      "slug": "de-hoop-van-het-gezin",
+      "titel": "De hoop van het gezin",
+      "auteur": "Gerhard-Ludwig Müller",
+      "ISBN": "978.90.6257.046.1",
+      "status": "publish"
+    },
+    {
+      "folder": "handige-gids-bij-de-bijbel",
+      "slug": "handige-gids-bij-de-bijbel",
+      "titel": "Handige gids bij de Bijbel",
+      "auteur": "Scott Hahn",
+      "ISBN": "978.94.91991.06.6",
+      "status": "publish"
+    },
+    {
+      "folder": "missie-voltooid",
+      "slug": "missie-voltooid",
+      "titel": "Missie voltooid",
+      "auteur": "Hugo de Azevedo",
+      "ISBN": "9789062570409",
+      "status": "publish"
+    },
+    {
+      "folder": "in-het-begin-schiep-god",
+      "slug": "in-het-begin-schiep-god",
+      "titel": "In het begin schiep God",
+      "auteur": "Pedro Urbano López de Meneses",
+      "ISBN": "97890.6257.039.3",
+      "status": "publish"
+    },
+    {
+      "folder": "fundamentele-theologie-een-inleiding",
+      "slug": "fundamentele-theologie-een-inleiding",
+      "titel": "Fundamentele Theologie",
+      "auteur": "Jutta Burggraf",
+      "ISBN": "97890.6257.038.6",
+      "status": "publish"
+    },
+    {
+      "folder": "de-dialoog",
+      "slug": "de-dialoog",
+      "titel": "De Dialoog",
+      "auteur": "Catharina van Siena",
+      "ISBN": "97890.6257.037.9",
+      "status": "publish"
+    },
+    {
+      "folder": "getrouwde-priesters",
+      "slug": "getrouwde-priesters",
+      "titel": "Getrouwde priesters",
+      "auteur": "Arturo Cattaneo",
+      "ISBN": "9,79E+12",
+      "status": "private"
+    },
+    {
+      "folder": "paus-franciscus",
+      "slug": "paus-franciscus",
+      "titel": "Paus Franciscus - Sleutels tot zijn denken",
+      "auteur": "Mariano Fazio",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "jezus-christus-onze-verlosser",
+      "slug": "jezus-christus-onze-verlosser",
+      "titel": "Jezus Christus onze Verlosser",
+      "auteur": "Vicente Ferrer Barriendos",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "spirituele-theologie",
+      "slug": "spirituele-theologie",
+      "titel": "Spirituele Theologie",
+      "auteur": "Pablo Marti",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "de-poort-van-het-geloof",
+      "slug": "de-poort-van-het-geloof",
+      "titel": "De poort van het geloof",
+      "auteur": "Abbé Vidal",
+      "ISBN": "97890.6257096.6",
+      "status": "publish"
+    },
+    {
+      "folder": "richtlijn-voor-het-geestelijk-leven",
+      "slug": "richtlijn-voor-het-geestelijk-leven",
+      "titel": "Richtlijn voor het geestelijk leven",
+      "auteur": "Ludovicus Blosius",
+      "ISBN": "97890.6257095.9",
+      "status": "publish"
+    },
+    {
+      "folder": "geestelijke-lauwheid",
+      "slug": "geestelijke-lauwheid",
+      "titel": "Geestelijke lauwheid",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "97890.6257080.5",
+      "status": "publish"
+    },
+    {
+      "folder": "gewoon-werk-buitengewone-genade",
+      "slug": "gewoon-werk-buitengewone-genade",
+      "titel": "Gewoon werk buitengewone genade",
+      "auteur": "Scott Hahn",
+      "ISBN": "97890.6257093.5",
+      "status": "publish"
+    },
+    {
+      "folder": "christus-komt-langs",
+      "slug": "christus-komt-langs",
+      "titel": "Christus komt langs",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "97890.6257073.5",
+      "status": "publish"
+    },
+    {
+      "folder": "de-heilige-mis-beleven",
+      "slug": "de-heilige-mis-beleven",
+      "titel": "De heilige Mis beleven",
+      "auteur": "Javier Echevarria",
+      "ISBN": "97890.6257091.1",
+      "status": "publish"
+    },
+    {
+      "folder": "het-mysterie-en-de-zending-van-de-kerk",
+      "slug": "het-mysterie-en-de-zending-van-de-kerk",
+      "titel": "Het Mysterie en de Zending van de Kerk",
+      "auteur": "José Ramón Perez Aranguena",
+      "ISBN": "90.6257.086.0",
+      "status": "publish"
+    },
+    {
+      "folder": "de-hoop-op-het-eeuwige-leven",
+      "slug": "de-hoop-op-het-eeuwige-leven",
+      "titel": "De Hoop op het Eeuwige Leven",
+      "auteur": "Justo Luis R. Sanchez de Alva",
+      "ISBN": "97890.6257090.4",
+      "status": "publish"
+    },
+    {
+      "folder": "zin-en-praktijk-van-de-geestelijke-leiding",
+      "slug": "zin-en-praktijk-van-de-geestelijke-leiding",
+      "titel": "Zin en Praktijk van de Geestelijke Leiding",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "97890.6257092.8",
+      "status": "publish"
+    },
+    {
+      "folder": "jezus-en-de-joodse-wortels-van-de-eucharistie",
+      "slug": "jezus-en-de-joodse-wortels-van-de-eucharistie",
+      "titel": "Jezus en de joodse wortels van de eucharistie",
+      "auteur": "Brant Pitre",
+      "ISBN": "97890.6257089.8",
+      "status": "publish"
+    },
+    {
+      "folder": "bezieler-en-stichter",
+      "slug": "bezieler-en-stichter",
+      "titel": "Bezieler en stichter",
+      "auteur": "Jan Peijnenburg",
+      "ISBN": "9 789062 570881",
+      "status": "publish"
+    },
+    {
+      "folder": "leven-vanuit-het-geloof",
+      "slug": "leven-vanuit-het-geloof",
+      "titel": "Leven vanuit het geloof",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "978-906257087-4",
+      "status": "publish"
+    },
+    {
+      "folder": "de-verborgen-kracht-van-vriendelijkheid",
+      "slug": "de-verborgen-kracht-van-vriendelijkheid",
+      "titel": "De verborgen kracht van vriendelijkheid",
+      "auteur": "Lawrence Lovasik",
+      "ISBN": "97890.6257084.3",
+      "status": "publish"
+    },
+    {
+      "folder": "geschiedenis-van-de-katholieke-kerk-in-de-tweede-helft-van-de-20ste-eeuw",
+      "slug": "geschiedenis-van-de-katholieke-kerk-in-de-tweede-helft-van-de-20ste-eeuw",
+      "titel": "Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw",
+      "auteur": "José Orlandis",
+      "ISBN": "97890.6257086.7",
+      "status": "publish"
+    },
+    {
+      "folder": "inleiding-tot-de-theologie",
+      "slug": "inleiding-tot-de-theologie",
+      "titel": "Inleiding tot de Theologie",
+      "auteur": "José Morales",
+      "ISBN": "97890.6257085.0",
+      "status": "publish"
+    },
+    {
+      "folder": "waarde-en-waardigheid",
+      "slug": "waarde-en-waardigheid",
+      "titel": "Waarde en waardigheid",
+      "auteur": "Russell Shaw",
+      "ISBN": "90.6257081.X",
+      "status": "publish"
+    },
+    {
+      "folder": "de-zeven-sacramenten",
+      "slug": "de-zeven-sacramenten",
+      "titel": "De zeven Sacramenten",
+      "auteur": "Enrique Moline",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "tekenen-van-leven",
+      "slug": "tekenen-van-leven",
+      "titel": "Tekenen van leven",
+      "auteur": "Scott Hahn",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "menselijke-liefde-in-het-plan-van-god",
+      "slug": "menselijke-liefde-in-het-plan-van-god",
+      "titel": "Menselijke liefde in het plan van God",
+      "auteur": "Stefan van Aken",
+      "ISBN": "978-1-4476-7443",
+      "status": "private"
+    },
+    {
+      "folder": "evangelisatie-en-bekering",
+      "slug": "evangelisatie-en-bekering",
+      "titel": "Evangelisatie en bekering",
+      "auteur": "John McCloskey",
+      "ISBN": "90.6257073.9",
+      "status": "publish"
+    },
+    {
+      "folder": "van-wrok-tot-vergeving",
+      "slug": "van-wrok-tot-vergeving",
+      "titel": "Van wrok tot vergeving",
+      "auteur": "Francisco Ugarte",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "inleiding-tot-het-devote-leven",
+      "slug": "inleiding-tot-het-devote-leven",
+      "titel": "Inleiding tot het devote leven",
+      "auteur": "Franciscus van Sales",
+      "ISBN": "978-90-6257-123-9",
+      "status": "publish"
+    },
+    {
+      "folder": "persoonlijke-vrijheid",
+      "slug": "persoonlijke-vrijheid",
+      "titel": "Persoonlijke vrijheid",
+      "auteur": "Jutta Burggraf",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "een-vader-die-zijn-beloftes-nakomt",
+      "slug": "een-vader-die-zijn-beloftes-nakomt",
+      "titel": "Een Vader die zijn Beloftes Nakomt",
+      "auteur": "Scott Hahn",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "kinderen-van-god",
+      "slug": "kinderen-van-god",
+      "titel": "Kinderen van God",
+      "auteur": "Juan Francisco Pozo",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "de-bijbel-leren-kennen",
+      "slug": "de-bijbel-leren-kennen",
+      "titel": "De Bijbel leren kennen",
+      "auteur": "Josemaría Monforte",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "priester-zijn",
+      "slug": "priester-zijn",
+      "titel": "Priester zijn",
+      "auteur": "Federico Suarez",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "korte-geschiedenis-van-de-katholieke-kerk",
+      "slug": "korte-geschiedenis-van-de-katholieke-kerk",
+      "titel": "Korte Geschiedenis van de Katholieke Kerk",
+      "auteur": "José Orlandis",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "vijftig-vragen-over-jezus",
+      "slug": "vijftig-vragen-over-jezus",
+      "titel": "50 vragen over Jezus",
+      "auteur": "Juan Chapa",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "de-katholieke-kerk-verkennen",
+      "slug": "de-katholieke-kerk-verkennen",
+      "titel": "De Katholieke Kerk verkennen",
+      "auteur": "Marcellino D Ambrosio",
+      "ISBN": "9,79E+12",
+      "status": "publish"
+    },
+    {
+      "folder": "geschiedenis-van-de-katholieke-kerk-in-nederland",
+      "slug": "geschiedenis-van-de-katholieke-kerk-in-nederland",
+      "titel": "Geschiedenis van de Katholieke Kerk in Nederland",
+      "auteur": "Dr. P.W.F.M. Hamans",
+      "ISBN": "9065970762",
+      "status": "publish"
+    },
+    {
+      "folder": "opus-dei",
+      "slug": "opus-dei",
+      "titel": "Opus Dei",
+      "auteur": "Ria Bongaarts",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "het-is-de-heer",
+      "slug": "het-is-de-heer",
+      "titel": "Het is de Heer",
+      "auteur": "Athanasius Schneider",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "trouwen-of-samenwonen",
+      "slug": "trouwen-of-samenwonen",
+      "titel": "Trouwen of Samenwonen",
+      "auteur": "Anthony Garascia",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "voorbereiding-op-de-puberteit",
+      "slug": "voorbereiding-op-de-puberteit",
+      "titel": "Voorbereiding op de puberteit",
+      "auteur": "James B. Stenson",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "deugden-in-het-gezin",
+      "slug": "deugden-in-het-gezin",
+      "titel": "Deugden in het Gezin",
+      "auteur": "Georges Chevrot",
+      "ISBN": "9062570658",
+      "status": "publish"
+    },
+    {
+      "folder": "waar-geloof-en-rede-elkaar-vinden",
+      "slug": "waar-geloof-en-rede-elkaar-vinden",
+      "titel": "Waar geloof en rede elkaar vinden",
+      "auteur": "Janne H. Matlary",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "wees-gegroet-koningin",
+      "slug": "wees-gegroet-koningin",
+      "titel": "Wees gegroet Koningin",
+      "auteur": "Scott Hahn",
+      "ISBN": "90.6257.060.7",
+      "status": "publish"
+    },
+    {
+      "folder": "redenen-om-te-geloven",
+      "slug": "redenen-om-te-geloven",
+      "titel": "Redenen om te geloven",
+      "auteur": "Scott Hahn",
+      "ISBN": "90.6257.059.3",
+      "status": "publish"
+    },
+    {
+      "folder": "noveen-tot-de-heilige-jozefmaria-escriva",
+      "slug": "noveen-tot-de-heilige-jozefmaria-escriva",
+      "titel": "Noveen tot de heilige Jozefmaria Escriva",
+      "auteur": "Juan Larrea Holguin",
+      "ISBN": "90-6257-058-1",
+      "status": "publish"
+    },
+    {
+      "folder": "de-goede-week",
+      "slug": "de-goede-week",
+      "titel": "De Goede Week",
+      "auteur": "Javier Echevarria",
+      "ISBN": "90-6257-054-2",
+      "status": "publish"
+    },
+    {
+      "folder": "herinneringen-van-zuster-lucia",
+      "slug": "herinneringen-van-zuster-lucia",
+      "titel": "Herinneringen van Zuster Lucia",
+      "auteur": "Luis Kondor",
+      "ISBN": "97-2852-466-8",
+      "status": "publish"
+    },
+    {
+      "folder": "de-innerlijke-rust",
+      "slug": "de-innerlijke-rust",
+      "titel": "De innerlijke rust",
+      "auteur": "Jacques Philippe",
+      "ISBN": "90-6257-056-9",
+      "status": "publish"
+    },
+    {
+      "folder": "moraal-de-kunst-van-het-leven",
+      "slug": "moraal-de-kunst-van-het-leven",
+      "titel": "Moraal De kunst van het leven",
+      "auteur": "J.L. Lorda",
+      "ISBN": "90-6257-057-7",
+      "status": "publish"
+    },
+    {
+      "folder": "succesvolle-vaders",
+      "slug": "succesvolle-vaders",
+      "titel": "Succesvolle vaders",
+      "auteur": "James B. Stenson",
+      "ISBN": "90-6257-055-0",
+      "status": "publish"
+    },
+    {
+      "folder": "het-bruiloftsmaal-van-het-lam",
+      "slug": "het-bruiloftsmaal-van-het-lam",
+      "titel": "Het bruiloftsmaal van het Lam",
+      "auteur": "Scott Hahn",
+      "ISBN": "90-6257-048-8",
+      "status": "publish"
+    },
+    {
+      "folder": "de-heilige-van-het-gewone",
+      "slug": "de-heilige-van-het-gewone",
+      "titel": "De Heilige van het Gewone",
+      "auteur": "G.J.M. van den Aardweg",
+      "ISBN": "90-6257-047-X",
+      "status": "publish"
+    },
+    {
+      "folder": "in-de-school-van-de-heilige-geest",
+      "slug": "in-de-school-van-de-heilige-geest",
+      "titel": "In de school van de Heilige Geest",
+      "auteur": "Jacques Philippe",
+      "ISBN": "978-90-6257-077-5",
+      "status": "publish"
+    },
+    {
+      "folder": "tijd-voor-god",
+      "slug": "tijd-voor-god",
+      "titel": "Tijd voor God",
+      "auteur": "Jacques Philippe",
+      "ISBN": "90-7009-29-13",
+      "status": "publish"
+    },
+    {
+      "folder": "ware-liefde",
+      "slug": "ware-liefde",
+      "titel": "Ware liefde",
+      "auteur": "Jason Evert",
+      "ISBN": "90-6257-049-6",
+      "status": "publish"
+    },
+    {
+      "folder": "leven-in-christus",
+      "slug": "leven-in-christus",
+      "titel": "Leven in Christus",
+      "auteur": "Raniero Cantalamessa",
+      "ISBN": "90-6257-050-X",
+      "status": "publish"
+    },
+    {
+      "folder": "the-founder-of-opus-dei-volume-3",
+      "slug": "the-founder-of-opus-dei-volume-3",
+      "titel": "The founder of Opus Dei Volume 3: The Divine Ways on Earth",
+      "auteur": "Andrés Vazquez de Prada",
+      "ISBN": "1-594170-26-6",
+      "status": "private"
+    },
+    {
+      "folder": "jean-marie-vianney-pastoor-van-ars",
+      "slug": "jean-marie-vianney-pastoor-van-ars",
+      "titel": "Jean Marie Vianney Pastoor van Ars",
+      "auteur": "Marc Joulin",
+      "ISBN": "90-6257-052-6",
+      "status": "publish"
+    },
+    {
+      "folder": "de-innerlijke-vrijheid",
+      "slug": "de-innerlijke-vrijheid",
+      "titel": "De innerlijke vrijheid",
+      "auteur": "Jacques Philippe",
+      "ISBN": "97890.6257.034.8",
+      "status": "publish"
+    },
+    {
+      "folder": "begeleiden-onderscheiden-integreren",
+      "slug": "begeleiden-onderscheiden-integreren",
+      "titel": "Begeleiden onderscheiden integreren",
+      "auteur": "e.a.\nJosé Granados",
+      "ISBN": "97890.6257.074.4",
+      "status": "publish"
+    },
+    {
+      "folder": "het-pastoraal-concilie-van-de-nederlandse-kerkprovincie-1966-1970",
+      "slug": "het-pastoraal-concilie-van-de-nederlandse-kerkprovincie-1966-1970",
+      "titel": "Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)",
+      "auteur": "Dr. P.W.F.M. Hamans",
+      "ISBN": "978-90-6257-073-7",
+      "status": "publish"
+    },
+    {
+      "folder": "liefde-is-jezelf-geven",
+      "slug": "liefde-is-jezelf-geven",
+      "titel": "Liefde is jezelf geven",
+      "auteur": "Stéphane Seminckx",
+      "ISBN": "978-90-6257-072-0",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kracht-van-de-stilte",
+      "slug": "de-kracht-van-de-stilte",
+      "titel": "De kracht van de stilte",
+      "auteur": "Robert Sarah",
+      "ISBN": "9 789 491 99 1554",
+      "status": "publish"
+    },
+    {
+      "folder": "zout-en-licht",
+      "slug": "zout-en-licht",
+      "titel": "Zout en licht - Overwegingen over het Christelijk leven",
+      "auteur": "José Antonio Loarte",
+      "ISBN": "978-90-6257-069-0",
+      "status": "publish"
+    },
+    {
+      "folder": "liefde-en-zelfrespect",
+      "slug": "liefde-en-zelfrespect",
+      "titel": "Liefde en zelfrespect",
+      "auteur": "Michel Esparza",
+      "ISBN": "978-90-6257-066-9",
+      "status": "publish"
+    },
+    {
+      "folder": "levenskunst-en-levenseinde",
+      "slug": "levenskunst-en-levenseinde",
+      "titel": "Levenskunst en levenseinde",
+      "auteur": "Daan van Schalkwijk",
+      "ISBN": "978.90.6527.070.6",
+      "status": "publish"
+    },
+    {
+      "folder": "schepping-of-toeval",
+      "slug": "schepping-of-toeval",
+      "titel": "Schepping of toeval",
+      "auteur": "Wolfgang Kuhn",
+      "ISBN": "90-6257-045-3",
+      "status": "publish"
+    },
+    {
+      "folder": "over-de-heilige-eucharistie",
+      "slug": "over-de-heilige-eucharistie",
+      "titel": "Over de heilige Eucharistie",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-043-7",
+      "status": "publish"
+    },
+    {
+      "folder": "de-mis-en-het-geestelijk-leven",
+      "slug": "de-mis-en-het-geestelijk-leven",
+      "titel": "De Mis en het geestelijk leven",
+      "auteur": "B. Vasconcelos",
+      "ISBN": "90-6257-042-9",
+      "status": "publish"
+    },
+    {
+      "folder": "jouw-vragen-gods-antwoorden",
+      "slug": "jouw-vragen-gods-antwoorden",
+      "titel": "Jouw vragen Gods antwoorden",
+      "auteur": "Peter Kreeft",
+      "ISBN": "90-6257-039-9",
+      "status": "publish"
+    },
+    {
+      "folder": "het-leven-na-dit-leven",
+      "slug": "het-leven-na-dit-leven",
+      "titel": "Het Leven na dit leven",
+      "auteur": "Federico Suarez",
+      "ISBN": "9789062570713",
+      "status": "publish"
+    },
+    {
+      "folder": "hoezo-wonderen",
+      "slug": "hoezo-wonderen",
+      "titel": "Hoezo wonderen",
+      "auteur": "Patrick Theillier",
+      "ISBN": "90-6257-038-0",
+      "status": "publish"
+    },
+    {
+      "folder": "wegwijs-in-spreken-met-god",
+      "slug": "wegwijs-in-spreken-met-god",
+      "titel": "Wegwijs in Spreken met God",
+      "auteur": "",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-serie-groen-deel-4-tm-8",
+      "slug": "spreken-met-god-serie-groen-deel-4-tm-8",
+      "titel": "Spreken met God serie groen deel 4 tm 8",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-serie-rood-deel-1-tm-3",
+      "slug": "spreken-met-god-serie-rood-deel-1-tm-3",
+      "titel": "Spreken met God serie rood deel 1 tm 3",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "",
+      "status": "publish"
+    },
+    {
+      "folder": "wat-moet-ik-doen",
+      "slug": "wat-moet-ik-doen",
+      "titel": "Wat moet ik doen",
+      "auteur": "P. Beteta",
+      "ISBN": "90-6257-158-1",
+      "status": "publish"
+    },
+    {
+      "folder": "vrienden-van-god",
+      "slug": "vrienden-van-god",
+      "titel": "Vrienden van God",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-023-2",
+      "status": "publish"
+    },
+    {
+      "folder": "voetsporen-in-de-sneeuw",
+      "slug": "voetsporen-in-de-sneeuw",
+      "titel": "Voetsporen in de sneeuw",
+      "auteur": "Dennis M. Helming",
+      "ISBN": "90-6257-022-4",
+      "status": "publish"
+    },
+    {
+      "folder": "uncommon-faith",
+      "slug": "uncommon-faith",
+      "titel": "Uncommon faith",
+      "auteur": "John Coverdale",
+      "ISBN": "1-889334-74-x",
+      "status": "private"
+    },
+    {
+      "folder": "the-founder-of-opus-dei-volume-2",
+      "slug": "the-founder-of-opus-dei-volume-2",
+      "titel": "The founder of Opus Dei Volume 2: God and Daring",
+      "auteur": "Andrés Vazquez de Prada",
+      "ISBN": "1-889334-86-3",
+      "status": "private"
+    },
+    {
+      "folder": "the-founder-of-opus-dei-volume-1",
+      "slug": "the-founder-of-opus-dei-volume-1",
+      "titel": "The founder of Opus Dei Volume 1: The Early Years",
+      "auteur": "Andrés Vazquez de Prada",
+      "ISBN": "1-889334-26-x",
+      "status": "private"
+    },
+    {
+      "folder": "spreken-met-god-deel-10",
+      "slug": "spreken-met-god-deel-10",
+      "titel": "Spreken met God Deel 10",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-110-7",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-9",
+      "slug": "spreken-met-god-deel-9",
+      "titel": "Spreken met God Deel  9",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-109-3",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-8",
+      "slug": "spreken-met-god-deel-8",
+      "titel": "Spreken met God Deel  8",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-108-5",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-7",
+      "slug": "spreken-met-god-deel-7",
+      "titel": "Spreken met God Deel  7",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-107-7",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-6",
+      "slug": "spreken-met-god-deel-6",
+      "titel": "Spreken met God Deel  6",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-106-9",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-5",
+      "slug": "spreken-met-god-deel-5",
+      "titel": "Spreken met God Deel  5",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-027-5",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-4",
+      "slug": "spreken-met-god-deel-4",
+      "titel": "Spreken met God Deel  4",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-104-2",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-3",
+      "slug": "spreken-met-god-deel-3",
+      "titel": "Spreken met God Deel  3",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-103-4",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-2",
+      "slug": "spreken-met-god-deel-2",
+      "titel": "Spreken met God Deel  2",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-102-6",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-deel-1",
+      "slug": "spreken-met-god-deel-1",
+      "titel": "Spreken met God Deel  1",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-101-8",
+      "status": "publish"
+    },
+    {
+      "folder": "spreken-met-god-alle-delen",
+      "slug": "spreken-met-god-alle-delen",
+      "titel": "Spreken met God  - Alle delen",
+      "auteur": "Francisco Fernandez Carvajal",
+      "ISBN": "90-6257-100-x",
+      "status": "publish"
+    },
+    {
+      "folder": "rome-ons-thuis",
+      "slug": "rome-ons-thuis",
+      "titel": "Rome ons thuis",
+      "auteur": "Scott Hahn",
+      "ISBN": "90-6257-029-1",
+      "status": "publish"
+    },
+    {
+      "folder": "opus-dei-een-onderzoek",
+      "slug": "opus-dei-een-onderzoek",
+      "titel": "Opus Dei Een onderzoek",
+      "auteur": "Vittorio Messori",
+      "ISBN": "90-6257-105-0",
+      "status": "publish"
+    },
+    {
+      "folder": "nt10-navarre-bible-thessalonians-and-pastoral-letters",
+      "slug": "nt10-navarre-bible-thessalonians-and-pastoral-letters",
+      "titel": "NT10 Navarre Bible Thessalonians and Pastoral Letters",
+      "auteur": "",
+      "ISBN": "1-85182-077-9",
+      "status": "private"
+    },
+    {
+      "folder": "nt01-navarre-bible-st-matthew",
+      "slug": "nt01-navarre-bible-st-matthew",
+      "titel": "NT01 Navarre Bible St Matthew",
+      "auteur": "",
+      "ISBN": "1-85182-058-2",
+      "status": "private"
+    },
+    {
+      "folder": "edward-poppe",
+      "slug": "edward-poppe",
+      "titel": "Edward Poppe",
+      "auteur": "Karl Weekers",
+      "ISBN": "97.890.6257.045.4",
+      "status": "publish"
+    },
+    {
+      "folder": "de-weg",
+      "slug": "de-weg",
+      "titel": "De Weg",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-014-3",
+      "status": "publish"
+    },
+    {
+      "folder": "de-voor",
+      "slug": "de-voor",
+      "titel": "De Voor",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-019-4",
+      "status": "publish"
+    },
+    {
+      "folder": "de-smidse",
+      "slug": "de-smidse",
+      "titel": "De Smidse",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-159-x",
+      "status": "publish"
+    },
+    {
+      "folder": "de-liefde-tot-de-kerk",
+      "slug": "de-liefde-tot-de-kerk",
+      "titel": "De liefde tot de Kerk",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-024-0",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kruisweg",
+      "slug": "de-kruisweg",
+      "titel": "De Kruisweg",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-021-6",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kracht-van-god",
+      "slug": "de-kracht-van-god",
+      "titel": "De kracht van God",
+      "auteur": "Flavio Capucci",
+      "ISBN": "90.6257.035.6",
+      "status": "publish"
+    },
+    {
+      "folder": "de-kerststal-van-god",
+      "slug": "de-kerststal-van-god",
+      "titel": "De Kerststal van God",
+      "auteur": "Enrique Monasterio",
+      "ISBN": "90-6257-032-1",
+      "status": "publish"
+    },
+    {
+      "folder": "de-heilige-jozefmaria-escriva",
+      "slug": "de-heilige-jozefmaria-escriva",
+      "titel": "De heilige Jozefmaria Escriva",
+      "auteur": "Miguel Dolz",
+      "ISBN": "90-6257-036-4",
+      "status": "publish"
+    },
+    {
+      "folder": "de-droefheid-van-christus",
+      "slug": "de-droefheid-van-christus",
+      "titel": "De droefheid van Christus",
+      "auteur": "Thomas More",
+      "ISBN": "90-6257-162-x",
+      "status": "publish"
+    },
+    {
+      "folder": "belijdenissen",
+      "slug": "belijdenissen",
+      "titel": "Belijdenissen",
+      "auteur": "Aurelius Augustinus",
+      "ISBN": "90-6257-161-1",
+      "status": "publish"
+    },
+    {
+      "folder": "nt02-navarre-bible-st-mark",
+      "slug": "nt02-navarre-bible-st-mark",
+      "titel": "NT02 Navarre Bible St Mark",
+      "auteur": "- -",
+      "ISBN": "1-85182-092-2",
+      "status": "private"
+    },
+    {
+      "folder": "nt03-navarre-bible-st-luke",
+      "slug": "nt03-navarre-bible-st-luke",
+      "titel": "NT03 Navarre Bible St Luke",
+      "auteur": "- -",
+      "ISBN": "1-85182-072-8",
+      "status": "private"
+    },
+    {
+      "folder": "nt04-navarre-bible-st-john",
+      "slug": "nt04-navarre-bible-st-john",
+      "titel": "NT04 Navarre Bible St John",
+      "auteur": "- -",
+      "ISBN": "1-85182-094-9",
+      "status": "private"
+    },
+    {
+      "folder": "nt06-navarre-bible-romans-and-galatians",
+      "slug": "nt06-navarre-bible-romans-and-galatians",
+      "titel": "NT06 Navarre Bible Romans and Galatians",
+      "auteur": "- -",
+      "ISBN": "1-85182-055-8",
+      "status": "private"
+    },
+    {
+      "folder": "nt12-navarre-bible-revelation",
+      "slug": "nt12-navarre-bible-revelation",
+      "titel": "NT12 Navarre Bible Revelation",
+      "auteur": "- -",
+      "ISBN": "1-85182-089-2",
+      "status": "private"
+    },
+    {
+      "folder": "nt08-navarre-bible-hebrews",
+      "slug": "nt08-navarre-bible-hebrews",
+      "titel": "NT08 Navarre Bible Hebrews",
+      "auteur": "- -",
+      "ISBN": "1-85182-069-8",
+      "status": "private"
+    },
+    {
+      "folder": "nt07-navarre-bible-corinthians",
+      "slug": "nt07-navarre-bible-corinthians",
+      "titel": "NT07 Navarre Bible Corinthians",
+      "auteur": "- -",
+      "ISBN": "1-85182-065-5",
+      "status": "private"
+    },
+    {
+      "folder": "nt11-navarre-bible-catholic-letters",
+      "slug": "nt11-navarre-bible-catholic-letters",
+      "titel": "NT11 Navarre Bible Catholic Letters",
+      "auteur": "- -",
+      "ISBN": "1-85182-087-6",
+      "status": "private"
+    },
+    {
+      "folder": "nt09-navarre-bible-captivity-letters",
+      "slug": "nt09-navarre-bible-captivity-letters",
+      "titel": "NT09 Navarre Bible Captivity Letters",
+      "auteur": "- -",
+      "ISBN": "1-85182-079-5",
+      "status": "private"
+    },
+    {
+      "folder": "nt05-navarre-bible-acts-of-the-apostles",
+      "slug": "nt05-navarre-bible-acts-of-the-apostles",
+      "titel": "NT05 Navarre Bible Acts of the Apostles",
+      "auteur": "- -",
+      "ISBN": "1-85182-044-2",
+      "status": "private"
+    },
+    {
+      "folder": "navarre-bible-new-testament-12-volumes",
+      "slug": "navarre-bible-new-testament-12-volumes",
+      "titel": "Navarre Bible New Testament 12 volumes",
+      "auteur": "- -",
+      "ISBN": "",
+      "status": "private"
+    },
+    {
+      "folder": "montse-grases",
+      "slug": "montse-grases",
+      "titel": "Montse Grases",
+      "auteur": "Edith Zeltner",
+      "ISBN": "90-6257-163-8",
+      "status": "publish"
+    },
+    {
+      "folder": "mgr-escriva-de-balaguer",
+      "slug": "mgr-escriva-de-balaguer",
+      "titel": "Mgr Escriva de Balaguer",
+      "auteur": "Salvador Bernal",
+      "ISBN": "90-6257-011-9",
+      "status": "publish"
+    },
+    {
+      "folder": "met-ziel-en-lichaam",
+      "slug": "met-ziel-en-lichaam",
+      "titel": "Met ziel en lichaam",
+      "auteur": "J.L. Soria",
+      "ISBN": "90-6257-152-2",
+      "status": "publish"
+    },
+    {
+      "folder": "laten-zien-wat-je-kunt",
+      "slug": "laten-zien-wat-je-kunt",
+      "titel": "Laten zien wat je kunt",
+      "auteur": "Stephan Puhl",
+      "ISBN": "90-6257-155-7",
+      "status": "publish"
+    },
+    {
+      "folder": "kom-heilige-geest",
+      "slug": "kom-heilige-geest",
+      "titel": "Kom Heilige Geest",
+      "auteur": "Francisca J. del Valle",
+      "ISBN": "90-6257-026-7",
+      "status": "publish"
+    },
+    {
+      "folder": "jezus-christus",
+      "slug": "jezus-christus",
+      "titel": "Jezus Christus",
+      "auteur": "J. Simon",
+      "ISBN": "978-90-6257-156-7",
+      "status": "publish"
+    },
+    {
+      "folder": "hoe-biechten-wij-goed",
+      "slug": "hoe-biechten-wij-goed",
+      "titel": "Hoe biechten wij goed",
+      "auteur": "F. Luna",
+      "ISBN": "90-6257-025-9",
+      "status": "publish"
+    },
+    {
+      "folder": "hij-heette-josemaria",
+      "slug": "hij-heette-josemaria",
+      "titel": "Hij heette Josemaria",
+      "auteur": "A. Catret",
+      "ISBN": "90-6257-033-x",
+      "status": "publish"
+    },
+    {
+      "folder": "het-opus-dei",
+      "slug": "het-opus-dei",
+      "titel": "Het Opus Dei",
+      "auteur": "D. Le Tourneau",
+      "ISBN": "90-6597-194-7",
+      "status": "publish"
+    },
+    {
+      "folder": "gesprekken-met-mgr-escriva",
+      "slug": "gesprekken-met-mgr-escriva",
+      "titel": "Gesprekken met Mgr Escriva",
+      "auteur": "Jozefmaria Escriva",
+      "ISBN": "90-6257-018-6",
+      "status": "publish"
+    },
+    {
+      "folder": "gebeden",
+      "slug": "gebeden",
+      "titel": "Gebeden",
+      "auteur": "J. van der Mee",
+      "ISBN": "978-90-6257-129-1",
+      "status": "publish"
+    },
+    {
+      "folder": "francisco-en-jacinta-van-fatima",
+      "slug": "francisco-en-jacinta-van-fatima",
+      "titel": "Francisco en Jacinta van Fatima",
+      "auteur": "Sonja Hissink",
+      "ISBN": "90-6257-154-9",
+      "status": "publish"
+    },
+    {
+      "folder": "vreugde-alom-e-book",
+      "slug": "vreugde-alom-e-book",
+      "titel": "Vreugde alom (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-141-3",
+      "status": "publish"
+    },
+    {
+      "folder": "een-gelukkig-huwelijk",
+      "slug": "een-gelukkig-huwelijk",
+      "titel": "Een gelukkig huwelijk",
+      "auteur": "Antonio Vázquez",
+      "ISBN": "978-90-6257-081-2",
+      "status": "publish"
+    },
+    {
+      "folder": "geboden-en-deugden-2",
+      "slug": "geboden-en-deugden-2",
+      "titel": "Geboden en deugden",
+      "auteur": "Aurelio Fernández",
+      "ISBN": "978-90-6257-164-2",
+      "status": "publish"
+    },
+    {
+      "folder": "rebuilt",
+      "slug": "rebuilt",
+      "titel": "Rebuilt",
+      "auteur": "Michael White",
+      "ISBN": "978-94-9199-173-8",
+      "status": "publish"
+    },
+    {
+      "folder": "wat-zag-jezus-vanaf-het-kruis",
+      "slug": "wat-zag-jezus-vanaf-het-kruis",
+      "titel": "Wat zag Jezus vanaf het kruis ?",
+      "auteur": "",
+      "ISBN": "978-90-8189-179-0",
+      "status": "publish"
+    },
+    {
+      "folder": "gods-engelen-waken-over-ons-e-book",
+      "slug": "gods-engelen-waken-over-ons-e-book",
+      "titel": "Gods engelen waken over ons (e-book)",
+      "auteur": "",
+      "ISBN": "978-90-6257-127-7",
+      "status": "publish"
+    },
+    {
+      "folder": "maria-van-nazareth-e-book",
+      "slug": "maria-van-nazareth-e-book",
+      "titel": "Maria van Nazareth (e-book)",
+      "auteur": "",
+      "ISBN": "9789062571383",
+      "status": "publish"
+    },
+    {
+      "folder": "iets-groots-dat-liefde-is-e-book",
+      "slug": "iets-groots-dat-liefde-is-e-book",
+      "titel": "Iets groots dat liefde is (e-book)",
+      "auteur": "",
+      "ISBN": "9789062571321",
+      "status": "publish"
+    },
+    {
+      "folder": "een-zuivere-ziel-is-als-een-mooie-parel-e-book",
+      "slug": "een-zuivere-ziel-is-als-een-mooie-parel-e-book",
+      "titel": "Een zuivere ziel is als een mooie parel (e-book)",
+      "auteur": "",
+      "ISBN": "9789062571468",
+      "status": "publish"
+    }
+  ]
+}

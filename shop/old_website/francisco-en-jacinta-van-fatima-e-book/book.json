@@ -1,0 +1,41 @@
+{
+  "slug": "francisco-en-jacinta-van-fatima-e-book",
+  "titel": "Francisco en Jacinta van Fatima (e-book)",
+  "auteur": "Sonja Hissink",
+  "genre": "E-book, Maria Fatima Lourdes",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-154-9",
+  "prijs_cent": 250,
+  "cover": "0-148.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "aan wie Maria verschenen is",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "2.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "De Kerk heeft de verschijningen in Fatima als waar gebeurd erkend. Francisco en zijn zusje Jacinta hebben, evenals hun onlangs gestorven nichtje Lucia, de heilige Maria dus echt gezien en gehoord, tussen mei en oktober 1917. Dit boekje gaat over de verschijningen en over de weldadige invloed die deze op hun korte leven uitoefenden. Beiden werden op 13 mei 2000 door paus Johannes Paulus II, zaligverklaard.",
+  "korte_tekst": "Over 2 Portugese kinderen aan wie Onze Lieve Vrouw in 1917 in Fatima verscheen.",
+  "velden": {
+    "ondertitel": "aan wie Maria verschenen is",
+    "isbn": "90-6257-154-9",
+    "uitvoering": "E-book",
+    "aantal_paginas": "97",
+    "speelduur": "",
+    "leesproef": "6509",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-148.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-148.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/francisco-en-jacinta-van-fatima-e-book/"
+}

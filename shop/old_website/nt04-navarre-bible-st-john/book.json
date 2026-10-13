@@ -1,0 +1,40 @@
+{
+  "slug": "nt04-navarre-bible-st-john",
+  "titel": "NT04 Navarre Bible St John",
+  "auteur": "- -",
+  "genre": "Bijbel",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-85182-094-9",
+  "prijs_cent": 1850,
+  "cover": "0-27.jpg",
+  "voorraad": null,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "18.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Dit deel bevat o.a. een zeer doordachte inleiding over de apostel zelf en zijn leer over de H. Drieeenheid, over Geloof en Liefde, over de Sacramenten en zijn liefde tot de moeder van God, Maria.",
+  "korte_tekst": "Het H. Evangelie volgens de H. Johannes.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-85182-094-9",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "",
+    "speelduur": "",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-27.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-27.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/nt04-navarre-bible-st-john/"
+}

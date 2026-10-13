@@ -1,0 +1,41 @@
+{
+  "slug": "voetsporen-in-de-sneeuw",
+  "titel": "Voetsporen in de sneeuw",
+  "auteur": "Dennis M. Helming",
+  "genre": "Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-022-4",
+  "prijs_cent": 1095,
+  "cover": "0-59.jpg",
+  "voorraad": 197,
+  "status": "publish",
+  "ondertitel": "het leven in beeld van Josemaría Escrivá Stichter van het Opus Dei",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "10.95",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Een in 1986 in Amerika verschenen fotobiografie van Mgr. Escrivá. Het boek bevat 71 foto's, toegelicht met verhelderende teksten. Kardinaal Simonis schreef een Ten Geleide voor de Nederlandse uitgave.",
+  "korte_tekst": "Fotobiografie met 71 foto's over het leven van de heilige Jozefmaría",
+  "velden": {
+    "ondertitel": "het leven in beeld van Josemaría Escrivá Stichter van het Opus Dei",
+    "isbn": "90-6257-022-4",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "80",
+    "speelduur": "",
+    "ff_builder_status": "{\"usage\":\"never\"}",
+    "leesproef": "7472",
+    "slide_template": "default"
+  },
+  "images": [
+    {
+      "file": "0-59.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-59.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/voetsporen-in-de-sneeuw/"
+}

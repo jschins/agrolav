@@ -1,0 +1,41 @@
+{
+  "slug": "de-zeven-sacramenten-e-book",
+  "titel": "De zeven Sacramenten (e-book)",
+  "auteur": "Enrique Moline",
+  "genre": "E-book, Sacramenten",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "9,79E+12",
+  "prijs_cent": 600,
+  "cover": "0-211.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "Beknopte Sacramentenleer",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "6",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Dit boek tracht een kort en helder overzicht te bieden van de leer en de voorschriften van de Katholieke Kerk inzake de zeven sacramenten.\n\nSpeciale aandacht behoeft de eucharistie, aangezien die het sacrament is van het Lichaam en Bloed van de Heer, en van zijn lijden en dood, waarborg van het eeuwige leven. De eucharistie is de bron en het middelpunt van de andere sacramenten.\n\nEr is gekozen om een klassieke opbouw te volgen, een opbouw die door de Catechismus van de Katholieke Kerk nog steeds wordt gebruikt. Het eerste hoofdstuk behandelt dus de Algemene Sacramentenleer. Elk volgende hoofdstuk gaat over één sacrament. Het boek eindigt met een kort aanhangsel over de sacramentaliën en de uitvaartliturgie. De lezer kan vrijelijk de volgorde kiezen waarin hij wil lezen, aangezien de hoofdstukindeling verschillende volgordes mogelijk maakt.\n\nVerwijzingen naar de heilige Schrift en het Leergezag van de Kerk komen veelvuldig voor. De beknoptheid waaraan ik was gehouden bij het schrijven van deze bladzijden, noopte mij echter verwijzingen naar klassieke theologen en moderne auteurs tot een minimum te beperken. (uit de inleiding)",
+  "korte_tekst": "Dit boek tracht een kort en helder overzicht te bieden van de leer en de voorschriften van de Katholieke Kerk inzake de zeven sacramenten.",
+  "velden": {
+    "ondertitel": "Beknopte Sacramentenleer",
+    "isbn": "9,79E+12",
+    "uitvoering": "E-book",
+    "aantal_paginas": "224",
+    "speelduur": "",
+    "leesproef": "5986",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-211.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-211.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-zeven-sacramenten-e-book/"
+}

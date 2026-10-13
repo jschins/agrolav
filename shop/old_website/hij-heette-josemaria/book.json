@@ -1,0 +1,38 @@
+{
+  "slug": "hij-heette-josemaria",
+  "titel": "Hij heette Josemaria",
+  "auteur": "A. Catret",
+  "genre": "Kinderboeken",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-033-x",
+  "prijs_cent": 375,
+  "cover": "0-12.jpg",
+  "voorraad": 35,
+  "status": "publish",
+  "ondertitel": "Vrienden van Jezus",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "3.75",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Een boekje met platen om in te kleuren voor kinderen over de gebeurtenissen uit het leven van de heilige Jozefmaria, stichter van het Opus Dei.",
+  "korte_tekst": "Kleurplaten over de gebeurtenissen uit het leven van de heilige Jozefmaria.",
+  "velden": {
+    "ondertitel": "Vrienden van Jezus",
+    "isbn": "90-6257-033-x",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "32",
+    "speelduur": ""
+  },
+  "images": [
+    {
+      "file": "0-12.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-12.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/hij-heette-josemaria/"
+}

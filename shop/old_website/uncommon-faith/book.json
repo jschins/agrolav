@@ -1,0 +1,65 @@
+{
+  "slug": "uncommon-faith",
+  "titel": "Uncommon faith",
+  "auteur": "John Coverdale",
+  "genre": "Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "1-889334-74-x",
+  "prijs_cent": 1495,
+  "cover": "0-58.jpg",
+  "voorraad": 0,
+  "status": "private",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "14.95",
+  "voorraad_status": "outofstock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "John Coverdale beschrijft in zijn boek Uncommon Faith: The Early Years of Opus Dei (1928-1943) hoe Jozefmaria Escrivá zich inspant om de boodschap van de heiliging voor de leek te verspreiden onder mensen van allerlei slag en te midden van de terreur en de onzekerheden van de Spaanse burgeroorlog.",
+  "korte_tekst": "Hoe Jozefmaría zijn boodschap verspreidde tijdens de periode 1928-1943.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "1-889334-74-x",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "390",
+    "speelduur": "",
+    "leesproef": "",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-58.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-58.jpg",
+      "alt": ""
+    },
+    {
+      "file": "1-12.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/1-12.jpg",
+      "alt": ""
+    },
+    {
+      "file": "2-11.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/2-11.jpg",
+      "alt": ""
+    },
+    {
+      "file": "3-13.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/3-13.jpg",
+      "alt": ""
+    },
+    {
+      "file": "4-11.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/4-11.jpg",
+      "alt": ""
+    },
+    {
+      "file": "5-13.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/5-13.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/uncommon-faith/"
+}

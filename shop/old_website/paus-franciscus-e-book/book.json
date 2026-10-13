@@ -1,0 +1,41 @@
+{
+  "slug": "paus-franciscus-e-book",
+  "titel": "Paus Franciscus - sleutels tot zijn denken (e-book)",
+  "auteur": "Mariano Fazio",
+  "genre": "E-book",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "9,79E+12",
+  "prijs_cent": 780,
+  "cover": "011-2.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "sleutel tot zijn denken",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "7.8",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Op 13 maart 2013 werd Jorge Mario Bergoglio verkozen tot 265ste opvolger van de heilige Petrus en nam de naam Franciscus aan.\n\nHij is, zo zegt hij zelf, een paus die gekomen is van het andere eind van de wereld, met als bagage een ruime pastorale ervaring. Als paus die goedlachs is, dicht bij de mensen staat en opvalt door zijn eenvoud, geniet hij een toenemende belangstelling onder vertegenwoordigers van de media, ook onder niet-gelovigen.\n\nMariano Fazio heeft de huidige paus van dichtbij gekend toen deze nog aartsbisschop van Buenos Aires was. Vanuit deze vriendschap beschrijft hij ons de sleutels tot zijn denken, tot zijn visie op het apostolaat en tot zijn verlangen om met de hele wereld in dialoog te treden.",
+  "korte_tekst": "De sleutels tot zijn denken, zijn visie op het apostolaat en zijn verlangen om met de hele wereld in dialoog te treden.",
+  "velden": {
+    "ondertitel": "sleutel tot zijn denken",
+    "isbn": "9,79E+12",
+    "uitvoering": "E-book",
+    "aantal_paginas": "106",
+    "speelduur": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}",
+    "leesproef": "5957"
+  },
+  "images": [
+    {
+      "file": "011-2.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/011-2.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/paus-franciscus-e-book/"
+}

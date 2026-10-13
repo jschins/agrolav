@@ -1,0 +1,41 @@
+{
+  "slug": "begeleiden-onderscheiden-integreren-e-book",
+  "titel": "Begeleiden onderscheiden integreren (e-book)",
+  "auteur": "e.a.\nJosé Granados",
+  "genre": "E-book",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "",
+  "prijs_cent": 880,
+  "cover": "scannen1-10.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "8.8",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "De apostolische exhortatie Amoris laetitia heeft aanleiding gegeven tot verschillende\n\ninterpretaties, en een diepgaande studie van de theologische conclusies ervan\n\nzullen tijd en geduld vergen. Niemand ontkomt echter aan de eigen verantwoordelijkheid\n\nom te handelen en daarom kunnen de praktische vragen die deze exhortatie\n\noproept niet wachten. Deze zijn aan de orde voor priesters die de biecht horen,\n\nvoor bisschoppen die aan hun priesters richtlijnen meegeven voor hun pastorale\n\nactiviteiten, en voor gezinnen die actief zijn in de pastorale zorg. Voor hen is dit\n\nhandboek dan ook speciaal bedoeld.\n\nHet doel van Begeleiden, onderscheiden, integreren is om betrouwbare richtlijnen\n\naan te reiken voor het verlenen van pastorale zorg in het licht van Amoris laetitia.\n\nWat er hierbij op het spel staat, is niets meer of minder dan het vermogen van de\n\nKerk om de blijde boodschap van het gezin te verkondigen, om het licht van dit\n\nevangelie aan te bieden aan de mannen en vrouwen van onze tijd, om hun wonden\n\nte helen en om solide sacramentele pijlers neer te zetten waar deze pastorale zorg\n\nop kan worden gegrondvest.\n\nDoor drie docenten aan het Instituut Johannes Paulus II voor het Gezin te Rome.",
+  "korte_tekst": "Handleiding voor een nieuwe gezinspastoraal vanuit de exhortatie Amoris laetitia.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "",
+    "uitvoering": "E-book",
+    "aantal_paginas": "206",
+    "speelduur": "",
+    "leesproef": "6831",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "scannen1-10.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/scannen1-10.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/begeleiden-onderscheiden-integreren-e-book/"
+}

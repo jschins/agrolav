@@ -1,0 +1,41 @@
+{
+  "slug": "de-heilige-jozefmaria-escriva",
+  "titel": "De heilige Jozefmaria Escriva",
+  "auteur": "Miguel Dolz",
+  "genre": "Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-036-4",
+  "prijs_cent": 950,
+  "cover": "0-32.jpg",
+  "voorraad": 104,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "9.5",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Dit boek geeft een schets van de nieuwe heilige en bevat een aantal beschouwingen van hem over het leven van Christus, die de lezer kunnen helpen de rijkdom van het evangelie te ontdekken. Het sluit af met een korte uiteenzetting van zijn geschriften.\n\nMet veel prachtige kleurenfoto's.",
+  "korte_tekst": "Een schets over de heilige Jozefmaría en een aantal beschouwingen van hem over het leven van Christus. Geïllustreerd.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-036-4",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "144",
+    "speelduur": "",
+    "leesproef": "6836",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-32.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-32.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-heilige-jozefmaria-escriva/"
+}

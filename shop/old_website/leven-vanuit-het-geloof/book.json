@@ -1,0 +1,41 @@
+{
+  "slug": "leven-vanuit-het-geloof",
+  "titel": "Leven vanuit het geloof",
+  "auteur": "Jozefmaria Escriva",
+  "genre": "Van Jozefmaria Escriva",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "978-906257087-4",
+  "prijs_cent": 200,
+  "cover": "0-111.jpg",
+  "voorraad": 149,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "2",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Leven vanuit Geloof is een homilie van de heilige Jozefmaria Escrivá bestaande uit:\n\nBij de vijver van Silóam.\nHet geloof van Bartimeüs.\nDaadwerkelijk geloven.\nGeloof en nederigheid.\nDagelijks leven en contemplatie.",
+  "korte_tekst": "Een homilie van de heilige Jozefmaria Escrivá eerder gepubliceerd in 'Vrienden van God'.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "978-906257087-4",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "24",
+    "speelduur": "",
+    "leesproef": "6236",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-111.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-111.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/leven-vanuit-het-geloof/"
+}

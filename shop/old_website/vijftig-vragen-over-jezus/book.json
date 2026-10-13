@@ -1,0 +1,41 @@
+{
+  "slug": "vijftig-vragen-over-jezus",
+  "titel": "50 vragen over Jezus",
+  "auteur": "Juan Chapa",
+  "genre": "God, Vader, Zoon en heilige Geest",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "9,79E+12",
+  "prijs_cent": 1275,
+  "cover": "scannen0000-13.jpg",
+  "voorraad": 220,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "12.75",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "",
+  "korte_tekst": "Wat weten wij over Hem en zijn omgeving? Door een team van specialisten, voor niet specialisten.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "9,79E+12",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "160",
+    "speelduur": "",
+    "leesproef": "6505",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"used\"}"
+  },
+  "images": [
+    {
+      "file": "scannen0000-13.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/scannen0000-13.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/vijftig-vragen-over-jezus/"
+}

@@ -1,0 +1,41 @@
+{
+  "slug": "hoe-biechten-wij-goed-e-book",
+  "titel": "Hoe biechten wij goed (e-book)",
+  "auteur": "F. Luna",
+  "genre": "E-book, Sacramenten",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-025-9",
+  "prijs_cent": 220,
+  "cover": "0-152.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "2.2",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Dit boekje nodigt ons uit om op een meer geregelde wijze te naderen tot het sacrament van boete en verzoening. Zo ontdekken we Gods liefde, boeken we voortgang in ons leven en worden we op onze beurt barmhartiger jegens onze broeders en zusters.",
+  "korte_tekst": "Een handig boekje voor een allesomvattende, beknopte, concrete en duidelijke biecht.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-025-9",
+    "uitvoering": "E-book",
+    "aantal_paginas": "63",
+    "speelduur": "",
+    "leesproef": "6201",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-152.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-152.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/hoe-biechten-wij-goed-e-book/"
+}

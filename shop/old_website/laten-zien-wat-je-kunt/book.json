@@ -1,0 +1,41 @@
+{
+  "slug": "laten-zien-wat-je-kunt",
+  "titel": "Laten zien wat je kunt",
+  "auteur": "Stephan Puhl",
+  "genre": "Bijzondere levens, Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6257-155-7",
+  "prijs_cent": 375,
+  "cover": "0-17.jpg",
+  "voorraad": 499,
+  "status": "publish",
+  "ondertitel": "Een levensschets van Isidoro Zorzano",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "3.75",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Isidoro Zorzano (Buenos Aires, 1902 - Madrid, 1943) was een van de eerste leden van het Opus Dei. In zijn beroepsleven als ingenieur en in zijn onopvallend maar heldhaftig gedrag tijdens de Spaanse burgeroorlog, is hij een grote steun voor de heilige Jozefmaria Escrivá en voor velen anderen geweest. Daarmee is hij een voorbeeld van wat de spiritualiteit van het Opus Dei uitmaakt: de heiliging van het dagelijkse leven.",
+  "korte_tekst": "Isidoro Zorzano (1902 - 1943). Het eenvoudige en onopvallende leven van een van de eerste leden van het Opus Dei.",
+  "velden": {
+    "ondertitel": "Een levensschets van Isidoro Zorzano",
+    "isbn": "90-6257-155-7",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "80",
+    "speelduur": "",
+    "leesproef": "6200",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-17.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-17.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/laten-zien-wat-je-kunt/"
+}

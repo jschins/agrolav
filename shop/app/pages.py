@@ -837,7 +837,14 @@ def checkout_page(
 
 
 def order_page(catalog: Catalog, order, cart_count: int) -> str:
-    lines = "".join(f"<li>{escape(item.title)} — {escape(euro(item.price_cents))}</li>" for item in order.items)
+    def titel(slug: str) -> str:
+        book = catalog.by_slug(slug)
+        return book.titel if book is not None else slug
+
+    lines = "".join(
+        f"<li>{escape(titel(item.slug))} — {item.number_of_copies} × {escape(euro(item.price_cents_per_copy))}</li>"
+        for item in order.items
+    )
     address = order.address
     posted = ""
     if address.street:

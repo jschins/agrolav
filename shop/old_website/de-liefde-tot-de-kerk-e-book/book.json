@@ -1,0 +1,41 @@
+{
+  "slug": "de-liefde-tot-de-kerk-e-book",
+  "titel": "De liefde tot de Kerk (e-book)",
+  "auteur": "Jozefmaria Escriva",
+  "genre": "E-book, Kerk en evangelisatie, Van Jozefmaria Escriva",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "90-6257-024-0",
+  "prijs_cent": 460,
+  "cover": "0-164.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "4.6",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Verzameling van 4 homilieën over de bovennatuurlijke zending van de Kerk, het priesterschap en de trouw van de christen aan de Bruid van Christus. het gehele werk weerspiegelt het onwankelbare geloof van de auteur in het mysterie van de Kerk en zijn grote liefde voor haar.",
+  "korte_tekst": "Vier homilieën over de zending van de kerk, het priesterschap, de liefde voor de wereld en de trouw aan de Bruid van Christus.",
+  "velden": {
+    "ondertitel": "",
+    "isbn": "90-6257-024-0",
+    "uitvoering": "E-book",
+    "aantal_paginas": "125",
+    "speelduur": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}",
+    "leesproef": "6360"
+  },
+  "images": [
+    {
+      "file": "0-164.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-164.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-liefde-tot-de-kerk-e-book/"
+}

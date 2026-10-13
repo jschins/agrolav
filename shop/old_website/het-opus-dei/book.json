@@ -1,0 +1,41 @@
+{
+  "slug": "het-opus-dei",
+  "titel": "Het Opus Dei",
+  "auteur": "D. Le Tourneau",
+  "genre": "Over Jozefmaria Escriva en het Opus Dei",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "90-6597-194-7",
+  "prijs_cent": 750,
+  "cover": "0-11.jpg",
+  "voorraad": 186,
+  "status": "publish",
+  "ondertitel": "spiritualiteit, organisatie en activiteiten",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "7.50",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "Naast een hoofdstuk over het leven van de Stichter, komen hier de spiritualiteit, de werkwijze en de kerkrechtelijke vorm van het Opus Dei ter sprake. Ook het leven van de leden en hoe men lid kan worden, staan duidelijk beschreven. Tevens wordt aandacht geschonken aan de activiteiten van het Opus Dei in Nederland en België.",
+  "korte_tekst": "Over spiritualiteit, werkwijze en de kerkrechtelijke vorm van het Opus Dei.",
+  "velden": {
+    "ondertitel": "spiritualiteit, organisatie en activiteiten",
+    "isbn": "90-6597-194-7",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "225",
+    "speelduur": "",
+    "leesproef": "",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-11.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-11.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/het-opus-dei/"
+}

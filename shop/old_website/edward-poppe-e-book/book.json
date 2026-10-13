@@ -1,0 +1,41 @@
+{
+  "slug": "edward-poppe-e-book",
+  "titel": "Edward Poppe (e-book)",
+  "auteur": "Karl Weekers",
+  "genre": "Bijzondere levens, E-book",
+  "formaat": "e-book",
+  "tijdvak": "",
+  "ISBN": "97.890.6257.045.4",
+  "prijs_cent": 940,
+  "cover": "0-168.jpg",
+  "voorraad": null,
+  "status": "publish",
+  "ondertitel": "Een bloemlezing",
+  "uitvoering": "E-book",
+  "uitgelicht": [],
+  "prijs": "9.4",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": true,
+  "downloadable": true,
+  "tekst": "Dit boek geeft een ruim overzicht van de vele teksten die deze heilige priester uit het Waasland ons heeft nagelaten.\n\nEdward Poppe werd in een bakkersgezin te Temse op 18 december 1890 geboren. Hij studeerde wijsbegeerte in Leuven en werd in 1916 priester gewijd te Gent. Hij stierf op 10 juni 1924 na een\n\nreeks hartaanvallen. Op 3 oktober 1999 heeft paus Johannes Paulus II hem zaligverklaard.\n\nAls geen ander voorzag hij met profetische blik het naderen van de huidige crisis van de maatschappij, van het geloof en van de morele normen en waarden. Zijn leven was één heilige offergave uit liefde voor God en zijn medemens. Hij werd de 'glorie van het bisdom Gent' genoemd (Mgr. Seghers), de 'Vlaamse pastoor van Ars' (Van Wilderode), het 'model voor alle priesters van onze tijd en vooral voor die van de toekomst'  (Paulus VI).\n\nVoor deze bloemlezing werd er geput uit zijn belangrijkste werken, maar ook uit zijn geestelijke dagboeken en de vele brieven en artikelen die hij geschreven heeft. Edward Poppe komt aan het woord als de begenadigde godsdienstpedagoog, geestelijk begeleider en sociaal voelende Vlaamsgezinde priester die hij was. Het is zijn antwoord op de crisis; een antwoord dat ons vandaag kan bemoedigen en inspireren bij het herstellen van de morele en christelijke waarden in de Lage Landen.",
+  "korte_tekst": "De tot nu toe beste bloemlezing van de zalig verklaarde Belgische priester Edward Poppe.",
+  "velden": {
+    "ondertitel": "Een bloemlezing",
+    "isbn": "97.890.6257.045.4",
+    "uitvoering": "E-book",
+    "aantal_paginas": "226",
+    "speelduur": "",
+    "leesproef": "5924",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"never\"}"
+  },
+  "images": [
+    {
+      "file": "0-168.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-168.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/edward-poppe-e-book/"
+}

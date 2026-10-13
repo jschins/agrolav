@@ -1,0 +1,42 @@
+{
+  "slug": "de-hoop-op-het-eeuwige-leven",
+  "titel": "De Hoop op het Eeuwige Leven",
+  "auteur": "Justo Luis R. Sanchez de Alva",
+  "genre": "Leven na dit leven",
+  "formaat": "papier",
+  "tijdvak": "",
+  "ISBN": "97890.6257090.4",
+  "prijs_cent": 1475,
+  "cover": "0-115.jpg",
+  "voorraad": 200,
+  "status": "publish",
+  "ondertitel": "Inleiding tot de Eschatologie",
+  "uitvoering": "Zachte kaft",
+  "uitgelicht": [],
+  "prijs": "14.75",
+  "voorraad_status": "instock",
+  "sku": "",
+  "virtual": false,
+  "downloadable": false,
+  "tekst": "",
+  "korte_tekst": "Wat zal er zijn na dit leven? Op deze vragen probeert de eschatologie in het licht van de goddelijke Openbaring een antwoord te geven.",
+  "velden": {
+    "ondertitel": "Inleiding tot de Eschatologie",
+    "isbn": "97890.6257090.4",
+    "uitvoering": "Zachte kaft",
+    "aantal_paginas": "256",
+    "speelduur": "",
+    "leesproef": "5997",
+    "slide_template": "default",
+    "ff_builder_status": "{\"usage\":\"used\"}",
+    "ff-layout-settings": "ff_flag_json{\"settings\":{\"layout\":\"inherit\",\"header\":\"inherit\",\"titlebar\":\"inherit\",\"footer\":\"inherit\",\"boxed_wrapper\":\"inherit\",\"builder-printing-mode\":\"in-content\"}}"
+  },
+  "images": [
+    {
+      "file": "0-115.jpg",
+      "url": "https://deboog-uitgeverij.nl/wp-content/uploads/2020/07/0-115.jpg",
+      "alt": ""
+    }
+  ],
+  "permalink": "https://deboog-uitgeverij.nl/product/de-hoop-op-het-eeuwige-leven/"
+}
