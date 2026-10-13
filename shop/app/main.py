@@ -212,7 +212,14 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
     def home(request: Request) -> HTMLResponse:
         return html(home_page(catalog, len(cart_of(request))))
 
-    @app.get("/planken", response_class=HTMLResponse)
+    @app.get("/planken")
+    def browse_old(genre: str = "") -> RedirectResponse:
+        target = "/genres"
+        if genre:
+            target = "/genres?genre=" + genre
+        return RedirectResponse(target, status_code=301)
+
+    @app.get("/genres", response_class=HTMLResponse)
     def browse(request: Request, genre: str = "") -> HTMLResponse:
         return html(browse_page(catalog, len(cart_of(request)), genre))
 

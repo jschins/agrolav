@@ -79,9 +79,16 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn('class="rail"', home.text)
             self.assertNotIn("Bladeren per genre", home.text)
             self.assertNotIn("De hele agenda", home.text)
+            self.assertNotIn("Bekijk de planken", home.text)
+            self.assertNotIn("Wat er ligt", home.text)
+            self.assertNotIn("Het boek van deze week", home.text)
+            self.assertIn('class="selected" href="/"', home.text)
+            genres = client.get("/genres")
+            self.assertIn('class="selected" href="/genres"', genres.text)
+            self.assertNotIn('class="running"', genres.text)
             self.assertLess(home.text.find(">Over</a>"), home.text.find(">Rekening</a>"))
             self.assertLess(home.text.find(">Rekening</a>"), home.text.find(">Winkelwagen"))
-            for path in ("/planken", "/agenda", "/over"):
+            for path in ("/genres", "/agenda", "/over"):
                 self.assertEqual(client.get(path).status_code, 200)
             icon = client.get("/favicon.png")
             self.assertEqual(icon.status_code, 200)
@@ -244,7 +251,7 @@ class ShopFlowTests(unittest.TestCase):
 
             started = client.post(
                 "/rekening/bestellen",
-                data={"aantal-de-dialoog": "2", "aantal-de-innerlijke-rust": "1"},
+                data={"aantal-catharina-dialoog": "2", "aantal-innerlijke-rust": "1"},
             )
             self.assertEqual(started.status_code, 200)
             self.assertIn("Wijzig bestelling", started.text)
@@ -253,18 +260,18 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn(">2</td>", started.text)
 
             changed = client.get("/rekening")
-            self.assertIn('name="aantal-de-dialoog" value="2"', changed.text)
+            self.assertIn('name="aantal-catharina-dialoog" value="2"', changed.text)
 
             refused = client.post(
                 "/rekening/voltooi",
-                data={"aantal-de-dialoog": "2", "code": "ONBEKEND"},
+                data={"aantal-catharina-dialoog": "2", "code": "ONBEKEND"},
             )
             self.assertEqual(refused.status_code, 400)
             self.assertIn("Deze code hoort niet bij een bedrijf.", refused.text)
 
             done = client.post(
                 "/rekening/voltooi",
-                data={"aantal-de-dialoog": "2", "aantal-de-innerlijke-rust": "1", "code": "VOORBEELD"},
+                data={"aantal-catharina-dialoog": "2", "aantal-innerlijke-rust": "1", "code": "VOORBEELD"},
                 follow_redirects=False,
             )
             self.assertEqual(done.status_code, 303)

@@ -12,7 +12,7 @@ _FONTS = (
 )
 
 
-def page(title: str, catalog: Catalog, body: str, cart_count: int) -> str:
+def page(title: str, catalog: Catalog, body: str, cart_count: int, active: str = "") -> str:
     return f"""<!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -83,6 +83,11 @@ nav a {{
   text-decoration: none;
 }}
 nav a:hover {{ color: var(--primary); }}
+nav a.selected {{
+  background: var(--border);
+  border-radius: 4px;
+  padding: 0.35rem 0.55rem;
+}}
 .hero {{
   display: grid;
   grid-template-columns: 1.4fr 0.8fr;
@@ -175,7 +180,6 @@ h1 {{ font-size: clamp(2.6rem, 5vw, 4.4rem); max-width: 14ch; }}
 .cover {{
   aspect-ratio: 2 / 3;
   background: var(--muted);
-  border: 1px solid var(--border);
   border-radius: 2px;
   overflow: hidden;
   margin-bottom: 0.75rem;
@@ -287,12 +291,7 @@ main.invoice table.plain {{ margin-top: auto; }}
   <div class="wrap bar-row">
     <a class="mark" href="/">{escape(catalog.shop_name)}</a>
     <nav>
-      <a href="/">Home</a>
-      <a href="/planken">Planken</a>
-      <a href="/agenda">Agenda</a>
-      <a href="/over">Over</a>
-      <a href="/rekening">Rekening</a>
-      <a href="/winkelwagen">Winkelwagen ({cart_count})</a>
+      {_nav(active, cart_count)}
     </nav>
   </div>
 </header>
@@ -309,6 +308,22 @@ main.invoice table.plain {{ margin-top: auto; }}
 </body>
 </html>
 """
+
+
+def _nav(active: str, cart_count: int) -> str:
+    items = (
+        ("/", "Home"),
+        ("/genres", "Genres"),
+        ("/agenda", "Agenda"),
+        ("/over", "Over"),
+        ("/rekening", "Rekening"),
+        ("/winkelwagen", f"Winkelwagen ({cart_count})"),
+    )
+    links = []
+    for href, label in items:
+        mark = ' class="selected"' if href == active else ""
+        links.append(f'<a{mark} href="{href}">{label}</a>')
+    return "\n      ".join(links)
 
 
 def _cover(book: Book) -> str:
@@ -359,13 +374,8 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
       <h1>{escape(catalog.hero_title)}</h1>
       <hr class="rule">
       <p class="lede">{escape(catalog.hero_text)}</p>
-      <div class="actions">
-        <a class="btn" href="/planken">Bekijk de planken</a>
-        <a class="btn ghost" href="#keuzes">Wat er ligt</a>
-      </div>
     </div>
     <aside class="card week">
-      <p class="mono">Het boek van deze week</p>
       <a class="book" href="/boeken/{escape(featured.slug)}">{_cover(featured)}</a>
     </aside>
   </div>
@@ -376,7 +386,7 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
   {quote}
 </main>
 """
-    return page(catalog.shop_name, catalog, body, cart_count)
+    return page(catalog.shop_name, catalog, body, cart_count, "/")
 
 
 def browse_page(catalog: Catalog, cart_count: int, genre: str = "") -> str:
@@ -384,18 +394,18 @@ def browse_page(catalog: Catalog, cart_count: int, genre: str = "") -> str:
     books = [book for book in catalog.books if not chosen or book.genre == chosen]
     cards = "".join(_book_card(book) for book in books) or "<p>Op deze plank ligt nog niets.</p>"
     links = "".join(
-        f'<a href="/planken?genre={escape(name)}">{escape(name)}</a>'
+        f'<a href="/genres?genre={escape(name)}">{escape(name)}</a>'
         for name, _count in catalog.genres()
     )
     heading = chosen or "Alle papieren boeken"
     body = f"""
 <main class="wrap" style="padding-bottom:3rem">
-  {_head("Planken", heading)}
-  <nav>{links} <a href="/planken">Alles</a></nav>
+  <h2>{escape(heading)}</h2>
+  <nav>{links} <a href="/genres">Alles</a></nav>
   <div class="shelf" style="margin-top:1.4rem">{cards}</div>
 </main>
 """
-    return page("Planken", catalog, body, cart_count)
+    return page("Genres", catalog, body, cart_count, "/genres")
 
 
 def events_page(catalog: Catalog, cart_count: int) -> str:
@@ -407,19 +417,19 @@ def events_page(catalog: Catalog, cart_count: int) -> str:
     ) or "<p>Er staat nog niets op de agenda.</p>"
     body = f"""
 <main class="wrap narrow">
-  {_head("Agenda", "Lezingen en signeren")}
+  <h2>Lezingen en signeren</h2>
   <p>Een avond is een reden om langs te komen. Een plaats wordt in de winkel gehouden, niet via deze site.</p>
   <div class="events">{events}</div>
 </main>
 """
-    return page("Agenda", catalog, body, cart_count)
+    return page("Agenda", catalog, body, cart_count, "/agenda")
 
 
 def about_page(catalog: Catalog, cart_count: int) -> str:
     paragraphs = "".join(f"<p>{escape(part)}</p>" for part in catalog.about.split("\n\n") if part.strip())
     body = f"""
 <main class="wrap narrow">
-  {_head("Over", catalog.shop_name)}
+  <h2>{escape(catalog.shop_name)}</h2>
   {paragraphs}
   <div class="card sheet">
     <p class="mono">De winkel</p>
@@ -430,7 +440,7 @@ def about_page(catalog: Catalog, cart_count: int) -> str:
   </div>
 </main>
 """
-    return page("Over", catalog, body, cart_count)
+    return page("Over", catalog, body, cart_count, "/over")
 
 
 def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
@@ -482,12 +492,12 @@ def cart_page(catalog: Catalog, books: list[Book], cart_count: int) -> str:
         )
     body = f"""
 <main class="wrap narrow">
-  {_head("Winkelwagen", "Uw exemplaren")}
+  <h2>Uw exemplaren</h2>
   <div class="events">{rows}</div>
   {pay}
 </main>
 """
-    return page("Winkelwagen", catalog, body, cart_count)
+    return page("Winkelwagen", catalog, body, cart_count, "/winkelwagen")
 
 
 def checkout_page(
@@ -607,7 +617,7 @@ def rekening_page(catalog: Catalog, counts: dict[str, int], cart_count: int, err
   </form>
 </main>
 """
-    return page("Rekening", catalog, body, cart_count)
+    return page("Rekening", catalog, body, cart_count, "/rekening")
 
 
 def rekening_review_page(
@@ -640,7 +650,7 @@ def rekening_review_page(
   </form>
 </main>
 """
-    return page("Bestelling", catalog, body, cart_count)
+    return page("Bestelling", catalog, body, cart_count, "/rekening")
 
 
 def rekening_done_page(catalog: Catalog, order: dict, cart_count: int) -> str:
@@ -664,7 +674,7 @@ def rekening_done_page(catalog: Catalog, order: dict, cart_count: int) -> str:
   </table>
 </main>
 """
-    return page("Rekening", catalog, body, cart_count)
+    return page("Rekening", catalog, body, cart_count, "/rekening")
 
 
 def dev_pay_page(catalog: Catalog, payment_id: str, cart_count: int) -> str:
