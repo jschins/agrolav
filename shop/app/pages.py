@@ -474,7 +474,7 @@ def _book_card(book: Book, week: bool = False) -> str:
     return (
         f'<a class="card book" href="/boeken/{escape(book.slug)}"'
         f' data-genre="{escape(book.genre)}" data-auteur="{escape(book.author)}"'
-        f' data-tijdvak="{escape(book.tijdvak)}"{mark}>'
+        f' data-tijdvak="{escape(book.tijdvak)}" data-format="{escape(book.format)}"{mark}>'
         f"{_cover(book)}</a>"
     )
 
@@ -625,12 +625,14 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
     genres = sorted({book.genre for book in catalog.books}, key=str.casefold)
     auteurs = sorted({book.author for book in catalog.books}, key=str.casefold)
     tijdvakken = sorted({book.tijdvak for book in catalog.books}, key=str.casefold)
+    formats = sorted({book.format for book in catalog.books}, key=str.casefold)
     body = f"""
 <main class="home-main">
   <div class="home-filters">
     {_choices("genre", genres)}
     {_choices("auteur", auteurs)}
     {_choices("tijdvak", tijdvakken)}
+    {_choices("format", formats)}
   </div>
   <p class="home-empty">De Boog verkoopt geen boeken die aan deze combinatie van selectiecriteria voldoen</p>
   <div class="rail home" id="home-rail">{cards}</div>
@@ -689,6 +691,7 @@ def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
       <p><span class="mono">Auteur</span> {escape(book.author)}</p>
       <p><span class="mono">Genre</span> {escape(book.genre)}</p>
       <p><span class="mono">Tijdvak</span> {escape(book.tijdvak)}</p>
+      <p><span class="mono">Format</span> {escape(book.format)}</p>
       <p><span class="mono">ISBN</span> {escape(book.isbn)}</p>
       <p><span class="mono">Samenvatting</span> {escape(book.summary)}</p>
       <p><span class="mono">Prijs</span> {escape(euro(book.price_cents))}</p>

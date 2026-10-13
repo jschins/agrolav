@@ -17,6 +17,7 @@ class Book:
     author: str
     genre: str
     tijdvak: str
+    format: str
     isbn: str
     summary: str
     price_cents: int
@@ -109,6 +110,9 @@ def load_catalog(path: Path) -> Catalog:
         tijdvak = str(item.get("tijdvak") or "").strip()
         if not tijdvak:
             raise ValueError(f"tijdvak for {slug} is required")
+        book_format = str(item.get("format") or "").strip()
+        if not book_format:
+            raise ValueError(f"format for {slug} is required")
         cover = str(item.get("cover") or "").strip()
         if not cover or any(mark in cover for mark in ("/", "\\", "..")):
             raise ValueError(f"cover for {slug} must be a file name in shop/files")
@@ -124,8 +128,9 @@ def load_catalog(path: Path) -> Catalog:
                 author=str(item["author"]).strip(),
                 genre=genre,
                 tijdvak=tijdvak,
+                format=book_format,
                 isbn=str(item.get("ISBN") or item.get("isbn") or "").strip(),
-                summary=str(item["summary"]).strip(),
+                summary=str(item.get("summary") or "").strip(),
                 price_cents=price,
                 cover=cover,
                 voorraad=voorraad,
