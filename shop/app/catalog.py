@@ -307,3 +307,143 @@ def update_voorraad(catalog_path: Path, amounts: dict[str, int]) -> None:
         catalog_path.write_text(original, encoding="utf-8")
         temporary.unlink(missing_ok=True)
         raise
+
+
+def book_keys(catalog_path: Path) -> list[str]:
+    """Keys that appear on the book objects in catalog.json, in first-seen order."""
+    raw = json.loads(catalog_path.read_text(encoding="utf-8"))
+    keys: list[str] = []
+    for item in raw.get("books") or []:
+        if not isinstance(item, dict):
+            continue
+        for key in item:
+            if key not in keys:
+                keys.append(str(key))
+    return keys
+
+
+def search_books(catalog_path: Path, query: dict[str, str]) -> list[dict]:
+    """Books whose fields contain every non-empty search value."""
+    raw = json.loads(catalog_path.read_text(encoding="utf-8"))
+    needles = {key: value.strip().casefold() for key, value in query.items() if value.strip()}
+    found: list[dict] = []
+    for item in raw.get("books") or []:
+        if not isinstance(item, dict):
+            continue
+        if all(needle in str(item.get(key, "")).casefold() for key, needle in needles.items()):
+            found.append(item)
+    return found
+
+
+def replace_book(
+    catalog_path: Path,
+    files_dir: Path,
+    *,
+    original_slug: str,
+    slug: str,
+    titel: str,
+    auteur: str,
+    genre: str,
+    formaat: str,
+    tijdvak: str,
+    isbn: str,
+    prijs_cent_excl: int,
+    voorraad: int | None,
+    badge: str,
+    cover_name: str = "",
+    cover_bytes: bytes = b"",
+) -> None:
+    """Update one existing book. A new png replaces the cover; otherwise the old file stays."""
+    original_slug = original_slug.strip()
+    slug = slug.strip()
+    titel = titel.strip()
+    auteur = auteur.strip()
+    genre = genre.strip()
+    formaat = formaat.strip()
+    tijdvak = tijdvak.strip()
+    isbn = isbn.strip()
+    badge = badge.strip()
+    if not _SLUG.match(slug):
+        raise ValueError("slug moet uit kleine letters, cijfers en streepjes bestaan.")
+    for label, value in (
+        ("titel", titel),
+        ("auteur", auteur),
+        ("genre", genre),
+        ("formaat", formaat),
+        ("tijdvak", tijdvak),
+    ):
+        if not value:
+            raise ValueError(f"{label} is verplicht.")
+    if not isinstance(prijs_cent_excl, int) or isinstance(prijs_cent_excl, bool) or prijs_cent_excl <= 0:
+        raise ValueError("prijs_cent_excl moet een positief geheel getal zijn.")
+    if voorraad is not None and (not isinstance(voorraad, int) or isinstance(voorraad, bool) or voorraad < 0):
+        raise ValueError("voorraad moet een geheel getal van 0 of meer zijn.")
+    if voorraad is None and formaat.casefold() != "e-book":
+        raise ValueError("voorraad is verplicht, behalve bij formaat e-book.")
+    files_dir.mkdir(parents=True, exist_ok=True)
+    if files_dir.resolve() != (catalog_path.parent / "files").resolve():
+        raise ValueError("Het omslag moet in de map files naast catalog.json staan.")
+    original = catalog_path.read_text(encoding="utf-8")
+    raw = json.loads(original)
+    books = raw.get("books")
+    if not isinstance(books, list):
+        raise ValueError("catalog.json heeft geen lijst boeken.")
+    current = next(
+        (item for item in books if isinstance(item, dict) and str(item.get("slug")) == original_slug),
+        None,
+    )
+    if current is None:
+        raise ValueError("Dit boek staat niet in de catalogus.")
+    if slug != original_slug and any(
+        isinstance(item, dict) and str(item.get("slug")) == slug for item in books
+    ):
+        raise ValueError("Deze slug bestaat al.")
+    old_cover = str(current.get("cover") or "")
+    previous: bytes | None = None
+    dest: Path | None = None
+    if cover_bytes:
+        cover_name = Path(cover_name).name
+        if not _COVER_NAME.match(cover_name):
+            raise ValueError("Het omslag moet een png-bestandsnaam zijn, zonder map.")
+        if not cover_bytes.startswith(_PNG):
+            raise ValueError("Het bestand is geen png.")
+        dest = (files_dir / cover_name).resolve()
+        if dest.parent != files_dir.resolve():
+            raise ValueError("Het omslag moet in de map files staan.")
+        if dest.exists() and dest.name != old_cover:
+            raise ValueError("Dit omslagbestand staat al in files.")
+        previous = dest.read_bytes() if dest.exists() else None
+        dest.write_bytes(cover_bytes)
+        current["cover"] = cover_name
+    elif not old_cover:
+        raise ValueError("Kies een png-omslag.")
+    current["slug"] = slug
+    current["titel"] = titel
+    current["auteur"] = auteur
+    current["genre"] = genre
+    current["formaat"] = formaat
+    current["tijdvak"] = tijdvak
+    current["ISBN"] = isbn
+    current["prijs_cent_excl"] = prijs_cent_excl
+    if voorraad is None:
+        current.pop("voorraad", None)
+    else:
+        current["voorraad"] = voorraad
+    if badge:
+        current["badge"] = badge
+    else:
+        current.pop("badge", None)
+    temporary = catalog_path.with_suffix(".json.tmp")
+    try:
+        temporary.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(catalog_path)
+        load_catalog(catalog_path)
+    except Exception:
+        catalog_path.write_text(original, encoding="utf-8")
+        temporary.unlink(missing_ok=True)
+        if dest is not None:
+            if previous is None:
+                dest.unlink(missing_ok=True)
+            else:
+                dest.write_bytes(previous)
+        raise

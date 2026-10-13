@@ -68,6 +68,7 @@ class AdminTests(unittest.TestCase):
             self.assertEqual(home.status_code, 200)
             self.assertNotIn("Voeg nieuw boek toe", home.text)
             self.assertNotIn("Beheer voorraad", home.text)
+            self.assertNotIn("Beheer catalogus", home.text)
             self.assertNotIn("9100", home.text)
 
     def test_form_lists_the_catalog_fields_and_a_png_upload(self) -> None:
@@ -193,3 +194,41 @@ class AdminTests(unittest.TestCase):
             self.assertIn('name="voorraad-bestaand" value="4"', saved.text)
             self.assertEqual(load_catalog(catalog).by_slug("bestaand").voorraad, 4)
             self.assertIsNone(load_catalog(catalog).by_slug("digitaal").voorraad)
+
+    def test_catalog_search_opens_the_prefilled_book_form(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            catalog = _catalog(directory)
+            client = TestClient(create_admin_app(catalog, directory / "files"))
+            page = client.get("/catalogus")
+            self.assertEqual(page.status_code, 200)
+            self.assertIn("Beheer catalogus", page.text)
+            for name in ("slug", "titel", "auteur", "genre", "formaat", "tijdvak", "ISBN", "prijs_cent_excl", "cover", "voorraad"):
+                self.assertIn(f'name="{name}"', page.text)
+            self.assertIn('href="/?boek=bestaand"', page.text)
+            missed = client.get("/catalogus", params={"auteur": "niemand"})
+            self.assertIn("Geen boeken.", missed.text)
+            self.assertNotIn('href="/?boek=bestaand"', missed.text)
+            opened = client.get("/", params={"boek": "bestaand"})
+            self.assertIn('name="titel" value="Bestaand"', opened.text)
+            self.assertIn('name="oorspronkelijke_slug" value="bestaand"', opened.text)
+            self.assertIn("bestaand.png", opened.text)
+            self.assertNotIn("required", opened.text.split('name="cover"', 1)[-1][:80])
+            saved = client.post(
+                "/",
+                data={
+                    "oorspronkelijke_slug": "bestaand",
+                    "slug": "bestaand",
+                    "titel": "Gewijzigd",
+                    "auteur": "Auteur",
+                    "genre": "Genre",
+                    "formaat": "papier",
+                    "tijdvak": "nu",
+                    "ISBN": "",
+                    "prijs_cent_excl": "100",
+                    "voorraad": "1",
+                    "badge": "",
+                },
+            )
+            self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertEqual(load_catalog(catalog).by_slug("bestaand").titel, "Gewijzigd")

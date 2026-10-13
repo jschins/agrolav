@@ -8,12 +8,13 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 
-from app.catalog import add_book, load_catalog, update_voorraad
+from app.catalog import add_book, book_keys, load_catalog, replace_book, search_books, update_voorraad
 
 _ROOT = Path(__file__).resolve().parent.parent
 _MENU = "Voeg nieuw boek toe"
 _STOCK = "Beheer voorraad"
-_MENUS = (("/", _MENU), ("/voorraad", _STOCK))
+_CATALOG = "Beheer catalogus"
+_MENUS = (("/", _MENU), ("/voorraad", _STOCK), ("/catalogus", _CATALOG))
 _FIELDS = (
     ("slug", "slug", True),
     ("titel", "titel", True),
@@ -212,7 +213,7 @@ def _whole(raw: str, label: str) -> int | None:
     return int(raw)
 
 
-def form_page(values: dict[str, str], error: str = "") -> str:
+def form_page(values: dict[str, str], error: str = "", original_slug: str = "", cover_name: str = "") -> str:
     fields = []
     for key, label, required in _FIELDS:
         mark = " *" if required else ""
@@ -221,15 +222,28 @@ def form_page(values: dict[str, str], error: str = "") -> str:
             f'<input id="{key}" name="{key}" value="{escape(values.get(key, ""))}">'
         )
     notice = f'<p class="error">{escape(error)}</p>' if error else ""
+    kept = (
+        f'<input type="hidden" name="oorspronkelijke_slug" value="{escape(original_slug)}">'
+        if original_slug
+        else ""
+    )
+    required = "" if original_slug else " required"
+    current = (
+        f'<p class="hint">Huidig omslag: {escape(cover_name)}. Kies alleen een nieuw png-bestand als het omslag vervangen moet worden.</p>'
+        if cover_name
+        else ""
+    )
     body = f"""
 <main class="wrap">
   <h1>{_MENU}</h1>
   {notice}
   <form method="post" action="/" enctype="multipart/form-data" class="sheet">
+    {kept}
     {"".join(fields)}
     <p class="hint">voorraad mag leeg blijven als formaat e-book is. badge mag leeg blijven; center zet het boek in het midden van de carrousel.</p>
     <label for="cover">cover</label>
-    <input id="cover" name="cover" type="file" accept="image/png,.png" required>
+    {current}
+    <input id="cover" name="cover" type="file" accept="image/png,.png"{required}>
     <p><button class="btn" type="submit">Opslaan</button></p>
   </form>
 </main>
@@ -293,17 +307,74 @@ def stock_page(catalog_path: Path, error: str = "") -> str:
     return _page(body, _STOCK, "/voorraad")
 
 
+def _book_values(item: dict) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for key, _label, _required in _FIELDS:
+        raw = item.get(key, "")
+        values[key] = "" if raw is None else str(raw)
+    return values
+
+
+def catalog_page(catalog_path: Path, query: dict[str, str]) -> str:
+    keys = book_keys(catalog_path)
+    fields = []
+    for key in keys:
+        fields.append(
+            f'<label for="zoek-{escape(key)}">{escape(key)}</label>'
+            f'<input id="zoek-{escape(key)}" name="{escape(key)}" value="{escape(query.get(key, ""))}">'
+        )
+    rows = []
+    for item in search_books(catalog_path, query):
+        slug = str(item.get("slug") or "")
+        titel = str(item.get("titel") or slug)
+        auteur = str(item.get("auteur") or "")
+        rows.append(
+            f'<li><a href="/?boek={escape(slug)}">{escape(titel)} — {escape(auteur)}</a></li>'
+        )
+    results = "<ul>" + "".join(rows) + "</ul>" if rows else "<p>Geen boeken.</p>"
+    body = f"""
+<main class="wrap">
+  <h1>{_CATALOG}</h1>
+  <form method="get" action="/catalogus" class="sheet">
+    {"".join(fields)}
+    <p><button class="btn" type="submit">Zoeken</button></p>
+  </form>
+  {results}
+</main>
+"""
+    return _page(body, _CATALOG, "/catalogus")
+
+
 def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
     app = FastAPI()
 
+    def raw_book(slug: str) -> dict | None:
+        import json
+
+        raw = json.loads(catalog_path.read_text(encoding="utf-8"))
+        for item in raw.get("books") or []:
+            if isinstance(item, dict) and str(item.get("slug")) == slug:
+                return item
+        return None
+
     @app.get("/", response_class=HTMLResponse)
-    def show() -> str:
-        return form_page({})
+    def show(boek: str = "") -> str:
+        if not boek:
+            return form_page({})
+        item = raw_book(boek)
+        if item is None:
+            return form_page({}, "Dit boek staat niet in de catalogus.")
+        return form_page(
+            _book_values(item),
+            original_slug=boek,
+            cover_name=str(item.get("cover") or ""),
+        )
 
     @app.post("/", response_class=HTMLResponse)
     async def save(request: Request) -> HTMLResponse:
         form = await request.form()
         values = {key: _value(form, key) for key, _label, _required in _FIELDS}
+        original = _value(form, "oorspronkelijke_slug")
         upload = form.get("cover")
         filename = ""
         payload = b""
@@ -318,11 +389,7 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
             if price is None:
                 raise ValueError("prijs_cent_excl is verplicht.")
             voorraad = _whole(values["voorraad"], "voorraad")
-            if not filename or not payload:
-                raise ValueError("Kies een png-omslag.")
-            add_book(
-                catalog_path,
-                files_dir,
+            fields = dict(
                 slug=values["slug"],
                 titel=values["titel"],
                 auteur=values["auteur"],
@@ -333,12 +400,43 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
                 prijs_cent_excl=price,
                 voorraad=voorraad,
                 badge=values["badge"],
-                cover_name=filename,
-                cover_bytes=payload,
             )
+            if original:
+                if filename and payload:
+                    replace_book(
+                        catalog_path,
+                        files_dir,
+                        original_slug=original,
+                        cover_name=filename,
+                        cover_bytes=payload,
+                        **fields,
+                    )
+                else:
+                    replace_book(catalog_path, files_dir, original_slug=original, **fields)
+            else:
+                if not filename or not payload:
+                    raise ValueError("Kies een png-omslag.")
+                add_book(
+                    catalog_path,
+                    files_dir,
+                    cover_name=filename,
+                    cover_bytes=payload,
+                    **fields,
+                )
         except ValueError as exc:
-            return HTMLResponse(form_page(values, str(exc)), status_code=400)
-        return HTMLResponse(done_page(values["titel"], Path(filename).name))
+            kept = raw_book(original) if original else None
+            cover = str(kept.get("cover") or "") if kept else ""
+            return HTMLResponse(
+                form_page(values, str(exc), original_slug=original, cover_name=cover),
+                status_code=400,
+            )
+        cover = Path(filename).name if filename else str((raw_book(values["slug"]) or {}).get("cover") or "")
+        return HTMLResponse(done_page(values["titel"], cover))
+
+    @app.get("/catalogus", response_class=HTMLResponse)
+    def show_catalog(request: Request) -> str:
+        query = {key: str(request.query_params.get(key) or "") for key in book_keys(catalog_path)}
+        return catalog_page(catalog_path, query)
 
     @app.get("/voorraad", response_class=HTMLResponse)
     def show_stock() -> str:
