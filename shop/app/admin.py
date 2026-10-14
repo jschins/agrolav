@@ -9,6 +9,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 
 from app.catalog import add_book, book_keys, load_catalog, replace_book, search_books, update_voorraad
+from app.ledger import overlay_stock, set_stock
+from app.orders import connect
 
 _ROOT = Path(__file__).resolve().parent.parent
 _MENU = "Voeg nieuw boek toe"
@@ -280,8 +282,12 @@ def _clip(text: str) -> str:
     return f'<td class="clip" data-full="{shown}"><span>{shown}</span></td>'
 
 
-def stock_page(catalog_path: Path, error: str = "") -> str:
-    catalog = load_catalog(catalog_path)
+def stock_page(catalog_path: Path, db_path: Path, error: str = "") -> str:
+    conn = connect(db_path)
+    try:
+        catalog = overlay_stock(conn, load_catalog(catalog_path))
+    finally:
+        conn.close()
     rows = []
     for book in catalog.books:
         if book.ebook():
@@ -354,7 +360,8 @@ def catalog_page(catalog_path: Path, query: dict[str, str]) -> str:
     return _page(body, _CATALOG, "/catalogus")
 
 
-def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
+def create_admin_app(catalog_path: Path, files_dir: Path, db_path: Path | None = None) -> FastAPI:
+    database = db_path or (catalog_path.parent / "data" / "orders.sqlite")
     app = FastAPI()
 
     def raw_book(slug: str) -> dict | None:
@@ -485,7 +492,7 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
 
     @app.get("/voorraad", response_class=HTMLResponse)
     def show_stock() -> str:
-        return stock_page(catalog_path)
+        return stock_page(catalog_path, database)
 
     @app.post("/voorraad", response_class=HTMLResponse)
     async def save_stock(request: Request) -> HTMLResponse:
@@ -502,8 +509,13 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
                 amounts[book.slug] = amount
             update_voorraad(catalog_path, amounts)
         except ValueError as exc:
-            return HTMLResponse(stock_page(catalog_path, str(exc)), status_code=400)
-        return HTMLResponse(stock_page(catalog_path))
+            return HTMLResponse(stock_page(catalog_path, database, str(exc)), status_code=400)
+        conn = connect(database)
+        try:
+            set_stock(conn, amounts)
+        finally:
+            conn.close()
+        return HTMLResponse(stock_page(catalog_path, database))
 
     return app
 

@@ -18,6 +18,21 @@ about 400 titles, is kept under `shop/old_website/` and is not the live catalogu
 
 ## Debiteuren, reminders, and the cost of a copy
 
+An order on account is now an invoice in `shop/data/orders.sqlite`.
+Completing REKENING asks for an email and a VAT number, stores one line per
+book with `number_of_copies`, and shows factuur `DB-00001` with the amount
+to transfer. The customer is told to put that number in the payment
+description. The books may leave immediately, and the stock in SQLite drops
+in the same save.
+
+Payment matching and reminders run apart from the website, with `remind`
+from the `shop` directory. A booking on the Boog account counts when its
+description contains the invoice number and the money is coming in. A short
+payment leaves the rest open. Several invoice numbers are settled only when
+the booking equals their open sum. The same booking is not applied twice.
+Reminders go out seven days before the due date, on the due date, and
+fourteen and thirty days after, and each send is recorded.
+
 `REKENING` is a company order form. `rekening.json` stores the company, a
 code, an address, a bank number, a date, a total exclusive of 9% VAT, and
 lines that contain only a title and a quantity. It does not store an email,

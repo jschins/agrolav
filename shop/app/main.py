@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 
 from app.cart import dump_cart, load_cart
 from app.catalog import Book, Catalog, load_catalog, vat_cents
+from app.ledger import create_invoice, get_invoice, overlay_stock
 from app.mollie import DevMollie, MollieClient, Payment
 from app.orders import (
     Address,
@@ -50,12 +51,12 @@ from app.pages import (
     home_page,
     message_page,
     order_page,
+    invoice_page,
     rekening_done_page,
     rekening_page,
     rekening_review_page,
 )
 from app.rekening import (
-    append_order,
     counts_from_form,
     dump_counts,
     find_company,
@@ -236,6 +237,13 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
     def about(request: Request) -> HTMLResponse:
         return html(about_page(catalog, len(cart_of(request))))
 
+    def live_catalog() -> Catalog:
+        conn = connect(settings.db_path)
+        try:
+            return overlay_stock(conn, catalog)
+        finally:
+            conn.close()
+
     def rekening_counts(request: Request) -> dict[str, int]:
         return load_counts(request.cookies.get(_REKENING_COOKIE), settings.secret, known)
 
@@ -253,7 +261,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
 
     @app.get(menu_href("rekening"), response_class=HTMLResponse)
     def rekening(request: Request) -> HTMLResponse:
-        return html(rekening_page(catalog, rekening_counts(request), len(cart_of(request))))
+        return html(rekening_page(live_catalog(), rekening_counts(request), len(cart_of(request))))
 
     @app.post("/rekening/bestellen", response_class=HTMLResponse)
     async def rekening_bestellen(request: Request) -> HTMLResponse:
@@ -290,13 +298,36 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                 rekening_review_page(catalog, lines, count, code.strip(), "Deze code hoort niet bij een bedrijf."),
                 400,
             )
+        email = str(form.get("email") or "").strip()
+        vat_number = str(form.get("vat_number") or "").strip()
         priced = [
-            (title, aantal, catalog.by_slug(slug).prijs_cent_excl)
-            for slug, title, aantal in lines
+            (slug, aantal, catalog.by_slug(slug).prijs_cent_excl)
+            for slug, _title, aantal in lines
             if catalog.by_slug(slug) is not None
         ]
-        record = append_order(settings.rekening_path, company, priced, catalog.vat_rate, datetime.now())
-        response = RedirectResponse(f"/rekening/bestelling/{record['number']}", status_code=303)
+        conn = connect(settings.db_path)
+        try:
+            invoice = create_invoice(
+                conn,
+                name=str(company.get("name") or ""),
+                email=email,
+                address=str(company.get("address") or ""),
+                vat_number=vat_number,
+                ship_before_payment=True,
+                lines=priced,
+                when=datetime.now(),
+                books=catalog.books,
+            )
+        except ValueError as exc:
+            return html(
+                rekening_review_page(
+                    catalog, lines, count, code.strip(), str(exc), email=email, vat_number=vat_number
+                ),
+                400,
+            )
+        finally:
+            conn.close()
+        response = RedirectResponse(f"/rekening/factuur/{invoice.number}", status_code=303)
         response.delete_cookie(_REKENING_COOKIE, path="/")
         return response
 
@@ -307,6 +338,18 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         if record is None:
             return html(message_page(catalog, "Onbekende bestelling", "Deze rekening staat niet in het bestand.", count), 404)
         return html(rekening_done_page(catalog, record, count))
+
+    @app.get("/rekening/factuur/{number}", response_class=HTMLResponse)
+    def rekening_factuur(request: Request, number: str) -> HTMLResponse:
+        conn = connect(settings.db_path)
+        try:
+            invoice = get_invoice(conn, number)
+        finally:
+            conn.close()
+        count = len(cart_of(request))
+        if invoice is None:
+            return html(message_page(catalog, "Onbekende factuur", "Deze factuur staat niet in het bestand.", count), 404)
+        return html(invoice_page(live_catalog(), invoice, count))
 
     @app.get("/omslag/{slug}")
     def cover(slug: str) -> Response:
@@ -324,7 +367,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         item = catalog.by_slug(slug)
         if item is None:
             return html(message_page(catalog, "Onbekend boek", "Dit boek staat niet in de catalogus.", len(cart_of(request))), 404)
-        return html(book_page(catalog, item, len(cart_of(request))))
+        return html(book_page(live_catalog(), live_catalog().by_slug(slug) or item, len(cart_of(request))))
 
     @app.post("/winkelwagen")
     async def add_to_cart(request: Request) -> Response:

@@ -354,28 +354,30 @@ class ShopFlowTests(unittest.TestCase):
 
             done = client.post(
                 "/rekening/voltooi",
-                data={"aantal-catharina-dialoog": "2", "aantal-innerlijke-rust": "1", "code": "VOORBEELD"},
+                data={
+                    "aantal-catharina-dialoog": "2",
+                    "aantal-innerlijke-rust": "1",
+                    "code": "VOORBEELD",
+                    "email": "parochie@example.com",
+                    "vat_number": "NL000000000B01",
+                },
                 follow_redirects=False,
             )
             self.assertEqual(done.status_code, 303)
             page = client.get(done.headers["location"])
             self.assertEqual(page.status_code, 200)
             self.assertIn("Parochie Voorbeeld", page.text)
-            self.assertIn("Bestelnummer 1", page.text)
+            self.assertIn("Factuur DB-00001", page.text)
+            self.assertIn("Te betalen € 38,25", page.text)
             self.assertIn("Prijs exclusief BTW € 35,09", page.text)
+            self.assertIn("Zet DB-00001 in de omschrijving", page.text)
             self.assertIn(">REKENING</a>", page.text)
             self.assertRegex(page.text, r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
             self.assertNotRegex(page.text, r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 
             stored = json.loads((directory / "rekening.json").read_text(encoding="utf-8"))
             self.assertEqual(stored["companies"][0]["bank_account"], "NL00 BANK 0000 0000 00")
-            self.assertEqual(stored["orders"][0]["lines"], [
-                {"title": "De innerlijke rust", "aantal": 1},
-                {"title": "De Dialoog", "aantal": 2},
-            ])
-            self.assertEqual(stored["orders"][0]["total_price_cents"], 3509)
-            self.assertNotIn("total_books", stored["orders"][0])
-            self.assertEqual(len(stored["orders"][0]["ordered_at"]), 16)
+            self.assertEqual(stored["orders"], [])
 
     def test_payment_amount_uses_two_decimals(self) -> None:
         payload = payment_payload(

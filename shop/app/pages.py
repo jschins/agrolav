@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from html import escape
 
-from app.catalog import Book, Catalog, euro
+from app.catalog import Book, Catalog, euro, vat_cents
 
 _FONTS = (
     "https://fonts.googleapis.com/css2?family=Alegreya+Sans:ital,wght@0,400;0,500;1,400"
@@ -930,6 +930,8 @@ def rekening_review_page(
     cart_count: int,
     code: str = "",
     error: str = "",
+    email: str = "",
+    vat_number: str = "",
 ) -> str:
     rows = "".join(
         f"<tr><td>{escape(title)}</td><td>{aantal}</td></tr>"
@@ -950,11 +952,46 @@ def rekening_review_page(
     {"".join(f'<input type="hidden" name="aantal-{escape(slug)}" value="{aantal}">' for slug, _title, aantal in lines)}
     <label for="code">Code</label>
     <input id="code" name="code" required maxlength="80" value="{escape(code)}">
+    <label for="email">E-mail</label>
+    <input id="email" name="email" type="email" required maxlength="200" value="{escape(email)}">
+    <label for="vat_number">BTW-nummer</label>
+    <input id="vat_number" name="vat_number" required maxlength="40" value="{escape(vat_number)}">
     <p><button class="btn" type="submit">Voltooi bestelling</button></p>
   </form>
 </main>
 """
     return page("Bestelling", catalog, body, cart_count, menu_href("rekening"))
+
+
+def invoice_page(catalog: Catalog, invoice, cart_count: int) -> str:
+    rows = []
+    for line in invoice.lines:
+        book = catalog.by_slug(line.slug)
+        titel = book.titel if book is not None else line.slug
+        rows.append(
+            f"<tr><td>{escape(titel)}</td><td>{line.number_of_copies}</td>"
+            f"<td>{escape(euro(line.price_cents_per_copy))}</td></tr>"
+        )
+    exclusive = invoice.payable_cents - vat_cents(invoice.payable_cents, catalog.vat_rate)
+    body = f"""
+<main class="wrap narrow invoice">
+  <div class="invoice-head">
+    <p>{escape(invoice.debtor_name)}</p>
+    <p>Factuur {escape(invoice.number)}</p>
+    <p>Te betalen {escape(euro(invoice.payable_cents))}</p>
+    <p>Prijs exclusief BTW {escape(euro(exclusive))}</p>
+    <p>Openstaand {escape(euro(invoice.open_cents))}</p>
+    <p>Vervaldatum {escape(invoice.due_on.isoformat())}</p>
+    <p>{escape(invoice.ordered_at)}</p>
+    <p>Zet {escape(invoice.number)} in de omschrijving van de betaling.</p>
+  </div>
+  <table class="plain">
+    <thead><tr><th>Titel</th><th>Aantal</th><th>Prijs</th></tr></thead>
+    <tbody>{"".join(rows)}</tbody>
+  </table>
+</main>
+"""
+    return page(menu_header("rekening"), catalog, body, cart_count, menu_href("rekening"))
 
 
 def rekening_done_page(catalog: Catalog, order: dict, cart_count: int) -> str:

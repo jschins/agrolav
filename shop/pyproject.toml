@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 shop = "app.main:run"
 admin = "app.admin:run"
+remind = "app.reminders:run"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -73,6 +73,9 @@ def connect(path: Path) -> sqlite3.Connection:
     if "items_json" in columns:
         _move_items_json(conn)
         conn.execute("ALTER TABLE orders DROP COLUMN items_json")
+    from app.ledger import ensure_schema
+
+    ensure_schema(conn)
     conn.commit()
     return conn
 
