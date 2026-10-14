@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from html import escape
 
 from app.catalog import Book, Catalog, euro, vat_cents
@@ -325,13 +326,23 @@ main.home-main.none .rail.home {{ display: none; }}
   cursor: pointer;
 }}
 .filter[data-name="genre"] .filter-menu {{
-  box-sizing: border-box;
-  max-height: calc(100dvh - 6.5rem);
-  overflow-x: hidden;
+  height: auto;
+  max-height: none;
+  overflow: visible;
 }}
 .filter[data-name="genre"] .filter-menu button {{
-  line-height: 1.1;
-  padding: 0.06rem 0.75rem;
+  line-height: 1.54;
+  padding: 0.084rem 0.75rem;
+}}
+.filter[data-name="auteur"] .filter-menu {{
+  max-height: none;
+  overflow: visible;
+  padding: 0.05rem 0;
+}}
+.filter[data-name="auteur"] .filter-menu button {{
+  line-height: 1;
+  padding: 0 0.75rem;
+  font-size: 0.82rem;
 }}
 .filter-menu button:hover {{ background: var(--secondary); }}
 .band {{
@@ -522,11 +533,64 @@ def _cover(book: Book) -> str:
     )
 
 
+_PARTICLES = frozenset({
+    "van", "von", "de", "den", "der", "del", "della", "di", "da", "dos", "das",
+    "ten", "ter", "la", "le", "du", "y", "d", "op", "af", "het",
+})
+_TITLES = frozenset({"dr", "abbé", "abbe", "pater", "mgr", "prof", "sint", "st"})
+
+
+def _author_letters(auteur: str) -> str:
+    """First letter of each surname. Particles stay out of the surname: Hahn -> H."""
+    letters: list[str] = []
+    for line in auteur.splitlines():
+        for piece in re.split(r"\s+en\s+", line):
+            letter = _surname_letter(piece.strip())
+            if letter and letter not in letters:
+                letters.append(letter)
+    return " ".join(letters)
+
+
+def _surname_letter(person: str) -> str:
+    if person.casefold() in {"e.a.", "e.a"}:
+        return ""
+    words = person.split()
+    while words and words[0].casefold().rstrip(".") in _TITLES:
+        words.pop(0)
+    while words and re.fullmatch(r"[IVXLCDM]{2,}", words[-1]):
+        words.pop()
+    if words and _initial(words[-1]):
+        for word in words:
+            if not _initial(word) and word.casefold().rstrip(".") not in _TITLES:
+                return _letter(word)
+    for word in reversed(words):
+        if word.casefold().strip(".") in _PARTICLES or _initial(word):
+            continue
+        return _letter(word)
+    return _letter(words[-1]) if words else ""
+
+
+def _initial(word: str) -> bool:
+    return bool(re.fullmatch(r"(?:[A-Za-z]\.)+[A-Za-z]?|[A-Za-z]", word))
+
+
+def _letter(word: str) -> str:
+    for char in word:
+        if not char.isalpha():
+            continue
+        base = "".join(
+            item for item in unicodedata.normalize("NFD", char) if unicodedata.category(item) != "Mn"
+        )
+        return (base or char).upper()
+    return ""
+
+
 def _book_card(book: Book, week: bool = False) -> str:
     mark = ' data-week="1"' if week else ""
     return (
         f'<a class="card book" href="/boeken/{escape(book.slug)}"'
         f' data-genre="{escape(book.genre)}" data-auteur="{escape(book.auteur)}"'
+        f' data-letters="{escape(_author_letters(book.auteur))}"'
         f' data-tijdvak="{escape(book.tijdvak)}" data-formaat="{escape(book.formaat)}"{mark}>'
         f"{_cover(book)}</a>"
     )
@@ -579,16 +643,6 @@ _CAROUSEL = """
     }
     rail.scrollLeft = week.offsetLeft - (rail.clientWidth - week.offsetWidth) / 2;
   }
-  function fitGenreMenu(filter) {
-    var menu = filter.querySelector(".filter-menu");
-    if (!menu) return;
-    var zoom = parseFloat(getComputedStyle(document.body).zoom);
-    if (!zoom || zoom <= 0) zoom = 1;
-    var room = Math.max(0, window.innerHeight - menu.getBoundingClientRect().top - 6);
-    var height = (room / zoom) + "px";
-    menu.style.height = height;
-    menu.style.maxHeight = height;
-  }
   function applyFilters() {
     var selected = [];
     document.querySelectorAll(".filter").forEach(function (filter) {
@@ -597,7 +651,11 @@ _CAROUSEL = """
     var shown = 0;
     rail.querySelectorAll(".book").forEach(function (card) {
       var show = selected.every(function (item) {
-        return !item.value || card.dataset[item.name] === item.value;
+        if (!item.value) return true;
+        if (item.name === "auteur") {
+          return (" " + (card.dataset.letters || "") + " ").indexOf(" " + item.value + " ") !== -1;
+        }
+        return card.dataset[item.name] === item.value;
       });
       card.classList.toggle("is-out", !show);
       if (show) shown += 1;
@@ -614,10 +672,7 @@ _CAROUSEL = """
       document.querySelectorAll(".filter.open").forEach(function (other) {
         other.classList.remove("open");
       });
-      if (!open) {
-        filter.classList.add("open");
-        if (name === "genre") fitGenreMenu(filter);
-      }
+      if (!open) filter.classList.add("open");
     });
     filter.querySelectorAll(".filter-menu button").forEach(function (choice) {
       choice.addEventListener("click", function (event) {
@@ -637,11 +692,7 @@ _CAROUSEL = """
     });
   });
   centerWeek();
-  window.addEventListener("resize", function () {
-    centerWeek();
-    var genre = document.querySelector('.filter.open[data-name="genre"]');
-    if (genre) fitGenreMenu(genre);
-  });
+  window.addEventListener("resize", centerWeek);
   rail.addEventListener("dragstart", function (event) { event.preventDefault(); });
   rail.addEventListener("pointerdown", function (event) {
     if (event.pointerType === "touch" || event.button !== 0) return;
@@ -693,7 +744,7 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
     featured = _featured(catalog)
     cards = "".join(_book_card(book, week=book.slug == featured.slug) for book in catalog.books)
     genres = sorted({book.genre for book in catalog.books}, key=str.casefold)
-    auteurs = sorted({book.auteur for book in catalog.books}, key=str.casefold)
+    auteurs = sorted({letter for book in catalog.books for letter in _author_letters(book.auteur).split()})
     tijdvakken = sorted({book.tijdvak for book in catalog.books}, key=str.casefold)
     formaten = sorted({book.formaat for book in catalog.books}, key=str.casefold)
     body = f"""
