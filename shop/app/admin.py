@@ -6,7 +6,7 @@ from html import escape
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from app.catalog import add_book, book_keys, load_catalog, replace_book, search_books, update_voorraad
 from app.ledger import overlay_stock, set_stock
@@ -43,6 +43,7 @@ def _page(body: str, title: str, active: str) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escape(title)} — De Boog</title>
+<link rel="icon" type="image/png" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:ital,wght@0,400;0,500;1,400&family=Alegreya:ital,wght@0,500;0,600;1,500&family=Crimson+Pro:ital,wght@0,400;0,500;1,400&display=swap">
@@ -363,6 +364,14 @@ def catalog_page(catalog_path: Path, query: dict[str, str]) -> str:
 def create_admin_app(catalog_path: Path, files_dir: Path, db_path: Path | None = None) -> FastAPI:
     database = db_path or (catalog_path.parent / "data" / "orders.sqlite")
     app = FastAPI()
+
+    @app.get("/favicon.ico")
+    def favicon() -> Response:
+        path = (catalog_path.parent / "favicon.ico").resolve()
+        if not path.is_file() or path.parent != catalog_path.parent.resolve():
+            return Response(status_code=404)
+        media = "image/png" if path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" else "image/x-icon"
+        return FileResponse(path, media_type=media, headers={"Cache-Control": "public, max-age=86400"})
 
     def raw_book(slug: str) -> dict | None:
         import json
