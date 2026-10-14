@@ -1,6 +1,11 @@
 AGENDA
 
-
+1. op rekening voor meerdere klanten
+2. factuur
+3. kortingscodes
+4. boekhouding: automatische betaalde bestelling deels terugboeken
+5. debiteurbeheer & automatisch versturen van betalingsherinneringen via email
+6. statistiek
 
 
 
@@ -34,6 +39,8 @@ NL84INGB0002801129	Centrale SIa
 81.23.245.2	Udenhout
 92.70.11.161	Jan Luijkenstraat
 
+
+agrolav@agrolav:/opt/agrolav$ sudo journalctl -u agrolav-hub --since "today" | grep "login refused"
 
 
 
