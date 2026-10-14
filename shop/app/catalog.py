@@ -137,8 +137,8 @@ def load_catalog(path: Path) -> Catalog:
             raise ValueError(f"formaat for {slug} is required")
         cover = str(item.get("cover") or "").strip()
         if not cover or any(mark in cover for mark in ("/", "\\", "..")):
-            raise ValueError(f"cover for {slug} must be a file name in shop/files")
-        if not (path.parent / "files" / cover).is_file():
+            raise ValueError(f"cover for {slug} must be a file name in shop/covers")
+        if not (path.parent / "covers" / cover).is_file():
             raise ValueError(f"cover for {slug} is missing: {cover}")
         raw_stock = item.get("voorraad", None)
         if raw_stock is None:
@@ -222,7 +222,7 @@ def add_book(
     cover_name: str,
     cover_bytes: bytes,
 ) -> None:
-    """Append one book to catalog.json and store its png cover in files."""
+    """Append one book to catalog.json and store its png cover in covers."""
     slug = slug.strip()
     titel = titel.strip()
     auteur = auteur.strip()
@@ -256,13 +256,13 @@ def add_book(
     if not cover_bytes.startswith(_PNG):
         raise ValueError("Het bestand is geen png.")
     files_dir.mkdir(parents=True, exist_ok=True)
-    if files_dir.resolve() != (catalog_path.parent / "files").resolve():
-        raise ValueError("Het omslag moet in de map files naast catalog.json staan.")
+    if files_dir.resolve() != (catalog_path.parent / "covers").resolve():
+        raise ValueError("Het omslag moet in de map covers naast catalog.json staan.")
     dest = (files_dir / cover_name).resolve()
     if dest.parent != files_dir.resolve():
-        raise ValueError("Het omslag moet in de map files staan.")
+        raise ValueError("Het omslag moet in de map covers staan.")
     if dest.exists():
-        raise ValueError("Dit omslagbestand staat al in files.")
+        raise ValueError("Dit omslagbestand staat al in covers.")
     original = catalog_path.read_text(encoding="utf-8")
     raw = json.loads(original)
     books = raw.get("books")
@@ -408,8 +408,8 @@ def replace_book(
     if voorraad is None and formaat.casefold() != "e-book":
         raise ValueError("voorraad is verplicht, behalve bij formaat e-book.")
     files_dir.mkdir(parents=True, exist_ok=True)
-    if files_dir.resolve() != (catalog_path.parent / "files").resolve():
-        raise ValueError("Het omslag moet in de map files naast catalog.json staan.")
+    if files_dir.resolve() != (catalog_path.parent / "covers").resolve():
+        raise ValueError("Het omslag moet in de map covers naast catalog.json staan.")
     original = catalog_path.read_text(encoding="utf-8")
     raw = json.loads(original)
     books = raw.get("books")
@@ -436,9 +436,9 @@ def replace_book(
             raise ValueError("Het bestand is geen png.")
         dest = (files_dir / cover_name).resolve()
         if dest.parent != files_dir.resolve():
-            raise ValueError("Het omslag moet in de map files staan.")
+            raise ValueError("Het omslag moet in de map covers staan.")
         if dest.exists() and dest.name != old_cover:
-            raise ValueError("Dit omslagbestand staat al in files.")
+            raise ValueError("Dit omslagbestand staat al in covers.")
         previous = dest.read_bytes() if dest.exists() else None
         dest.write_bytes(cover_bytes)
         current["cover"] = cover_name

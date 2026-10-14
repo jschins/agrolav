@@ -41,7 +41,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(rust.prijs_cent_excl, 875)
         self.assertEqual(dialoog.prijs_cent_excl, 1475)
         for book in (rust, dialoog):
-            cover = _ROOT / "files" / book.cover
+            cover = _ROOT / "covers" / book.cover
             self.assertTrue(cover.is_file())
             self.assertEqual(cover.suffix.casefold(), ".png")
         imported = catalog.by_slug("als-je-niet-opnieuw-geboren-wordt")
@@ -49,7 +49,7 @@ class CatalogTests(unittest.TestCase):
         assert imported is not None
         self.assertEqual(imported.aantal_paginas, 168)
         self.assertEqual(imported.ondertitel, "Over de roeping van het doopsel")
-        self.assertTrue((_ROOT / "files" / imported.cover).is_file())
+        self.assertTrue((_ROOT / "covers" / imported.cover).is_file())
 
 
 class ShopFlowTests(unittest.TestCase):
@@ -67,7 +67,7 @@ class ShopFlowTests(unittest.TestCase):
             public_base_url="http://127.0.0.1:9000",
             data_dir=directory,
             catalog_path=_ROOT / "catalog.json",
-            files_dir=_ROOT / "files",
+            files_dir=_ROOT / "covers",
             rekening_path=directory / "rekening.json",
             dev_payments=True,
         )
@@ -136,7 +136,7 @@ class ShopFlowTests(unittest.TestCase):
             self.assertLess(home.text.find(">REKENING</a>"), home.text.find(">WINKELWAGEN"))
             for path in ("/agenda", "/over"):
                 self.assertEqual(client.get(path).status_code, 200)
-            icon = client.get("/favicon.png")
+            icon = client.get("/favicon.ico")
             self.assertEqual(icon.status_code, 200)
             self.assertIn("image/png", icon.headers["content-type"])
             self.assertTrue(icon.content.startswith(b"\x89PNG"))

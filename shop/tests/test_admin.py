@@ -21,7 +21,7 @@ _PNG = base64.b64decode(
 
 
 def _catalog(directory: Path) -> Path:
-    files = directory / "files"
+    files = directory / "covers"
     files.mkdir()
     (files / "bestaand.png").write_bytes(_PNG)
     path = directory / "catalog.json"
@@ -59,7 +59,7 @@ class AdminTests(unittest.TestCase):
                 public_base_url="http://127.0.0.1:9000",
                 data_dir=Path(tmp),
                 catalog_path=_ROOT / "catalog.json",
-                files_dir=_ROOT / "files",
+                files_dir=_ROOT / "covers",
                 rekening_path=Path(tmp) / "rekening.json",
                 dev_payments=True,
             )
@@ -74,7 +74,7 @@ class AdminTests(unittest.TestCase):
     def test_form_lists_the_catalog_fields_and_a_png_upload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
-            client = TestClient(create_admin_app(_catalog(directory), directory / "files"))
+            client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
             page = client.get("/")
             self.assertEqual(page.status_code, 200)
             self.assertIn("hsl(40 50% 92.9%)", page.text)
@@ -88,7 +88,7 @@ class AdminTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             catalog = _catalog(directory)
-            client = TestClient(create_admin_app(catalog, directory / "files"))
+            client = TestClient(create_admin_app(catalog, directory / "covers"))
             saved = client.post(
                 "/",
                 data={
@@ -106,8 +106,8 @@ class AdminTests(unittest.TestCase):
                 files={"cover": ("Nieuw boek.png", _PNG, "image/png")},
             )
             self.assertEqual(saved.status_code, 200, saved.text)
-            self.assertIn("files/Nieuw boek.png", saved.text)
-            stored = directory / "files" / "Nieuw boek.png"
+            self.assertIn("covers/Nieuw boek.png", saved.text)
+            stored = directory / "covers" / "Nieuw boek.png"
             self.assertTrue(stored.is_file())
             self.assertTrue(stored.read_bytes().startswith(b"\x89PNG"))
             book = load_catalog(catalog).by_slug("nieuw-boek")
@@ -124,7 +124,7 @@ class AdminTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 add_book(
                     catalog,
-                    directory / "files",
+                    directory / "covers",
                     slug="zonder-voorraad",
                     titel="Zonder",
                     auteur="Auteur",
@@ -141,7 +141,7 @@ class AdminTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 add_book(
                     catalog,
-                    directory / "files",
+                    directory / "covers",
                     slug="geen-png",
                     titel="Geen",
                     auteur="Auteur",
@@ -155,7 +155,7 @@ class AdminTests(unittest.TestCase):
                     cover_name="geen.png",
                     cover_bytes=b"not a png",
                 )
-            self.assertFalse((directory / "files" / "geen.png").exists())
+            self.assertFalse((directory / "covers" / "geen.png").exists())
             self.assertIsNone(load_catalog(catalog).by_slug("geen-png"))
 
     def test_stock_page_edits_voorraad_and_skips_ebooks(self) -> None:
@@ -177,7 +177,7 @@ class AdminTests(unittest.TestCase):
                 }
             )
             catalog.write_text(json.dumps(raw), encoding="utf-8")
-            client = TestClient(create_admin_app(catalog, directory / "files"))
+            client = TestClient(create_admin_app(catalog, directory / "covers"))
             page = client.get("/voorraad")
             self.assertEqual(page.status_code, 200)
             self.assertIn("Beheer voorraad", page.text)
@@ -199,7 +199,7 @@ class AdminTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             catalog = _catalog(directory)
-            client = TestClient(create_admin_app(catalog, directory / "files"))
+            client = TestClient(create_admin_app(catalog, directory / "covers"))
             page = client.get("/catalogus")
             self.assertEqual(page.status_code, 200)
             self.assertIn("Beheer catalogus", page.text)

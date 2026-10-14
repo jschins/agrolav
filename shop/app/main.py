@@ -127,7 +127,7 @@ def settings_from_env() -> Settings:
         public_base_url=base,
         data_dir=Path(os.environ.get("SHOP_DATA_DIR", str(_ROOT / "data"))),
         catalog_path=Path(os.environ.get("SHOP_CATALOG", str(_ROOT / "catalog.json"))),
-        files_dir=Path(os.environ.get("SHOP_FILES_DIR", str(_ROOT / "files"))),
+        files_dir=Path(os.environ.get("SHOP_FILES_DIR", str(_ROOT / "covers"))),
         rekening_path=Path(os.environ.get("SHOP_REKENING", str(_ROOT / "rekening.json"))),
         mollie_api_key=os.environ.get("MOLLIE_API_KEY", "").strip(),
         dev_payments=dev,
@@ -209,11 +209,10 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         return {"status": "ok"}
 
     def icon_file() -> tuple[Path, str] | None:
-        root = settings.files_dir.resolve()
-        for name, media in (("favicon.png", "image/png"), ("favicon.ico", "image/x-icon")):
-            path = (settings.files_dir / name).resolve()
-            if path.parent == root and path.is_file():
-                return path, media
+        path = (settings.files_dir.parent / "favicon.ico").resolve()
+        if path.is_file() and path.parent == settings.files_dir.parent.resolve():
+            media = "image/png" if path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" else "image/x-icon"
+            return path, media
         return None
 
     @app.get("/favicon.ico")

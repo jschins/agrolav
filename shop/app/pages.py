@@ -30,7 +30,7 @@ def page(title: str, catalog: Catalog, body: str, cart_count: int, active: str =
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="icon" type="image/png" href="/favicon.ico">
 <title>{escape(title)} — {escape(catalog.shop_name)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

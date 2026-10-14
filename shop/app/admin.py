@@ -268,7 +268,7 @@ def done_page(titel: str, cover: str) -> str:
   <h1>Boek toegevoegd</h1>
   <div class="sheet">
     <p>{escape(titel)} staat in catalog.json.</p>
-    <p>Het omslag staat in files/{escape(cover)}.</p>
+    <p>Het omslag staat in covers/{escape(cover)}.</p>
     <p>Herstart de winkel om het boek te zien.</p>
     <p><a class="btn" href="/">{_MENU}</a></p>
   </div>
@@ -526,5 +526,5 @@ def run() -> None:
     host = os.environ.get("ADMIN_HOST", "127.0.0.1").strip() or "127.0.0.1"
     port = int(os.environ.get("ADMIN_PORT", "9100"))
     catalog = Path(os.environ.get("SHOP_CATALOG", str(_ROOT / "catalog.json")))
-    files = Path(os.environ.get("SHOP_FILES_DIR", str(_ROOT / "files")))
+    files = Path(os.environ.get("SHOP_FILES_DIR", str(_ROOT / "covers")))
     uvicorn.run(create_admin_app(catalog, files), host=host, port=port)
