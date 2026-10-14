@@ -721,6 +721,17 @@ def about_page(catalog: Catalog, cart_count: int) -> str:
     return page(menu_header("over"), catalog, body, cart_count, menu_href("over"))
 
 
+def _prose(text: str) -> str:
+    blocks = []
+    for part in text.split("\n\n"):
+        part = part.strip()
+        if not part:
+            continue
+        lines = "<br>".join(escape(line) for line in part.split("\n"))
+        blocks.append(f"<p>{lines}</p>")
+    return "".join(blocks)
+
+
 def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
     label = "" if _centered(book) else book.badge
     badge = (
@@ -737,7 +748,11 @@ def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
       <p><span class="mono">Tijdvak</span> {escape(book.tijdvak)}</p>
       <p><span class="mono">Formaat</span> {escape(book.formaat)}</p>
       <p><span class="mono">ISBN</span> {escape(book.isbn)}</p>
-      <p><span class="mono">Samenvatting</span> {escape(book.summary)}</p>
+      {"" if not book.ondertitel else f'<p><span class="mono">Ondertitel</span> {escape(book.ondertitel)}</p>'}
+      {"" if not book.uitvoering else f'<p><span class="mono">Uitvoering</span> {escape(book.uitvoering)}</p>'}
+      {"" if book.aantal_paginas is None else f'<p><span class="mono">Aantal pagina\'s</span> {book.aantal_paginas}</p>'}
+      {"" if not book.summary else f'<p><span class="mono">Samenvatting</span> {escape(book.summary)}</p>'}
+      {"" if not book.korte_tekst else f'<p><span class="mono">Korte tekst</span> {escape(book.korte_tekst)}</p>'}
       <p><span class="mono">Prijs</span> {escape(euro(book.prijs_cent_excl))}</p>
       {"" if book.voorraad is None else f'<p><span class="mono">Voorraad</span> {book.voorraad}</p>'}
       {badge}
@@ -749,6 +764,7 @@ def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
       <p><a class="btn" href="/afrekenen/boek/{escape(book.slug)}">Koop dit exemplaar</a></p>
     </div>
   </div>
+  {"" if not book.tekst else f'<div class="sheet">{_prose(book.tekst)}</div>'}
 </main>
 """
     return page(book.titel, catalog, body, cart_count)

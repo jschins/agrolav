@@ -8,6 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_BINDING = frozenset({"Zachte kaft", "Harde kaft"})
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,11 @@ class Book:
     cover: str
     voorraad: int | None = None
     badge: str = ""
+    ondertitel: str = ""
+    uitvoering: str = ""
+    tekst: str = ""
+    korte_tekst: str = ""
+    aantal_paginas: int | None = None
 
     def ebook(self) -> bool:
         return self.formaat.casefold() == "e-book"
@@ -88,6 +94,21 @@ def _text(raw: dict, key: str) -> str:
     return str(raw.get(key) or "").strip()
 
 
+def _binding(raw: object, slug: str) -> str:
+    uitvoering = str(raw or "").strip()
+    if uitvoering and uitvoering not in _BINDING:
+        raise ValueError(f"uitvoering for {slug} must be Zachte kaft or Harde kaft")
+    return uitvoering
+
+
+def _pages(raw: object, slug: str) -> int | None:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        raise ValueError(f"aantal_paginas for {slug} must be a whole number")
+    return raw
+
+
 def load_catalog(path: Path) -> Catalog:
     raw = json.loads(path.read_text(encoding="utf-8"))
     try:
@@ -111,8 +132,6 @@ def load_catalog(path: Path) -> Catalog:
         if not genre:
             raise ValueError(f"genre for {slug} is required")
         tijdvak = str(item.get("tijdvak") or "").strip()
-        if not tijdvak:
-            raise ValueError(f"tijdvak for {slug} is required")
         formaat = str(item.get("formaat") or "").strip()
         if not formaat:
             raise ValueError(f"formaat for {slug} is required")
@@ -121,12 +140,13 @@ def load_catalog(path: Path) -> Catalog:
             raise ValueError(f"cover for {slug} must be a file name in shop/files")
         if not (path.parent / "files" / cover).is_file():
             raise ValueError(f"cover for {slug} is missing: {cover}")
-        voorraad = item.get("voorraad", None)
-        if voorraad is None:
-            if formaat.casefold() != "e-book":
-                raise ValueError(f"voorraad for {slug} must be a whole number of 0 or more")
-        elif not isinstance(voorraad, int) or isinstance(voorraad, bool) or voorraad < 0:
+        raw_stock = item.get("voorraad", None)
+        if raw_stock is None:
+            voorraad = None
+        elif not isinstance(raw_stock, int) or isinstance(raw_stock, bool) or raw_stock < 0:
             raise ValueError(f"voorraad for {slug} must be a whole number of 0 or more")
+        else:
+            voorraad = raw_stock
         books.append(
             Book(
                 slug=slug,
@@ -141,6 +161,11 @@ def load_catalog(path: Path) -> Catalog:
                 cover=cover,
                 voorraad=voorraad,
                 badge=str(item.get("badge") or "").strip(),
+                ondertitel=str(item.get("ondertitel") or "").strip(),
+                uitvoering=_binding(item.get("uitvoering"), slug),
+                tekst=str(item.get("tekst") or "").strip(),
+                korte_tekst=str(item.get("korte_tekst") or "").strip(),
+                aantal_paginas=_pages(item.get("aantal_paginas"), slug),
             )
         )
         seen.add(slug)
@@ -286,6 +311,8 @@ def update_voorraad(catalog_path: Path, amounts: dict[str, int]) -> None:
         if not isinstance(item, dict):
             continue
         if str(item.get("formaat") or "").strip().casefold() == "e-book":
+            continue
+        if "voorraad" not in item or item.get("voorraad") is None:
             continue
         slug = str(item.get("slug") or "")
         if slug not in amounts:

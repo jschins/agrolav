@@ -26,19 +26,30 @@ _SHIP = {
 class CatalogTests(unittest.TestCase):
     def test_catalog_is_the_two_paper_books_and_their_covers(self) -> None:
         catalog = load_catalog(_ROOT / "catalog.json")
-        self.assertEqual(catalog.shop_name, "De Boog")
+        self.assertEqual(catalog.shop_name, "Uitgeverij De Boog")
         self.assertIn("papieren", catalog.seller_line.casefold())
         self.assertEqual(vat_cents(875, catalog.vat_rate), 72)
         self.assertEqual(euro(875), "€ 8,75")
         self.assertEqual(euro(1475), "€ 14,75")
-        titles = {book.titel: book for book in catalog.books}
-        self.assertEqual(set(titles), {"De innerlijke rust", "De Dialoog"})
-        self.assertEqual(titles["De innerlijke rust"].auteur, "Jacques Philippe")
-        self.assertEqual(titles["De Dialoog"].auteur, "Catharina van Siena")
-        for book in catalog.books:
+        rust = catalog.by_slug("innerlijke-rust")
+        dialoog = catalog.by_slug("catharina-dialoog")
+        self.assertIsNotNone(rust)
+        self.assertIsNotNone(dialoog)
+        assert rust is not None and dialoog is not None
+        self.assertEqual(rust.auteur, "Jacques Philippe")
+        self.assertEqual(dialoog.auteur, "Catharina van Siena")
+        self.assertEqual(rust.prijs_cent_excl, 875)
+        self.assertEqual(dialoog.prijs_cent_excl, 1475)
+        for book in (rust, dialoog):
             cover = _ROOT / "files" / book.cover
             self.assertTrue(cover.is_file())
             self.assertEqual(cover.suffix.casefold(), ".png")
+        imported = catalog.by_slug("als-je-niet-opnieuw-geboren-wordt")
+        self.assertIsNotNone(imported)
+        assert imported is not None
+        self.assertEqual(imported.aantal_paginas, 168)
+        self.assertEqual(imported.ondertitel, "Over de roeping van het doopsel")
+        self.assertTrue((_ROOT / "files" / imported.cover).is_file())
 
 
 class ShopFlowTests(unittest.TestCase):
@@ -111,8 +122,9 @@ class ShopFlowTests(unittest.TestCase):
                 '<div class="mono">hedendaags</div><div class="mono">Spiritualiteit</div>',
                 home.text,
             )
-            self.assertNotIn('<div class="mono">hedendaags (20e-21e eeuw)</div>', home.text)
-            self.assertIn(">hedendaags (20e-21e eeuw)</button>", home.text)
+            self.assertNotIn('<div class="mono">hedendaags (21e eeuw)</div>', home.text)
+            self.assertIn(">hedendaags (21e eeuw)</button>", home.text)
+            self.assertIn(">nieuw (20e eeuw)</button>", home.text)
             self.assertIn("is-out", home.text)
             self.assertIn(
                 "De Boog verkoopt geen boeken die aan deze combinatie van selectiecriteria voldoen",

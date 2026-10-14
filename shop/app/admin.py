@@ -290,7 +290,7 @@ def stock_page(catalog_path: Path, db_path: Path, error: str = "") -> str:
         conn.close()
     rows = []
     for book in catalog.books:
-        if book.ebook():
+        if book.ebook() or book.voorraad is None:
             continue
         rows.append(
             "<tr>"
@@ -501,7 +501,7 @@ def create_admin_app(catalog_path: Path, files_dir: Path, db_path: Path | None =
         amounts: dict[str, int] = {}
         try:
             for book in catalog.books:
-                if book.ebook():
+                if book.ebook() or book.voorraad is None:
                     continue
                 amount = _whole(_value(form, f"voorraad-{book.slug}"), "voorraad")
                 if amount is None:
