@@ -114,7 +114,7 @@ class ShopFlowTests(unittest.TestCase):
             self.assertEqual(home.text.count("Alle (geen selectie)"), 4)
             self.assertIn('data-formaat="e-book"', home.text)
             self.assertIn('data-formaat="papier"', home.text)
-            self.assertIn("Biografie", home.text)
+            self.assertIn("(Auto)biografie", home.text)
             self.assertIn("middeleeuwen", home.text)
             self.assertIn('data-tijdvak="modern (16e-19e eeuw)"', home.text)
             self.assertIn('data-auteur="Jacques Philippe"', home.text)

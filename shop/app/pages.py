@@ -324,6 +324,15 @@ main.home-main.none .rail.home {{ display: none; }}
   padding: 0.35rem 0.75rem;
   cursor: pointer;
 }}
+.filter[data-name="genre"] .filter-menu {{
+  box-sizing: border-box;
+  max-height: calc(100dvh - 6.5rem);
+  overflow-x: hidden;
+}}
+.filter[data-name="genre"] .filter-menu button {{
+  line-height: 1.1;
+  padding: 0.06rem 0.75rem;
+}}
 .filter-menu button:hover {{ background: var(--secondary); }}
 .band {{
   background: var(--secondary);
@@ -570,6 +579,16 @@ _CAROUSEL = """
     }
     rail.scrollLeft = week.offsetLeft - (rail.clientWidth - week.offsetWidth) / 2;
   }
+  function fitGenreMenu(filter) {
+    var menu = filter.querySelector(".filter-menu");
+    if (!menu) return;
+    var zoom = parseFloat(getComputedStyle(document.body).zoom);
+    if (!zoom || zoom <= 0) zoom = 1;
+    var room = Math.max(0, window.innerHeight - menu.getBoundingClientRect().top - 6);
+    var height = (room / zoom) + "px";
+    menu.style.height = height;
+    menu.style.maxHeight = height;
+  }
   function applyFilters() {
     var selected = [];
     document.querySelectorAll(".filter").forEach(function (filter) {
@@ -595,7 +614,10 @@ _CAROUSEL = """
       document.querySelectorAll(".filter.open").forEach(function (other) {
         other.classList.remove("open");
       });
-      if (!open) filter.classList.add("open");
+      if (!open) {
+        filter.classList.add("open");
+        if (name === "genre") fitGenreMenu(filter);
+      }
     });
     filter.querySelectorAll(".filter-menu button").forEach(function (choice) {
       choice.addEventListener("click", function (event) {
@@ -615,7 +637,11 @@ _CAROUSEL = """
     });
   });
   centerWeek();
-  window.addEventListener("resize", centerWeek);
+  window.addEventListener("resize", function () {
+    centerWeek();
+    var genre = document.querySelector('.filter.open[data-name="genre"]');
+    if (genre) fitGenreMenu(genre);
+  });
   rail.addEventListener("dragstart", function (event) { event.preventDefault(); });
   rail.addEventListener("pointerdown", function (event) {
     if (event.pointerType === "touch" || event.button !== 0) return;
