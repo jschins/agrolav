@@ -335,6 +335,8 @@ class ShopFlowTests(unittest.TestCase):
             )
             sheet = client.get("/rekening")
             self.assertEqual(sheet.status_code, 200)
+            self.assertIn('data-sort="0">Titel</button>', sheet.text)
+            self.assertIn('data-sort="1">Auteur</button>', sheet.text)
             self.assertIn(">Aantal</th>", sheet.text)
             self.assertIn(">Voorraad</th>", sheet.text)
             self.assertIn("text-overflow: ellipsis", sheet.text)

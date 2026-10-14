@@ -420,6 +420,20 @@ table.plain.wide td {{
   padding: 0.12rem 0.45rem;
   line-height: 1.15;
 }}
+table.plain.wide th button.sort {{
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}}
+table.plain.wide th button.sort:hover {{ color: var(--primary); }}
 table.plain.wide input[type="number"] {{
   width: 100%;
   max-width: none;
@@ -972,12 +986,35 @@ def rekening_page(catalog: Catalog, counts: dict[str, int], cart_count: int, err
         <col style="width:12%">
         <col style="width:12%">
       </colgroup>
-      <thead><tr><th>Titel</th><th>Auteur</th><th>Voorraad</th><th>Aantal</th></tr></thead>
+      <thead><tr>
+        <th><button type="button" class="sort" data-sort="0">Titel</button></th>
+        <th><button type="button" class="sort" data-sort="1">Auteur</button></th>
+        <th>Voorraad</th><th>Aantal</th>
+      </tr></thead>
       <tbody>{rows}</tbody>
     </table>
     <p><button class="btn" type="submit">Bestellen</button></p>
   </form>
 </main>
+<script>
+(function () {{
+  var table = document.querySelector("main.rekening-wide table");
+  if (!table) return;
+  var body = table.querySelector("tbody");
+  table.querySelectorAll("button.sort").forEach(function (button) {{
+    button.addEventListener("click", function () {{
+      var index = Number(button.getAttribute("data-sort"));
+      var rows = Array.prototype.slice.call(body.querySelectorAll("tr"));
+      rows.sort(function (a, b) {{
+        var left = (a.cells[index].innerText || "").trim();
+        var right = (b.cells[index].innerText || "").trim();
+        return left.localeCompare(right, "nl", {{ sensitivity: "base" }});
+      }});
+      rows.forEach(function (row) {{ body.appendChild(row); }});
+    }});
+  }});
+}})();
+</script>
 """
     return page(menu_header("rekening"), catalog, body, cart_count, menu_href("rekening"))
 
