@@ -29,6 +29,7 @@ from app.cart import dump_cart, load_cart
 from app.catalog import Book, Catalog, load_catalog, vat_cents
 from app.ledger import create_invoice, get_invoice, overlay_stock
 from app.mollie import DevMollie, MollieClient, Payment
+from app.reminders import send_code_request
 from app.orders import (
     Address,
     Order,
@@ -278,6 +279,49 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         response = html(rekening_review_page(catalog, lines, count))
         return with_rekening(response, counts)
 
+    @app.post("/rekening/bestelcode", response_class=HTMLResponse)
+    async def rekening_bestelcode(request: Request) -> HTMLResponse:
+        form = await request.form()
+        count = len(cart_of(request))
+        counts, problem = counts_from_form(form, catalog.books)
+        lines = order_lines(catalog.books, counts or {})
+        company = str(form.get("bedrijfsnaam") or "").strip()
+        contact = str(form.get("contactpersoon") or "").strip()
+        contact_email = str(form.get("contact_email") or "").strip()
+        vat = str(form.get("btw_nummer") or "").strip()
+
+        def show(error: str = "", notice: str = "", status: int = 200) -> HTMLResponse:
+            return html(
+                rekening_review_page(
+                    catalog,
+                    lines,
+                    count,
+                    error=error,
+                    notice=notice,
+                    bedrijfsnaam=company,
+                    contactpersoon=contact,
+                    contact_email=contact_email,
+                    btw_nummer=vat,
+                ),
+                status,
+            )
+
+        if counts is None:
+            return show(problem or "De bestelling ontbreekt.", status=400)
+        if not 2 <= len(company) <= 120:
+            return show("Vul de bedrijfsnaam in.", status=400)
+        if not 2 <= len(contact) <= 80:
+            return show("Vul de naam van de contactpersoon in.", status=400)
+        if not _EMAIL.match(contact_email) or len(contact_email) > 200:
+            return show("Vul een geldig e-mailadres van de contactpersoon in.", status=400)
+        if not 2 <= len(vat) <= 40:
+            return show("Vul het btw-nummer in.", status=400)
+        try:
+            send_code_request(company, contact, contact_email, vat)
+        except (RuntimeError, OSError):
+            return show("De mail kan niet worden verstuurd.", status=500)
+        return show(notice="Het verzoek is verstuurd.")
+
     @app.post("/rekening/voltooi")
     async def rekening_voltooi(request: Request) -> Response:
         form = await request.form()
@@ -297,8 +341,8 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                 rekening_review_page(catalog, lines, count, code.strip(), "Deze code hoort niet bij een bedrijf."),
                 400,
             )
-        email = str(form.get("email") or "").strip()
-        vat_number = str(form.get("vat_number") or "").strip()
+        email = str(form.get("email") or company.get("email") or "").strip()
+        vat_number = str(form.get("vat_number") or company.get("vat_number") or "").strip()
         priced = [
             (slug, aantal, catalog.by_slug(slug).prijs_cent_excl)
             for slug, _title, aantal in lines
@@ -319,9 +363,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             )
         except ValueError as exc:
             return html(
-                rekening_review_page(
-                    catalog, lines, count, code.strip(), str(exc), email=email, vat_number=vat_number
-                ),
+                rekening_review_page(catalog, lines, count, code.strip(), str(exc)),
                 400,
             )
         finally:

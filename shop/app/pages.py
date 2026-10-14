@@ -1025,14 +1025,22 @@ def rekening_review_page(
     cart_count: int,
     code: str = "",
     error: str = "",
-    email: str = "",
-    vat_number: str = "",
+    notice: str = "",
+    bedrijfsnaam: str = "",
+    contactpersoon: str = "",
+    contact_email: str = "",
+    btw_nummer: str = "",
 ) -> str:
+    hidden = "".join(
+        f'<input type="hidden" name="aantal-{escape(slug)}" value="{aantal}">'
+        for slug, _title, aantal in lines
+    )
     rows = "".join(
         f"<tr><td>{escape(title)}</td><td>{aantal}</td></tr>"
         for _slug, title, aantal in lines
     )
-    notice = f'<p class="error">{escape(error)}</p>' if error else ""
+    problem = f'<p class="error">{escape(error)}</p>' if error else ""
+    sent = f"<p>{escape(notice)}</p>" if notice else ""
     body = f"""
 <main class="wrap narrow">
   <h1>Bestelling</h1>
@@ -1042,16 +1050,24 @@ def rekening_review_page(
     <tbody>{rows}</tbody>
   </table>
   <p><a class="btn ghost" href="/rekening">Wijzig bestelling</a></p>
-  {notice}
+  {problem}{sent}
   <form method="post" action="/rekening/voltooi">
-    {"".join(f'<input type="hidden" name="aantal-{escape(slug)}" value="{aantal}">' for slug, _title, aantal in lines)}
+    {hidden}
     <label for="code">Code</label>
     <input id="code" name="code" required maxlength="80" value="{escape(code)}">
-    <label for="email">E-mail</label>
-    <input id="email" name="email" type="email" required maxlength="200" value="{escape(email)}">
-    <label for="vat_number">BTW-nummer</label>
-    <input id="vat_number" name="vat_number" required maxlength="40" value="{escape(vat_number)}">
     <p><button class="btn" type="submit">Voltooi bestelling</button></p>
+  </form>
+  <form method="post" action="/rekening/bestelcode">
+    {hidden}
+    <label for="bedrijfsnaam">Bedrijfsnaam</label>
+    <input id="bedrijfsnaam" name="bedrijfsnaam" required maxlength="120" value="{escape(bedrijfsnaam)}">
+    <label for="contactpersoon">Naam contactpersoon</label>
+    <input id="contactpersoon" name="contactpersoon" required maxlength="80" value="{escape(contactpersoon)}">
+    <label for="contact_email">E-mail contactpersoon</label>
+    <input id="contact_email" name="contact_email" type="email" required maxlength="200" value="{escape(contact_email)}">
+    <label for="btw_nummer">BTW-nummer</label>
+    <input id="btw_nummer" name="btw_nummer" required maxlength="40" value="{escape(btw_nummer)}">
+    <p><button class="btn ghost" type="submit">Verzoek bestelcode</button></p>
   </form>
 </main>
 """

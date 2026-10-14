@@ -356,6 +356,10 @@ class ShopFlowTests(unittest.TestCase):
             self.assertEqual(started.status_code, 200)
             self.assertIn("Wijzig bestelling", started.text)
             self.assertIn('name="code"', started.text)
+            self.assertIn("Verzoek bestelcode", started.text)
+            self.assertIn('name="bedrijfsnaam"', started.text)
+            self.assertNotIn('name="email"', started.text)
+            self.assertNotIn('name="vat_number"', started.text)
             self.assertIn("Voltooi bestelling", started.text)
             self.assertIn(">2</td>", started.text)
 

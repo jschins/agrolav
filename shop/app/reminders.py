@@ -21,15 +21,15 @@ from app.orders import connect
 _ROOT = Path(__file__).resolve().parent.parent
 
 
-def send_reminder(invoice, body: str, sender: str) -> None:
+def send_message(sender: str, recipient: str, subject: str, body: str) -> None:
     host = os.environ.get("SHOP_SMTP_HOST", "").strip()
     if not host:
         raise RuntimeError("SHOP_SMTP_HOST is not set")
     port = int(os.environ.get("SHOP_SMTP_PORT", "587"))
     message = EmailMessage()
-    message["Subject"] = f"Factuur {invoice.number}"
+    message["Subject"] = subject
     message["From"] = sender
-    message["To"] = invoice.email
+    message["To"] = recipient
     message.set_content(body)
     with smtplib.SMTP(host, port, timeout=30) as smtp:
         username = os.environ.get("SHOP_SMTP_USER", "").strip()
@@ -38,6 +38,31 @@ def send_reminder(invoice, body: str, sender: str) -> None:
             smtp.starttls()
             smtp.login(username, password)
         smtp.send_message(message)
+
+
+def send_reminder(invoice, body: str, sender: str) -> None:
+    send_message(sender, invoice.email, f"Factuur {invoice.number}", body)
+
+
+def send_code_request(company: str, contact: str, email: str, vat: str) -> None:
+    """Ask for a bestelcode. From and to are the same address until the shop address is used."""
+    sender = os.environ.get("SHOP_CODE_MAIL_FROM", "j.m.schins@gmail.com").strip() or "j.m.schins@gmail.com"
+    recipient = os.environ.get("SHOP_CODE_MAIL_TO", "j.m.schins@gmail.com").strip() or "j.m.schins@gmail.com"
+    try:
+        send_message(
+            sender,
+            recipient,
+            "Verzoek bestelcode",
+            (
+                "Verzoek om een bestelcode\n\n"
+                f"Bedrijfsnaam: {company}\n"
+                f"Naam contactpersoon: {contact}\n"
+                f"E-mail contactpersoon: {email}\n"
+                f"BTW-nummer: {vat}\n"
+            ),
+        )
+    except smtplib.SMTPException as exc:
+        raise RuntimeError("mail failed") from exc
 
 
 def run(today: date | None = None, db_path: Path | None = None) -> int:
