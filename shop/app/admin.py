@@ -28,7 +28,6 @@ _FIELDS = (
     ("ISBN", "ISBN", False),
     ("prijs_cent_excl", "prijs_cent_excl", True),
     ("voorraad", "voorraad", False),
-    ("badge", "badge", False),
 )
 
 
@@ -252,7 +251,7 @@ def form_page(
   <form method="post" action="{escape(action)}" enctype="multipart/form-data" class="sheet">
     {kept}
     {"".join(fields)}
-    <p class="hint">voorraad mag leeg blijven als formaat e-book is. badge mag leeg blijven; center zet het boek in het midden van de carrousel.</p>
+    <p class="hint">voorraad mag leeg blijven als formaat e-book is.</p>
     <label for="cover">cover</label>
     {current}
     <input id="cover" name="cover" type="file" accept="image/png,.png"{required}>
@@ -434,7 +433,6 @@ def create_admin_app(catalog_path: Path, files_dir: Path, db_path: Path | None =
                 isbn=values["ISBN"],
                 prijs_cent_excl=price,
                 voorraad=voorraad,
-                badge=values["badge"],
                 cover_name=filename,
                 cover_bytes=payload,
             )
@@ -477,7 +475,6 @@ def create_admin_app(catalog_path: Path, files_dir: Path, db_path: Path | None =
                 isbn=values["ISBN"],
                 prijs_cent_excl=price,
                 voorraad=voorraad,
-                badge=values["badge"],
             )
             if filename and payload:
                 replace_book(

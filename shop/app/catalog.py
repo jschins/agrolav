@@ -24,7 +24,6 @@ class Book:
     prijs_cent_excl: int
     cover: str
     voorraad: int | None = None
-    badge: str = ""
     ondertitel: str = ""
     uitvoering: str = ""
     tekst: str = ""
@@ -160,7 +159,6 @@ def load_catalog(path: Path) -> Catalog:
                 prijs_cent_excl=price,
                 cover=cover,
                 voorraad=voorraad,
-                badge=str(item.get("badge") or "").strip(),
                 ondertitel=str(item.get("ondertitel") or "").strip(),
                 uitvoering=_binding(item.get("uitvoering"), slug),
                 tekst=str(item.get("tekst") or "").strip(),
@@ -218,7 +216,6 @@ def add_book(
     isbn: str,
     prijs_cent_excl: int,
     voorraad: int | None,
-    badge: str,
     cover_name: str,
     cover_bytes: bytes,
 ) -> None:
@@ -230,7 +227,6 @@ def add_book(
     formaat = formaat.strip()
     tijdvak = tijdvak.strip()
     isbn = isbn.strip()
-    badge = badge.strip()
     cover_name = Path(cover_name).name
     if not _SLUG.match(slug):
         raise ValueError("slug moet uit kleine letters, cijfers en streepjes bestaan.")
@@ -283,8 +279,6 @@ def add_book(
     }
     if voorraad is not None:
         entry["voorraad"] = voorraad
-    if badge:
-        entry["badge"] = badge
     books.append(entry)
     dest.write_bytes(cover_bytes)
     temporary = catalog_path.with_suffix(".json.tmp")
@@ -376,7 +370,6 @@ def replace_book(
     isbn: str,
     prijs_cent_excl: int,
     voorraad: int | None,
-    badge: str,
     cover_name: str = "",
     cover_bytes: bytes = b"",
 ) -> None:
@@ -389,7 +382,6 @@ def replace_book(
     formaat = formaat.strip()
     tijdvak = tijdvak.strip()
     isbn = isbn.strip()
-    badge = badge.strip()
     if not _SLUG.match(slug):
         raise ValueError("slug moet uit kleine letters, cijfers en streepjes bestaan.")
     for label, value in (
@@ -456,10 +448,6 @@ def replace_book(
         current.pop("voorraad", None)
     else:
         current["voorraad"] = voorraad
-    if badge:
-        current["badge"] = badge
-    else:
-        current.pop("badge", None)
     temporary = catalog_path.with_suffix(".json.tmp")
     try:
         temporary.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

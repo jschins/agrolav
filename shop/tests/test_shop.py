@@ -89,7 +89,7 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn("/omslag/innerlijke-rust", home.text)
             self.assertIn("Jacques Philippe", home.text)
             self.assertIn('class="rail home"', home.text)
-            self.assertRegex(home.text, r'href="/boeken/pitre-geestelijk-leven"[^>]*data-week="1"')
+            self.assertNotIn("data-week=", home.text)
             self.assertIn('href="/boeken/innerlijke-rust"', home.text)
             self.assertIn("scrollbar-width: none", home.text)
             self.assertNotIn("Op de toontafel", home.text)

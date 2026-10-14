@@ -79,7 +79,7 @@ class AdminTests(unittest.TestCase):
             self.assertEqual(page.status_code, 200)
             self.assertIn("hsl(40 50% 92.9%)", page.text)
             self.assertGreaterEqual(page.text.count("Voeg nieuw boek toe"), 2)
-            for name in ("slug", "titel", "auteur", "genre", "formaat", "tijdvak", "ISBN", "prijs_cent_excl", "voorraad", "badge"):
+            for name in ("slug", "titel", "auteur", "genre", "formaat", "tijdvak", "ISBN", "prijs_cent_excl", "voorraad"):
                 self.assertIn(f'name="{name}"', page.text)
             self.assertIn('type="file"', page.text)
             self.assertIn('accept="image/png,.png"', page.text)
@@ -101,7 +101,6 @@ class AdminTests(unittest.TestCase):
                     "ISBN": "978-90-0000-000-0",
                     "prijs_cent_excl": "275",
                     "voorraad": "",
-                    "badge": "",
                 },
                 files={"cover": ("Nieuw boek.png", _PNG, "image/png")},
             )
@@ -134,7 +133,6 @@ class AdminTests(unittest.TestCase):
                     isbn="",
                     prijs_cent_excl=100,
                     voorraad=None,
-                    badge="",
                     cover_name="zonder.png",
                     cover_bytes=_PNG,
                 )
@@ -151,7 +149,6 @@ class AdminTests(unittest.TestCase):
                     isbn="",
                     prijs_cent_excl=100,
                     voorraad=1,
-                    badge="",
                     cover_name="geen.png",
                     cover_bytes=b"not a png",
                 )
@@ -230,7 +227,6 @@ class AdminTests(unittest.TestCase):
                     "ISBN": "",
                     "prijs_cent_excl": "100",
                     "voorraad": "1",
-                    "badge": "",
                 },
             )
             self.assertEqual(saved.status_code, 200, saved.text)

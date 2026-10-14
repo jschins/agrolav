@@ -277,15 +277,6 @@ main.home-main.none .rail.home {{ display: none; }}
   display: block;
   background: var(--card);
 }}
-.badge {{
-  display: inline-block;
-  margin-top: 0.45rem;
-  background: var(--accent);
-  border-radius: 4px;
-  padding: 0.1rem 0.4rem;
-  font-family: "Alegreya Sans", sans-serif;
-  font-size: 0.78rem;
-}}
 .home-filters {{
   display: flex;
   flex-wrap: wrap;
@@ -340,7 +331,7 @@ main.home-main.none .rail.home {{ display: none; }}
   padding: 0.05rem 0;
 }}
 .filter[data-name="auteur"] .filter-menu button {{
-  line-height: 1;
+  line-height: 1.5;
   padding: 0 0.75rem;
   font-size: 0.82rem;
 }}
@@ -510,18 +501,12 @@ def _nav(active: str, cart_count: int) -> str:
     return "\n      ".join(links)
 
 
-def _centered(book: Book) -> bool:
-    return book.badge.casefold() == "center"
-
-
 def _card_label(text: str) -> str:
     """Card line without parenthetical notes, such as a century range."""
     return re.sub(r"\s*\([^)]*\)", "", text).strip()
 
 
 def _cover(book: Book) -> str:
-    label = "" if _centered(book) else book.badge
-    badge = f'<span class="badge">{escape(label)}</span>' if label else ""
     return (
         f'<div class="cover"><img src="/omslag/{escape(book.slug)}" alt="{escape(book.titel)}"></div>'
         f'<div class="mono">{escape(_card_label(book.tijdvak))}</div>'
@@ -529,7 +514,6 @@ def _cover(book: Book) -> str:
         f"<h3>{escape(book.titel)}</h3>"
         f"<p>{escape(book.auteur)}</p>"
         f'<p class="price">{escape(euro(book.prijs_cent_excl))}</p>'
-        f"{badge}"
     )
 
 
@@ -585,13 +569,12 @@ def _letter(word: str) -> str:
     return ""
 
 
-def _book_card(book: Book, week: bool = False) -> str:
-    mark = ' data-week="1"' if week else ""
+def _book_card(book: Book) -> str:
     return (
         f'<a class="card book" href="/boeken/{escape(book.slug)}"'
         f' data-genre="{escape(book.genre)}" data-auteur="{escape(book.auteur)}"'
         f' data-letters="{escape(_author_letters(book.auteur))}"'
-        f' data-tijdvak="{escape(book.tijdvak)}" data-formaat="{escape(book.formaat)}"{mark}>'
+        f' data-tijdvak="{escape(book.tijdvak)}" data-formaat="{escape(book.formaat)}">'
         f"{_cover(book)}</a>"
     )
 
@@ -617,13 +600,6 @@ def _head(label: str, heading: str) -> str:
     )
 
 
-def _featured(catalog: Catalog) -> Book:
-    for book in catalog.books:
-        if _centered(book):
-            return book
-    return catalog.books[0]
-
-
 _CAROUSEL = """
 <script>
 (function () {
@@ -635,13 +611,8 @@ _CAROUSEL = """
   var dragged = false;
   var pressCard = null;
   var suppressClick = false;
-  function centerWeek() {
-    var week = rail.querySelector("[data-week]");
-    if (!week || week.classList.contains("is-out")) {
-      rail.scrollLeft = 0;
-      return;
-    }
-    rail.scrollLeft = week.offsetLeft - (rail.clientWidth - week.offsetWidth) / 2;
+  function centerRail() {
+    rail.scrollLeft = Math.max(0, (rail.scrollWidth - rail.clientWidth) / 2);
   }
   function applyFilters() {
     var selected = [];
@@ -661,7 +632,7 @@ _CAROUSEL = """
       if (show) shown += 1;
     });
     rail.closest("main").classList.toggle("none", shown === 0);
-    if (shown) centerWeek();
+    if (shown) centerRail();
   }
   document.querySelectorAll(".filter").forEach(function (filter) {
     var knob = filter.querySelector(".filter-knob");
@@ -691,8 +662,8 @@ _CAROUSEL = """
       filter.classList.remove("open");
     });
   });
-  centerWeek();
-  window.addEventListener("resize", centerWeek);
+  centerRail();
+  window.addEventListener("resize", centerRail);
   rail.addEventListener("dragstart", function (event) { event.preventDefault(); });
   rail.addEventListener("pointerdown", function (event) {
     if (event.pointerType === "touch" || event.button !== 0) return;
@@ -741,8 +712,7 @@ _CAROUSEL = """
 
 
 def home_page(catalog: Catalog, cart_count: int) -> str:
-    featured = _featured(catalog)
-    cards = "".join(_book_card(book, week=book.slug == featured.slug) for book in catalog.books)
+    cards = "".join(_book_card(book) for book in catalog.books)
     genres = sorted({book.genre for book in catalog.books}, key=str.casefold)
     auteurs = sorted({letter for book in catalog.books for letter in _author_letters(book.auteur).split()})
     tijdvakken = sorted({book.tijdvak for book in catalog.books}, key=str.casefold)
@@ -810,10 +780,6 @@ def _prose(text: str) -> str:
 
 
 def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
-    label = "" if _centered(book) else book.badge
-    badge = (
-        f"<p><span class=\"mono\">Badge</span> {escape(label)}</p>" if label else ""
-    )
     body = f"""
 <main class="wrap">
   <div class="buy-row">
@@ -832,7 +798,6 @@ def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
       {"" if not book.korte_tekst else f'<p><span class="mono">Korte tekst</span> {escape(book.korte_tekst)}</p>'}
       <p><span class="mono">Prijs</span> {escape(euro(book.prijs_cent_excl))}</p>
       {"" if book.voorraad is None else f'<p><span class="mono">Voorraad</span> {book.voorraad}</p>'}
-      {badge}
       <p>Papieren exemplaar. Betaling met iDEAL via Mollie.</p>
       <form method="post" action="/winkelwagen" class="actions">
         <input type="hidden" name="slug" value="{escape(book.slug)}">
