@@ -1026,10 +1026,6 @@ def rekening_review_page(
     code: str = "",
     error: str = "",
     notice: str = "",
-    bedrijfsnaam: str = "",
-    contactpersoon: str = "",
-    contact_email: str = "",
-    btw_nummer: str = "",
 ) -> str:
     hidden = "".join(
         f'<input type="hidden" name="aantal-{escape(slug)}" value="{aantal}">'
@@ -1051,13 +1047,46 @@ def rekening_review_page(
   </table>
   <p><a class="btn ghost" href="/rekening">Wijzig bestelling</a></p>
   {problem}{sent}
-  <form method="post" action="/rekening/voltooi">
+  <form id="voltooi" method="post" action="/rekening/voltooi">
     {hidden}
     <label for="code">Code</label>
     <input id="code" name="code" required maxlength="80" value="{escape(code)}">
-    <p><button class="btn" type="submit">Voltooi bestelling</button></p>
   </form>
-  <form method="post" action="/rekening/bestelcode">
+  <form id="verzoek" method="post" action="/rekening/bestelcode">
+    {hidden}
+  </form>
+  <p class="actions">
+    <button class="btn" type="submit" form="voltooi">Voltooi bestelling</button>
+    <button class="btn ghost" type="submit" form="verzoek">Verzoek bestelcode</button>
+  </p>
+</main>
+"""
+    return page("Bestelling", catalog, body, cart_count, menu_href("rekening"))
+
+
+def rekening_code_request_page(
+    catalog: Catalog,
+    lines: list[tuple[str, str, int]],
+    cart_count: int,
+    error: str = "",
+    notice: str = "",
+    bedrijfsnaam: str = "",
+    contactpersoon: str = "",
+    contact_email: str = "",
+    btw_nummer: str = "",
+) -> str:
+    hidden = "".join(
+        f'<input type="hidden" name="aantal-{escape(slug)}" value="{aantal}">'
+        for slug, _title, aantal in lines
+    )
+    problem = f'<p class="error">{escape(error)}</p>' if error else ""
+    sent = f"<p>{escape(notice)}</p>" if notice else ""
+    body = f"""
+<main class="wrap narrow">
+  <h1>Verzoek bestelcode</h1>
+  <hr class="rule">
+  {problem}{sent}
+  <form id="verstuur" method="post" action="/rekening/bestelcode/verstuur">
     {hidden}
     <label for="bedrijfsnaam">Bedrijfsnaam</label>
     <input id="bedrijfsnaam" name="bedrijfsnaam" required maxlength="120" value="{escape(bedrijfsnaam)}">
@@ -1067,11 +1096,17 @@ def rekening_review_page(
     <input id="contact_email" name="contact_email" type="email" required maxlength="200" value="{escape(contact_email)}">
     <label for="btw_nummer">BTW-nummer</label>
     <input id="btw_nummer" name="btw_nummer" required maxlength="40" value="{escape(btw_nummer)}">
-    <p><button class="btn ghost" type="submit">Verzoek bestelcode</button></p>
   </form>
+  <form id="annuleer" method="post" action="/rekening/bestellen">
+    {hidden}
+  </form>
+  <p class="actions">
+    <button class="btn" type="submit" form="verstuur">Versturen</button>
+    <button class="btn ghost" type="submit" form="annuleer">Annuleren</button>
+  </p>
 </main>
 """
-    return page("Bestelling", catalog, body, cart_count, menu_href("rekening"))
+    return page("Verzoek bestelcode", catalog, body, cart_count, menu_href("rekening"))
 
 
 def invoice_page(catalog: Catalog, invoice, cart_count: int) -> str:

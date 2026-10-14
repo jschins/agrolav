@@ -357,11 +357,33 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn("Wijzig bestelling", started.text)
             self.assertIn('name="code"', started.text)
             self.assertIn("Verzoek bestelcode", started.text)
-            self.assertIn('name="bedrijfsnaam"', started.text)
+            self.assertIn('class="actions"', started.text)
+            self.assertNotIn('name="bedrijfsnaam"', started.text)
             self.assertNotIn('name="email"', started.text)
             self.assertNotIn('name="vat_number"', started.text)
             self.assertIn("Voltooi bestelling", started.text)
             self.assertIn(">2</td>", started.text)
+
+            asked = client.post(
+                "/rekening/bestelcode",
+                data={"aantal-catharina-dialoog": "2", "aantal-innerlijke-rust": "1"},
+            )
+            self.assertEqual(asked.status_code, 200)
+            self.assertIn('name="bedrijfsnaam"', asked.text)
+            self.assertIn('name="contactpersoon"', asked.text)
+            self.assertIn('name="contact_email"', asked.text)
+            self.assertIn('name="btw_nummer"', asked.text)
+            self.assertIn("Versturen", asked.text)
+            self.assertIn("Annuleren", asked.text)
+            self.assertNotIn("Voltooi bestelling", asked.text)
+
+            back = client.post(
+                "/rekening/bestellen",
+                data={"aantal-catharina-dialoog": "2", "aantal-innerlijke-rust": "1"},
+            )
+            self.assertEqual(back.status_code, 200)
+            self.assertIn("Voltooi bestelling", back.text)
+            self.assertNotIn('name="bedrijfsnaam"', back.text)
 
             changed = client.get("/rekening")
             self.assertIn('name="aantal-catharina-dialoog" value="2"', changed.text)

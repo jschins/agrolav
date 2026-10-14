@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 
 from app.cart import dump_cart, load_cart
 from app.catalog import Book, Catalog, load_catalog, vat_cents
-from app.ledger import create_invoice, get_invoice, overlay_stock
+from app.ledger import create_invoice, get_invoice, overlay_stock, save_shop_debtor, shop_debtor_by_code
 from app.mollie import DevMollie, MollieClient, Payment
 from app.reminders import send_code_request
 from app.orders import (
@@ -55,6 +55,7 @@ from app.pages import (
     invoice_page,
     rekening_done_page,
     rekening_page,
+    rekening_code_request_page,
     rekening_review_page,
 )
 from app.rekening import (
@@ -111,7 +112,7 @@ class Settings:
 def load_root_env() -> None:
     root_env = _ROOT.parent / ".env"
     if root_env.is_file():
-        load_dotenv(root_env, interpolate=False, override=False)
+        load_dotenv(root_env, interpolate=False, override=True)
 
 
 def settings_from_env() -> Settings:
@@ -285,6 +286,19 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         count = len(cart_of(request))
         counts, problem = counts_from_form(form, catalog.books)
         lines = order_lines(catalog.books, counts or {})
+        if counts is None:
+            return html(
+                rekening_review_page(catalog, lines, count, error=problem or "De bestelling ontbreekt."),
+                400,
+            )
+        return html(rekening_code_request_page(catalog, lines, count))
+
+    @app.post("/rekening/bestelcode/verstuur", response_class=HTMLResponse)
+    async def rekening_bestelcode_verstuur(request: Request) -> HTMLResponse:
+        form = await request.form()
+        count = len(cart_of(request))
+        counts, problem = counts_from_form(form, catalog.books)
+        lines = order_lines(catalog.books, counts or {})
         company = str(form.get("bedrijfsnaam") or "").strip()
         contact = str(form.get("contactpersoon") or "").strip()
         contact_email = str(form.get("contact_email") or "").strip()
@@ -292,7 +306,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
 
         def show(error: str = "", notice: str = "", status: int = 200) -> HTMLResponse:
             return html(
-                rekening_review_page(
+                rekening_code_request_page(
                     catalog,
                     lines,
                     count,
@@ -317,10 +331,18 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         if not 2 <= len(vat) <= 40:
             return show("Vul het btw-nummer in.", status=400)
         try:
-            send_code_request(company, contact, contact_email, vat)
-        except (RuntimeError, OSError):
+            code = save_shop_debtor(company, contact_email, vat)
+        except (RuntimeError, OSError) as exc:
+            log.warning("bestelcode save failed: %s", exc.__cause__ or exc)
+            return show("De bestelcode kan niet worden opgeslagen.", status=500)
+        try:
+            send_code_request(contact, contact_email, code)
+        except (RuntimeError, OSError) as exc:
+            log.warning("bestelcode mail failed: %s", exc.__cause__ or exc)
             return show("De mail kan niet worden verstuurd.", status=500)
-        return show(notice="Het verzoek is verstuurd.")
+        return html(
+            rekening_review_page(catalog, lines, count, notice="De bestelcode is verstuurd."),
+        )
 
     @app.post("/rekening/voltooi")
     async def rekening_voltooi(request: Request) -> Response:
@@ -332,10 +354,16 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         if counts is None:
             return html(rekening_review_page(catalog, lines, count, code, problem), 400)
         try:
-            ledger = read_rekening(settings.rekening_path)
-        except (OSError, json.JSONDecodeError, ValueError):
-            return html(rekening_review_page(catalog, lines, count, code, "rekening.json kan niet worden gelezen."), 500)
-        company = find_company(ledger, code)
+            company = shop_debtor_by_code(code)
+        except (RuntimeError, OSError) as exc:
+            log.warning("bestelcode lookup failed: %s", exc.__cause__ or exc)
+            return html(rekening_review_page(catalog, lines, count, code, "De bestelcode kan niet worden gelezen."), 500)
+        if company is None:
+            try:
+                ledger = read_rekening(settings.rekening_path)
+            except (OSError, json.JSONDecodeError, ValueError):
+                return html(rekening_review_page(catalog, lines, count, code, "rekening.json kan niet worden gelezen."), 500)
+            company = find_company(ledger, code)
         if company is None:
             return html(
                 rekening_review_page(catalog, lines, count, code.strip(), "Deze code hoort niet bij een bedrijf."),

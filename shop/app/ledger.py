@@ -387,6 +387,95 @@ def apply_allocations(conn: sqlite3.Connection, allocations: list[Allocation]) -
     conn.commit()
 
 
+def _agrolav_connection():
+    import os
+
+    url = os.environ.get("HUB_DATABASE_URL", "").strip()
+    if not url:
+        raise RuntimeError("HUB_DATABASE_URL is not set")
+    try:
+        import pyodbc
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("pyodbc is not installed") from exc
+    try:
+        return pyodbc.connect(url, autocommit=True, timeout=15)
+    except pyodbc.Error as exc:
+        raise RuntimeError("agrolav login failed") from exc
+
+
+def save_shop_debtor(name: str, email: str, vat_number: str) -> str:
+    """Store a new debtor and return the bestelcode. A code means ship before payment."""
+    import secrets
+
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    conn = _agrolav_connection()
+    try:
+        cursor = conn.cursor()
+        code = ""
+        for _ in range(8):
+            candidate = "".join(secrets.choice(alphabet) for _ in range(18))
+            cursor.execute("SELECT 1 FROM dbo.shop_debtors WHERE code = ?", candidate)
+            if cursor.fetchone() is None:
+                code = candidate
+                break
+        if not code:
+            raise RuntimeError("bestelcode kon niet worden gemaakt")
+        cursor.execute(
+            """
+            INSERT INTO dbo.shop_debtors (name, email, address, vat_number, code)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            name.strip(),
+            email.strip(),
+            "",
+            vat_number.strip(),
+            code,
+        )
+        return code
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError("shop_debtors kon niet worden geschreven") from exc
+    finally:
+        conn.close()
+
+
+def shop_debtor_by_code(code: str) -> dict | None:
+    import os
+
+    wanted = code.strip()
+    if not wanted or not os.environ.get("HUB_DATABASE_URL", "").strip():
+        return None
+    conn = _agrolav_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT name, email, address, vat_number, code
+            FROM dbo.shop_debtors
+            WHERE code = ?
+            """,
+            wanted,
+        )
+        row = cursor.fetchone()
+    except Exception as exc:
+        raise RuntimeError("shop_debtors kon niet worden gelezen") from exc
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    stored = str(row[4] or "").strip()
+    if not stored:
+        return None
+    return {
+        "name": str(row[0] or "").strip(),
+        "email": str(row[1] or "").strip(),
+        "address": str(row[2] or "").strip(),
+        "vat_number": str(row[3] or "").strip(),
+        "code": stored,
+    }
+
+
 def euros_to_cents(amount: Decimal) -> int:
     return int((amount * Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 

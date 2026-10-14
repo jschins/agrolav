@@ -21,7 +21,7 @@ from app.orders import connect
 _ROOT = Path(__file__).resolve().parent.parent
 
 
-def send_message(sender: str, recipient: str, subject: str, body: str) -> None:
+def send_message(sender: str, recipient: str, subject: str, body: str, copy: str = "") -> None:
     host = os.environ.get("SHOP_SMTP_HOST", "").strip()
     if not host:
         raise RuntimeError("SHOP_SMTP_HOST is not set")
@@ -30,6 +30,8 @@ def send_message(sender: str, recipient: str, subject: str, body: str) -> None:
     message["Subject"] = subject
     message["From"] = sender
     message["To"] = recipient
+    if copy and copy.lower() != recipient.lower():
+        message["Cc"] = copy
     message.set_content(body)
     with smtplib.SMTP(host, port, timeout=30) as smtp:
         username = os.environ.get("SHOP_SMTP_USER", "").strip()
@@ -44,22 +46,24 @@ def send_reminder(invoice, body: str, sender: str) -> None:
     send_message(sender, invoice.email, f"Factuur {invoice.number}", body)
 
 
-def send_code_request(company: str, contact: str, email: str, vat: str) -> None:
-    """Ask for a bestelcode. From and to are the same address until the shop address is used."""
+def send_code_request(contact: str, email: str, code: str) -> None:
+    """Send the bestelcode to the contact, with a copy to the shop."""
     sender = os.environ.get("SHOP_CODE_MAIL_FROM", "j.m.schins@gmail.com").strip() or "j.m.schins@gmail.com"
-    recipient = os.environ.get("SHOP_CODE_MAIL_TO", "j.m.schins@gmail.com").strip() or "j.m.schins@gmail.com"
+    copy = os.environ.get("SHOP_CODE_MAIL_CC", "j.m.schins@gmail.com").strip() or "j.m.schins@gmail.com"
     try:
         send_message(
             sender,
-            recipient,
-            "Verzoek bestelcode",
+            email,
+            "Uw bestelcode",
             (
-                "Verzoek om een bestelcode\n\n"
-                f"Bedrijfsnaam: {company}\n"
-                f"Naam contactpersoon: {contact}\n"
-                f"E-mail contactpersoon: {email}\n"
-                f"BTW-nummer: {vat}\n"
+                f"Geachte {contact}:\n"
+                "\n"
+                "Uw bestelcode voor het bestellen op rekening bij Uitgeverij De Boog is\n"
+                f"{code}\n"
+                "\n"
+                "Met deze code kunt u uw bestellingen plaatsen. Wij vertrouwen erop dat u de rekeningen uiterlijk binnen één maand na ontvangst van de facturen betaalt; uiteraard, mits de bestelde boeken daadwerkelijk zijn geleverd.\n"
             ),
+            copy,
         )
     except smtplib.SMTPException as exc:
         raise RuntimeError("mail failed") from exc
