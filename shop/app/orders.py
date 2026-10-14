@@ -1,11 +1,10 @@
-"""Shop orders in a local SQLite file. This is not the bookkeeping database."""
+"""Shop orders in agrolav. This is not the bookkeeping database."""
 from __future__ import annotations
 
 import json
-import sqlite3
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -36,15 +35,48 @@ class Order:
     address: Address
 
 
-def connect(path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+def connect(*, autocommit: bool = False):
+    url = os.environ.get("HUB_DATABASE_URL", "").strip()
+    if not url:
+        raise RuntimeError("HUB_DATABASE_URL is not set")
+    try:
+        import pyodbc
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("pyodbc is not installed") from exc
+    try:
+        return pyodbc.connect(url, autocommit=autocommit, timeout=15)
+    except pyodbc.Error as exc:
+        raise RuntimeError("agrolav login failed") from exc
+
+
+def query(conn, sql: str, params: tuple = ()) -> list[dict]:
+    cursor = conn.cursor()
+    cursor.execute(sql, params) if params else cursor.execute(sql)
+    if cursor.description is None:
+        return []
+    names = [column[0] for column in cursor.description]
+    return [dict(zip(names, row)) for row in cursor.fetchall()]
+
+
+def one(conn, sql: str, params: tuple = ()) -> dict | None:
+    found = query(conn, sql, params)
+    return found[0] if found else None
+
+
+def run(conn, sql: str, params: tuple = ()) -> None:
+    cursor = conn.cursor()
+    cursor.execute(sql, params) if params else cursor.execute(sql)
+
+
+def identity(conn) -> int:
+    row = one(conn, "SELECT CAST(SCOPE_IDENTITY() AS int) AS id")
+    if row is None or row["id"] is None:
+        raise RuntimeError("geen nieuwe sleutel")
+    return int(row["id"])
 
 
 def insert_order(
-    conn: sqlite3.Connection,
+    conn,
     *,
     order_id: str,
     token: str,
@@ -60,9 +92,10 @@ def insert_order(
         "postcode": address.postcode,
         "city": address.city,
     }
-    conn.execute(
+    run(
+        conn,
         """
-        INSERT INTO orders
+        INSERT INTO dbo.shop_orders
             (id, token, email, status, mollie_id, amount_cents, vat_cents, created_at, address_json)
         VALUES (?, ?, ?, 'open', NULL, ?, ?, ?, ?)
         """,
@@ -76,21 +109,20 @@ def insert_order(
             json.dumps(posted),
         ),
     )
-    conn.executemany(
-        """
-        INSERT INTO order_lines (order_id, slug, number_of_copies, price_cents_per_copy)
-        VALUES (?, ?, ?, ?)
-        """,
-        [
-            (order_id, item.slug, item.number_of_copies, item.price_cents_per_copy)
-            for item in items
-        ],
-    )
+    for item in items:
+        run(
+            conn,
+            """
+            INSERT INTO dbo.shop_orderlines (order_id, slug, number_of_copies, price_cents_per_copy)
+            VALUES (?, ?, ?, ?)
+            """,
+            (order_id, item.slug, item.number_of_copies, item.price_cents_per_copy),
+        )
     conn.commit()
 
 
-def attach_payment(conn: sqlite3.Connection, order_id: str, mollie_id: str) -> None:
-    conn.execute("UPDATE orders SET mollie_id = ? WHERE id = ?", (mollie_id, order_id))
+def attach_payment(conn, order_id: str, mollie_id: str) -> None:
+    run(conn, "UPDATE dbo.shop_orders SET mollie_id = ? WHERE id = ?", (mollie_id, order_id))
     conn.commit()
 
 
@@ -106,16 +138,17 @@ def _address_from_json(raw: object) -> Address:
     )
 
 
-def _lines_for(conn: sqlite3.Connection, order_id: str) -> tuple[OrderItem, ...]:
-    rows = conn.execute(
+def _lines_for(conn, order_id: str) -> tuple[OrderItem, ...]:
+    rows = query(
+        conn,
         """
         SELECT slug, number_of_copies, price_cents_per_copy
-        FROM order_lines
+        FROM dbo.shop_orderlines
         WHERE order_id = ?
         ORDER BY id
         """,
         (order_id,),
-    ).fetchall()
+    )
     return tuple(
         OrderItem(
             slug=row["slug"],
@@ -126,7 +159,7 @@ def _lines_for(conn: sqlite3.Connection, order_id: str) -> tuple[OrderItem, ...]
     )
 
 
-def _order_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Order:
+def _order_from_row(conn, row: dict) -> Order:
     items = _lines_for(conn, row["id"])
     return Order(
         id=row["id"],
@@ -141,22 +174,36 @@ def _order_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Order:
     )
 
 
-def get_order(conn: sqlite3.Connection, order_id: str) -> Order | None:
-    row = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+def get_order(conn, order_id: str) -> Order | None:
+    row = one(
+        conn,
+        """
+        SELECT id, token, email, status, mollie_id, amount_cents, vat_cents, address_json
+        FROM dbo.shop_orders WHERE id = ?
+        """,
+        (order_id,),
+    )
     if row is None:
         return None
     return _order_from_row(conn, row)
 
 
-def order_by_payment(conn: sqlite3.Connection, mollie_id: str) -> Order | None:
-    row = conn.execute("SELECT * FROM orders WHERE mollie_id = ?", (mollie_id,)).fetchone()
+def order_by_payment(conn, mollie_id: str) -> Order | None:
+    row = one(
+        conn,
+        """
+        SELECT id, token, email, status, mollie_id, amount_cents, vat_cents, address_json
+        FROM dbo.shop_orders WHERE mollie_id = ?
+        """,
+        (mollie_id,),
+    )
     if row is None:
         return None
     return _order_from_row(conn, row)
 
 
 def apply_payment(
-    conn: sqlite3.Connection,
+    conn,
     order: Order,
     *,
     status: str,
@@ -171,11 +218,11 @@ def apply_payment(
     if order.status == "paid":
         return "paid"
     if status == "paid":
-        conn.execute("UPDATE orders SET status = 'paid' WHERE id = ?", (order.id,))
+        run(conn, "UPDATE dbo.shop_orders SET status = 'paid' WHERE id = ?", (order.id,))
         conn.commit()
         return "paid"
     if status in {"canceled", "expired", "failed"} and order.status == "open":
-        conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order.id))
+        run(conn, "UPDATE dbo.shop_orders SET status = ? WHERE id = ?", (status, order.id))
         conn.commit()
         return status
     return order.status

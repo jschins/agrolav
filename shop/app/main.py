@@ -27,7 +27,14 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 
 from app.cart import dump_cart, load_cart
 from app.catalog import Book, Catalog, load_catalog, vat_cents
-from app.ledger import create_invoice, get_invoice, overlay_stock, save_shop_debtor, shop_debtor_by_code
+from app.ledger import (
+    create_invoice,
+    get_invoice,
+    overlay_stock,
+    save_rekening_sale,
+    save_shop_debtor,
+    shop_debtor_by_code,
+)
 from app.mollie import DevMollie, MollieClient, Payment
 from app.reminders import send_code_request
 from app.orders import (
@@ -358,6 +365,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         except (RuntimeError, OSError) as exc:
             log.warning("bestelcode lookup failed: %s", exc.__cause__ or exc)
             return html(rekening_review_page(catalog, lines, count, code, "De bestelcode kan niet worden gelezen."), 500)
+        stored_debtor = company
         if company is None:
             try:
                 ledger = read_rekening(settings.rekening_path)
@@ -396,6 +404,15 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             )
         finally:
             conn.close()
+        if stored_debtor is not None:
+            try:
+                save_rekening_sale(code, invoice, vat_cents(invoice.payable_cents, catalog.vat_rate))
+            except (RuntimeError, OSError) as exc:
+                log.warning("rekening save failed: %s", exc.__cause__ or exc)
+                return html(
+                    rekening_review_page(catalog, lines, count, code.strip(), "De factuur kan niet worden opgeslagen."),
+                    500,
+                )
         response = RedirectResponse(f"/rekening/factuur/{invoice.number}", status_code=303)
         response.delete_cookie(_REKENING_COOKIE, path="/")
         return response

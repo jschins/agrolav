@@ -6,12 +6,13 @@ not write a booking, a category, or a modification.
 from __future__ import annotations
 
 import re
-import sqlite3
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from app.catalog import Book, Catalog
+from app.orders import connect as _agrolav_connection
+from app.orders import identity, one, query, run
 
 ACCOUNT_DUE_DAYS = 14
 REMINDER_STEPS = (
@@ -387,7 +388,7 @@ def apply_allocations(conn: sqlite3.Connection, allocations: list[Allocation]) -
     conn.commit()
 
 
-def _agrolav_connection():
+def _agrolav_connection(*, autocommit: bool = True):
     import os
 
     url = os.environ.get("HUB_DATABASE_URL", "").strip()
@@ -398,7 +399,7 @@ def _agrolav_connection():
     except ModuleNotFoundError as exc:
         raise RuntimeError("pyodbc is not installed") from exc
     try:
-        return pyodbc.connect(url, autocommit=True, timeout=15)
+        return pyodbc.connect(url, autocommit=autocommit, timeout=15)
     except pyodbc.Error as exc:
         raise RuntimeError("agrolav login failed") from exc
 
@@ -436,6 +437,89 @@ def save_shop_debtor(name: str, email: str, vat_number: str) -> str:
         raise
     except Exception as exc:
         raise RuntimeError("shop_debtors kon niet worden geschreven") from exc
+    finally:
+        conn.close()
+
+
+def save_rekening_sale(code: str, invoice: Invoice, vat_cents_amount: int) -> None:
+    """Write the account order and its invoice for an existing shop debtor."""
+    import json
+    import secrets
+    import uuid
+
+    conn = _agrolav_connection(autocommit=False)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SET NOCOUNT ON")
+        cursor.execute("SELECT id FROM dbo.shop_debtors WHERE code = ?", code.strip())
+        debtor = cursor.fetchone()
+        if debtor is None:
+            raise RuntimeError("shop debtor missing")
+        order_id = uuid.uuid4().hex
+        cursor.execute(
+            """
+            INSERT INTO dbo.shop_orders (
+                id, token, email, status, mollie_id, amount_cents, vat_cents,
+                created_at, address_json, portokosten_cents, mollie_settlement_id
+            ) VALUES (?, ?, ?, 'rekening', NULL, ?, ?, ?, ?, NULL, NULL)
+            """,
+            order_id,
+            secrets.token_urlsafe(32),
+            invoice.email,
+            invoice.payable_cents,
+            vat_cents_amount,
+            invoice.ordered_at,
+            json.dumps(
+                {"name": invoice.debtor_name, "address": invoice.address},
+                ensure_ascii=False,
+            ),
+        )
+        for line in invoice.lines:
+            cursor.execute(
+                """
+                INSERT INTO dbo.shop_orderlines (
+                    order_id, slug, number_of_copies, price_cents_per_copy
+                ) VALUES (?, ?, ?, ?)
+                """,
+                order_id,
+                line.slug,
+                line.number_of_copies,
+                line.price_cents_per_copy,
+            )
+        cursor.execute(
+            """
+            INSERT INTO dbo.shop_invoices (
+                number, debtor_id, ordered_at, due_on, payable_cents, open_cents, portokosten_cents
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL)
+            """,
+            invoice.number,
+            int(debtor[0]),
+            invoice.ordered_at,
+            invoice.due_on.isoformat(),
+            invoice.payable_cents,
+            invoice.open_cents,
+        )
+        cursor.execute("SELECT CAST(SCOPE_IDENTITY() AS int)")
+        invoice_id = int(cursor.fetchone()[0])
+        for line in invoice.lines:
+            cursor.execute(
+                """
+                INSERT INTO dbo.shop_invoicelines (
+                    invoice_id, slug, number_of_copies, price_cents_per_copy
+                ) VALUES (?, ?, ?, ?)
+                """,
+                invoice_id,
+                line.slug,
+                line.number_of_copies,
+                line.price_cents_per_copy,
+            )
+        conn.commit()
+    except RuntimeError:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        raise RuntimeError("rekening kon niet worden opgeslagen") from exc
     finally:
         conn.close()
 
