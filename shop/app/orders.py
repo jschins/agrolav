@@ -37,46 +37,9 @@ class Order:
 
 
 def connect(path: Path) -> sqlite3.Connection:
-    path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS orders (
-            id TEXT PRIMARY KEY,
-            token TEXT NOT NULL,
-            email TEXT NOT NULL,
-            status TEXT NOT NULL,
-            mollie_id TEXT,
-            amount_cents INTEGER NOT NULL,
-            vat_cents INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            address_json TEXT NOT NULL DEFAULT '{}'
-        )
-        """
-    )
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(orders)")}
-    if "address_json" not in columns:
-        conn.execute("ALTER TABLE orders ADD COLUMN address_json TEXT NOT NULL DEFAULT '{}'")
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS order_lines (
-            id INTEGER PRIMARY KEY,
-            order_id TEXT NOT NULL REFERENCES orders(id),
-            slug TEXT NOT NULL,
-            number_of_copies INTEGER NOT NULL,
-            price_cents_per_copy INTEGER NOT NULL
-        )
-        """
-    )
-    if "items_json" in columns:
-        _move_items_json(conn)
-        conn.execute("ALTER TABLE orders DROP COLUMN items_json")
-    from app.ledger import ensure_schema
-
-    ensure_schema(conn)
-    conn.commit()
     return conn
 
 
@@ -143,43 +106,6 @@ def _address_from_json(raw: object) -> Address:
     )
 
 
-def _move_items_json(conn: sqlite3.Connection) -> None:
-    rows = conn.execute("SELECT id, items_json FROM orders").fetchall()
-    for row in rows:
-        already = conn.execute(
-            "SELECT 1 FROM order_lines WHERE order_id = ? LIMIT 1",
-            (row["id"],),
-        ).fetchone()
-        if already is not None:
-            continue
-        for item in _items_from_legacy(row["items_json"] or "[]"):
-            conn.execute(
-                """
-                INSERT INTO order_lines (order_id, slug, number_of_copies, price_cents_per_copy)
-                VALUES (?, ?, ?, ?)
-                """,
-                (row["id"], item.slug, item.number_of_copies, item.price_cents_per_copy),
-            )
-
-
-def _items_from_legacy(raw: str) -> tuple[OrderItem, ...]:
-    copies: dict[str, int] = {}
-    price: dict[str, int] = {}
-    order: list[str] = []
-    for item in json.loads(raw):
-        slug = str(item["slug"])
-        aantal = int(item["aantal"]) if "aantal" in item else 1
-        if slug not in copies:
-            order.append(slug)
-            price[slug] = int(item["price_cents"])
-            copies[slug] = 0
-        copies[slug] += aantal
-    return tuple(
-        OrderItem(slug=slug, number_of_copies=copies[slug], price_cents_per_copy=price[slug])
-        for slug in order
-    )
-
-
 def _lines_for(conn: sqlite3.Connection, order_id: str) -> tuple[OrderItem, ...]:
     rows = conn.execute(
         """
@@ -202,8 +128,6 @@ def _lines_for(conn: sqlite3.Connection, order_id: str) -> tuple[OrderItem, ...]
 
 def _order_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Order:
     items = _lines_for(conn, row["id"])
-    keys = row.keys()
-    address_raw = row["address_json"] if "address_json" in keys else "{}"
     return Order(
         id=row["id"],
         token=row["token"],
@@ -213,7 +137,7 @@ def _order_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Order:
         items=items,
         amount_cents=row["amount_cents"],
         vat_cents=row["vat_cents"],
-        address=_address_from_json(address_raw),
+        address=_address_from_json(row["address_json"]),
     )
 
 

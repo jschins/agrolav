@@ -96,7 +96,8 @@ environment, not in git.
 ### Cost of one copy sold
 
 The selling price and the cost of getting that copy into the customer’s
-hands are different numbers. A sold line should be able to show all four.
+hands are different numbers. The invoice line stores the selling price.
+The costs are not columns of `invoice_lines`.
 None of the three costs below is invented here, and none is posted to
 `beheer_boog` until the balance has a post for it.
 
@@ -106,9 +107,9 @@ None of the three costs below is invented here, and none is posted to
   run does not change the cost of copies already sold. No local code is
   chosen here.
 - **Vrijwilligersbijdrage.** The handling contribution for one copy. It is
-  not postage and it is not a wage. Store it as cents on the line,
-  multiplied by the quantity. Whether the customer is charged for it is
-  still open. Today the customer is charged the book price only.
+  not postage and it is not a wage. Store it as cents on the book, in
+  `book_costs`, not on the invoice line. Whether the customer is charged
+  for it is still open. Today the customer is charged the book price only.
 - **Portokosten.** The cost of one shipment. It belongs to the order first.
   Splitting it across the books in that order waits on a rule (by copy, by
   weight, or left on the order). The shop still does not add a postage
