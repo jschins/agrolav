@@ -8,6 +8,9 @@ AGENDA
 6. statistiek
 
 
+ALLE formulieren checken op CSRF, XSS, SQL injection
+excel formulieren checken op excel-aard, juiste kolommen etc. 
+IDOR insecure direct object reference: leesbare id's , via URL delen van website bereiken; e.g. invoice_1 in adresbalk: ik pak invoice_3
 
 
 NL46INGB0001726568	Centrale SIb
@@ -33,16 +36,24 @@ NL84INGB0002801129	Centrale SIa
 
 
 
-
+admin
 213.127.164.130	KG218
-77.63.121.130	mobiel Juleon
 81.23.245.2	Udenhout
 92.70.11.161	Jan Luijkenstraat
+country
+77.161.0.70	Jan Stoops
+center
+217.63.252.84	Den Eker
 
 
 agrolav@agrolav:/opt/agrolav$ sudo journalctl -u agrolav-hub --since "today" | grep "login refused"
 
 
+droplet omzetten: brief
+padel-rekeningen: voor punctuele hulp, worden meteen betaald
+$25-rekeningen: aan instudo maar ongedateerd, worden later betaald
+
+opencode -s ses_eb73a7287ffejqPEjU34VAr9rJ
 
 
 
