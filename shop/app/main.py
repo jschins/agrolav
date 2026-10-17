@@ -176,7 +176,6 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                 invoice,
                 status=payment.status,
                 amount_cents=payment.amount_cents,
-                invoice_number_from_provider=payment.order_id,
             )
         finally:
             conn.close()
@@ -291,6 +290,10 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         contact = str(form.get("contactpersoon") or "").strip()
         contact_email = str(form.get("contact_email") or "").strip()
         vat = str(form.get("btw_nummer") or "").strip()
+        street_name = str(form.get("street_name") or "").strip()
+        street_number = str(form.get("street_number") or "").strip()
+        postcode = str(form.get("postcode") or "").strip()
+        city = str(form.get("city") or "").strip()
 
         def show(error: str = "", notice: str = "", status: int = 200) -> HTMLResponse:
             return html(
@@ -304,6 +307,10 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                     contactpersoon=contact,
                     contact_email=contact_email,
                     btw_nummer=vat,
+                    street_name=street_name,
+                    street_number=street_number,
+                    postcode=postcode,
+                    city=city,
                 ),
                 status,
             )
@@ -312,14 +319,23 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             return show(problem or "De bestelling ontbreekt.", status=400)
         if not 2 <= len(company) <= 120:
             return show("Vul de bedrijfsnaam in.", status=400)
+        if not 2 <= len(street_name) <= 120:
+            return show("Vul de straatnaam in.", status=400)
+        if not 1 <= len(street_number) <= 12:
+            return show("Vul het huisnummer in.", status=400)
+        if not 4 <= len(postcode) <= 12:
+            return show("Vul de postcode in.", status=400)
+        if not 2 <= len(city) <= 80:
+            return show("Vul de plaats in.", status=400)
         if not 2 <= len(contact) <= 80:
             return show("Vul de naam van de contactpersoon in.", status=400)
         if not _EMAIL.match(contact_email) or len(contact_email) > 200:
             return show("Vul een geldig e-mailadres van de contactpersoon in.", status=400)
         if not 2 <= len(vat) <= 40:
             return show("Vul het btw-nummer in.", status=400)
+        address = Address(street=street_name, number=street_number, postalcode=postcode, city=city)
         try:
-            code = save_shop_debtor(company, contact_email, vat)
+            code = save_shop_debtor(company, contact_email, vat, address=address)
         except (RuntimeError, OSError) as exc:
             log.warning("bestelcode save failed: %s", exc.__cause__ or exc)
             return show("De bestelcode kan niet worden opgeslagen.", status=500)
@@ -538,7 +554,6 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         webhook_url = f"{settings.public_base_url}/mollie/webhook"
         try:
             payment_id, checkout_url = mollie.create_payment(
-                order_id=invoice.number,
                 amount_cents=amount,
                 description=description,
                 redirect_url=redirect_url,

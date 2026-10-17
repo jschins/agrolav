@@ -16,10 +16,11 @@ from app.ledger import (
     invoice_by_payment,
     open_invoices,
     save_shop_debtor,
+    shop_debtor_by_code,
 )
 from app.main import Settings, create_app
 from app.mollie import DevMollie, Payment, euro_value, payment_from_api, payment_payload
-from app.orders import connect, get_order
+from app.orders import Address, connect, get_order
 
 _ROOT = Path(__file__).resolve().parent.parent
 _SHIP = {
@@ -204,7 +205,6 @@ class ShopFlowTests(unittest.TestCase):
                 id=current.id,
                 status="paid",
                 amount_cents=current.amount_cents - 1,
-                order_id=current.order_id,
             )
             webhook = client.post("/mollie/webhook", data={"id": payment_id})
             self.assertEqual(webhook.status_code, 200)
@@ -295,30 +295,60 @@ class ShopFlowTests(unittest.TestCase):
             finally:
                 conn.close()
 
+    def test_bestelcode_request_shows_all_compulsory_address_fields(self) -> None:
+        book = _paper_book()
+        client, _mollie = self._client()
+        page = client.post("/rekening/bestelcode", data={f"aantal-{book.slug}": "1"})
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('<h1 class="one-line">Verzoek bestelcode</h1>', page.text)
+        body = page.text.split("<form", 1)[1]
+        for label, field in (
+            ("Bedrijfsnaam", "bedrijfsnaam"),
+            ("Straatnaam", "street_name"),
+            ("Huisnummer", "street_number"),
+            ("Postcode", "postcode"),
+            ("Plaats", "city"),
+            ("BTW-nummer", "btw_nummer"),
+            ("Naam contactpersoon", "contactpersoon"),
+            ("E-mail contactpersoon", "contact_email"),
+        ):
+            self.assertIn(f">{label}</label>", body)
+            self.assertIn(f'id="{field}" name="{field}"', body)
+        self.assertEqual(body.count(" required "), 8)
+
+    def test_a_bestelcode_request_stores_the_address(self) -> None:
+        code = save_shop_debtor(
+            "Adresbedrijf",
+            "adres@example.com",
+            "NL000000000B09",
+            address=Address(street="Kerkstraat", number="12a", postalcode="3512 KB", city="Utrecht"),
+        )
+        debtor = shop_debtor_by_code(code)
+        self.assertIsNotNone(debtor)
+        assert debtor is not None
+        self.assertEqual(debtor["address"], "Kerkstraat 12a, 3512 KB Utrecht")
+
     def test_payment_amount_uses_two_decimals(self) -> None:
         payload = payment_payload(
             amount_cents=875,
             description="De Boog",
             redirect_url="http://127.0.0.1:9000/betaling/DB-00001?token=t",
             webhook_url="http://127.0.0.1:9000/mollie/webhook",
-            order_id="DB-00001",
         )
         amount = payload["amount"]
         self.assertIsInstance(amount, dict)
         self.assertEqual(amount["value"], "8.75")
         self.assertEqual(euro_value(10), "0.10")
 
-    def test_api_payment_parser_reads_number_and_cents(self) -> None:
+    def test_api_payment_parser_reads_cents(self) -> None:
         payment = payment_from_api(
             {
                 "id": "tr_abc",
                 "status": "paid",
                 "amount": {"currency": "EUR", "value": "14.75"},
-                "metadata": {"order_id": "DB-00007"},
             }
         )
         self.assertEqual(payment.amount_cents, 1475)
-        self.assertEqual(payment.order_id, "DB-00007")
         self.assertEqual(Decimal("0.09"), load_catalog(_ROOT / "catalog.json").vat_rate)
 
 

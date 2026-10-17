@@ -119,6 +119,7 @@ nav a.selected {{
   color: var(--muted-foreground);
 }}
 h1 {{ font-size: clamp(2.6rem, 5vw, 4.4rem); max-width: 14ch; }}
+h1.one-line {{ max-width: none; white-space: nowrap; }}
 .rule {{
   border: 0;
   border-top: 3px double var(--foreground);
@@ -1048,6 +1049,10 @@ def rekening_code_request_page(
     contactpersoon: str = "",
     contact_email: str = "",
     btw_nummer: str = "",
+    street_name: str = "",
+    street_number: str = "",
+    postcode: str = "",
+    city: str = "",
 ) -> str:
     hidden = "".join(
         f'<input type="hidden" name="aantal-{escape(slug)}" value="{aantal}">'
@@ -1057,19 +1062,27 @@ def rekening_code_request_page(
     sent = f"<p>{escape(notice)}</p>" if notice else ""
     body = f"""
 <main class="wrap narrow">
-  <h1>Verzoek bestelcode</h1>
+  <h1 class="one-line">Verzoek bestelcode</h1>
   <hr class="rule">
   {problem}{sent}
   <form id="verstuur" method="post" action="/rekening/bestelcode/verstuur">
     {hidden}
     <label for="bedrijfsnaam">Bedrijfsnaam</label>
     <input id="bedrijfsnaam" name="bedrijfsnaam" required maxlength="120" value="{escape(bedrijfsnaam)}">
+    <label for="street_name">Straatnaam</label>
+    <input id="street_name" name="street_name" required maxlength="120" value="{escape(street_name)}">
+    <label for="street_number">Huisnummer</label>
+    <input id="street_number" name="street_number" required maxlength="12" value="{escape(street_number)}">
+    <label for="postcode">Postcode</label>
+    <input id="postcode" name="postcode" required maxlength="12" value="{escape(postcode)}">
+    <label for="city">Plaats</label>
+    <input id="city" name="city" required maxlength="80" value="{escape(city)}">
+    <label for="btw_nummer">BTW-nummer</label>
+    <input id="btw_nummer" name="btw_nummer" required maxlength="40" value="{escape(btw_nummer)}">
     <label for="contactpersoon">Naam contactpersoon</label>
     <input id="contactpersoon" name="contactpersoon" required maxlength="80" value="{escape(contactpersoon)}">
     <label for="contact_email">E-mail contactpersoon</label>
     <input id="contact_email" name="contact_email" type="email" required maxlength="200" value="{escape(contact_email)}">
-    <label for="btw_nummer">BTW-nummer</label>
-    <input id="btw_nummer" name="btw_nummer" required maxlength="40" value="{escape(btw_nummer)}">
   </form>
   <form id="annuleer" method="post" action="/rekening/bestellen">
     {hidden}

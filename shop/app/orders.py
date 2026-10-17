@@ -49,7 +49,6 @@ class Address:
 @dataclass(frozen=True)
 class Order:
     id: str
-    token: str
     email: str
     status: str
     items: tuple[OrderItem, ...]
@@ -238,7 +237,6 @@ def _lines_for(conn, order_id: str) -> tuple[OrderItem, ...]:
 def _order_from_row(conn, row: dict) -> Order:
     return Order(
         id=row["id"],
-        token=row["token"],
         email=row["email"],
         status=row["status"],
         items=_lines_for(conn, row["id"]),
@@ -252,7 +250,7 @@ def _order_from_row(conn, row: dict) -> Order:
 
 
 _ORDER_SELECT = """
-    SELECT o.id, o.token, o.email, o.status, o.amount_cents, o.vat_cents, o.invoice_number,
+    SELECT o.id, o.email, o.status, o.amount_cents, o.vat_cents, o.invoice_number,
            d.id AS debtor_id, d.name AS debtor_name, d.address_id
     FROM dbo.orders o
     JOIN dbo.debtors d ON d.id = o.debtor_id

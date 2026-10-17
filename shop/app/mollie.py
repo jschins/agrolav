@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from uuid import uuid4
 
 import httpx
 
@@ -18,14 +19,12 @@ def payment_payload(
     description: str,
     redirect_url: str,
     webhook_url: str,
-    order_id: str,
 ) -> dict[str, object]:
     return {
         "amount": {"currency": "EUR", "value": euro_value(amount_cents)},
         "description": description[:255],
         "redirectUrl": redirect_url,
         "webhookUrl": webhook_url,
-        "metadata": {"order_id": order_id},
     }
 
 
@@ -34,7 +33,6 @@ class Payment:
     id: str
     status: str
     amount_cents: int
-    order_id: str
 
 
 class MollieClient:
@@ -44,7 +42,6 @@ class MollieClient:
     def create_payment(
         self,
         *,
-        order_id: str,
         amount_cents: int,
         description: str,
         redirect_url: str,
@@ -55,7 +52,6 @@ class MollieClient:
             description=description,
             redirect_url=redirect_url,
             webhook_url=webhook_url,
-            order_id=order_id,
         )
         response = httpx.post(
             "https://api.mollie.com/v2/payments",
@@ -87,19 +83,17 @@ class DevMollie:
     def create_payment(
         self,
         *,
-        order_id: str,
         amount_cents: int,
         description: str,
         redirect_url: str,
         webhook_url: str,
     ) -> tuple[str, str]:
         del description, redirect_url, webhook_url
-        payment_id = f"tr_dev_{order_id}"
+        payment_id = f"tr_dev_{uuid4().hex}"
         self._payments[payment_id] = Payment(
             id=payment_id,
             status="open",
             amount_cents=amount_cents,
-            order_id=order_id,
         )
         return payment_id, f"{self.public_base_url}/dev/betalen/{payment_id}"
 
@@ -112,7 +106,6 @@ class DevMollie:
             id=current.id,
             status=status,
             amount_cents=current.amount_cents,
-            order_id=current.order_id,
         )
 
 
@@ -122,13 +115,8 @@ def payment_from_api(data: dict[str, object]) -> Payment:
         raise ValueError("Mollie payment has no amount")
     value = Decimal(str(amount.get("value")))
     cents = int((value * 100).quantize(Decimal("1")))
-    metadata = data.get("metadata") or {}
-    order_id = ""
-    if isinstance(metadata, dict):
-        order_id = str(metadata.get("order_id") or "")
     return Payment(
         id=str(data["id"]),
         status=str(data["status"]),
         amount_cents=cents,
-        order_id=order_id,
     )

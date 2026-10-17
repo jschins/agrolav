@@ -168,7 +168,7 @@ def _next_number(conn) -> str:
     return f"DB-{current + 1:05d}"
 
 
-def save_shop_debtor(name: str, email: str, vat_number: str) -> str:
+def save_shop_debtor(name: str, email: str, vat_number: str, address: Address | None = None) -> str:
     """Store a new debtor and return the bestelcode. A code means ship before payment."""
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     conn = connect(autocommit=True)
@@ -181,10 +181,11 @@ def save_shop_debtor(name: str, email: str, vat_number: str) -> str:
                 break
         if not code:
             raise RuntimeError("bestelcode kon niet worden gemaakt")
+        address_id = save_address(conn, address) if address is not None else None
         run(
             conn,
-            "INSERT INTO dbo.debtors (name, email, vat_number, code, address_id) VALUES (?, ?, ?, ?, NULL)",
-            (name.strip(), email.strip(), vat_number.strip(), code),
+            "INSERT INTO dbo.debtors (name, email, vat_number, code, address_id) VALUES (?, ?, ?, ?, ?)",
+            (name.strip(), email.strip(), vat_number.strip(), code, address_id),
         )
         return code
     except RuntimeError:
@@ -267,13 +268,12 @@ def create_account_order(
             conn,
             """
             INSERT INTO dbo.orders (
-                id, token, email, status, amount_cents, vat_cents,
+                id, email, status, amount_cents, vat_cents,
                 created_at, debtor_id, invoice_number
-            ) VALUES (?, ?, ?, 'open', ?, ?, ?, ?, NULL)
+            ) VALUES (?, ?, 'open', ?, ?, ?, ?, NULL)
             """,
             (
                 order_id,
-                secrets.token_urlsafe(32),
                 email,
                 payable,
                 vat_cents_amount,
@@ -474,11 +474,8 @@ def apply_payment(
     *,
     status: str,
     amount_cents: int,
-    invoice_number_from_provider: str,
 ) -> str:
     """Record a payment status fetched from Mollie. A paid invoice is never reopened."""
-    if invoice_number_from_provider != invoice.number:
-        return "invoice-mismatch"
     if amount_cents != invoice.payable_cents:
         return "amount-mismatch"
     if invoice.paid:

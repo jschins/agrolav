@@ -61,7 +61,6 @@ GO
 IF OBJECT_ID(N'dbo.orders', N'U') IS NULL
 CREATE TABLE dbo.orders (
     id                  nvarchar(64)   NOT NULL,
-    token               nvarchar(128)  NOT NULL,
     email               nvarchar(max)  NOT NULL,
     status              nvarchar(40)   NOT NULL,
     amount_cents        int            NOT NULL,
@@ -78,6 +77,11 @@ GO
 -- Bring an already-created orders table up to date.
 IF COL_LENGTH(N'dbo.orders', N'invoice_number') IS NULL
     ALTER TABLE dbo.orders ADD invoice_number nvarchar(40) NULL;
+GO
+
+-- The per-order return page is gone; invoices carry their own token now.
+IF COL_LENGTH(N'dbo.orders', N'token') IS NOT NULL
+    ALTER TABLE dbo.orders DROP COLUMN token;
 GO
 
 IF OBJECT_ID(N'dbo.orderlines', N'U') IS NULL
