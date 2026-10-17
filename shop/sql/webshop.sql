@@ -57,10 +57,14 @@ CREATE TABLE dbo.customers (
 );
 GO
 
--- The order id is now a plain INT counter; the random hex lives in token. An older
--- table (32-hex id, no token) is emptied and rebuilt, because the key type changed.
+-- The order id is an INT counter starting at 100000; the random hex lives in token. An
+-- older table (32-hex id, no token, or a different seed) is emptied and rebuilt.
 IF OBJECT_ID(N'dbo.orders', N'U') IS NOT NULL
-   AND COL_LENGTH(N'dbo.orders', N'token') IS NULL
+   AND (
+        COL_LENGTH(N'dbo.orders', N'token') IS NULL
+        OR CONVERT(bigint, (SELECT seed_value FROM sys.identity_columns
+                            WHERE object_id = OBJECT_ID(N'dbo.orders'))) <> 100000
+   )
 BEGIN
     IF OBJECT_ID(N'dbo.orderlines', N'U') IS NOT NULL DROP TABLE dbo.orderlines;
     DROP TABLE dbo.orders;
@@ -70,7 +74,7 @@ GO
 -- Website orders. Account buyers only. id counts up, so ORDER BY id is chronological.
 IF OBJECT_ID(N'dbo.orders', N'U') IS NULL
 CREATE TABLE dbo.orders (
-    id                  int             IDENTITY(1,1) NOT NULL,
+    id                  int             IDENTITY(100000,1) NOT NULL,
     token               nvarchar(64)    NOT NULL,   -- 32 random hex digits
     email               nvarchar(max)   NOT NULL,
     status              nvarchar(40)    NOT NULL,
@@ -103,10 +107,19 @@ CREATE TABLE dbo.orderlines (
 GO
 
 -- Invoices. A debtor or a customer owns the invoice, never both.
+-- The number is derived from id (DBF-{id}); there is no number column.
+-- An older table that still carried a number column is emptied and rebuilt.
+IF OBJECT_ID(N'dbo.invoices', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.invoices', N'number') IS NOT NULL
+BEGIN
+    IF OBJECT_ID(N'dbo.invoicelines', N'U') IS NOT NULL DROP TABLE dbo.invoicelines;
+    DROP TABLE dbo.invoices;
+END
+GO
+
 IF OBJECT_ID(N'dbo.invoices', N'U') IS NULL
 CREATE TABLE dbo.invoices (
-    id                  int             IDENTITY(1,1) NOT NULL,
-    number              nvarchar(40)    NOT NULL,
+    id                  int             IDENTITY(100000,1) NOT NULL,
     token               nvarchar(64)    NULL,   -- secret for the customer's return page
     debtor_id           int             NULL,
     customer_id         int             NULL,
@@ -118,7 +131,6 @@ CREATE TABLE dbo.invoices (
     open_cents          int             NOT NULL,
     portokosten_cents   int             NULL,
     CONSTRAINT pk_invoices PRIMARY KEY (id),
-    CONSTRAINT uq_invoices_number UNIQUE (number),
     CONSTRAINT fk_invoices_debtor FOREIGN KEY (debtor_id) REFERENCES dbo.debtors (id),
     CONSTRAINT fk_invoices_customer FOREIGN KEY (customer_id) REFERENCES dbo.customers (id),
     CONSTRAINT ck_invoices_owner CHECK (

@@ -270,6 +270,22 @@ def get_order(conn, order_id: int | str) -> Order | None:
     return _order_from_row(conn, row)
 
 
+def get_order_by_token(conn, token: str) -> Order | None:
+    """The order page URL carries the random token, not the INT counter."""
+    key = str(token or "").strip()
+    if not key:
+        return None
+    row = one(conn, f"{_ORDER_SELECT} WHERE o.token = ?", (key,))
+    if row is None:
+        return None
+    return _order_from_row(conn, row)
+
+
+def order_number(order_id: int) -> str:
+    """Human-readable order number, e.g. order 100000 -> DB-100000."""
+    return f"DB-{int(order_id)}"
+
+
 def orders_without_invoice(conn) -> list[Order]:
     """Account orders an administrator has not yet turned into an invoice."""
     rows = query(conn, f"{_ORDER_SELECT} WHERE o.invoice_number IS NULL ORDER BY o.id")

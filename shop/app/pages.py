@@ -6,6 +6,7 @@ import unicodedata
 from html import escape
 
 from app.catalog import Book, Catalog, euro, vat_cents
+from app.orders import order_number
 
 _FONTS = (
     "https://fonts.googleapis.com/css2?family=Alegreya+Sans:ital,wght@0,400;0,500;1,400"
@@ -904,7 +905,7 @@ def account_order_page(catalog: Catalog, order, cart_count: int) -> str:
 <main class="wrap narrow invoice">
   <div class="invoice-head">
     <p>{escape(order.debtor_name)}</p>
-    <p>Bestelling {escape(order.token)}</p>
+    <p>Bestelnummer {escape(order_number(order.id))}</p>
     <p>Totaal {escape(euro(order.amount_cents))}</p>
     {posted}
     <p>{escape(order.email)}</p>

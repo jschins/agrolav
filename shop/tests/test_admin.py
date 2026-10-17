@@ -234,7 +234,7 @@ class AdminTests(unittest.TestCase):
 
     def test_facturen_screen_turns_an_order_into_an_invoice(self) -> None:
         from app.ledger import create_account_order, save_shop_debtor
-        from app.orders import connect, get_order, orders_without_invoice
+        from app.orders import connect, get_order, get_order_by_token, orders_without_invoice
 
         code = save_shop_debtor("Parochie Test", "test@example.com", "NL000000000B01")
         order = create_account_order(
@@ -255,15 +255,15 @@ class AdminTests(unittest.TestCase):
             self.assertIn("Factureer", page.text)
             self.assertIn('class="selected" href="/facturen"', page.text)
 
-            invoiced = client.post(f"/facturen/order/{order.id}", follow_redirects=False)
+            invoiced = client.post(f"/facturen/order/{order.token}", follow_redirects=False)
             self.assertEqual(invoiced.status_code, 200, invoiced.text)
             self.assertIn("aangemaakt", invoiced.text)
 
             conn = connect()
             try:
-                stored = get_order(conn, order.id)
+                stored = get_order_by_token(conn, order.token)
                 assert stored is not None
-                self.assertRegex(stored.invoice_number, r"^DB-\d{5}$")
+                self.assertRegex(stored.invoice_number, r"^DBF-\d+$")
                 self.assertNotIn(order.id, [item.id for item in orders_without_invoice(conn)])
             finally:
                 conn.close()

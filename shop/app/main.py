@@ -44,7 +44,7 @@ from app.orders import (
     Address,
     OrderItem,
     connect,
-    get_order,
+    get_order_by_token,
 )
 from app.pages import (
     menu_href,
@@ -393,15 +393,15 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                 rekening_review_page(catalog, lines, count, code.strip(), "De bestelling kan niet worden opgeslagen."),
                 500,
             )
-        response = RedirectResponse(f"/rekening/bestelling/{order.id}", status_code=303)
+        response = RedirectResponse(f"/rekening/bestelling/{order.token}", status_code=303)
         response.delete_cookie(_REKENING_COOKIE, path="/")
         return response
 
-    @app.get("/rekening/bestelling/{order_id}", response_class=HTMLResponse)
-    def rekening_bestelling(request: Request, order_id: str) -> HTMLResponse:
+    @app.get("/rekening/bestelling/{token}", response_class=HTMLResponse)
+    def rekening_bestelling(request: Request, token: str) -> HTMLResponse:
         conn = connect()
         try:
-            order = get_order(conn, order_id)
+            order = get_order_by_token(conn, token)
         finally:
             conn.close()
         count = len(cart_of(request))

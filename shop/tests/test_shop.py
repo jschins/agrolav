@@ -20,7 +20,7 @@ from app.ledger import (
 )
 from app.main import Settings, create_app
 from app.mollie import DevMollie, Payment, euro_value, payment_from_api, payment_payload
-from app.orders import Address, connect, get_order
+from app.orders import Address, connect, get_order_by_token
 
 _ROOT = Path(__file__).resolve().parent.parent
 _SHIP = {
@@ -255,17 +255,19 @@ class ShopFlowTests(unittest.TestCase):
             )
             self.assertEqual(done.status_code, 303)
             self.assertTrue(done.headers["location"].startswith("/rekening/bestelling/"))
-            order_id = done.headers["location"].rsplit("/", 1)[-1]
+            token = done.headers["location"].rsplit("/", 1)[-1]
+            self.assertRegex(token, r"^[0-9a-f]{32}$")
 
             page = client.get(done.headers["location"])
             self.assertEqual(page.status_code, 200)
             self.assertIn("Parochie Voorbeeld", page.text)
-            self.assertIn("Bestelling", page.text)
+            self.assertIn("Bestelnummer", page.text)
+            self.assertRegex(page.text, r"Bestelnummer DB-\d+")
             self.assertIn("genoteerd", page.text)
 
             conn = connect()
             try:
-                order = get_order(conn, order_id)
+                order = get_order_by_token(conn, token)
                 self.assertIsNotNone(order)
                 assert order is not None
                 self.assertIsInstance(order.id, int)
@@ -276,12 +278,12 @@ class ShopFlowTests(unittest.TestCase):
                 self.assertEqual(len(order.items), 1)
 
                 invoice = create_debtor_invoice(conn, order)
-                self.assertRegex(invoice.number, r"^DB-\d{5}$")
+                self.assertRegex(invoice.number, r"^DBF-\d+$")
                 self.assertEqual(invoice.name, "Parochie Voorbeeld")
                 self.assertTrue(invoice.ship_before_payment)
                 self.assertFalse(invoice.paid)
 
-                stored = get_order(conn, order_id)
+                stored = get_order_by_token(conn, token)
                 assert stored is not None
                 self.assertEqual(stored.invoice_number, invoice.number)
                 self.assertEqual(stored.status, "invoiced")

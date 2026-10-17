@@ -157,14 +157,14 @@ def _take_stock(conn, slug: str, copies: int) -> None:
     )
 
 
-def _next_number(conn) -> str:
-    row = one(conn, "SELECT TOP 1 number FROM dbo.invoices ORDER BY id DESC")
-    current = 0
-    if row is not None:
-        match = re.search(r"(\d+)$", str(row["number"]))
-        if match:
-            current = int(match.group(1))
-    return f"DB-{current + 1:05d}"
+def invoice_number(invoice_id: int) -> str:
+    """The invoice's public number, derived from its id: DBF-{id}."""
+    return f"DBF-{int(invoice_id)}"
+
+
+def _invoice_id(number: str) -> int | None:
+    match = re.fullmatch(r"DBF-(\d+)", str(number or "").strip())
+    return int(match.group(1)) if match else None
 
 
 def save_shop_debtor(name: str, email: str, vat_number: str, address: Address | None = None) -> str:
@@ -318,7 +318,6 @@ def create_debtor_invoice(conn, order: Order) -> Invoice:
     if not order.items:
         raise ValueError("De factuur heeft geen regels.")
     when = datetime.now()
-    number = _next_number(conn)
     token = secrets.token_urlsafe(32)
     payable = order.amount_cents
     due_on = when.date() + timedelta(days=ACCOUNT_DUE_DAYS)
@@ -328,14 +327,15 @@ def create_debtor_invoice(conn, order: Order) -> Invoice:
             conn,
             """
             INSERT INTO dbo.invoices (
-                number, token, debtor_id, customer_id, mollie_id, mollie_settlement_id,
+                token, debtor_id, customer_id, mollie_id, mollie_settlement_id,
                 ordered_at, due_on, payable_cents, open_cents, portokosten_cents
             )
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL)
+            VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL)
             """,
-            (number, token, order.debtor_id, ordered_at, due_on.isoformat(), payable, payable),
+            (token, order.debtor_id, ordered_at, due_on.isoformat(), payable, payable),
         )
+        number = invoice_number(invoice_id)
         stored: list[InvoiceLine] = []
         for item in order.items:
             _take_stock(conn, item.slug, item.number_of_copies)
@@ -394,7 +394,6 @@ def create_customer_invoice(
             "INSERT INTO dbo.customers (name, email, address_id) OUTPUT INSERTED.id VALUES (?, ?, ?)",
             (name.strip(), email.strip(), address_id),
         )
-        number = _next_number(conn)
         token = secrets.token_urlsafe(32)
         due_on = when.date() + timedelta(days=ACCOUNT_DUE_DAYS)
         ordered_at = when.strftime("%Y-%m-%d %H:%M")
@@ -402,14 +401,13 @@ def create_customer_invoice(
             conn,
             """
             INSERT INTO dbo.invoices (
-                number, token, debtor_id, customer_id, mollie_id, mollie_settlement_id,
+                token, debtor_id, customer_id, mollie_id, mollie_settlement_id,
                 ordered_at, due_on, payable_cents, open_cents, portokosten_cents
             )
             OUTPUT INSERTED.id
-            VALUES (?, ?, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)
+            VALUES (?, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)
             """,
             (
-                number,
                 token,
                 customer_id,
                 ordered_at,
@@ -419,6 +417,7 @@ def create_customer_invoice(
                 vat_cents_amount,
             ),
         )
+        number = invoice_number(invoice_id)
         stored: list[InvoiceLine] = []
         for slug, copies, price in lines:
             run(
@@ -452,16 +451,19 @@ def create_customer_invoice(
     )
 
 
-def attach_mollie(conn, invoice_number: str, mollie_id: str) -> None:
-    run(conn, "UPDATE dbo.invoices SET mollie_id = ? WHERE number = ?", (mollie_id, invoice_number))
+def attach_mollie(conn, number: str, mollie_id: str) -> None:
+    invoice_id = _invoice_id(number)
+    if invoice_id is None:
+        return
+    run(conn, "UPDATE dbo.invoices SET mollie_id = ? WHERE id = ?", (mollie_id, invoice_id))
     conn.commit()
 
 
 def invoice_by_payment(conn, mollie_id: str) -> Invoice | None:
-    row = one(conn, "SELECT number FROM dbo.invoices WHERE mollie_id = ?", (mollie_id,))
+    row = one(conn, "SELECT id FROM dbo.invoices WHERE mollie_id = ?", (mollie_id,))
     if row is None:
         return None
-    return get_invoice(row["number"])
+    return get_invoice(invoice_number(int(row["id"])))
 
 
 def apply_payment(
@@ -477,9 +479,10 @@ def apply_payment(
     if invoice.paid:
         return "paid"
     if status == "paid":
+        invoice_id = _invoice_id(invoice.number)
         for line in invoice.lines:
             _take_stock(conn, line.slug, line.number_of_copies)
-        run(conn, "UPDATE dbo.invoices SET open_cents = 0 WHERE number = ?", (invoice.number,))
+        run(conn, "UPDATE dbo.invoices SET open_cents = 0 WHERE id = ?", (invoice_id,))
         conn.commit()
         return "paid"
     if status in {"canceled", "expired", "failed"}:
@@ -488,12 +491,15 @@ def apply_payment(
 
 
 def get_invoice(number: str) -> Invoice | None:
+    invoice_id = _invoice_id(number)
+    if invoice_id is None:
+        return None
     conn = connect(autocommit=True)
     try:
         row = one(
             conn,
             """
-            SELECT i.number, i.token, i.mollie_id, i.ordered_at, i.due_on, i.payable_cents, i.open_cents,
+            SELECT i.id, i.token, i.mollie_id, i.ordered_at, i.due_on, i.payable_cents, i.open_cents,
                    i.portokosten_cents, i.debtor_id, i.customer_id,
                    d.name AS debtor_name, d.email AS debtor_email, d.vat_number AS debtor_vat,
                    d.address_id AS debtor_address_id, d.code AS debtor_code,
@@ -501,9 +507,9 @@ def get_invoice(number: str) -> Invoice | None:
             FROM dbo.invoices i
             LEFT JOIN dbo.debtors d ON d.id = i.debtor_id
             LEFT JOIN dbo.customers c ON c.id = i.customer_id
-            WHERE i.number = ?
+            WHERE i.id = ?
             """,
-            (number,),
+            (invoice_id,),
         )
         if row is None:
             return None
@@ -512,10 +518,10 @@ def get_invoice(number: str) -> Invoice | None:
             """
             SELECT slug, number_of_copies, price_cents_per_copy
             FROM dbo.invoicelines
-            WHERE invoice_id = (SELECT id FROM dbo.invoices WHERE number = ?)
+            WHERE invoice_id = ?
             ORDER BY id
             """,
-            (number,),
+            (invoice_id,),
         )
         for_customer = row["customer_id"] is not None
         if for_customer:
@@ -534,7 +540,7 @@ def get_invoice(number: str) -> Invoice | None:
     finally:
         conn.close()
     return Invoice(
-        number=row["number"],
+        number=invoice_number(int(row["id"])),
         name=name,
         email=email,
         address=address_text,
@@ -571,11 +577,11 @@ def open_invoices(conn) -> list[Invoice]:
     """Debtor invoices only: a Mollie customer pays before anything is shipped."""
     rows = query(
         conn,
-        "SELECT number FROM dbo.invoices WHERE debtor_id IS NOT NULL AND open_cents > 0 ORDER BY id",
+        "SELECT id FROM dbo.invoices WHERE debtor_id IS NOT NULL AND open_cents > 0 ORDER BY id",
     )
     found = []
     for row in rows:
-        invoice = get_invoice(row["number"])
+        invoice = get_invoice(invoice_number(int(row["id"])))
         if invoice is not None:
             found.append(invoice)
     return found
@@ -638,14 +644,15 @@ def apply_allocations(conn, allocations: list[Allocation]) -> None:
             "INSERT INTO dbo.payments (transaction_id, invoice_number, amount_cents) VALUES (?, ?, ?)",
             (allocation.transaction_id, allocation.invoice_number, allocation.amount_cents),
         )
-        row = one(conn, "SELECT open_cents FROM dbo.invoices WHERE number = ?", (allocation.invoice_number,))
+        invoice_id = _invoice_id(allocation.invoice_number)
+        row = one(conn, "SELECT open_cents FROM dbo.invoices WHERE id = ?", (invoice_id,))
         if row is None:
             continue
         remaining = int(row["open_cents"]) - allocation.amount_cents
         run(
             conn,
-            "UPDATE dbo.invoices SET open_cents = ? WHERE number = ?",
-            (remaining, allocation.invoice_number),
+            "UPDATE dbo.invoices SET open_cents = ? WHERE id = ?",
+            (remaining, invoice_id),
         )
     conn.commit()
 

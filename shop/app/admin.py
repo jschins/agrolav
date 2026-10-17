@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from app.catalog import add_book, book_keys, euro, load_catalog, replace_book, search_books, update_voorraad
 from app.ledger import create_debtor_invoice, overlay_stock, set_stock
-from app.orders import connect, get_order, orders_without_invoice
+from app.orders import connect, get_order, get_order_by_token, order_number, orders_without_invoice
 
 _ROOT = Path(__file__).resolve().parent.parent
 _MENU = "Voeg nieuw boek toe"
@@ -334,11 +334,11 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
     for order in pending:
         rows.append(
             "<tr>"
-            f"{_clip(str(order.id))}"
+            f"{_clip(order_number(order.id))}"
             f"{_clip(order.debtor_name)}"
             f"{_clip(order.email)}"
             f"<td>{escape(euro(order.amount_cents))}</td>"
-            f'<td><form method="post" action="/facturen/order/{escape(str(order.id))}">'
+            f'<td><form method="post" action="/facturen/order/{escape(order.token)}">'
             f'<button class="btn" type="submit">Factureer</button></form></td>'
             "</tr>"
         )
@@ -576,7 +576,7 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
     def invoice_order(order_id: str) -> HTMLResponse:
         conn = connect()
         try:
-            order = get_order(conn, order_id)
+            order = get_order_by_token(conn, order_id)
             if order is None:
                 return HTMLResponse(invoices_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
             try:
