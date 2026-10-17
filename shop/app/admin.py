@@ -334,11 +334,11 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
     for order in pending:
         rows.append(
             "<tr>"
-            f"{_clip(order.id[:16])}"
+            f"{_clip(str(order.id))}"
             f"{_clip(order.debtor_name)}"
             f"{_clip(order.email)}"
             f"<td>{escape(euro(order.amount_cents))}</td>"
-            f'<td><form method="post" action="/facturen/order/{escape(order.id)}">'
+            f'<td><form method="post" action="/facturen/order/{escape(str(order.id))}">'
             f'<button class="btn" type="submit">Factureer</button></form></td>'
             "</tr>"
         )

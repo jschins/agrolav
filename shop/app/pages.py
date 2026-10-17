@@ -904,7 +904,7 @@ def account_order_page(catalog: Catalog, order, cart_count: int) -> str:
 <main class="wrap narrow invoice">
   <div class="invoice-head">
     <p>{escape(order.debtor_name)}</p>
-    <p>Bestelling {escape(order.id)}</p>
+    <p>Bestelling {escape(order.token)}</p>
     <p>Totaal {escape(euro(order.amount_cents))}</p>
     {posted}
     <p>{escape(order.email)}</p>

@@ -48,7 +48,8 @@ class Address:
 
 @dataclass(frozen=True)
 class Order:
-    id: str
+    id: int
+    token: str
     email: str
     status: str
     items: tuple[OrderItem, ...]
@@ -213,7 +214,7 @@ def address_by_id(conn, address_id: int | None) -> Address:
     )
 
 
-def _lines_for(conn, order_id: str) -> tuple[OrderItem, ...]:
+def _lines_for(conn, order_id: int) -> tuple[OrderItem, ...]:
     rows = query(
         conn,
         """
@@ -236,29 +237,34 @@ def _lines_for(conn, order_id: str) -> tuple[OrderItem, ...]:
 
 def _order_from_row(conn, row: dict) -> Order:
     return Order(
-        id=row["id"],
+        id=int(row["id"]),
+        token=str(row["token"] or ""),
         email=row["email"],
         status=row["status"],
-        items=_lines_for(conn, row["id"]),
+        items=_lines_for(conn, int(row["id"])),
         amount_cents=row["amount_cents"],
         vat_cents=row["vat_cents"],
         debtor_id=int(row["debtor_id"]),
-        debtor_name=str(row["debtor_name"] or ""),
+        debtor_name=row["debtor_name"],
         address=address_by_id(conn, row["address_id"]),
         invoice_number=row["invoice_number"],
     )
 
 
 _ORDER_SELECT = """
-    SELECT o.id, o.email, o.status, o.amount_cents, o.vat_cents, o.invoice_number,
+    SELECT o.id, o.token, o.email, o.status, o.amount_cents, o.vat_cents, o.invoice_number,
            d.id AS debtor_id, d.name AS debtor_name, d.address_id
     FROM dbo.orders o
     JOIN dbo.debtors d ON d.id = o.debtor_id
 """
 
 
-def get_order(conn, order_id: str) -> Order | None:
-    row = one(conn, f"{_ORDER_SELECT} WHERE o.id = ?", (order_id,))
+def get_order(conn, order_id: int | str) -> Order | None:
+    try:
+        key = int(order_id)
+    except (TypeError, ValueError):
+        return None
+    row = one(conn, f"{_ORDER_SELECT} WHERE o.id = ?", (key,))
     if row is None:
         return None
     return _order_from_row(conn, row)
@@ -270,7 +276,7 @@ def orders_without_invoice(conn) -> list[Order]:
     return [_order_from_row(conn, row) for row in rows]
 
 
-def mark_invoiced(conn, order_id: str, invoice_number: str) -> None:
+def mark_invoiced(conn, order_id: int, invoice_number: str) -> None:
     run(
         conn,
         "UPDATE dbo.orders SET invoice_number = ?, status = 'invoiced' WHERE id = ?",

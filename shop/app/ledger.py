@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import re
 import secrets
-import uuid
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -260,20 +259,21 @@ def create_account_order(
     if not lines:
         raise ValueError("De bestelling heeft geen regels.")
     payable = sum(copies * price for _slug, copies, price in lines)
-    order_id = uuid.uuid4().hex
+    token = secrets.token_hex(16)
     conn = connect(autocommit=False)
     try:
         seed_stock(conn, books)
-        run(
+        order_id = insert_id(
             conn,
             """
             INSERT INTO dbo.orders (
-                id, email, status, amount_cents, vat_cents,
+                token, email, status, amount_cents, vat_cents,
                 created_at, debtor_id, invoice_number
-            ) VALUES (?, ?, 'open', ?, ?, ?, ?, NULL)
+            ) OUTPUT INSERTED.id
+            VALUES (?, ?, 'open', ?, ?, ?, ?, NULL)
             """,
             (
-                order_id,
+                token,
                 email,
                 payable,
                 vat_cents_amount,
@@ -293,18 +293,14 @@ def create_account_order(
         raise
     finally:
         conn.close()
-    fresh = connect(autocommit=True)
-    try:
-        order = one(fresh, "SELECT 1 AS ok FROM dbo.orders WHERE id = ?", (order_id,))
-    finally:
-        fresh.close()
-    if order is None:
-        raise RuntimeError("bestelling kon niet worden opgeslagen")
     conn = connect(autocommit=True)
     try:
-        return get_order(conn, order_id)
+        order = get_order(conn, order_id)
     finally:
         conn.close()
+    if order is None:
+        raise RuntimeError("bestelling kon niet worden opgeslagen")
+    return order
 
 
 def create_debtor_invoice(conn, order: Order) -> Invoice:

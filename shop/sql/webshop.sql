@@ -57,18 +57,29 @@ CREATE TABLE dbo.customers (
 );
 GO
 
--- Website orders. Account buyers only.
+-- The order id is now a plain INT counter; the random hex lives in token. An older
+-- table (32-hex id, no token) is emptied and rebuilt, because the key type changed.
+IF OBJECT_ID(N'dbo.orders', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.orders', N'token') IS NULL
+BEGIN
+    IF OBJECT_ID(N'dbo.orderlines', N'U') IS NOT NULL DROP TABLE dbo.orderlines;
+    DROP TABLE dbo.orders;
+END
+GO
+
+-- Website orders. Account buyers only. id counts up, so ORDER BY id is chronological.
 IF OBJECT_ID(N'dbo.orders', N'U') IS NULL
 CREATE TABLE dbo.orders (
-    id                  nvarchar(64)   NOT NULL,
-    email               nvarchar(max)  NOT NULL,
-    status              nvarchar(40)   NOT NULL,
-    amount_cents        int            NOT NULL,
-    vat_cents           int            NOT NULL,
-    created_at          nvarchar(80)   NOT NULL,
-    debtor_id           int            NOT NULL,
-    portokosten_cents   int            NULL,
-    invoice_number      nvarchar(40)   NULL,   -- set once an administrator writes it
+    id                  int             IDENTITY(1,1) NOT NULL,
+    token               nvarchar(64)    NOT NULL,   -- 32 random hex digits
+    email               nvarchar(max)   NOT NULL,
+    status              nvarchar(40)    NOT NULL,
+    amount_cents        int             NOT NULL,
+    vat_cents           int             NOT NULL,
+    created_at          nvarchar(80)    NOT NULL,
+    debtor_id           int             NOT NULL,
+    portokosten_cents   int             NULL,
+    invoice_number      nvarchar(40)    NULL,   -- set once an administrator writes it
     CONSTRAINT pk_orders PRIMARY KEY (id),
     CONSTRAINT fk_orders_debtor FOREIGN KEY (debtor_id) REFERENCES dbo.debtors (id)
 );
@@ -79,15 +90,10 @@ IF COL_LENGTH(N'dbo.orders', N'invoice_number') IS NULL
     ALTER TABLE dbo.orders ADD invoice_number nvarchar(40) NULL;
 GO
 
--- The per-order return page is gone; invoices carry their own token now.
-IF COL_LENGTH(N'dbo.orders', N'token') IS NOT NULL
-    ALTER TABLE dbo.orders DROP COLUMN token;
-GO
-
 IF OBJECT_ID(N'dbo.orderlines', N'U') IS NULL
 CREATE TABLE dbo.orderlines (
     id                      int             IDENTITY(1,1) NOT NULL,
-    order_id                nvarchar(64)    NOT NULL,
+    order_id                int             NOT NULL,
     slug                    nvarchar(max)   NOT NULL,
     number_of_copies        int             NOT NULL,
     price_cents_per_copy    int             NOT NULL,

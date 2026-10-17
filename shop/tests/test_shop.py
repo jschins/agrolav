@@ -268,6 +268,9 @@ class ShopFlowTests(unittest.TestCase):
                 order = get_order(conn, order_id)
                 self.assertIsNotNone(order)
                 assert order is not None
+                self.assertIsInstance(order.id, int)
+                self.assertGreaterEqual(order.id, 1)
+                self.assertRegex(order.token, r"^[0-9a-f]{32}$")
                 self.assertIsNone(order.invoice_number)
                 self.assertEqual(order.debtor_name, "Parochie Voorbeeld")
                 self.assertEqual(len(order.items), 1)
