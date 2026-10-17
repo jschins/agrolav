@@ -111,14 +111,7 @@ nav a.selected {{
   border-radius: 4px;
   padding: 0.35rem 0.55rem;
 }}
-.hero {{
-  display: grid;
-  grid-template-columns: 1.4fr 0.8fr;
-  gap: 2.5rem;
-  padding: 4.5rem 0 3rem;
-  align-items: end;
-}}
-.kicker, .mono {{
+.mono {{
   font-family: ui-monospace, "Courier New", monospace;
   font-size: 0.72rem;
   letter-spacing: 0.12em;
@@ -132,7 +125,6 @@ h1 {{ font-size: clamp(2.6rem, 5vw, 4.4rem); max-width: 14ch; }}
   width: 9rem;
   margin: 1.1rem 0 1.2rem;
 }}
-.lede {{ max-width: 38rem; color: var(--muted-foreground); font-size: 1.2rem; }}
 .actions {{ display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.6rem; }}
 .btn {{
   display: inline-block;
@@ -341,21 +333,6 @@ main.home-main.none .rail.home {{ display: none; }}
   margin-top: 3.5rem;
   padding: 3.5rem 0;
 }}
-.band blockquote {{
-  margin: 0 auto;
-  max-width: 40rem;
-  font-family: Alegreya, Georgia, serif;
-  font-size: clamp(1.6rem, 3vw, 2.2rem);
-  font-style: italic;
-  line-height: 1.3;
-}}
-.band cite {{
-  display: block;
-  margin-top: 1rem;
-  font-family: "Alegreya Sans", sans-serif;
-  font-style: normal;
-  font-size: 0.95rem;
-}}
 .events {{ display: grid; gap: 0; }}
 .event {{
   display: grid;
@@ -471,7 +448,6 @@ main.invoice {{
 }}
 main.invoice table.plain {{ margin-top: auto; }}
 @media (max-width: 800px) {{
-  .hero {{ grid-template-columns: 1fr; }}
   .event {{ grid-template-columns: 1fr; }}
 }}
 </style>
@@ -864,7 +840,8 @@ def checkout_page(
     error: str = "",
     *,
     name: str = "",
-    street: str = "",
+    street_name: str = "",
+    street_number: str = "",
     postcode: str = "",
     city: str = "",
     email: str = "",
@@ -893,8 +870,10 @@ def checkout_page(
     {hidden_slug}
     <label for="name">Naam</label>
     <input id="name" name="name" required maxlength="80" value="{escape(name)}">
-    <label for="street">Straat en huisnummer</label>
-    <input id="street" name="street" required maxlength="120" value="{escape(street)}">
+    <label for="street_name">Straatnaam</label>
+    <input id="street_name" name="street_name" required maxlength="120" value="{escape(street_name)}">
+    <label for="street_number">Huisnummer</label>
+    <input id="street_number" name="street_number" required maxlength="12" value="{escape(street_number)}">
     <label for="postcode">Postcode</label>
     <input id="postcode" name="postcode" required maxlength="12" value="{escape(postcode)}">
     <label for="city">Plaats</label>
@@ -908,40 +887,35 @@ def checkout_page(
     return page("Afrekenen", catalog, body, cart_count)
 
 
-def order_page(catalog: Catalog, order, cart_count: int) -> str:
+def account_order_page(catalog: Catalog, order, cart_count: int) -> str:
     def titel(slug: str) -> str:
         book = catalog.by_slug(slug)
         return book.titel if book is not None else slug
 
-    lines = "".join(
-        f"<li>{escape(titel(item.slug))} — {item.number_of_copies} × {escape(euro(item.price_cents_per_copy))}</li>"
+    rows = "".join(
+        f"<tr><td>{escape(titel(item.slug))}</td><td>{item.number_of_copies}</td>"
+        f"<td>{escape(euro(item.price_cents_per_copy))}</td></tr>"
         for item in order.items
     )
-    address = order.address
-    posted = ""
-    if address.street:
-        posted = (
-            "<p>Bezorgadres</p><p>"
-            f"{escape(address.name)}<br>{escape(address.street)}<br>"
-            f"{escape(address.postcode)} {escape(address.city)}</p>"
-        )
-    if order.status == "paid":
-        lead = "<h1>Betaling geslaagd</h1><p>De papieren exemplaren worden naar dit adres gestuurd.</p>"
-    elif order.status == "failed":
-        lead = "<h1>Betaling niet gelukt</h1><p>Er wordt niets verstuurd.</p>"
-    else:
-        lead = "<h1>Betaling nog niet bevestigd</h1><p>Er wordt nog niets verstuurd. Vernieuw deze pagina nadat iDEAL via Mollie de betaling heeft gemeld.</p>"
+    address = order.address.formatted()
+    posted = f"<p>{escape(address)}</p>" if address else ""
     body = f"""
-<main class="wrap narrow">
-  {lead}
-  <hr class="rule">
-  <ul>{lines}</ul>
-  <p class="price">{escape(euro(order.amount_cents))}</p>
-  {posted}
-  <p>E-mail: {escape(order.email)}</p>
+<main class="wrap narrow invoice">
+  <div class="invoice-head">
+    <p>{escape(order.debtor_name)}</p>
+    <p>Bestelling {escape(order.id)}</p>
+    <p>Totaal {escape(euro(order.amount_cents))}</p>
+    {posted}
+    <p>{escape(order.email)}</p>
+    <p>Uw bestelling is genoteerd. Zodra de boeken zijn verstuurd, ontvangt u de factuur.</p>
+  </div>
+  <table class="plain">
+    <thead><tr><th>Titel</th><th>Aantal</th><th>Prijs</th></tr></thead>
+    <tbody>{rows}</tbody>
+  </table>
 </main>
 """
-    return page("Bestelling", catalog, body, cart_count)
+    return page(menu_header("rekening"), catalog, body, cart_count, menu_href("rekening"))
 
 
 def message_page(catalog: Catalog, title: str, text: str, cart_count: int) -> str:
@@ -1109,7 +1083,13 @@ def rekening_code_request_page(
     return page("Verzoek bestelcode", catalog, body, cart_count, menu_href("rekening"))
 
 
-def invoice_page(catalog: Catalog, invoice, cart_count: int) -> str:
+def invoice_page(
+    catalog: Catalog,
+    invoice,
+    cart_count: int,
+    title: str = "Factuur",
+    active: str = "",
+) -> str:
     rows = []
     for line in invoice.lines:
         book = catalog.by_slug(line.slug)
@@ -1119,17 +1099,25 @@ def invoice_page(catalog: Catalog, invoice, cart_count: int) -> str:
             f"<td>{escape(euro(line.price_cents_per_copy))}</td></tr>"
         )
     exclusive = invoice.payable_cents - vat_cents(invoice.payable_cents, catalog.vat_rate)
+    address = f"<p>{escape(invoice.address)}</p>" if invoice.address else ""
+    if invoice.paid:
+        state = "<p>Betaling geslaagd</p>"
+    else:
+        state = (
+            f"<p>Openstaand {escape(euro(invoice.open_cents))}</p>"
+            f"<p>Vervaldatum {escape(invoice.due_on.isoformat())}</p>"
+            f"<p>Zet {escape(invoice.number)} in de omschrijving van de betaling.</p>"
+        )
     body = f"""
 <main class="wrap narrow invoice">
   <div class="invoice-head">
-    <p>{escape(invoice.debtor_name)}</p>
+    <p>{escape(invoice.name)}</p>
+    {address}
     <p>Factuur {escape(invoice.number)}</p>
     <p>Te betalen {escape(euro(invoice.payable_cents))}</p>
     <p>Prijs exclusief BTW {escape(euro(exclusive))}</p>
-    <p>Openstaand {escape(euro(invoice.open_cents))}</p>
-    <p>Vervaldatum {escape(invoice.due_on.isoformat())}</p>
+    {state}
     <p>{escape(invoice.ordered_at)}</p>
-    <p>Zet {escape(invoice.number)} in de omschrijving van de betaling.</p>
   </div>
   <table class="plain">
     <thead><tr><th>Titel</th><th>Aantal</th><th>Prijs</th></tr></thead>
@@ -1137,31 +1125,7 @@ def invoice_page(catalog: Catalog, invoice, cart_count: int) -> str:
   </table>
 </main>
 """
-    return page(menu_header("rekening"), catalog, body, cart_count, menu_href("rekening"))
-
-
-def rekening_done_page(catalog: Catalog, order: dict, cart_count: int) -> str:
-    lines = order.get("lines") or []
-    rows = "".join(
-        f"<tr><td>{escape(str(line.get('title') or ''))}</td><td>{int(line.get('aantal') or 0)}</td></tr>"
-        for line in lines
-        if isinstance(line, dict)
-    )
-    body = f"""
-<main class="wrap narrow invoice">
-  <div class="invoice-head">
-    <p>{escape(str(order.get("company") or ""))}</p>
-    <p>Bestelnummer {int(order.get("number") or 0)}</p>
-    <p>Prijs exclusief BTW {escape(euro(int(order.get("total_price_cents") or 0)))}</p>
-    <p>{escape(str(order.get("ordered_at") or ""))}</p>
-  </div>
-  <table class="plain">
-    <thead><tr><th>Titel</th><th>Aantal</th></tr></thead>
-    <tbody>{rows}</tbody>
-  </table>
-</main>
-"""
-    return page(menu_header("rekening"), catalog, body, cart_count, menu_href("rekening"))
+    return page(title, catalog, body, cart_count, active)
 
 
 def dev_pay_page(catalog: Catalog, payment_id: str, cart_count: int) -> str:

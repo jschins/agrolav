@@ -8,7 +8,12 @@ if (start < 0 || end < 0) {
   process.exit(1);
 }
 const code = html.slice(start + "<script>".length, end);
-const href = "/boeken/innerlijke-rust";
+const slug = process.argv[2];
+if (!slug) {
+  console.error("pass a book slug");
+  process.exit(1);
+}
+const href = `/boeken/${slug}`;
 if (!html.includes(`href="${href}"`)) {
   console.error("homepage card does not link to the buying page");
   process.exit(1);

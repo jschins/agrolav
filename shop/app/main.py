@@ -3,21 +3,20 @@
 Interim public address: http://expenses.apsurt.nl:9000
 Later public address: https://deboog.apsurt.nl (set SHOP_PUBLIC_BASE_URL).
 
-The process does not open the bookkeeping database. Orders are a SQLite file
-next to this app. Mollie hosts the card form and calls /mollie/webhook.
-A paid order is a paper copy sent to the address on the order. There is no download.
+Shop orders and invoices live in the webshop database. Mollie hosts the card form
+and calls /mollie/webhook. A paid order is a paper copy sent to the address on the
+order. There is no download.
+
+There are two buyers. A Mollie buyer is invoiced (and paid) at checkout. An account
+buyer orders on the website and is invoiced later, by an administrator.
 """
 from __future__ import annotations
 
-import hmac
-import json
 import logging
 import os
 import re
 import secrets
-import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -28,10 +27,14 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from app.cart import dump_cart, load_cart
 from app.catalog import Book, Catalog, load_catalog, vat_cents
 from app.ledger import (
-    create_invoice,
+    apply_payment,
+    attach_mollie,
+    create_account_order,
+    create_customer_invoice,
     get_invoice,
+    invoice_by_payment,
+    invoice_by_token,
     overlay_stock,
-    save_rekening_sale,
     save_shop_debtor,
     shop_debtor_by_code,
 )
@@ -39,18 +42,14 @@ from app.mollie import DevMollie, MollieClient, Payment
 from app.reminders import send_code_request
 from app.orders import (
     Address,
-    Order,
     OrderItem,
-    apply_payment,
-    attach_payment,
     connect,
     get_order,
-    insert_order,
-    order_by_payment,
 )
 from app.pages import (
     menu_href,
     about_page,
+    account_order_page,
     book_page,
     cart_page,
     checkout_page,
@@ -58,9 +57,7 @@ from app.pages import (
     events_page,
     home_page,
     message_page,
-    order_page,
     invoice_page,
-    rekening_done_page,
     rekening_page,
     rekening_code_request_page,
     rekening_review_page,
@@ -68,16 +65,15 @@ from app.pages import (
 from app.rekening import (
     counts_from_form,
     dump_counts,
-    find_company,
     load_counts,
-    order_by_number,
     order_lines,
-    read_rekening,
 )
 
 log = logging.getLogger("shop")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _COOKIE = "deboog_cart"
+_REKENING_COOKIE = "deboog_rekening"
+_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _order_items(books: list[Book]) -> list[OrderItem]:
@@ -94,26 +90,18 @@ def _order_items(books: list[Book]) -> list[OrderItem]:
         OrderItem(slug=slug, number_of_copies=aantal[slug], price_cents_per_copy=price[slug])
         for slug in order
     ]
-_REKENING_COOKIE = "deboog_rekening"
-_ROOT = Path(__file__).resolve().parent.parent
 
 
 @dataclass(frozen=True)
 class Settings:
     secret: str
     public_base_url: str
-    data_dir: Path
     catalog_path: Path
     files_dir: Path
-    rekening_path: Path = _ROOT / "rekening.json"
     mollie_api_key: str = ""
     dev_payments: bool = False
     host: str = "127.0.0.1"
     port: int = 9000
-
-    @property
-    def db_path(self) -> Path:
-        return self.data_dir / "orders.sqlite"
 
 
 def load_root_env() -> None:
@@ -134,10 +122,8 @@ def settings_from_env() -> Settings:
     return Settings(
         secret=secret,
         public_base_url=base,
-        data_dir=Path(os.environ.get("SHOP_DATA_DIR", str(_ROOT / "data"))),
         catalog_path=Path(os.environ.get("SHOP_CATALOG", str(_ROOT / "catalog.json"))),
         files_dir=Path(os.environ.get("SHOP_FILES_DIR", str(_ROOT / "covers"))),
-        rekening_path=Path(os.environ.get("SHOP_REKENING", str(_ROOT / "rekening.json"))),
         mollie_api_key=os.environ.get("MOLLIE_API_KEY", "").strip(),
         dev_payments=dev,
         host=os.environ.get("SHOP_HOST", "127.0.0.1").strip() or "127.0.0.1",
@@ -180,38 +166,33 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         return [book for slug in slugs if (book := catalog.by_slug(slug)) is not None]
 
     def record_payment(payment: Payment) -> str:
-        conn = connect(settings.db_path)
+        conn = connect()
         try:
-            order = order_by_payment(conn, payment.id)
-            if order is None:
+            invoice = invoice_by_payment(conn, payment.id)
+            if invoice is None:
                 return "missing"
             return apply_payment(
                 conn,
-                order,
+                invoice,
                 status=payment.status,
                 amount_cents=payment.amount_cents,
-                order_id_from_provider=payment.order_id,
+                invoice_number_from_provider=payment.order_id,
             )
         finally:
             conn.close()
 
-    def refresh_order(order: Order) -> Order:
-        if order.status == "paid" or order.mollie_id is None or mollie is None:
-            return order
+    def refresh_invoice(invoice):
+        if invoice.paid or not invoice.mollie_id or mollie is None:
+            return invoice
         try:
-            payment = mollie.fetch(order.mollie_id)
+            payment = mollie.fetch(invoice.mollie_id)
         except (httpx.HTTPError, KeyError):
-            log.warning("could not refresh payment for order %s", order.id)
-            return order
+            log.warning("could not refresh payment for invoice %s", invoice.number)
+            return invoice
         outcome = record_payment(payment)
         if outcome == "amount-mismatch":
-            log.error("payment amount does not match order %s", order.id)
-        conn = connect(settings.db_path)
-        try:
-            fresh = get_order(conn, order.id)
-        finally:
-            conn.close()
-        return fresh or order
+            log.error("payment amount does not match invoice %s", invoice.number)
+        return get_invoice(invoice.number) or invoice
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -246,7 +227,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         return html(about_page(catalog, len(cart_of(request))))
 
     def live_catalog() -> Catalog:
-        conn = connect(settings.db_path)
+        conn = connect()
         try:
             return overlay_stock(conn, catalog)
         finally:
@@ -365,77 +346,75 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         except (RuntimeError, OSError) as exc:
             log.warning("bestelcode lookup failed: %s", exc.__cause__ or exc)
             return html(rekening_review_page(catalog, lines, count, code, "De bestelcode kan niet worden gelezen."), 500)
-        stored_debtor = company
-        if company is None:
-            try:
-                ledger = read_rekening(settings.rekening_path)
-            except (OSError, json.JSONDecodeError, ValueError):
-                return html(rekening_review_page(catalog, lines, count, code, "rekening.json kan niet worden gelezen."), 500)
-            company = find_company(ledger, code)
         if company is None:
             return html(
                 rekening_review_page(catalog, lines, count, code.strip(), "Deze code hoort niet bij een bedrijf."),
                 400,
             )
-        email = str(form.get("email") or company.get("email") or "").strip()
-        vat_number = str(form.get("vat_number") or company.get("vat_number") or "").strip()
         priced = [
             (slug, aantal, catalog.by_slug(slug).prijs_cent_excl)
             for slug, _title, aantal in lines
             if catalog.by_slug(slug) is not None
         ]
-        conn = connect(settings.db_path)
         try:
-            invoice = create_invoice(
-                conn,
-                name=str(company.get("name") or ""),
-                email=email,
-                address=str(company.get("address") or ""),
-                vat_number=vat_number,
-                ship_before_payment=True,
+            order = create_account_order(
+                code=code.strip(),
                 lines=priced,
-                when=datetime.now(),
                 books=catalog.books,
+                vat_cents_amount=vat_cents(
+                    sum(copies * price for _slug, copies, price in priced),
+                    catalog.vat_rate,
+                ),
             )
         except ValueError as exc:
             return html(
                 rekening_review_page(catalog, lines, count, code.strip(), str(exc)),
                 400,
             )
-        finally:
-            conn.close()
-        if stored_debtor is not None:
-            try:
-                save_rekening_sale(code, invoice, vat_cents(invoice.payable_cents, catalog.vat_rate))
-            except (RuntimeError, OSError) as exc:
-                log.warning("rekening save failed: %s", exc.__cause__ or exc)
-                return html(
-                    rekening_review_page(catalog, lines, count, code.strip(), "De factuur kan niet worden opgeslagen."),
-                    500,
-                )
-        response = RedirectResponse(f"/rekening/factuur/{invoice.number}", status_code=303)
+        except (RuntimeError, OSError) as exc:
+            log.warning("rekening save failed: %s", exc.__cause__ or exc)
+            return html(
+                rekening_review_page(catalog, lines, count, code.strip(), "De bestelling kan niet worden opgeslagen."),
+                500,
+            )
+        response = RedirectResponse(f"/rekening/bestelling/{order.id}", status_code=303)
         response.delete_cookie(_REKENING_COOKIE, path="/")
         return response
 
-    @app.get("/rekening/bestelling/{number}", response_class=HTMLResponse)
-    def rekening_bestelling(request: Request, number: int) -> HTMLResponse:
-        record = order_by_number(settings.rekening_path, number)
-        count = len(cart_of(request))
-        if record is None:
-            return html(message_page(catalog, "Onbekende bestelling", "Deze rekening staat niet in het bestand.", count), 404)
-        return html(rekening_done_page(catalog, record, count))
-
-    @app.get("/rekening/factuur/{number}", response_class=HTMLResponse)
-    def rekening_factuur(request: Request, number: str) -> HTMLResponse:
-        conn = connect(settings.db_path)
+    @app.get("/rekening/bestelling/{order_id}", response_class=HTMLResponse)
+    def rekening_bestelling(request: Request, order_id: str) -> HTMLResponse:
+        conn = connect()
         try:
-            invoice = get_invoice(conn, number)
+            order = get_order(conn, order_id)
         finally:
             conn.close()
         count = len(cart_of(request))
+        if order is None:
+            return html(
+                message_page(catalog, "Onbekende bestelling", "Deze bestelling staat niet in de administratie.", count),
+                404,
+            )
+        return html(account_order_page(catalog, order, count))
+
+    @app.get("/rekening/factuur/{number}", response_class=HTMLResponse)
+    def rekening_factuur(request: Request, number: str) -> HTMLResponse:
+        try:
+            invoice = get_invoice(number)
+        except (RuntimeError, OSError) as exc:
+            log.warning("factuur lookup failed: %s", exc.__cause__ or exc)
+            invoice = None
+        count = len(cart_of(request))
         if invoice is None:
-            return html(message_page(catalog, "Onbekende factuur", "Deze factuur staat niet in het bestand.", count), 404)
-        return html(invoice_page(live_catalog(), invoice, count))
+            return html(message_page(catalog, "Onbekende factuur", "Deze factuur staat niet in de administratie.", count), 404)
+        return html(
+            invoice_page(
+                live_catalog(),
+                invoice,
+                count,
+                title="REKENING",
+                active=menu_href("rekening"),
+            )
+        )
 
     @app.get("/omslag/{slug}")
     def cover(slug: str) -> Response:
@@ -507,8 +486,8 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             books = []
         if not books:
             return html(message_page(catalog, "Geen boeken", "Er is niets om af te rekenen.", count), 400)
-        address, problem = _shipping(form, email)
-        if address is None:
+        name, address, problem = _shipping(form, email)
+        if problem:
             return html(
                 checkout_page(
                     catalog,
@@ -517,7 +496,8 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                     count,
                     problem,
                     name=str(form.get("name") or ""),
-                    street=str(form.get("street") or ""),
+                    street_name=str(form.get("street_name") or ""),
+                    street_number=str(form.get("street_number") or ""),
                     postcode=str(form.get("postcode") or ""),
                     city=str(form.get("city") or ""),
                     email=email,
@@ -537,44 +517,42 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             )
         items = _order_items(books)
         amount = sum(item.price_cents_per_copy * item.number_of_copies for item in items)
-        order_id = uuid.uuid4().hex
-        token = secrets.token_urlsafe(32)
-        conn = connect(settings.db_path)
         try:
-            insert_order(
-                conn,
-                order_id=order_id,
-                token=token,
+            invoice = create_customer_invoice(
+                name=name,
                 email=email,
                 address=address,
-                items=items,
-                amount_cents=amount,
-                vat_cents=vat_cents(amount, catalog.vat_rate),
+                lines=[(item.slug, item.number_of_copies, item.price_cents_per_copy) for item in items],
+                vat_cents_amount=vat_cents(amount, catalog.vat_rate),
             )
-        finally:
-            conn.close()
+        except (RuntimeError, ValueError) as exc:
+            log.warning("checkout invoice failed: %s", exc)
+            return html(
+                message_page(catalog, "Bestelling niet opgeslagen", "De bestelling kon niet worden vastgelegd.", count),
+                500,
+            )
         description = catalog.shop_name + " — " + ", ".join(
             catalog.by_slug(item.slug).titel for item in items if catalog.by_slug(item.slug) is not None
         )
-        redirect_url = f"{settings.public_base_url}/bestelling/{order_id}?token={token}"
+        redirect_url = f"{settings.public_base_url}/betaling/{invoice.number}?token={invoice.token}"
         webhook_url = f"{settings.public_base_url}/mollie/webhook"
         try:
             payment_id, checkout_url = mollie.create_payment(
-                order_id=order_id,
+                order_id=invoice.number,
                 amount_cents=amount,
                 description=description,
                 redirect_url=redirect_url,
                 webhook_url=webhook_url,
             )
         except httpx.HTTPError:
-            log.exception("Mollie did not create a payment for order %s", order_id)
+            log.exception("Mollie did not create a payment for invoice %s", invoice.number)
             return html(
                 message_page(catalog, "Betaling niet gestart", "iDEAL via Mollie nam de betaling niet aan. Probeer het opnieuw.", count),
                 502,
             )
-        conn = connect(settings.db_path)
+        conn = connect()
         try:
-            attach_payment(conn, order_id, payment_id)
+            attach_mollie(conn, invoice.number, payment_id)
         finally:
             conn.close()
         return RedirectResponse(checkout_url, status_code=303)
@@ -597,18 +575,18 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             log.error("webhook amount mismatch for payment %s", payment_id)
         return Response(status_code=200)
 
-    @app.get("/bestelling/{order_id}", response_class=HTMLResponse)
-    def order_return(request: Request, order_id: str, token: str = "") -> HTMLResponse:
-        conn = connect(settings.db_path)
+    @app.get("/betaling/{number}", response_class=HTMLResponse)
+    def betaling(request: Request, number: str, token: str = "") -> HTMLResponse:
         try:
-            order = get_order(conn, order_id)
-        finally:
-            conn.close()
+            invoice = invoice_by_token(number, token)
+        except (RuntimeError, OSError) as exc:
+            log.warning("betaling lookup failed: %s", exc.__cause__ or exc)
+            invoice = None
         count = len(cart_of(request))
-        if order is None or not token or not hmac.compare_digest(order.token, token):
-            return html(message_page(catalog, "Onbekende bestelling", "Deze bestelling is niet gevonden.", count), 404)
-        order = refresh_order(order)
-        response = html(order_page(catalog, order, count))
+        if invoice is None:
+            return html(message_page(catalog, "Onbekende factuur", "Deze factuur is niet gevonden.", count), 404)
+        invoice = refresh_invoice(invoice)
+        response = html(invoice_page(live_catalog(), invoice, count, title="Factuur", active=""))
         response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -630,34 +608,43 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             except KeyError:
                 return html(message_page(catalog, "Onbekende betaling", "Deze lokale betaling bestaat niet.", 0), 404)
             record_payment(payment)
-            conn = connect(settings.db_path)
+            conn = connect()
             try:
-                order = order_by_payment(conn, payment_id)
+                invoice = invoice_by_payment(conn, payment_id)
             finally:
                 conn.close()
-            if order is None:
-                return html(message_page(catalog, "Onbekende bestelling", "De bestelling ontbreekt.", 0), 404)
-            return RedirectResponse(f"/bestelling/{order.id}?token={order.token}", status_code=303)
+            if invoice is None:
+                return html(message_page(catalog, "Onbekende betaling", "De factuur ontbreekt.", 0), 404)
+            return RedirectResponse(f"/betaling/{invoice.number}?token={invoice.token}", status_code=303)
 
     return app
 
 
-def _shipping(form, email: str) -> tuple[Address | None, str]:
+def _shipping(form, email: str) -> tuple[str, Address, str]:
+    """Return (name, address, error). name and address are empty when there is an error."""
     name = str(form.get("name") or "").strip()
-    street = str(form.get("street") or "").strip()
+    street_name = str(form.get("street_name") or "").strip()
+    street_number = str(form.get("street_number") or "").strip()
     postcode = str(form.get("postcode") or "").strip()
     city = str(form.get("city") or "").strip()
     if not _EMAIL.match(email) or len(email) > 200:
-        return None, "Vul een geldig e-mailadres in."
+        return "", Address("", "", "", ""), "Vul een geldig e-mailadres in."
     if not 2 <= len(name) <= 80:
-        return None, "Vul de naam voor de bezorging in."
-    if not 4 <= len(street) <= 120:
-        return None, "Vul de straat en het huisnummer in."
+        return "", Address("", "", "", ""), "Vul de naam voor de bezorging in."
+    if not 2 <= len(street_name) <= 120:
+        return "", Address("", "", "", ""), "Vul de straatnaam in."
+    if not 1 <= len(street_number) <= 12:
+        return "", Address("", "", "", ""), "Vul het huisnummer in."
     if not 4 <= len(postcode) <= 12:
-        return None, "Vul de postcode in."
+        return "", Address("", "", "", ""), "Vul de postcode in."
     if not 2 <= len(city) <= 80:
-        return None, "Vul de plaats in."
-    return Address(name=name, street=street, postcode=postcode, city=city), ""
+        return "", Address("", "", "", ""), "Vul de plaats in."
+    return name, Address(
+        street=street_name,
+        number=street_number,
+        postalcode=postcode,
+        city=city,
+    ), ""
 
 
 def run() -> None:

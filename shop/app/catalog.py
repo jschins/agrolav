@@ -49,11 +49,6 @@ class Catalog:
     vat_label: str
     place: str
     hours: str
-    hero_kicker: str
-    hero_title: str
-    hero_text: str
-    quote: str
-    quote_by: str
     about: str
     books: tuple[Book, ...]
     events: tuple[ShopEvent, ...]
@@ -63,15 +58,6 @@ class Catalog:
             if book.slug == slug:
                 return book
         return None
-
-    def require(self, slugs: list[str]) -> list[Book]:
-        found: list[Book] = []
-        for slug in slugs:
-            book = self.by_slug(slug)
-            if book is None:
-                raise KeyError(slug)
-            found.append(book)
-        return found
 
 
 def vat_cents(amount_cents: int, rate: Decimal) -> int:
@@ -188,11 +174,6 @@ def load_catalog(path: Path) -> Catalog:
         vat_label=_text(raw, "vat_label"),
         place=_text(raw, "place"),
         hours=_text(raw, "hours"),
-        hero_kicker=_text(raw, "hero_kicker"),
-        hero_title=_text(raw, "hero_title") or _text(raw, "shop_name") or "Boeken",
-        hero_text=_text(raw, "hero_text"),
-        quote=_text(raw, "quote"),
-        quote_by=_text(raw, "quote_by"),
         about=_text(raw, "about"),
         books=tuple(books),
         events=tuple(events),

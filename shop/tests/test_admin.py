@@ -5,6 +5,7 @@ import base64
 import json
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -53,23 +54,20 @@ def _catalog(directory: Path) -> Path:
 
 class AdminTests(unittest.TestCase):
     def test_shop_has_no_way_to_the_admin(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            settings = Settings(
-                secret="test-secret",
-                public_base_url="http://127.0.0.1:9000",
-                data_dir=Path(tmp),
-                catalog_path=_ROOT / "catalog.json",
-                files_dir=_ROOT / "covers",
-                rekening_path=Path(tmp) / "rekening.json",
-                dev_payments=True,
-            )
-            client = TestClient(create_app(settings, mollie=DevMollie("http://127.0.0.1:9000")))
-            home = client.get("/")
-            self.assertEqual(home.status_code, 200)
-            self.assertNotIn("Voeg nieuw boek toe", home.text)
-            self.assertNotIn("Beheer voorraad", home.text)
-            self.assertNotIn("Beheer catalogus", home.text)
-            self.assertNotIn("9100", home.text)
+        settings = Settings(
+            secret="test-secret",
+            public_base_url="http://127.0.0.1:9000",
+            catalog_path=_ROOT / "catalog.json",
+            files_dir=_ROOT / "covers",
+            dev_payments=True,
+        )
+        client = TestClient(create_app(settings, mollie=DevMollie("http://127.0.0.1:9000")))
+        home = client.get("/")
+        self.assertEqual(home.status_code, 200)
+        self.assertNotIn("Voeg nieuw boek toe", home.text)
+        self.assertNotIn("Beheer voorraad", home.text)
+        self.assertNotIn("Beheer catalogus", home.text)
+        self.assertNotIn("9100", home.text)
 
     def test_form_lists_the_catalog_fields_and_a_png_upload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -160,6 +158,8 @@ class AdminTests(unittest.TestCase):
             directory = Path(tmp)
             catalog = _catalog(directory)
             raw = json.loads(catalog.read_text(encoding="utf-8"))
+            slug = f"bestaand-{uuid.uuid4().hex[:8]}"
+            raw["books"][0]["slug"] = slug
             raw["books"].append(
                 {
                     "slug": "digitaal",
@@ -182,14 +182,14 @@ class AdminTests(unittest.TestCase):
             self.assertIn(">Auteur</th>", page.text)
             self.assertIn(">Voorraad</th>", page.text)
             self.assertNotIn(">Aantal</th>", page.text)
-            self.assertIn('name="voorraad-bestaand" value="1"', page.text)
+            self.assertIn(f'name="voorraad-{slug}" value="1"', page.text)
             self.assertIn("Bestaand", page.text)
             self.assertNotIn("Digitaal boek", page.text)
             self.assertIn('class="selected" href="/voorraad"', page.text)
-            saved = client.post("/voorraad", data={"voorraad-bestaand": "4"})
+            saved = client.post("/voorraad", data={f"voorraad-{slug}": "4"})
             self.assertEqual(saved.status_code, 200, saved.text)
-            self.assertIn('name="voorraad-bestaand" value="4"', saved.text)
-            self.assertEqual(load_catalog(catalog).by_slug("bestaand").voorraad, 4)
+            self.assertIn(f'name="voorraad-{slug}" value="4"', saved.text)
+            self.assertEqual(load_catalog(catalog).by_slug(slug).voorraad, 4)
             self.assertIsNone(load_catalog(catalog).by_slug("digitaal").voorraad)
 
     def test_catalog_search_opens_the_prefilled_book_form(self) -> None:
@@ -231,3 +231,42 @@ class AdminTests(unittest.TestCase):
             )
             self.assertEqual(saved.status_code, 200, saved.text)
             self.assertEqual(load_catalog(catalog).by_slug("bestaand").titel, "Gewijzigd")
+
+    def test_facturen_screen_turns_an_order_into_an_invoice(self) -> None:
+        from app.ledger import create_account_order, save_shop_debtor
+        from app.orders import connect, get_order, orders_without_invoice
+
+        code = save_shop_debtor("Parochie Test", "test@example.com", "NL000000000B01")
+        order = create_account_order(
+            code=code,
+            lines=[("niet-op-voorraad", 1, 100)],
+            books=load_catalog(_ROOT / "catalog.json").books,
+            vat_cents_amount=8,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            catalog = _catalog(directory)
+            client = TestClient(create_admin_app(catalog, directory / "covers"))
+
+            page = client.get("/facturen")
+            self.assertEqual(page.status_code, 200)
+            self.assertIn("Factureer bestellingen", page.text)
+            self.assertIn("Parochie Test", page.text)
+            self.assertIn("Factureer", page.text)
+            self.assertIn('class="selected" href="/facturen"', page.text)
+
+            invoiced = client.post(f"/facturen/order/{order.id}", follow_redirects=False)
+            self.assertEqual(invoiced.status_code, 200, invoiced.text)
+            self.assertIn("aangemaakt", invoiced.text)
+
+            conn = connect()
+            try:
+                stored = get_order(conn, order.id)
+                assert stored is not None
+                self.assertRegex(stored.invoice_number, r"^DB-\d{5}$")
+                self.assertNotIn(order.id, [item.id for item in orders_without_invoice(conn)])
+            finally:
+                conn.close()
+
+            missing = client.post("/facturen/order/bestaat-niet", follow_redirects=False)
+            self.assertEqual(missing.status_code, 404)

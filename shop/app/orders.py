@@ -1,10 +1,29 @@
-"""Shop orders in agrolav. This is not the bookkeeping database."""
+"""Shop rows in the webshop database. This is not the bookkeeping database.
+
+An order is written the moment an account buyer orders on the website. Invoices are
+separate: a debtor is invoiced later by an administrator, and a Mollie buyer is
+invoiced (and paid) at checkout. See app.ledger.
+"""
 from __future__ import annotations
 
-import json
 import os
+import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from pathlib import Path
+
+
+def _load_root_env() -> None:
+    """The database settings live in the repository root .env, next to shop/."""
+    if os.environ.get("HUB_DATABASE_URL", "").strip():
+        return
+    root_env = Path(__file__).resolve().parents[2] / ".env"
+    if not root_env.is_file():
+        return
+    try:
+        from dotenv import load_dotenv
+    except ModuleNotFoundError:
+        return
+    load_dotenv(root_env, interpolate=False, override=False)
 
 
 @dataclass(frozen=True)
@@ -16,10 +35,15 @@ class OrderItem:
 
 @dataclass(frozen=True)
 class Address:
-    name: str
     street: str
-    postcode: str
+    number: str
+    postalcode: str
     city: str
+
+    def formatted(self) -> str:
+        line = f"{self.street} {self.number}".strip()
+        town = f"{self.postalcode} {self.city}".strip()
+        return ", ".join(part for part in (line, town) if part)
 
 
 @dataclass(frozen=True)
@@ -28,17 +52,38 @@ class Order:
     token: str
     email: str
     status: str
-    mollie_id: str | None
     items: tuple[OrderItem, ...]
     amount_cents: int
     vat_cents: int
+    debtor_id: int
+    debtor_name: str
     address: Address
+    invoice_number: str | None
 
 
-def connect(*, autocommit: bool = False):
+def _webshop_url() -> str:
+    _load_root_env()
+    url = os.environ.get("WEBSHOP_DATABASE_URL", "").strip()
+    if url:
+        return url
+    hub = os.environ.get("HUB_DATABASE_URL", "").strip()
+    if not hub:
+        raise RuntimeError("HUB_DATABASE_URL is not set")
+    swapped = re.sub(r"(?i)(\bDATABASE\s*=\s*)[^;]*", r"\1webshop", hub, count=1)
+    if swapped == hub:
+        raise RuntimeError("HUB_DATABASE_URL has no DATABASE to point at webshop")
+    return swapped
+
+
+def _agrolav_url() -> str:
+    _load_root_env()
     url = os.environ.get("HUB_DATABASE_URL", "").strip()
     if not url:
         raise RuntimeError("HUB_DATABASE_URL is not set")
+    return url
+
+
+def _open(url: str, *, autocommit: bool, which: str):
     try:
         import pyodbc
     except ModuleNotFoundError as exc:
@@ -46,7 +91,17 @@ def connect(*, autocommit: bool = False):
     try:
         return pyodbc.connect(url, autocommit=autocommit, timeout=15)
     except pyodbc.Error as exc:
-        raise RuntimeError("agrolav login failed") from exc
+        raise RuntimeError(f"{which} login failed") from exc
+
+
+def connect(*, autocommit: bool = False):
+    """Every shop table lives here."""
+    return _open(_webshop_url(), autocommit=autocommit, which="webshop")
+
+
+def connect_bookkeeping(*, autocommit: bool = False):
+    """Read the Boog account in agrolav. The shop never writes there."""
+    return _open(_agrolav_url(), autocommit=autocommit, which="agrolav")
 
 
 def query(conn, sql: str, params: tuple = ()) -> list[dict]:
@@ -68,73 +123,94 @@ def run(conn, sql: str, params: tuple = ()) -> None:
     cursor.execute(sql, params) if params else cursor.execute(sql)
 
 
-def identity(conn) -> int:
-    row = one(conn, "SELECT CAST(SCOPE_IDENTITY() AS int) AS id")
-    if row is None or row["id"] is None:
+def insert_id(conn, sql: str, params: tuple = ()) -> int:
+    cursor = conn.cursor()
+    cursor.execute(sql, params) if params else cursor.execute(sql)
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
         raise RuntimeError("geen nieuwe sleutel")
-    return int(row["id"])
+    return int(row[0])
 
 
-def insert_order(
+def find_address(
     conn,
     *,
-    order_id: str,
-    token: str,
-    email: str,
-    address: Address,
-    items: list[OrderItem],
-    amount_cents: int,
-    vat_cents: int,
-) -> None:
-    posted = {
-        "name": address.name,
-        "street": address.street,
-        "postcode": address.postcode,
-        "city": address.city,
-    }
-    run(
-        conn,
-        """
-        INSERT INTO dbo.shop_orders
-            (id, token, email, status, mollie_id, amount_cents, vat_cents, created_at, address_json)
-        VALUES (?, ?, ?, 'open', NULL, ?, ?, ?, ?)
-        """,
-        (
-            order_id,
-            token,
-            email,
-            amount_cents,
-            vat_cents,
-            datetime.now(timezone.utc).isoformat(),
-            json.dumps(posted),
-        ),
-    )
-    for item in items:
-        run(
+    street: str,
+    number: str,
+    postalcode: str,
+    city: str,
+) -> int | None:
+    """An address is complete with city + street + number, or with postcode + number.
+    Only a complete address can match an existing row."""
+    if not number:
+        return None
+    if city and street:
+        row = one(
             conn,
             """
-            INSERT INTO dbo.shop_orderlines (order_id, slug, number_of_copies, price_cents_per_copy)
-            VALUES (?, ?, ?, ?)
+            SELECT id FROM dbo.address
+            WHERE [number] = ? AND street = ? AND city = ?
+            ORDER BY id
             """,
-            (order_id, item.slug, item.number_of_copies, item.price_cents_per_copy),
+            (number, street, city),
         )
-    conn.commit()
+        if row is not None:
+            return int(row["id"])
+    if postalcode:
+        row = one(
+            conn,
+            """
+            SELECT id FROM dbo.address
+            WHERE [number] = ? AND postalcode = ?
+            ORDER BY id
+            """,
+            (number, postalcode),
+        )
+        if row is not None:
+            return int(row["id"])
+    return None
 
 
-def attach_payment(conn, order_id: str, mollie_id: str) -> None:
-    run(conn, "UPDATE dbo.shop_orders SET mollie_id = ? WHERE id = ?", (mollie_id, order_id))
-    conn.commit()
+def save_address(conn, address: Address) -> int | None:
+    """Reuse the address already on file, and otherwise store a new one."""
+    existing = find_address(
+        conn,
+        street=address.street,
+        number=address.number,
+        postalcode=address.postalcode,
+        city=address.city,
+    )
+    if existing is not None:
+        run(
+            conn,
+            "UPDATE dbo.address SET street = ?, [number] = ?, postalcode = ?, city = ? WHERE id = ?",
+            (address.street, address.number, address.postalcode, address.city, existing),
+        )
+        return existing
+    if not any((address.street, address.number, address.postalcode, address.city)):
+        return None
+    return insert_id(
+        conn,
+        "INSERT INTO dbo.address (street, [number], postalcode, city) OUTPUT INSERTED.id VALUES (?, ?, ?, ?)",
+        (address.street, address.number, address.postalcode, address.city),
+    )
 
 
-def _address_from_json(raw: object) -> Address:
-    data = json.loads(raw) if isinstance(raw, str) and raw else {}
-    if not isinstance(data, dict):
-        data = {}
+def address_by_id(conn, address_id: int | None) -> Address:
+    if address_id is None:
+        return Address("", "", "", "")
+    row = one(
+        conn,
+        "SELECT street, [number], postalcode, city FROM dbo.address WHERE id = ?",
+        (int(address_id),),
+    )
+    if row is None:
+        return Address("", "", "", "")
     return Address(
-        name=str(data.get("name") or ""),
-        street=str(data.get("street") or ""),
-        postcode=str(data.get("postcode") or ""),
-        city=str(data.get("city") or ""),
+        street=str(row["street"] or ""),
+        number=str(row["number"] or ""),
+        postalcode=str(row["postalcode"] or ""),
+        city=str(row["city"] or ""),
     )
 
 
@@ -143,7 +219,7 @@ def _lines_for(conn, order_id: str) -> tuple[OrderItem, ...]:
         conn,
         """
         SELECT slug, number_of_copies, price_cents_per_copy
-        FROM dbo.shop_orderlines
+        FROM dbo.orderlines
         WHERE order_id = ?
         ORDER BY id
         """,
@@ -160,69 +236,46 @@ def _lines_for(conn, order_id: str) -> tuple[OrderItem, ...]:
 
 
 def _order_from_row(conn, row: dict) -> Order:
-    items = _lines_for(conn, row["id"])
     return Order(
         id=row["id"],
         token=row["token"],
         email=row["email"],
         status=row["status"],
-        mollie_id=row["mollie_id"],
-        items=items,
+        items=_lines_for(conn, row["id"]),
         amount_cents=row["amount_cents"],
         vat_cents=row["vat_cents"],
-        address=_address_from_json(row["address_json"]),
+        debtor_id=int(row["debtor_id"]),
+        debtor_name=str(row["debtor_name"] or ""),
+        address=address_by_id(conn, row["address_id"]),
+        invoice_number=row["invoice_number"],
     )
+
+
+_ORDER_SELECT = """
+    SELECT o.id, o.token, o.email, o.status, o.amount_cents, o.vat_cents, o.invoice_number,
+           d.id AS debtor_id, d.name AS debtor_name, d.address_id
+    FROM dbo.orders o
+    JOIN dbo.debtors d ON d.id = o.debtor_id
+"""
 
 
 def get_order(conn, order_id: str) -> Order | None:
-    row = one(
-        conn,
-        """
-        SELECT id, token, email, status, mollie_id, amount_cents, vat_cents, address_json
-        FROM dbo.shop_orders WHERE id = ?
-        """,
-        (order_id,),
-    )
+    row = one(conn, f"{_ORDER_SELECT} WHERE o.id = ?", (order_id,))
     if row is None:
         return None
     return _order_from_row(conn, row)
 
 
-def order_by_payment(conn, mollie_id: str) -> Order | None:
-    row = one(
+def orders_without_invoice(conn) -> list[Order]:
+    """Account orders an administrator has not yet turned into an invoice."""
+    rows = query(conn, f"{_ORDER_SELECT} WHERE o.invoice_number IS NULL ORDER BY o.id")
+    return [_order_from_row(conn, row) for row in rows]
+
+
+def mark_invoiced(conn, order_id: str, invoice_number: str) -> None:
+    run(
         conn,
-        """
-        SELECT id, token, email, status, mollie_id, amount_cents, vat_cents, address_json
-        FROM dbo.shop_orders WHERE mollie_id = ?
-        """,
-        (mollie_id,),
+        "UPDATE dbo.orders SET invoice_number = ?, status = 'invoiced' WHERE id = ?",
+        (invoice_number, order_id),
     )
-    if row is None:
-        return None
-    return _order_from_row(conn, row)
-
-
-def apply_payment(
-    conn,
-    order: Order,
-    *,
-    status: str,
-    amount_cents: int,
-    order_id_from_provider: str,
-) -> str:
-    """Record a payment status fetched from Mollie. A paid order is never reopened."""
-    if order_id_from_provider != order.id:
-        return "order-mismatch"
-    if amount_cents != order.amount_cents:
-        return "amount-mismatch"
-    if order.status == "paid":
-        return "paid"
-    if status == "paid":
-        run(conn, "UPDATE dbo.shop_orders SET status = 'paid' WHERE id = ?", (order.id,))
-        conn.commit()
-        return "paid"
-    if status in {"canceled", "expired", "failed"} and order.status == "open":
-        run(conn, "UPDATE dbo.shop_orders SET status = ? WHERE id = ?", (status, order.id))
-        conn.commit()
-        return status
-    return order.status
+    conn.commit()

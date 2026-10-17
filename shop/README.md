@@ -9,21 +9,35 @@ The shop is one process: a home page, shelves, an events page, an about page,
 a page per book, a cart, and Mollie checkout. A paid order is a paper copy
 sent to the address on the order. There is no download.
 
-The shop does not open the bookkeeping database. Orders are
-`shop/data/orders.sqlite` on the computer that runs this process.
+The shop keeps its own records in the SQL Server database `webshop`, a
+sibling of the bookkeeping database `agrolav` on the same server. The shop
+reads the general ledger from `agrolav` and writes nothing there.
 
 The prices charged are the cents stored on each book. Postage is not added.
 The live shelf in `catalog.json` is still the small one. The old site’s list,
 about 400 titles, is kept under `shop/old_website/` and is not the live catalogue yet.
 
-## Debiteuren, reminders, and the cost of a copy
+## Buyer administration
 
-An order on account is now an invoice in `shop/data/orders.sqlite`.
-Completing REKENING asks for an email and a VAT number, stores one line per
-book with `number_of_copies`, and shows factuur `DB-00001` with the amount
-to transfer. The customer is told to put that number in the payment
-description. The books may leave immediately, and the stock in SQLite drops
-in the same save.
+There are two kinds of buyer, and both point at one row of `address`:
+
+- **Debtors** are companies that buy on account. A debtor has orders and
+  invoices.
+- **Customers** are buyers who pay online through Mollie. A customer has
+  invoices only.
+
+The address is `street`, `number`, `postalcode`, and `city`. The number is
+text, so `12`, `12a`, and `12-3` are all possible.
+
+An **order** is written the moment an account buyer places it on the
+website. It carries a token, a status, the amounts, and one row per book in
+`orderlines`.
+
+An **invoice** has a unique number and its lines are in `invoicelines`. Each
+invoice belongs to a debtor or to a customer, never both. A debtor is
+invoiced later, by an administrator through the admin site, after the mail
+order has been sent, and is told to put the invoice number in the payment
+description. A customer's invoice is written at checkout, already paid.
 
 Payment matching and reminders run apart from the website, with `remind`
 from the `shop` directory. A booking on the Boog account counts when its
@@ -31,15 +45,7 @@ description contains the invoice number and the money is coming in. A short
 payment leaves the rest open. Several invoice numbers are settled only when
 the booking equals their open sum. The same booking is not applied twice.
 Reminders go out seven days before the due date, on the due date, and
-fourteen and thirty days after, and each send is recorded.
-
-`REKENING` is a company order form. `rekening.json` stores the company, a
-code, an address, a bank number, a date, a total exclusive of 9% VAT, and
-lines that contain only a title and a quantity. It does not store an email,
-a due date, an amount still open, or a payment. Mollie orders live in a
-different file, `shop/data/orders.sqlite`, and are settled by Mollie before
-the books are sent. Neither file is a debtor administration, and neither
-reads `beheer_boog`.
+fourteen and thirty days after, and each send is recorded in `reminders`.
 
 `beheer_boog` is country 6 in the bookkeeping database. Its bookings are
 `dbo.transaction_beheer_boog`. That database remains the general ledger.
@@ -51,20 +57,19 @@ booking has settled it.
 
 ### What an invoice must carry
 
-An order on account becomes an invoice with a stable number, a debtor, an
-email, a date, a due date, and lines. Each line needs the book slug, the
-quantity, and the unit price the customer is asked to pay. The amount the
-customer must transfer is stored on the invoice as its own figure. The
-exclusive-of-VAT total that `rekening.json` stores today is not that figure,
-so a bank booking cannot be matched against it.
+An order on account becomes an invoice with a stable number, a debtor or a
+customer, an email, a date, a due date, and lines. Each line needs the book
+slug, the quantity, and the unit price the customer is asked to pay. The
+amount the customer must transfer is stored on the invoice as its own
+figure, so a bank booking can be matched against it.
 
 The old site asked companies that order on account for a VAT number, and
 asked private customers either to pay with iDEAL or to transfer before
 dispatch. Both are invoices. The difference is whether the books may leave
-before the open amount is zero. A Mollie order that is already `paid` is
+before the open amount is zero. A Mollie payment that is already `paid` is
 not an open debt. A Mollie payout arrives later as one bank booking for
-many orders. That payout is matched on Mollie’s settlement reference, not
-on an invoice number.
+many sales, matched on Mollie’s settlement reference, not on an invoice
+number.
 
 ### How the shop infers that an invoice is paid
 
@@ -97,7 +102,7 @@ environment, not in git.
 
 The selling price and the cost of getting that copy into the customer’s
 hands are different numbers. The invoice line stores the selling price.
-The costs are not columns of `invoice_lines`.
+The costs are not columns of `invoicelines`.
 None of the three costs below is invented here, and none is posted to
 `beheer_boog` until the balance has a post for it.
 
@@ -116,63 +121,36 @@ None of the three costs below is invented here, and none is posted to
   tariff, and this note does not supply one. The old site sends twice a
   week. That is the rhythm, not a price.
 
-`rekening.json` cannot hold this. Its lines have no slug, no unit price,
-and no cost amounts. New invoices should. The old file stays the record of
-the orders already taken.
+The invoice line stores the selling price only. The cost amounts above are
+not columns of `invoicelines`.
 
-### JSON and SQLite
+### Catalogue and stock
 
-The debtor ledger moves to SQLite. The catalogue stays in `catalog.json`.
-
-`rekening.json` is rewritten as a whole file on every order. A reminder run
-and a new order can overwrite each other, and an open invoice is found only
-by reading every order. The reminder pass, a partial payment, and the
-`transaction_id` from `beheer_boog` are rows: one invoice, one open amount,
-one reminder step, one booking applied once. `shop/data/orders.sqlite`
-already stores the Mollie orders that way. The invoices belong in that same
-file, in their own tables.
-
-A Mollie order is one row in `orders`. The books on it are rows in
-`order_lines`, not a JSON list on the order. `items_json` is not a column.
-One hundred copies of one book are one line.
-
-| column | |
-| --- | --- |
-| `id` | primary key of the line |
-| `order_id` | the order, `orders.id` |
-| `slug` | the book |
-| `number_of_copies` | how many copies |
-| `price_cents_per_copy` | the unit price charged |
-
-The title is read from `catalog.json` when the order page is printed.
-
-`orders.token` is a random secret created with the order. Mollie sends the
-customer back to `/bestelling/{id}?token=…`. The page shows the address and
-the books only when that query value matches the stored token. The order id
-alone does not open the page. A wrong token is answered as if the order
-were unknown. The token is not the Mollie payment id.
-
-The Mollie payment id is `orders.mollie_id`. The order row is inserted with
-that column empty. After Mollie creates the payment, `attach_payment` writes
-the payment id onto the row. The webhook finds the order with
-`WHERE mollie_id = ?`.
-
-`catalog.json` stays the book list. Four hundred titles are still one
+The catalogue stays in `catalog.json`. Four hundred titles are still one
 document that can be edited and diffed, and the covers stay files in
-`shop/files/`. An invoice line stores the slug and the cents charged at
-that moment, so a later price change does not rewrite the invoice.
+`shop/files/`. Title, author, ISBN, and the other descriptive fields never
+move into the database.
+
+The buyer administration lives in SQL Server, not in a file. An order is one
+row in `orders` with its books as rows in `orderlines`; an invoice is one
+row in `invoices` with its books as rows in `invoicelines`. A JSON list of
+items is not a column: one hundred copies of one book are one line, with the
+slug, the number of copies, and the unit price charged.
+
+An invoice line stores the slug and the cents charged at that moment, so a
+later price change does not rewrite the invoice. The title is read from
+`catalog.json` when the invoice or order page is printed.
 
 Stock is the catalogue figure that leaves the JSON file. Saving an invoice
 and lowering `voorraad` has to succeed or fail together, so that number
-belongs in SQLite. Title, author, ISBN, and the other descriptive fields
-stay in `catalog.json`.
+lives in the `stock` table.
 
 ## What the customer does
 
 1. Opens the shop. Home, Agenda, Over, Rekening, and Winkelwagen follow the Colophon layout.
 2. Opens a book. The cover is the file in `shop/files/`.
 3. Chooses **Koop dit exemplaar** or adds the book to the cart.
-4. Enters a name, street, postcode, city, and email.
+4. Enters a name, street name, house number, postcode, city, and email.
 5. **Betaal met Mollie** sends the customer to Mollie's page. Card numbers are entered there, not on this site.
 6. Mollie calls `POST /mollie/webhook`. The return page also asks Mollie for the payment status.
 7. When the status is `paid`, the order page shows the books and the delivery address.

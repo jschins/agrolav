@@ -8,16 +8,17 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
-from app.catalog import add_book, book_keys, load_catalog, replace_book, search_books, update_voorraad
-from app.ledger import overlay_stock, set_stock
-from app.orders import connect
+from app.catalog import add_book, book_keys, euro, load_catalog, replace_book, search_books, update_voorraad
+from app.ledger import create_debtor_invoice, overlay_stock, set_stock
+from app.orders import connect, get_order, orders_without_invoice
 
 _ROOT = Path(__file__).resolve().parent.parent
 _MENU = "Voeg nieuw boek toe"
 _STOCK = "Beheer voorraad"
 _CATALOG = "Beheer catalogus"
+_INVOICES = "Factureer bestellingen"
 _EDIT = "Wijzig boek"
-_MENUS = (("/", _MENU), ("/voorraad", _STOCK), ("/catalogus", _CATALOG))
+_MENUS = (("/", _MENU), ("/voorraad", _STOCK), ("/catalogus", _CATALOG), ("/facturen", _INVOICES))
 _FIELDS = (
     ("slug", "slug", True),
     ("titel", "titel", True),
@@ -282,8 +283,8 @@ def _clip(text: str) -> str:
     return f'<td class="clip" data-full="{shown}"><span>{shown}</span></td>'
 
 
-def stock_page(catalog_path: Path, db_path: Path, error: str = "") -> str:
-    conn = connect(db_path)
+def stock_page(catalog_path: Path, error: str = "") -> str:
+    conn = connect()
     try:
         catalog = overlay_stock(conn, load_catalog(catalog_path))
     finally:
@@ -320,6 +321,51 @@ def stock_page(catalog_path: Path, db_path: Path, error: str = "") -> str:
 </main>
 """
     return _page(body, _STOCK, "/voorraad")
+
+
+def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
+    """Account orders waiting for an administrator to write their invoice."""
+    conn = connect()
+    try:
+        pending = orders_without_invoice(conn)
+    finally:
+        conn.close()
+    rows = []
+    for order in pending:
+        rows.append(
+            "<tr>"
+            f"{_clip(order.id[:16])}"
+            f"{_clip(order.debtor_name)}"
+            f"{_clip(order.email)}"
+            f"<td>{escape(euro(order.amount_cents))}</td>"
+            f'<td><form method="post" action="/facturen/order/{escape(order.id)}">'
+            f'<button class="btn" type="submit">Factureer</button></form></td>'
+            "</tr>"
+        )
+    body_rows = "".join(rows) or '<tr><td colspan="5">Geen openstaande bestellingen.</td></tr>'
+    notice_html = f"<p>{escape(notice)}</p>" if notice else ""
+    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
+    body = f"""
+<main class="rekening-wide">
+  <h1>{_INVOICES}</h1>
+  {notice_html}{error_html}
+  <p class="hint">Een bestelling wordt gefactureerd nadat de boeken zijn verstuurd.</p>
+  <table class="plain wide">
+    <colgroup>
+      <col style="width:18%">
+      <col style="width:26%">
+      <col style="width:26%">
+      <col style="width:14%">
+      <col style="width:16%">
+    </colgroup>
+    <thead><tr>
+      <th>Bestelling</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Factuur</th>
+    </tr></thead>
+    <tbody>{body_rows}</tbody>
+  </table>
+</main>
+"""
+    return _page(body, _INVOICES, "/facturen")
 
 
 def _book_values(item: dict) -> dict[str, str]:
@@ -360,8 +406,7 @@ def catalog_page(catalog_path: Path, query: dict[str, str]) -> str:
     return _page(body, _CATALOG, "/catalogus")
 
 
-def create_admin_app(catalog_path: Path, files_dir: Path, db_path: Path | None = None) -> FastAPI:
-    database = db_path or (catalog_path.parent / "data" / "orders.sqlite")
+def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
     app = FastAPI()
 
     @app.get("/favicon.ico")
@@ -498,7 +543,7 @@ def create_admin_app(catalog_path: Path, files_dir: Path, db_path: Path | None =
 
     @app.get("/voorraad", response_class=HTMLResponse)
     def show_stock() -> str:
-        return stock_page(catalog_path, database)
+        return stock_page(catalog_path)
 
     @app.post("/voorraad", response_class=HTMLResponse)
     async def save_stock(request: Request) -> HTMLResponse:
@@ -515,13 +560,32 @@ def create_admin_app(catalog_path: Path, files_dir: Path, db_path: Path | None =
                 amounts[book.slug] = amount
             update_voorraad(catalog_path, amounts)
         except ValueError as exc:
-            return HTMLResponse(stock_page(catalog_path, database, str(exc)), status_code=400)
-        conn = connect(database)
+            return HTMLResponse(stock_page(catalog_path, str(exc)), status_code=400)
+        conn = connect()
         try:
             set_stock(conn, amounts)
         finally:
             conn.close()
-        return HTMLResponse(stock_page(catalog_path, database))
+        return HTMLResponse(stock_page(catalog_path))
+
+    @app.get("/facturen", response_class=HTMLResponse)
+    def show_invoices() -> str:
+        return invoices_page(catalog_path)
+
+    @app.post("/facturen/order/{order_id}", response_class=HTMLResponse)
+    def invoice_order(order_id: str) -> HTMLResponse:
+        conn = connect()
+        try:
+            order = get_order(conn, order_id)
+            if order is None:
+                return HTMLResponse(invoices_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
+            try:
+                invoice = create_debtor_invoice(conn, order)
+            except ValueError as exc:
+                return HTMLResponse(invoices_page(catalog_path, str(exc)), status_code=400)
+        finally:
+            conn.close()
+        return HTMLResponse(invoices_page(catalog_path, notice=f"Factuur {invoice.number} aangemaakt."))
 
     return app
 

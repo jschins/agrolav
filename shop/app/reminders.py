@@ -69,14 +69,11 @@ def send_code_request(contact: str, email: str, code: str) -> None:
         raise RuntimeError("mail failed") from exc
 
 
-def run(today: date | None = None, db_path: Path | None = None) -> int:
+def run(today: date | None = None) -> int:
     today = today or date.today()
-    path = db_path or Path(os.environ.get("SHOP_DATA_DIR", str(_ROOT / "data"))) / "orders.sqlite"
-    if db_path is not None:
-        path = db_path
     iban = os.environ.get("SHOP_BOOG_IBAN", "").strip()
     sender = os.environ.get("SHOP_MAIL_FROM", "info@deboog.nl").strip()
-    conn = connect(path if db_path is not None else path)
+    conn = connect(autocommit=False)
     sent = 0
     try:
         if iban:
