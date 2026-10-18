@@ -68,6 +68,7 @@ class Invoice:
     customer_id: int | None
     mollie_id: str | None = None
     status: str = "prepared"
+    sent_at: str | None = None
 
     @property
     def paid(self) -> bool:
@@ -617,7 +618,7 @@ def get_invoice(number: str) -> Invoice | None:
             conn,
             """
             SELECT i.id, i.token, i.mollie_id, i.ordered_at, i.due_on, i.payable_cents, i.open_cents,
-                   i.portokosten_cents, i.debtor_id, i.customer_id, i.status,
+                   i.portokosten_cents, i.debtor_id, i.customer_id, i.status, i.sent_at,
                    d.name AS debtor_name, d.email AS debtor_email, d.vat_number AS debtor_vat,
                    d.address_id AS debtor_address_id, d.code AS debtor_code,
                    c.name AS customer_name, c.email AS customer_email, c.address_id AS customer_address_id
@@ -681,23 +682,27 @@ def get_invoice(number: str) -> Invoice | None:
         customer_id=int(row["customer_id"]) if for_customer else None,
         mollie_id=row["mollie_id"],
         status=str(row["status"] or "prepared"),
+        sent_at=None if row["sent_at"] is None else str(row["sent_at"]),
     )
 
 
 def mark_invoice_sent(conn, number: str) -> bool:
-    """Atomically move a prepared invoice to sent; return false if unavailable."""
+    """Record a successful send, transitioning debtor drafts to sent."""
     invoice_id = _invoice_id(number)
     if invoice_id is None:
         return False
+    sent_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     changed = query(
         conn,
         """
         UPDATE dbo.invoices
-        SET status = 'sent'
+        SET status = CASE WHEN status = 'prepared' THEN 'sent' ELSE status END,
+            sent_at = ?
         OUTPUT INSERTED.id
-        WHERE id = ? AND status = 'prepared'
+        WHERE id = ?
+          AND (status = 'prepared' OR (status = 'customer' AND sent_at IS NULL))
         """,
-        (invoice_id,),
+        (sent_at, invoice_id),
     )
     if not changed:
         conn.rollback()
@@ -728,10 +733,10 @@ def open_invoices(conn) -> list[Invoice]:
 
 
 def unpaid_invoices(conn) -> list[Invoice]:
-    """Sent invoices with an unpaid balance; prepared drafts stay in Bestellingen."""
+    """Invoices already emailed with a remaining balance."""
     rows = query(
         conn,
-        "SELECT id FROM dbo.invoices WHERE status = N'sent' AND open_cents > 0 ORDER BY id",
+        "SELECT id FROM dbo.invoices WHERE sent_at IS NOT NULL AND open_cents > 0 ORDER BY id",
     )
     found = []
     for row in rows:
@@ -739,6 +744,37 @@ def unpaid_invoices(conn) -> list[Invoice]:
         if invoice is not None:
             found.append(invoice)
     return found
+
+
+def paid_invoices(conn) -> list[Invoice]:
+    """Emailed invoices now settled, plus fully-paid customer checkout invoices."""
+    rows = query(
+        conn,
+        """
+        SELECT id FROM dbo.invoices
+        WHERE open_cents <= 0
+          AND (sent_at IS NOT NULL OR status = N'customer')
+        ORDER BY id
+        """,
+    )
+    found = []
+    for row in rows:
+        invoice = get_invoice(invoice_number(int(row["id"])))
+        if invoice is not None:
+            found.append(invoice)
+    return found
+
+
+def latest_reminder_dates(conn) -> dict[str, str]:
+    rows = query(
+        conn,
+        "SELECT invoice_number, MAX(sent_at) AS sent_at FROM dbo.reminders GROUP BY invoice_number",
+    )
+    return {
+        str(row["invoice_number"]): str(row["sent_at"])
+        for row in rows
+        if row["sent_at"] is not None
+    }
 
 
 def applied_transaction_ids(conn) -> set[int]:
@@ -957,11 +993,15 @@ def apply_allocations(conn, allocations: list[Allocation]) -> None:
             (allocation.transaction_id, allocation.invoice_number, allocation.amount_cents),
         )
         invoice_id = _invoice_id(allocation.invoice_number)
-        row = one(conn, "SELECT open_cents, customer_id FROM dbo.invoices WHERE id = ?", (invoice_id,))
+        row = one(
+            conn,
+            "SELECT open_cents, customer_id, status FROM dbo.invoices WHERE id = ?",
+            (invoice_id,),
+        )
         if row is None:
             continue
         remaining = int(row["open_cents"]) - allocation.amount_cents
-        if remaining <= 0 and row["customer_id"] is None:
+        if remaining <= 0 and row["customer_id"] is None and row["status"] == "sent":
             run(
                 conn,
                 "UPDATE dbo.invoices SET open_cents = ?, status = 'paid' WHERE id = ?",

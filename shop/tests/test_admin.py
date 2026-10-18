@@ -393,6 +393,7 @@ class AdminTests(unittest.TestCase):
             self.assertEqual(invoice.name, "Parochie Adhoc")
             self.assertEqual(invoice.payable_cents, 750)
             self.assertEqual(invoice.status, "sent")
+            self.assertIsNotNone(invoice.sent_at)
             self.assertIsNotNone(invoice.debtor_id)
             self.assertIsNone(invoice.customer_id)
 
@@ -405,10 +406,10 @@ class AdminTests(unittest.TestCase):
             self.assertNotIn("Te verzenden losse facturen", bestellingen.text)
             self.assertNotIn(number, bestellingen.text)
 
-    def test_orders_move_between_unsent_and_sent_tables(self) -> None:
+    def test_sent_order_moves_to_facturen_and_leaves_bestellingen(self) -> None:
         from app.bank import DEBOOG_ACCOUNT_IBAN
         from app.ledger import create_account_order, get_invoice, save_shop_debtor
-        from app.orders import order_number
+        from app.orders import connect, order_number, run
 
         def make_order():
             suffix = uuid.uuid4().hex[:10]
@@ -433,8 +434,9 @@ class AdminTests(unittest.TestCase):
             directory = Path(tmp)
             client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
             initial = client.get("/bestellingen")
-            self.assertIn("Bestellingen zonder verzonden facturen", initial.text)
-            self.assertIn("Bestellingen met verzonden facturen", initial.text)
+            self.assertIn("<h1>Bestellingen zonder verzonden facturen</h1>", initial.text)
+            self.assertNotIn("<h2>Bestellingen zonder verzonden facturen</h2>", initial.text)
+            self.assertNotIn("Bestellingen met verzonden facturen", initial.text)
             self.assertIn(".row-actions { display: flex;", initial.text)
             self.assertIn(order_number(sent_order.invoice_id), initial.text)
             self.assertIn(order_number(pending_order.invoice_id), initial.text)
@@ -451,15 +453,36 @@ class AdminTests(unittest.TestCase):
                 self.assertEqual(duplicate.status_code, 409)
                 self.assertEqual(send_email.call_count, 1)
 
-            self.assertEqual(get_invoice(sent_order.invoice_number).status, "sent")
+            sent_invoice = get_invoice(sent_order.invoice_number)
+            assert sent_invoice is not None
+            self.assertEqual(sent_invoice.status, "sent")
+            self.assertIsNotNone(sent_invoice.sent_at)
+            conn = connect()
+            try:
+                run(
+                    conn,
+                    "INSERT INTO dbo.reminders (invoice_number, email, step, sent_at) VALUES (?, ?, ?, ?)",
+                    (sent_invoice.number, sent_invoice.email, "due", "2026-10-18 12:30"),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
             updated = client.get("/bestellingen")
-            without_sent = updated.text.split("<h2>Bestellingen zonder verzonden facturen</h2>", 1)[1].split("</table>", 1)[0]
-            with_sent = updated.text.split("<h2>Bestellingen met verzonden facturen</h2>", 1)[1]
+            without_sent = updated.text.split("<h1>Bestellingen zonder verzonden facturen</h1>", 1)[1].split("</table>", 1)[0]
             self.assertNotIn(order_number(sent_order.invoice_id), without_sent)
             self.assertIn(order_number(pending_order.invoice_id), without_sent)
-            self.assertIn(order_number(sent_order.invoice_id), with_sent)
-            self.assertIn(sent_invoice.number, with_sent)
-            self.assertNotIn(order_number(pending_order.invoice_id), with_sent)
+            self.assertNotIn(order_number(sent_order.invoice_id), updated.text)
+            self.assertNotIn("Bestellingen met verzonden facturen", updated.text)
+
+            invoices_page = client.get("/facturen")
+            open_rows = invoices_page.text.split("<h1>Openstaande facturen</h1>", 1)[1].split(
+                '<h2 class="invoice-section-title">Betaalde facturen</h2>', 1
+            )[0]
+            self.assertIn(sent_invoice.number, open_rows)
+            self.assertIn(f"Verstuurd: {sent_invoice.sent_at[:10]}", open_rows)
+            self.assertIn("Herinnering: 2026-10-18", open_rows)
+            self.assertNotIn("Openstaand</th>", invoices_page.text)
 
     def test_failed_automatic_adhoc_send_can_be_retried(self) -> None:
         from app.ledger import get_invoice, save_shop_debtor, shop_debtor_by_code
@@ -494,7 +517,10 @@ class AdminTests(unittest.TestCase):
             self.assertEqual(retry.status_code, 200, retry.text)
             self.assertIn("verzonden naar mailfout@example.com", retry.text)
             send_email.assert_called_once()
-            self.assertEqual(get_invoice(number).status, "sent")
+            sent_invoice = get_invoice(number)
+            assert sent_invoice is not None
+            self.assertEqual(sent_invoice.status, "sent")
+            self.assertIsNotNone(sent_invoice.sent_at)
 
     def test_bank_refresh_matches_and_records_a_payment_once(self) -> None:
         from app.bank import DEBOOG_ACCOUNT_IBAN, DownloadResult, Statement
@@ -560,10 +586,12 @@ class AdminTests(unittest.TestCase):
                 self.assertEqual(paid.open_cents, 0)
                 self.assertEqual(paid.status, "paid")
                 orders_page = client.get("/bestellingen")
-                sent_section = orders_page.text.split(
-                    "<h2>Bestellingen met verzonden facturen</h2>", 1
+                self.assertNotIn(order_number(order.invoice_id), orders_page.text)
+                invoice_page = client.get("/facturen")
+                paid_section = invoice_page.text.split(
+                    '<h2 class="invoice-section-title">Betaalde facturen</h2>', 1
                 )[1]
-                self.assertIn(order_number(order.invoice_id), sent_section)
+                self.assertIn(invoice.number, paid_section)
 
                 second = client.get("/bank")
                 self.assertEqual(second.status_code, 200)

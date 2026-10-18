@@ -20,16 +20,18 @@ from app.ledger import (
     create_adhoc_invoice,
     get_invoice,
     known_party_ibans,
+    latest_reminder_dates,
     mark_invoice_sent,
     match_statements,
     open_invoice_candidates,
     overlay_stock,
+    paid_invoices,
     party_choices,
     set_invoice_lines,
     set_stock,
     unpaid_invoices,
 )
-from app.orders import connect, get_order_by_token, order_number, orders_awaiting_send, orders_with_sent_invoices
+from app.orders import connect, get_order_by_token, order_number, orders_awaiting_send
 from app.reminders import send_invoice as send_invoice_email
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -103,6 +105,7 @@ h1, h2 {{
   line-height: 1.15;
   margin: 0;
 }}
+.invoice-section-title {{ font-size: 2em; margin-top: 1.25rem; }}
 header.bar {{
   background: var(--card);
   border-bottom: 1px solid var(--border);
@@ -484,8 +487,20 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
     conn = connect()
     try:
         invoices = unpaid_invoices(conn)
+        paid = paid_invoices(conn)
+        reminder_dates = latest_reminder_dates(conn)
     finally:
         conn.close()
+
+    def sent_dates(invoice) -> str:
+        dates = []
+        if invoice.sent_at:
+            dates.append(f"Verstuurd: {invoice.sent_at[:10]}")
+        reminder = reminder_dates.get(invoice.number)
+        if reminder:
+            dates.append(f"Herinnering: {reminder[:10]}")
+        return "<td>" + ("<br>".join(escape(value) for value in dates) or "—") + "</td>"
+
     invoice_rows = []
     for invoice in invoices:
         invoice_rows.append(
@@ -494,24 +509,45 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
             f"{_clip(invoice.name)}"
             f"{_clip(invoice.email)}"
             f"<td>{escape(euro(invoice.payable_cents))}</td>"
-            f"<td>{escape(euro(invoice.open_cents))}</td>"
+            f"{sent_dates(invoice)}"
             "</tr>"
         )
     body_invoice_rows = "".join(invoice_rows) or '<tr><td colspan="5">Geen openstaande facturen.</td></tr>'
+    paid_rows = []
+    for invoice in paid:
+        paid_rows.append(
+            "<tr>"
+            f'<td><a href="/facturen/{escape(invoice.number)}/regels">{escape(invoice.number)}</a></td>'
+            f"{_clip(invoice.name)}"
+            f"{_clip(invoice.email)}"
+            f"<td>{escape(euro(invoice.payable_cents))}</td>"
+            f"{sent_dates(invoice)}"
+            "</tr>"
+        )
+    body_paid_rows = "".join(paid_rows) or '<tr><td colspan="5">Geen betaalde facturen.</td></tr>'
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""
 <main class="rekening-wide">
+  <p><a class="btn" href="/facturen/nieuw">Voeg factuur toe</a></p>
   <h1>Openstaande facturen</h1>
   {notice_html}{error_html}
-  <p><a class="btn" href="/facturen/nieuw">Voeg factuur toe</a></p>
   <table class="plain wide">
     <colgroup>
-      <col style="width:16%"><col style="width:23%"><col style="width:23%">
-      <col style="width:19%"><col style="width:19%">
+      <col style="width:16%"><col style="width:22%"><col style="width:22%">
+      <col style="width:16%"><col style="width:24%">
     </colgroup>
-    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Openstaand</th></tr></thead>
+    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Verstuurd</th></tr></thead>
     <tbody>{body_invoice_rows}</tbody>
+  </table>
+  <h2 class="invoice-section-title">Betaalde facturen</h2>
+  <table class="plain wide">
+    <colgroup>
+      <col style="width:16%"><col style="width:22%"><col style="width:22%">
+      <col style="width:16%"><col style="width:24%">
+    </colgroup>
+    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Verstuurd</th></tr></thead>
+    <tbody>{body_paid_rows}</tbody>
   </table>
 </main>
 """
@@ -519,11 +555,10 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
 
 
 def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
-    """Orders awaiting invoice delivery and a history of orders already sent."""
+    """Orders whose linked invoice is still prepared for delivery."""
     conn = connect()
     try:
         pending = orders_awaiting_send(conn)
-        sent_orders = orders_with_sent_invoices(conn)
     finally:
         conn.close()
     rows = []
@@ -547,26 +582,12 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
             "</tr>"
         )
     body_rows = "".join(rows) or '<tr><td colspan="5">Geen openstaande bestellingen.</td></tr>'
-    sent_rows = []
-    for order in sent_orders:
-        invoice_number = escape(order.invoice_number)
-        sent_rows.append(
-            "<tr>"
-            f"{_clip(order_number(order.invoice_id))}"
-            f"{_clip(order.debtor_name)}"
-            f"{_clip(order.email)}"
-            f"<td>{escape(euro(order.amount_cents))}</td>"
-            f'<td><a href="/facturen/{invoice_number}/regels">{invoice_number}</a></td>'
-            "</tr>"
-        )
-    body_sent_rows = "".join(sent_rows) or '<tr><td colspan="5">Geen bestellingen met verzonden facturen.</td></tr>'
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""
 <main class="rekening-wide">
-  <h1>{_ORDERS}</h1>
+  <h1>Bestellingen zonder verzonden facturen</h1>
   {notice_html}{error_html}
-  <h2>Bestellingen zonder verzonden facturen</h2>
   <table class="plain wide">
     <colgroup>
       <col style="width:15%"><col style="width:22%"><col style="width:22%"><col style="width:12%"><col style="width:29%">
@@ -574,17 +595,9 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
     <thead><tr><th>Bestelling</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Bewerken</th></tr></thead>
     <tbody>{body_rows}</tbody>
   </table>
-  <h2>Bestellingen met verzonden facturen</h2>
-  <table class="plain wide">
-    <colgroup>
-      <col style="width:15%"><col style="width:22%"><col style="width:22%"><col style="width:12%"><col style="width:29%">
-    </colgroup>
-    <thead><tr><th>Bestelling</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Factuur</th></tr></thead>
-    <tbody>{body_sent_rows}</tbody>
-  </table>
 </main>
 """
-    return _page(body, _ORDERS, "/bestellingen")
+    return _page(body, "Bestellingen zonder verzonden facturen", "/bestellingen")
 
 
 def nieuwe_factuur_page(
@@ -890,9 +903,11 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
 
         if invoice is None:
             return failed("Deze factuur bestaat niet.", 404)
-        allowed_status = invoice.status == "prepared" or (allow_customer and invoice.status == "customer")
+        allowed_status = invoice.status == "prepared" or (
+            allow_customer and invoice.status == "customer" and invoice.sent_at is None
+        )
         if not allowed_status:
-            return failed("Alleen een voorbereide factuur kan worden verzonden.", 409)
+            return failed("Deze factuur is al verzonden of kan niet worden verzonden.", 409)
         if not invoice.email.strip():
             return failed("De factuur heeft geen e-mailadres.", 400)
 
@@ -904,13 +919,11 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
         except Exception:  # SMTP/provider and PDF errors leave the invoice prepared for a retry.
             return failed("Factuur verzenden is mislukt.", 502)
 
-        marked = invoice.status == "customer"
-        if invoice.status == "prepared":
-            conn = connect()
-            try:
-                marked = mark_invoice_sent(conn, invoice.number)
-            finally:
-                conn.close()
+        conn = connect()
+        try:
+            marked = mark_invoice_sent(conn, invoice.number)
+        finally:
+            conn.close()
         if not marked:
             return HTMLResponse(
                 make_page(catalog_path, "De e-mail is verzonden, maar de factuurstatus kon niet worden bijgewerkt."),
