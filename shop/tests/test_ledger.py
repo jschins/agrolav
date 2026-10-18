@@ -4,12 +4,15 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 from datetime import date, datetime
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app.ledger import (
     Booking,
+    Allocation,
     Invoice,
     InvoiceLine,
+    apply_allocations,
+    apply_payment,
     numbers_in_description,
     plan_allocations,
     steps_due,
@@ -62,6 +65,42 @@ class LedgerTests(unittest.TestCase):
         invoice = _invoice("DB-00001", 1000, due=date(2026, 10, 15))
         prepared = replace(invoice, status="prepared")
         self.assertEqual(steps_due(prepared, date(2026, 10, 8), set()), [])
+
+    def test_full_bank_allocation_stores_the_booking_date(self) -> None:
+        conn = Mock()
+        with patch(
+            "app.ledger.one",
+            return_value={"open_cents": 1000, "customer_id": None, "status": "sent"},
+        ), patch("app.ledger.run") as run:
+            apply_allocations(
+                conn,
+                [Allocation(1, "BDF-100000", 1000, "2026-10-18")],
+            )
+
+        self.assertEqual(
+            run.call_args_list[1].args[2],
+            (0, "2026-10-18", 100000),
+        )
+        conn.commit.assert_called_once()
+
+    def test_mollie_payment_stores_the_provider_payment_date(self) -> None:
+        conn = Mock()
+        invoice = _invoice("BDF-100000", 1000)
+        with patch("app.ledger._take_stock"), patch("app.ledger.run") as run:
+            result = apply_payment(
+                conn,
+                invoice,
+                status="paid",
+                amount_cents=1000,
+                paid_at="2026-10-18T13:45:00+02:00",
+            )
+
+        self.assertEqual(result, "paid")
+        self.assertEqual(
+            run.call_args.args[2],
+            ("2026-10-18T13:45:00+02:00", 100000),
+        )
+        conn.commit.assert_called_once()
 
     def test_invoice_email_contains_the_pdf_attachment_and_payment_details(self) -> None:
         invoice = _invoice("BDF-100000", 1000)

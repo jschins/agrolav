@@ -33,6 +33,7 @@ class Payment:
     id: str
     status: str
     amount_cents: int
+    paid_at: str | None = None
 
 
 class MollieClient:
@@ -119,4 +120,5 @@ def payment_from_api(data: dict[str, object]) -> Payment:
         id=str(data["id"]),
         status=str(data["status"]),
         amount_cents=cents,
+        paid_at=None if data.get("paidAt") is None else str(data["paidAt"]),
     )

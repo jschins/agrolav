@@ -164,6 +164,9 @@ class ShopFlowTests(unittest.TestCase):
             mollie.mark(payment_id, "paid")
             webhook = client.post("/mollie/webhook", data={"id": payment_id})
             self.assertEqual(webhook.status_code, 200)
+            paid_invoice = self._invoice_for(payment_id)
+            assert paid_invoice is not None
+            self.assertIsNotNone(paid_invoice.paid_at)
             done = client.get(f"/betaling/{invoice.number}?token={invoice.token}")
             self.assertEqual(done.status_code, 200)
             self.assertIn("Betaling geslaagd", done.text)
@@ -389,10 +392,12 @@ class ShopFlowTests(unittest.TestCase):
             {
                 "id": "tr_abc",
                 "status": "paid",
+                "paidAt": "2026-10-18T13:45:00+02:00",
                 "amount": {"currency": "EUR", "value": "14.75"},
             }
         )
         self.assertEqual(payment.amount_cents, 1475)
+        self.assertEqual(payment.paid_at, "2026-10-18T13:45:00+02:00")
         self.assertEqual(Decimal("0.09"), load_catalog(_ROOT / "catalog.json").vat_rate)
 
 

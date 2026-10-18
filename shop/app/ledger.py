@@ -69,6 +69,7 @@ class Invoice:
     mollie_id: str | None = None
     status: str = "prepared"
     sent_at: str | None = None
+    paid_at: str | None = None
 
     @property
     def paid(self) -> bool:
@@ -84,6 +85,7 @@ class Booking:
     transaction_id: int
     amount_cents: int
     description: str
+    booked_on: str = ""
 
 
 @dataclass(frozen=True)
@@ -91,6 +93,7 @@ class Allocation:
     transaction_id: int
     invoice_number: str
     amount_cents: int
+    paid_at: str | None = None
 
 
 def seed_stock(conn, books: tuple[Book, ...]) -> None:
@@ -590,6 +593,7 @@ def apply_payment(
     *,
     status: str,
     amount_cents: int,
+    paid_at: str | None = None,
 ) -> str:
     """Record a payment status fetched from Mollie. A paid invoice is never reopened."""
     if amount_cents != invoice.payable_cents:
@@ -600,7 +604,12 @@ def apply_payment(
         invoice_id = _invoice_id(invoice.number)
         for line in invoice.lines:
             _take_stock(conn, line.slug, line.number_of_copies)
-        run(conn, "UPDATE dbo.invoices SET open_cents = 0 WHERE id = ?", (invoice_id,))
+        paid_on = paid_at or datetime.now().strftime("%Y-%m-%d %H:%M")
+        run(
+            conn,
+            "UPDATE dbo.invoices SET open_cents = 0, paid_at = ? WHERE id = ?",
+            (paid_on, invoice_id),
+        )
         conn.commit()
         return "paid"
     if status in {"canceled", "expired", "failed"}:
@@ -618,7 +627,7 @@ def get_invoice(number: str) -> Invoice | None:
             conn,
             """
             SELECT i.id, i.token, i.mollie_id, i.ordered_at, i.due_on, i.payable_cents, i.open_cents,
-                   i.portokosten_cents, i.debtor_id, i.customer_id, i.status, i.sent_at,
+                   i.portokosten_cents, i.debtor_id, i.customer_id, i.status, i.sent_at, i.paid_at,
                    d.name AS debtor_name, d.email AS debtor_email, d.vat_number AS debtor_vat,
                    d.address_id AS debtor_address_id, d.code AS debtor_code,
                    c.name AS customer_name, c.email AS customer_email, c.address_id AS customer_address_id
@@ -683,6 +692,7 @@ def get_invoice(number: str) -> Invoice | None:
         mollie_id=row["mollie_id"],
         status=str(row["status"] or "prepared"),
         sent_at=None if row["sent_at"] is None else str(row["sent_at"]),
+        paid_at=None if row["paid_at"] is None else str(row["paid_at"]),
     )
 
 
@@ -807,7 +817,12 @@ def plan_allocations(
             if booking.amount_cents > invoice.open_cents:
                 continue
             planned.append(
-                Allocation(booking.transaction_id, invoice.number, booking.amount_cents)
+                Allocation(
+                    booking.transaction_id,
+                    invoice.number,
+                    booking.amount_cents,
+                    booking.booked_on or None,
+                )
             )
             by_number[invoice.number] = replace(
                 invoice, open_cents=invoice.open_cents - booking.amount_cents
@@ -819,7 +834,12 @@ def plan_allocations(
                 continue
             for invoice in chosen:
                 planned.append(
-                    Allocation(booking.transaction_id, invoice.number, invoice.open_cents)
+                    Allocation(
+                        booking.transaction_id,
+                        invoice.number,
+                        invoice.open_cents,
+                        booking.booked_on or None,
+                    )
                 )
                 by_number[invoice.number] = replace(invoice, open_cents=0)
         applied.add(booking.transaction_id)
@@ -1001,11 +1021,26 @@ def apply_allocations(conn, allocations: list[Allocation]) -> None:
         if row is None:
             continue
         remaining = int(row["open_cents"]) - allocation.amount_cents
-        if remaining <= 0 and row["customer_id"] is None and row["status"] == "sent":
+        if remaining <= 0 and row["customer_id"] is None:
+            paid_on = allocation.paid_at or datetime.now().strftime("%Y-%m-%d %H:%M")
+            if row["status"] == "sent":
+                run(
+                    conn,
+                    "UPDATE dbo.invoices SET open_cents = ?, status = 'paid', paid_at = ? WHERE id = ?",
+                    (remaining, paid_on, invoice_id),
+                )
+            else:
+                run(
+                    conn,
+                    "UPDATE dbo.invoices SET open_cents = ?, paid_at = ? WHERE id = ?",
+                    (remaining, paid_on, invoice_id),
+                )
+        elif remaining <= 0 and row["customer_id"] is not None:
+            paid_on = allocation.paid_at or datetime.now().strftime("%Y-%m-%d %H:%M")
             run(
                 conn,
-                "UPDATE dbo.invoices SET open_cents = ?, status = 'paid' WHERE id = ?",
-                (remaining, invoice_id),
+                "UPDATE dbo.invoices SET open_cents = ?, paid_at = ? WHERE id = ?",
+                (remaining, paid_on, invoice_id),
             )
         else:
             run(
@@ -1030,7 +1065,7 @@ def read_incoming_bookings(iban: str) -> list[Booking]:
         rows = query(
             conn,
             """
-            SELECT t.transaction_id, t.amount, t.description
+            SELECT t.transaction_id, t.amount, t.description, t.booked_on
             FROM dbo.transaction_beheer_boog t
             INNER JOIN dbo.account a ON a.account_id = t.account_id
             WHERE REPLACE(UPPER(a.iban), ' ', '') = ?
@@ -1043,6 +1078,7 @@ def read_incoming_bookings(iban: str) -> list[Booking]:
                 transaction_id=int(row["transaction_id"]),
                 amount_cents=euros_to_cents(Decimal(str(row["amount"]))),
                 description=str(row["description"] or ""),
+                booked_on="" if row["booked_on"] is None else str(row["booked_on"])[:10],
             )
             for row in rows
         ]

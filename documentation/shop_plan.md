@@ -73,8 +73,8 @@ The app now needs two connections:
 ## 5. Schema (webshop)
 
 `address`, `debtors`, `customers`, `orders` (`invoice_id` PK/FK, `token`), `orderlines`,
-`invoices` (+ `token`, `mollie_id`, `mollie_settlement_id`, `sent_at`, `status`,
-`ck_invoices_owner`, filtered unique index `ux_invoices_mollie`), `invoicelines`,
+`invoices` (+ `token`, `mollie_id`, `mollie_settlement_id`, `sent_at`, `paid_at`,
+`status`, `ck_invoices_owner`, filtered unique index `ux_invoices_mollie`), `invoicelines`,
 `payments`, `reminders`, `stock`.
 
 Idempotent: guarded by `DB_ID` / `OBJECT_ID` / `COL_LENGTH` / `sys.indexes`, so it can

@@ -176,6 +176,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
                 invoice,
                 status=payment.status,
                 amount_cents=payment.amount_cents,
+                paid_at=payment.paid_at,
             )
         finally:
             conn.close()

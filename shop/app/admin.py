@@ -501,6 +501,10 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
             dates.append(f"Herinnering: {reminder[:10]}")
         return "<td>" + ("<br>".join(escape(value) for value in dates) or "—") + "</td>"
 
+    def paid_date(invoice) -> str:
+        value = f"Betaald: {invoice.paid_at[:10]}" if invoice.paid_at else "—"
+        return f"<td>{escape(value)}</td>"
+
     invoice_rows = []
     for invoice in invoices:
         invoice_rows.append(
@@ -521,7 +525,7 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
             f"{_clip(invoice.name)}"
             f"{_clip(invoice.email)}"
             f"<td>{escape(euro(invoice.payable_cents))}</td>"
-            f"{sent_dates(invoice)}"
+            f"{paid_date(invoice)}"
             "</tr>"
         )
     body_paid_rows = "".join(paid_rows) or '<tr><td colspan="5">Geen betaalde facturen.</td></tr>'
@@ -546,7 +550,7 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
       <col style="width:16%"><col style="width:22%"><col style="width:22%">
       <col style="width:16%"><col style="width:24%">
     </colgroup>
-    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Verstuurd</th></tr></thead>
+    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Betaald</th></tr></thead>
     <tbody>{body_paid_rows}</tbody>
   </table>
 </main>
@@ -1240,7 +1244,14 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
                 processed = [st for st in in_scope if st.key not in applied]
                 planned = match_statements(processed, candidates, applied)
                 if planned:
-                    apply_allocations(conn, [Allocation(k, n, a) for k, n, a in planned])
+                    statements_by_key = {st.key: st for st in processed}
+                    apply_allocations(
+                        conn,
+                        [
+                            Allocation(k, n, a, statements_by_key[k].booked_on or None)
+                            for k, n, a in planned
+                        ],
+                    )
             finally:
                 conn.close()
         finally:

@@ -55,6 +55,51 @@ def _catalog(directory: Path) -> Path:
 
 
 class AdminTests(unittest.TestCase):
+    def test_paid_invoice_table_displays_the_payment_date(self) -> None:
+        from types import SimpleNamespace
+
+        from app.admin import invoices_page
+
+        sent = SimpleNamespace(
+            number="BDF-100001",
+            name="Bedrijf Open",
+            email="open@example.com",
+            payable_cents=2500,
+            open_cents=2500,
+            sent_at="2026-10-01 09:30",
+            paid_at=None,
+        )
+        paid = SimpleNamespace(
+            number="BDF-100002",
+            name="Bedrijf Betaald",
+            email="betaald@example.com",
+            payable_cents=3500,
+            open_cents=0,
+            sent_at="2026-10-02 10:00",
+            paid_at="2026-10-18 14:20",
+        )
+        with (
+            patch("app.admin.connect") as connect,
+            patch("app.admin.unpaid_invoices", return_value=[sent]),
+            patch("app.admin.paid_invoices", return_value=[paid]),
+            patch("app.admin.latest_reminder_dates", return_value={sent.number: "2026-10-08 11:15"}),
+        ):
+            page = invoices_page(Path("catalog.json"))
+
+        self.assertLess(page.index('href="/facturen/nieuw"'), page.index("<h1>Openstaande facturen</h1>"))
+        open_table = page.split("<h1>Openstaande facturen</h1>", 1)[1].split(
+            '<h2 class="invoice-section-title">Betaalde facturen</h2>', 1
+        )[0]
+        paid_table = page.split('<h2 class="invoice-section-title">Betaalde facturen</h2>', 1)[1]
+        self.assertIn("<th>Verstuurd</th>", open_table)
+        self.assertIn("Verstuurd: 2026-10-01", open_table)
+        self.assertIn("Herinnering: 2026-10-08", open_table)
+        self.assertNotIn("Openstaand</th>", open_table)
+        self.assertIn("<th>Betaald</th>", paid_table)
+        self.assertIn("Betaald: 2026-10-18", paid_table)
+        self.assertNotIn("Verstuurd: 2026-10-02", paid_table)
+        connect.return_value.close.assert_called_once()
+
     def test_shop_has_no_way_to_the_admin(self) -> None:
         settings = Settings(
             secret="test-secret",
@@ -585,6 +630,7 @@ class AdminTests(unittest.TestCase):
                 assert paid is not None
                 self.assertEqual(paid.open_cents, 0)
                 self.assertEqual(paid.status, "paid")
+                self.assertEqual(paid.paid_at, statement.booked_on)
                 orders_page = client.get("/bestellingen")
                 self.assertNotIn(order_number(order.invoice_id), orders_page.text)
                 invoice_page = client.get("/facturen")
@@ -592,6 +638,8 @@ class AdminTests(unittest.TestCase):
                     '<h2 class="invoice-section-title">Betaalde facturen</h2>', 1
                 )[1]
                 self.assertIn(invoice.number, paid_section)
+                self.assertIn("Betaald: 2026-10-18", paid_section)
+                self.assertIn("<th>Betaald</th>", paid_section)
 
                 second = client.get("/bank")
                 self.assertEqual(second.status_code, 200)

@@ -96,6 +96,7 @@ CREATE TABLE dbo.invoices (
     status              nvarchar(20)    NOT NULL
         CONSTRAINT df_invoices_status DEFAULT N'prepared',
     sent_at             nvarchar(40)    NULL,
+    paid_at             nvarchar(40)    NULL,
     CONSTRAINT pk_invoices PRIMARY KEY (id),
     CONSTRAINT fk_invoices_debtor FOREIGN KEY (debtor_id) REFERENCES dbo.debtors (id),
     CONSTRAINT fk_invoices_customer FOREIGN KEY (customer_id) REFERENCES dbo.customers (id),
@@ -124,6 +125,9 @@ IF COL_LENGTH(N'dbo.invoices', N'status') IS NULL
 GO
 IF COL_LENGTH(N'dbo.invoices', N'sent_at') IS NULL
     ALTER TABLE dbo.invoices ADD sent_at nvarchar(40) NULL;
+GO
+IF COL_LENGTH(N'dbo.invoices', N'paid_at') IS NULL
+    ALTER TABLE dbo.invoices ADD paid_at nvarchar(40) NULL;
 GO
 IF NOT EXISTS (
     SELECT 1 FROM sys.indexes
