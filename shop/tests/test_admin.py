@@ -267,17 +267,20 @@ class AdminTests(unittest.TestCase):
 
             page = client.get("/facturen")
             self.assertEqual(page.status_code, 200)
-            self.assertIn(invoice.number, page.text)
-            self.assertIn("Parochie Test", page.text)
-            self.assertIn("Te verzenden", page.text)
+            self.assertIn("<h1>Openstaande facturen</h1>", page.text)
+            self.assertNotIn("<h1>Facturen</h1>", page.text)
+            self.assertNotIn(invoice.number, page.text)
+            self.assertNotIn("<th>Status</th>", page.text)
+            self.assertNotIn("<th>Actie</th>", page.text)
+            self.assertNotIn("Verzend factuur", page.text)
             self.assertNotIn("Factureer", page.text)
             self.assertIn('class="selected" href="/facturen"', page.text)
-            self.assertIn(f'href="/facturen/{invoice.number}/regels"', page.text)
 
             best = client.get("/bestellingen")
             self.assertEqual(best.status_code, 200)
             self.assertIn(order_number(order.id), best.text)
             self.assertIn("Bewerk factuur", best.text)
+            self.assertIn(f'action="/bestellingen/{order.token}/verzend"', best.text)
             self.assertIn(f'action="/facturen/{invoice.number}/regels"', best.text)
             self.assertIn('class="selected" href="/bestellingen"', best.text)
 
@@ -463,62 +466,94 @@ class AdminTests(unittest.TestCase):
             self.assertIsNone(invoice.customer_id)
 
             listing = client.get("/facturen")
-            self.assertIn(number, listing.text)
-            self.assertIn("Parochie Adhoc", listing.text)
-            self.assertIn("Te verzenden", listing.text)
-
-    def test_factuur_can_be_sent_from_both_admin_screens(self) -> None:
-        from app.bank import DEBOOG_ACCOUNT_IBAN
-        from app.ledger import create_account_order, get_invoice, save_shop_debtor
-        from app.orders import order_number
-
-        def make_order(label: str):
-            code = save_shop_debtor(f"Parochie {label}", f"{label}@example.com", "NL000000000B01")
-            return create_account_order(
-                code=code,
-                lines=[(f"send-{label}", 1, 1234)],
-                books=(),
-                vat_cents_amount=102,
+            self.assertIn("<h1>Openstaande facturen</h1>", listing.text)
+            self.assertNotIn(number, listing.text)
+            self.assertNotIn("<th>Status</th>", listing.text)
+            self.assertNotIn("Verzend factuur", listing.text)
+            bestellingen = client.get("/bestellingen")
+            self.assertIn("Te verzenden losse facturen", bestellingen.text)
+            self.assertIn(number, bestellingen.text)
+            self.assertIn("Parochie Adhoc", bestellingen.text)
+            self.assertIn(
+                f'action="/bestellingen/losse-facturen/{number}/verzend"',
+                bestellingen.text,
             )
 
-        invoice_screen_order = make_order(uuid.uuid4().hex[:10])
-        order_screen_order = make_order(uuid.uuid4().hex[:10])
-        invoice_screen_invoice = get_invoice(invoice_screen_order.invoice_number)
-        order_screen_invoice = get_invoice(order_screen_order.invoice_number)
-        assert invoice_screen_invoice is not None
-        assert order_screen_invoice is not None
+    def test_order_and_adhoc_invoices_can_be_sent_from_bestellingen(self) -> None:
+        from app.bank import DEBOOG_ACCOUNT_IBAN
+        from app.ledger import create_account_order, create_adhoc_invoice, get_invoice, save_shop_debtor, shop_debtor_by_code
+        from app.orders import order_number
+
+        order_suffix = uuid.uuid4().hex[:10]
+        code = save_shop_debtor(
+            f"Parochie Bestelling {order_suffix}",
+            f"{order_suffix}@example.com",
+            "NL000000000B01",
+        )
+        order = create_account_order(
+            code=code,
+            lines=[(f"send-{order_suffix}", 1, 1234)],
+            books=(),
+            vat_cents_amount=102,
+        )
+
+        adhoc_suffix = uuid.uuid4().hex[:10]
+        adhoc_code = save_shop_debtor(
+            f"Parochie Los {adhoc_suffix}",
+            f"{adhoc_suffix}@example.com",
+            "NL000000000B01",
+        )
+        adhoc_debtor = shop_debtor_by_code(adhoc_code)
+        assert adhoc_debtor is not None
+        adhoc_invoice = create_adhoc_invoice(
+            owner=f'debtor:{adhoc_debtor["id"]}',
+            lines=[(f"adhoc-{adhoc_suffix}", 1, 2345)],
+            books=(),
+            vat_cents_amount=193,
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
             invoices = client.get("/facturen")
-            self.assertIn(f'action="/facturen/{invoice_screen_invoice.number}/verzend"', invoices.text)
+            self.assertNotIn(order.invoice_number, invoices.text)
+            self.assertNotIn(adhoc_invoice.number, invoices.text)
+            self.assertNotIn("Verzend factuur", invoices.text)
             bestellingen = client.get("/bestellingen")
-            self.assertIn(f'action="/bestellingen/{order_screen_order.token}/verzend"', bestellingen.text)
-            self.assertIn(order_number(order_screen_order.id), bestellingen.text)
+            self.assertIn(f'action="/bestellingen/{order.token}/verzend"', bestellingen.text)
+            self.assertIn(
+                f'action="/bestellingen/losse-facturen/{adhoc_invoice.number}/verzend"',
+                bestellingen.text,
+            )
+            self.assertIn(order_number(order.id), bestellingen.text)
 
             with patch("app.admin.send_invoice_email") as send_email:
-                sent_from_invoices = client.post(f"/facturen/{invoice_screen_invoice.number}/verzend")
-                self.assertEqual(sent_from_invoices.status_code, 200, sent_from_invoices.text)
-                self.assertIn("verzonden naar", sent_from_invoices.text)
+                sent_order = client.post(f"/bestellingen/{order.token}/verzend")
+                self.assertEqual(sent_order.status_code, 200, sent_order.text)
+                self.assertIn("verzonden naar", sent_order.text)
 
-                sent_from_orders = client.post(f"/bestellingen/{order_screen_order.token}/verzend")
-                self.assertEqual(sent_from_orders.status_code, 200, sent_from_orders.text)
-                self.assertIn("verzonden naar", sent_from_orders.text)
+                sent_adhoc = client.post(
+                    f"/bestellingen/losse-facturen/{adhoc_invoice.number}/verzend"
+                )
+                self.assertEqual(sent_adhoc.status_code, 200, sent_adhoc.text)
+                self.assertIn("verzonden naar", sent_adhoc.text)
                 self.assertEqual(send_email.call_count, 2)
                 for call in send_email.call_args_list:
                     self.assertTrue(call.args[2].startswith(b"%PDF-"))
                     self.assertEqual(call.args[3], DEBOOG_ACCOUNT_IBAN)
 
-                duplicate = client.post(f"/bestellingen/{order_screen_order.token}/verzend")
+                duplicate = client.post(f"/bestellingen/{order.token}/verzend")
                 self.assertEqual(duplicate.status_code, 409)
                 self.assertEqual(send_email.call_count, 2)
 
-            self.assertEqual(get_invoice(invoice_screen_invoice.number).status, "sent")
-            self.assertEqual(get_invoice(order_screen_invoice.number).status, "sent")
+            self.assertEqual(get_invoice(order.invoice_number).status, "sent")
+            self.assertEqual(get_invoice(adhoc_invoice.number).status, "sent")
+            sent_list = client.get("/facturen")
+            self.assertIn(order.invoice_number, sent_list.text)
+            self.assertIn(adhoc_invoice.number, sent_list.text)
             remaining_orders = client.get("/bestellingen")
-            self.assertNotIn(order_number(invoice_screen_order.id), remaining_orders.text)
-            self.assertNotIn(order_number(order_screen_order.id), remaining_orders.text)
+            self.assertNotIn(order_number(order.id), remaining_orders.text)
+            self.assertNotIn(adhoc_invoice.number, remaining_orders.text)
 
     def test_failed_invoice_email_leaves_it_prepared(self) -> None:
         from app.ledger import create_account_order, get_invoice, save_shop_debtor

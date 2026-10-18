@@ -7,7 +7,7 @@ The old `shop_*` tables in `agrolav` (and the `address_json` / street-split work
 superseded and are dropped by the operator; `shop/sql/webshop.sql` is the single source
 of truth for the new schema.
 
-## 1. Model
+# Model
 
 Two kinds of buyer share one address table:
 
@@ -16,14 +16,18 @@ Two kinds of buyer share one address table:
 | `debtors`    | account buyers (on rekening)| yes        | yes          |
 | `customers`  | Mollie buyers (iDEAL/card)  | no         | yes          |
 
+- `invoices` — **exactly one** owner per invoice (`ck_invoices_owner`: `debtor_id` xor
+  `customer_id`).
+  - For a **debtor**, the invoice is produced by an administrator, after the mail
+    order has been sent; in case all books are available (usual case) the invoice lines
+    are identical to the order lines; in case not all books are available, the administrator
+    modifies the invoice accordingly, before sending it off;
+  - For a **customer**, the invoice is written *and paid* at Mollie checkout.
+  - the administrator can always make an invoice without reference to an order, e.g. in case
+    of a correction invoice (both credit and debet)
 - `address(id, street, number, postalcode, city)` — `number` is **text** (`12`, `12a`, `12-3`).
   Both `debtors.address_id` and `customers.address_id` point here.
 - `orders` — written the moment an account buyer orders on the website. Debtor only.
-- `invoices` — **exactly one** owner per invoice (`ck_invoices_owner`: `debtor_id` xor
-  `customer_id`).
-  - For a **debtor**, the invoice is written later by an administrator, after the mail
-    order has been sent.
-  - For a **customer**, the invoice is written *and paid* at Mollie checkout.
 - `invoicelines`, `orderlines`, `stock`, `payments`, `reminders` as before.
 
 ## 2. Decisions taken

@@ -800,14 +800,35 @@ def open_invoices(conn) -> list[Invoice]:
 
 
 def unpaid_invoices(conn) -> list[Invoice]:
-    """Everything the shop is still owed: debtors and ad-hoc customers alike.
-
-    A Mollie checkout invoice is left out while its payment is in flight; a
-    settled one drops out through open_cents.
-    """
+    """Sent invoices with an unpaid balance; prepared drafts stay in Bestellingen."""
     rows = query(
         conn,
-        "SELECT id FROM dbo.invoices WHERE open_cents > 0 AND mollie_id IS NULL ORDER BY id",
+        "SELECT id FROM dbo.invoices WHERE status = N'sent' AND open_cents > 0 ORDER BY id",
+    )
+    found = []
+    for row in rows:
+        invoice = get_invoice(invoice_number(int(row["id"])))
+        if invoice is not None:
+            found.append(invoice)
+    return found
+
+
+def prepared_unlinked_invoices(conn) -> list[Invoice]:
+    """Prepared debtor invoices without an order, e.g. ad-hoc correction invoices."""
+    rows = query(
+        conn,
+        """
+        SELECT i.id
+        FROM dbo.invoices i
+        WHERE i.status = N'prepared'
+          AND i.debtor_id IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM dbo.orders o
+              WHERE o.invoice_number = N'DBF-' + CONVERT(nvarchar(20), i.id)
+          )
+        ORDER BY i.id
+        """,
     )
     found = []
     for row in rows:

@@ -26,6 +26,7 @@ from app.ledger import (
     open_invoice_candidates,
     overlay_stock,
     party_choices,
+    prepared_unlinked_invoices,
     set_invoice_lines,
     set_stock,
     unpaid_invoices,
@@ -478,7 +479,7 @@ def stock_page(catalog_path: Path, error: str = "") -> str:
 
 
 def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
-    """Unpaid invoices: 9100/facturen, one column telling how far each one is."""
+    """Sent invoices with an open balance: 9100/facturen."""
     conn = connect()
     try:
         invoices = unpaid_invoices(conn)
@@ -486,12 +487,6 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
         conn.close()
     invoice_rows = []
     for invoice in invoices:
-        send_action = (
-            f'<form method="post" action="/facturen/{escape(invoice.number)}/verzend" style="display:inline-block">'
-            '<button class="btn" type="submit">Verzend factuur</button></form>'
-            if invoice.status == "prepared"
-            else ""
-        )
         invoice_rows.append(
             "<tr>"
             f'<td><a href="/facturen/{escape(invoice.number)}/regels">{escape(invoice.number)}</a></td>'
@@ -499,30 +494,27 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
             f"{_clip(invoice.email)}"
             f"<td>{escape(euro(invoice.payable_cents))}</td>"
             f"<td>{escape(euro(invoice.open_cents))}</td>"
-            f"<td>{escape(_status_label(invoice.status))}</td>"
-            f"<td>{send_action}</td>"
             "</tr>"
         )
-    body_invoice_rows = "".join(invoice_rows) or '<tr><td colspan="7">Geen openstaande facturen.</td></tr>'
+    body_invoice_rows = "".join(invoice_rows) or '<tr><td colspan="5">Geen openstaande facturen.</td></tr>'
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""
 <main class="rekening-wide">
-  <h1>{_INVOICES}</h1>
+  <h1>Openstaande facturen</h1>
   {notice_html}{error_html}
   <p><a class="btn" href="/facturen/nieuw">Voeg factuur toe</a></p>
-  <h2>Openstaande facturen</h2>
   <table class="plain wide">
     <colgroup>
-       <col style="width:14%"><col style="width:20%"><col style="width:20%">
-       <col style="width:12%"><col style="width:12%"><col style="width:10%"><col style="width:12%">
+      <col style="width:16%"><col style="width:23%"><col style="width:23%">
+      <col style="width:19%"><col style="width:19%">
     </colgroup>
-    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Openstaand</th><th>Status</th><th>Actie</th></tr></thead>
+    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Openstaand</th></tr></thead>
     <tbody>{body_invoice_rows}</tbody>
   </table>
 </main>
 """
-    return _page(body, _INVOICES, "/facturen")
+    return _page(body, "Openstaande facturen", "/facturen")
 
 
 def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
@@ -530,6 +522,7 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
     conn = connect()
     try:
         pending = orders_awaiting_send(conn)
+        loose_invoices = prepared_unlinked_invoices(conn)
     finally:
         conn.close()
     rows = []
@@ -558,6 +551,22 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
             "</tr>"
         )
     body_rows = "".join(rows) or '<tr><td colspan="5">Geen openstaande bestellingen.</td></tr>'
+    loose_rows = []
+    for invoice in loose_invoices:
+        loose_rows.append(
+            "<tr>"
+            f'<td><a href="/facturen/{escape(invoice.number)}/regels">{escape(invoice.number)}</a></td>'
+            f"{_clip(invoice.name)}"
+            f"{_clip(invoice.email)}"
+            f"<td>{escape(euro(invoice.payable_cents))}</td>"
+            "<td>"
+            f'<form method="get" action="/facturen/{escape(invoice.number)}/regels" style="display:inline-block">'
+            '<button class="btn" type="submit">Bewerk factuur</button></form> '
+            f'<form method="post" action="/bestellingen/losse-facturen/{escape(invoice.number)}/verzend" style="display:inline-block">'
+            '<button class="btn" type="submit">Verzend factuur</button></form>'
+            "</td></tr>"
+        )
+    body_loose_rows = "".join(loose_rows) or '<tr><td colspan="5">Geen losse facturen om te verzenden.</td></tr>'
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""
@@ -570,6 +579,14 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
     </colgroup>
     <thead><tr><th>Bestelling</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Bewerken</th></tr></thead>
     <tbody>{body_rows}</tbody>
+  </table>
+  <h2>Te verzenden losse facturen</h2>
+  <table class="plain wide">
+    <colgroup>
+      <col style="width:18%"><col style="width:26%"><col style="width:26%"><col style="width:14%"><col style="width:16%">
+    </colgroup>
+    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Bewerken</th></tr></thead>
+    <tbody>{body_loose_rows}</tbody>
   </table>
 </main>
 """
@@ -1253,6 +1270,10 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
                 status_code=409,
             )
         return send_invoice_response(order.invoice_number, orders_screen=True)
+
+    @app.post("/bestellingen/losse-facturen/{number}/verzend", response_class=HTMLResponse)
+    def send_unlinked_invoice_from_orders(number: str) -> HTMLResponse:
+        return send_invoice_response(number, orders_screen=True)
 
     @app.get("/bank", response_class=HTMLResponse)
     def refresh_bank(request: Request) -> HTMLResponse:
