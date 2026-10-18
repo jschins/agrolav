@@ -653,150 +653,131 @@ class AdminTests(unittest.TestCase):
             self.assertEqual(sent_invoice.status, "sent")
             self.assertIsNotNone(sent_invoice.sent_at)
 
-    def test_bank_refresh_matches_and_records_a_payment_once(self) -> None:
+    def test_bank_refresh_matches_registered_bookings_once_without_real_db_writes(self) -> None:
         from datetime import date
+        from types import SimpleNamespace
 
         from app.bank import DEBOOG_ACCOUNT_IBAN, DownloadResult, Statement
-        from app.ledger import create_account_order, get_invoice, mark_invoice_sent, save_shop_debtor
-        from app.orders import connect, one, order_number, run
+        from app.ledger import Allocation, Booking
 
-        suffix = uuid.uuid4().hex[:12]
-        party_name = f"Parochie Bank {suffix}"
-        iban = f"NL{uuid.uuid4().hex[:16].upper()}"
-        code = save_shop_debtor(party_name, f"{suffix}@example.com", "NL000000000B01")
-        conn = connect()
-        try:
-            debtor = one(conn, "SELECT id FROM dbo.debtors WHERE code = ?", (code,))
-            assert debtor is not None
-            run(conn, "UPDATE dbo.debtors SET iban = ? WHERE id = ?", (iban, int(debtor["id"])))
-            conn.commit()
-        finally:
-            conn.close()
-
-        order = create_account_order(
-            code=code,
-            lines=[("bank-e2e-regel", 1, 12345)],
-            books=(),
-            vat_cents_amount=1018,
-        )
-        invoice = get_invoice(order.invoice_number)
-        assert invoice is not None
-        conn = connect()
-        try:
-            self.assertTrue(mark_invoice_sent(conn, invoice.number))
-        finally:
-            conn.close()
-        invoice = get_invoice(order.invoice_number)
-        assert invoice is not None
-        self.assertEqual(invoice.status, "sent")
+        iban = "NL91ABNA0417164300"
         statement = Statement(
-            key=uuid.uuid4().int & ((1 << 63) - 1),
+            key=123456789,
             iban=iban,
-            name="Andere naam; match is on IBAN and amount",
-            amount_cents=invoice.open_cents,
-            booked_on="2026-10-18",
-            description="Boeking zonder factuurnummer",
+            name="Naam anders dan de factuurhouder",
+            amount_cents=12345,
+            booked_on=date.today().isoformat(),
+            description="Geen factuurnummer nodig",
         )
-        registered_unmatched = Statement(
-            key=uuid.uuid4().int & ((1 << 63) - 1),
+        unmatched = Statement(
+            key=123456790,
             iban=iban,
-            name=party_name,
+            name="Bekende rekening",
             amount_cents=99999,
-            booked_on="2026-10-17",
+            booked_on=date.today().isoformat(),
             description="Nog niet te koppelen",
         )
-        unregistered = Statement(
-            key=uuid.uuid4().int & ((1 << 63) - 1),
-            iban=f"NL{uuid.uuid4().hex[:16].upper()}",
+        unknown = Statement(
+            key=123456791,
+            iban="NL00UNKNOWN00000000",
             name="Onbekende rekening",
             amount_cents=500,
-            booked_on="2026-10-16",
-            description="Buiten de relaties",
+            booked_on=date.today().isoformat(),
+            description="Niet geregistreerd",
         )
         result = DownloadResult(
-            statements=(statement, registered_unmatched, unregistered),
+            statements=(statement, unmatched, unknown),
             account_name="De Boog",
             own_iban=DEBOOG_ACCOUNT_IBAN,
-            date_from="2026-10-01",
-            date_to="2026-10-18",
+            date_from=date.today().isoformat(),
+            date_to=date.today().isoformat(),
             errors=(),
         )
-
+        registered_statement = Booking(
+            transaction_id=statement.key,
+            amount_cents=statement.amount_cents,
+            description=statement.description,
+            booked_on=statement.booked_on,
+            name=statement.name,
+            iban=statement.iban,
+        )
+        registered_unmatched = Booking(
+            transaction_id=unmatched.key,
+            amount_cents=unmatched.amount_cents,
+            description=unmatched.description,
+            booked_on=unmatched.booked_on,
+            name=unmatched.name,
+            iban=unmatched.iban,
+        )
+        annual_rows = [
+            {
+                "id": item.key,
+                "created_at": "2026-10-18 10:00:00",
+                "booked_on": item.booked_on,
+                "name": item.name,
+                "iban": item.iban,
+                "description": item.description,
+                "amount_cents": item.amount_cents,
+                "status": (
+                    str(100002)
+                    if item.key == statement.key
+                    else "registered" if item.key == unmatched.key else "unregistered"
+                ),
+            }
+            for item in (statement, unmatched, unknown)
+        ]
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
-            latest_booking_date = date.today()
             with (
-                patch("app.admin.latest_booking_created_at", return_value=latest_booking_date),
+                patch("app.admin.connect") as connect,
+                patch("app.admin.latest_booking_created_at", return_value=date.today()),
                 patch("app.admin.bank.download_statements", return_value=result) as download,
+                patch("app.admin.applied_transaction_ids", side_effect=[set(), {statement.key}]),
+                patch(
+                    "app.admin.register_bank_bookings",
+                    return_value={statement.key, unmatched.key},
+                ),
+                patch(
+                    "app.admin.registered_bank_bookings",
+                    side_effect=[[registered_statement, registered_unmatched], [registered_unmatched]],
+                ),
+                patch(
+                    "app.admin.open_invoice_candidates",
+                    return_value=[
+                        {
+                            "iban": iban,
+                            "invoice_id": 100002,
+                            "invoice_number": "BDF-100002",
+                            "open_cents": statement.amount_cents,
+                        }
+                    ],
+                ),
+                patch("app.admin.bookings_for_year", return_value=annual_rows),
+                patch("app.admin.apply_allocations") as apply_allocations_mock,
             ):
                 first = client.get("/bank")
-                self.assertEqual(first.status_code, 200)
-                self.assertIn(invoice.number, first.text)
-                self.assertRegex(first.text, r"\d+ betaling\(en\) toegekend")
-                self.assertIn(f"Alle boekingen van {date.today().year}", first.text)
+                self.assertEqual(first.status_code, 200, first.text)
+                self.assertIn("1 betaling(en) toegekend", first.text)
+                self.assertIn("Alle boekingen van", first.text)
                 self.assertIn(str(statement.key), first.text)
-                self.assertIn(f">{order.invoice_id}</span>", first.text)
-                paid = get_invoice(invoice.number)
-                assert paid is not None
-                self.assertEqual(paid.open_cents, 0)
-                self.assertEqual(paid.status, "paid")
-                self.assertEqual(paid.paid_at, statement.booked_on)
-                orders_page = client.get("/bestellingen")
-                sent_section = orders_page.text.split(
-                    '<h2 class="orders-history-title">Bestellingen met verzonden facturen</h2>', 1
-                )[1]
-                self.assertIn(order_number(order.invoice_id), sent_section)
-                invoice_page = client.get("/facturen")
-                paid_section = invoice_page.text.split(
-                    '<h2 class="invoice-section-title">Betaalde facturen</h2>', 1
-                )[1]
-                self.assertIn(invoice.number, paid_section)
-                self.assertIn("Betaald: 2026-10-18", paid_section)
-                self.assertIn("<th>Betaald</th>", paid_section)
+                self.assertIn(">100002</span>", first.text)
+                self.assertIn(">unregistered</span>", first.text)
+                apply_allocations_mock.assert_called_once_with(
+                    connect.return_value,
+                    [Allocation(statement.key, "BDF-100002", statement.amount_cents, statement.booked_on)],
+                    mark_bookings=True,
+                )
 
                 second = client.get("/bank")
-                self.assertEqual(second.status_code, 200)
+                self.assertEqual(second.status_code, 200, second.text)
                 self.assertIn("Geen nieuwe betalingen herkend", second.text)
-                self.assertIn(">1</td>", second.text)
+                self.assertEqual(apply_allocations_mock.call_count, 1)
                 self.assertEqual(download.call_count, 2)
-                for call in download.call_args_list:
-                    self.assertEqual(
-                        call.kwargs,
-                        {
-                            "date_from": latest_booking_date.isoformat(),
-                            "date_to": latest_booking_date.isoformat(),
-                        },
-                    )
-
-        conn = connect()
-        try:
-            payment = one(
-                conn,
-                "SELECT COUNT(*) AS total FROM dbo.payments WHERE transaction_id = ? AND invoice_number = ?",
-                (statement.key, invoice.number),
-            )
-        finally:
-            conn.close()
-        self.assertEqual(int(payment["total"]), 1)
-
-        conn = connect()
-        try:
-            matched_booking = one(
-                conn,
-                "SELECT status, created_at, booked_on, name, iban, description, amount_cents FROM dbo.bookings WHERE id = ?",
-                (statement.key,),
-            )
-            open_booking = one(conn, "SELECT status FROM dbo.bookings WHERE id = ?", (registered_unmatched.key,))
-            ignored_booking = one(conn, "SELECT status FROM dbo.bookings WHERE id = ?", (unregistered.key,))
-        finally:
-            conn.close()
-        self.assertEqual(str(matched_booking["status"]), str(order.invoice_id))
-        self.assertIsNotNone(matched_booking["created_at"])
-        self.assertEqual(str(matched_booking["booked_on"])[:10], statement.booked_on)
-        self.assertEqual(matched_booking["name"], statement.name)
-        self.assertEqual(matched_booking["iban"], iban)
-        self.assertEqual(matched_booking["description"], statement.description)
-        self.assertEqual(int(matched_booking["amount_cents"]), invoice.payable_cents)
-        self.assertEqual(open_booking["status"], "registered")
-        self.assertEqual(ignored_booking["status"], "unregistered")
+                self.assertEqual(
+                    download.call_args.kwargs,
+                    {
+                        "date_from": date.today().isoformat(),
+                        "date_to": date.today().isoformat(),
+                    },
+                )

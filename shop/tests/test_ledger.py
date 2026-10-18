@@ -15,6 +15,7 @@ from app.ledger import (
     apply_payment,
     numbers_in_description,
     plan_allocations,
+    register_bank_bookings,
     steps_due,
 )
 from app.reminders import send_invoice
@@ -75,12 +76,15 @@ class LedgerTests(unittest.TestCase):
             apply_allocations(
                 conn,
                 [Allocation(1, "BDF-100000", 1000, "2026-10-18")],
+                mark_bookings=True,
             )
 
         self.assertEqual(
             run.call_args_list[1].args[2],
             (0, "2026-10-18", 100000),
         )
+        self.assertIn("UPDATE dbo.bookings SET status", run.call_args_list[2].args[1])
+        self.assertEqual(run.call_args_list[2].args[2], ("100000", 1))
         conn.commit.assert_called_once()
 
     def test_mollie_payment_stores_the_provider_payment_date(self) -> None:
@@ -100,6 +104,38 @@ class LedgerTests(unittest.TestCase):
             run.call_args.args[2],
             ("2026-10-18T13:45:00+02:00", 100000),
         )
+        conn.commit.assert_called_once()
+
+    def test_register_bank_bookings_marks_known_ibans_and_keeps_unknowns(self) -> None:
+        from types import SimpleNamespace
+
+        conn = Mock()
+        statements = [
+            SimpleNamespace(
+                key=101,
+                iban="NL00 KNOWN",
+                name="Known party",
+                description="Payment",
+                amount_cents=1234,
+                booked_on="2026-10-18",
+            ),
+            SimpleNamespace(
+                key=102,
+                iban="NL00UNKNOWN",
+                name="Unknown party",
+                description="Unmatched",
+                amount_cents=500,
+                booked_on="2026-10-18",
+            ),
+        ]
+        with patch("app.ledger.known_party_ibans", return_value={"NL00KNOWN"}), patch(
+            "app.ledger.one", return_value=None
+        ), patch("app.ledger.run") as run:
+            recognized = register_bank_bookings(conn, statements)
+
+        self.assertEqual(recognized, {101})
+        self.assertEqual(run.call_args_list[0].args[2][-1], "registered")
+        self.assertEqual(run.call_args_list[1].args[2][-1], "unregistered")
         conn.commit.assert_called_once()
 
     def test_invoice_email_contains_the_pdf_attachment_and_payment_details(self) -> None:
