@@ -29,7 +29,8 @@ TRANSACTIONS_PAGE_LIMIT = 250
 DATE_CHUNK_DAYS = 30
 MAX_TRANSACTION_PAGES = 500
 
-DEFAULT_HISTORY_DAYS = 180
+# Keep the inclusive period within Enable Banking's 90-day look-back limit.
+DEFAULT_HISTORY_DAYS = 89
 
 _psu_headers: ContextVar[dict[str, str]] = ContextVar("bank_psu_headers", default={})
 
