@@ -55,7 +55,7 @@ def _catalog(directory: Path) -> Path:
 
 
 class AdminTests(unittest.TestCase):
-    def test_paid_invoice_table_displays_the_payment_date(self) -> None:
+    def test_invoice_tables_separate_account_and_mollie_invoices(self) -> None:
         from types import SimpleNamespace
 
         from app.admin import invoices_page
@@ -78,10 +78,20 @@ class AdminTests(unittest.TestCase):
             sent_at="2026-10-02 10:00",
             paid_at="2026-10-18 14:20",
         )
+        mollie = SimpleNamespace(
+            number="BDF-100003",
+            name="Klant Mollie",
+            email="mollie@example.com",
+            payable_cents=1800,
+            open_cents=0,
+            sent_at=None,
+            paid_at="2026-10-19 09:05",
+        )
         with (
             patch("app.admin.connect") as connect,
             patch("app.admin.unpaid_invoices", return_value=[sent]),
             patch("app.admin.paid_invoices", return_value=[paid]),
+            patch("app.admin.mollie_invoices", return_value=[mollie]),
             patch("app.admin.latest_reminder_dates", return_value={sent.number: "2026-10-08 11:15"}),
         ):
             page = invoices_page(Path("catalog.json"))
@@ -90,14 +100,25 @@ class AdminTests(unittest.TestCase):
         open_table = page.split("<h1>Openstaande facturen</h1>", 1)[1].split(
             '<h2 class="invoice-section-title">Betaalde facturen</h2>', 1
         )[0]
-        paid_table = page.split('<h2 class="invoice-section-title">Betaalde facturen</h2>', 1)[1]
+        paid_table = page.split('<h2 class="invoice-section-title">Betaalde facturen</h2>', 1)[1].split(
+            '<h2 class="invoice-section-title">Mollie facturen</h2>', 1
+        )[0]
+        mollie_table = page.split('<h2 class="invoice-section-title">Mollie facturen</h2>', 1)[1]
         self.assertIn("<th>Verstuurd</th>", open_table)
         self.assertIn("Verstuurd: 2026-10-01", open_table)
         self.assertIn("Herinnering: 2026-10-08", open_table)
         self.assertNotIn("Openstaand</th>", open_table)
+        self.assertIn(sent.number, open_table)
+        self.assertNotIn(mollie.number, open_table)
         self.assertIn("<th>Betaald</th>", paid_table)
         self.assertIn("Betaald: 2026-10-18", paid_table)
         self.assertNotIn("Verstuurd: 2026-10-02", paid_table)
+        self.assertIn(paid.number, paid_table)
+        self.assertNotIn(mollie.number, paid_table)
+        self.assertIn("Mollie facturen", page)
+        self.assertIn("<th>Klant</th>", mollie_table)
+        self.assertIn(mollie.number, mollie_table)
+        self.assertIn("Betaald: 2026-10-19", mollie_table)
         connect.return_value.close.assert_called_once()
 
     def test_shop_has_no_way_to_the_admin(self) -> None:
@@ -515,10 +536,13 @@ class AdminTests(unittest.TestCase):
 
             updated = client.get("/bestellingen")
             without_sent = updated.text.split("<h1>Bestellingen zonder verzonden facturen</h1>", 1)[1].split("</table>", 1)[0]
+            with_sent = updated.text.split("<h2>Bestellingen met verzonden facturen</h2>", 1)[1]
             self.assertNotIn(order_number(sent_order.invoice_id), without_sent)
             self.assertIn(order_number(pending_order.invoice_id), without_sent)
-            self.assertNotIn(order_number(sent_order.invoice_id), updated.text)
-            self.assertNotIn("Bestellingen met verzonden facturen", updated.text)
+            self.assertIn(order_number(sent_order.invoice_id), with_sent)
+            self.assertIn(sent_invoice.number, with_sent)
+            self.assertNotIn("Bewerken", with_sent)
+            self.assertNotIn("<form", with_sent)
 
             invoices_page = client.get("/facturen")
             open_rows = invoices_page.text.split("<h1>Openstaande facturen</h1>", 1)[1].split(
@@ -632,7 +656,10 @@ class AdminTests(unittest.TestCase):
                 self.assertEqual(paid.status, "paid")
                 self.assertEqual(paid.paid_at, statement.booked_on)
                 orders_page = client.get("/bestellingen")
-                self.assertNotIn(order_number(order.invoice_id), orders_page.text)
+                sent_section = orders_page.text.split(
+                    "<h2>Bestellingen met verzonden facturen</h2>", 1
+                )[1]
+                self.assertIn(order_number(order.invoice_id), sent_section)
                 invoice_page = client.get("/facturen")
                 paid_section = invoice_page.text.split(
                     '<h2 class="invoice-section-title">Betaalde facturen</h2>', 1

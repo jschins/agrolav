@@ -314,3 +314,17 @@ def orders_awaiting_send(conn) -> list[Order]:
         """,
     )
     return [_order_from_row(conn, row) for row in rows]
+
+
+def orders_with_sent_invoices(conn) -> list[Order]:
+    """Orders with invoices already sent, including those since paid."""
+    rows = query(
+        conn,
+        f"""
+        {_ORDER_SELECT}
+        INNER JOIN dbo.invoices i ON i.id = o.invoice_id
+        WHERE i.sent_at IS NOT NULL
+        ORDER BY o.invoice_id
+        """,
+    )
+    return [_order_from_row(conn, row) for row in rows]

@@ -23,6 +23,7 @@ from app.ledger import (
     latest_reminder_dates,
     mark_invoice_sent,
     match_statements,
+    mollie_invoices,
     open_invoice_candidates,
     overlay_stock,
     paid_invoices,
@@ -31,7 +32,13 @@ from app.ledger import (
     set_stock,
     unpaid_invoices,
 )
-from app.orders import connect, get_order_by_token, order_number, orders_awaiting_send
+from app.orders import (
+    connect,
+    get_order_by_token,
+    order_number,
+    orders_awaiting_send,
+    orders_with_sent_invoices,
+)
 from app.reminders import send_invoice as send_invoice_email
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -488,6 +495,7 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
     try:
         invoices = unpaid_invoices(conn)
         paid = paid_invoices(conn)
+        mollie = mollie_invoices(conn)
         reminder_dates = latest_reminder_dates(conn)
     finally:
         conn.close()
@@ -529,6 +537,18 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
             "</tr>"
         )
     body_paid_rows = "".join(paid_rows) or '<tr><td colspan="5">Geen betaalde facturen.</td></tr>'
+    mollie_rows = []
+    for invoice in mollie:
+        mollie_rows.append(
+            "<tr>"
+            f'<td><a href="/facturen/{escape(invoice.number)}/regels">{escape(invoice.number)}</a></td>'
+            f"{_clip(invoice.name)}"
+            f"{_clip(invoice.email)}"
+            f"<td>{escape(euro(invoice.payable_cents))}</td>"
+            f"{paid_date(invoice)}"
+            "</tr>"
+        )
+    body_mollie_rows = "".join(mollie_rows) or '<tr><td colspan="5">Geen Mollie-facturen.</td></tr>'
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""
@@ -553,6 +573,15 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
     <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Betaald</th></tr></thead>
     <tbody>{body_paid_rows}</tbody>
   </table>
+  <h2 class="invoice-section-title">Mollie facturen</h2>
+  <table class="plain wide">
+    <colgroup>
+      <col style="width:16%"><col style="width:22%"><col style="width:22%">
+      <col style="width:16%"><col style="width:24%">
+    </colgroup>
+    <thead><tr><th>Factuur</th><th>Klant</th><th>E-mail</th><th>Te betalen</th><th>Betaald</th></tr></thead>
+    <tbody>{body_mollie_rows}</tbody>
+  </table>
 </main>
 """
     return _page(body, "Openstaande facturen", "/facturen")
@@ -563,6 +592,7 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
     conn = connect()
     try:
         pending = orders_awaiting_send(conn)
+        sent_orders = orders_with_sent_invoices(conn)
     finally:
         conn.close()
     rows = []
@@ -586,6 +616,18 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
             "</tr>"
         )
     body_rows = "".join(rows) or '<tr><td colspan="5">Geen openstaande bestellingen.</td></tr>'
+    sent_rows = []
+    for order in sent_orders:
+        sent_rows.append(
+            "<tr>"
+            f"{_clip(order_number(order.invoice_id))}"
+            f"{_clip(order.debtor_name)}"
+            f"{_clip(order.email)}"
+            f"<td>{escape(euro(order.amount_cents))}</td>"
+            f"<td>{escape(order.invoice_number)}</td>"
+            "</tr>"
+        )
+    body_sent_rows = "".join(sent_rows) or '<tr><td colspan="5">Geen verzonden facturen.</td></tr>'
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""
@@ -598,6 +640,14 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
     </colgroup>
     <thead><tr><th>Bestelling</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Bewerken</th></tr></thead>
     <tbody>{body_rows}</tbody>
+  </table>
+  <h2>Bestellingen met verzonden facturen</h2>
+  <table class="plain wide">
+    <colgroup>
+      <col style="width:15%"><col style="width:22%"><col style="width:22%"><col style="width:12%"><col style="width:29%">
+    </colgroup>
+    <thead><tr><th>Bestelling</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Factuur</th></tr></thead>
+    <tbody>{body_sent_rows}</tbody>
   </table>
 </main>
 """

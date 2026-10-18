@@ -743,10 +743,14 @@ def open_invoices(conn) -> list[Invoice]:
 
 
 def unpaid_invoices(conn) -> list[Invoice]:
-    """Invoices already emailed with a remaining balance."""
+    """Sent debtor/account invoices with a remaining balance."""
     rows = query(
         conn,
-        "SELECT id FROM dbo.invoices WHERE sent_at IS NOT NULL AND open_cents > 0 ORDER BY id",
+        """
+        SELECT id FROM dbo.invoices
+        WHERE debtor_id IS NOT NULL AND sent_at IS NOT NULL AND open_cents > 0
+        ORDER BY id
+        """,
     )
     found = []
     for row in rows:
@@ -757,13 +761,30 @@ def unpaid_invoices(conn) -> list[Invoice]:
 
 
 def paid_invoices(conn) -> list[Invoice]:
-    """Emailed invoices now settled, plus fully-paid customer checkout invoices."""
+    """Sent debtor/account invoices with no remaining balance."""
     rows = query(
         conn,
         """
         SELECT id FROM dbo.invoices
-        WHERE open_cents <= 0
-          AND (sent_at IS NOT NULL OR status = N'customer')
+        WHERE debtor_id IS NOT NULL AND sent_at IS NOT NULL AND open_cents <= 0
+        ORDER BY id
+        """,
+    )
+    found = []
+    for row in rows:
+        invoice = get_invoice(invoice_number(int(row["id"])))
+        if invoice is not None:
+            found.append(invoice)
+    return found
+
+
+def mollie_invoices(conn) -> list[Invoice]:
+    """Invoices linked to Mollie checkout payments, whether paid or pending."""
+    rows = query(
+        conn,
+        """
+        SELECT id FROM dbo.invoices
+        WHERE customer_id IS NOT NULL AND mollie_id IS NOT NULL
         ORDER BY id
         """,
     )
