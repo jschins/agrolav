@@ -88,11 +88,17 @@ class AdminTests(unittest.TestCase):
         )
 
         self.assertIn('<a class="selected" href="/bank">Bankafschriften</a>', page)
+        self.assertNotIn("<h1>Bankafschriften</h1>", page)
+        self.assertIn('<h2 class="bank-bookings-title">Bankafschriften</h2>', page)
+        self.assertIn(".bank-bookings-title { font-size: 2em; margin-top: 3rem; }", page)
         self.assertIn("Alle boekingen van 2026", page)
         self.assertIn("2026-10-18 10:30:00", page)
         self.assertIn("Parochie Voorbeeld", page)
         self.assertIn("NL00TEST", page)
         self.assertIn(">100000</span>", page)
+        annual_table = page.split('<table class="plain wide bank-bookings">', 1)[1].split("</table>", 1)[0]
+        self.assertNotIn("<th>ID</th>", annual_table)
+        self.assertNotIn("<td>123</td>", annual_table)
 
     def test_bestellingen_sent_history_heading_matches_size_and_spacing(self) -> None:
         from app.admin import bestellingen_page
@@ -760,7 +766,9 @@ class AdminTests(unittest.TestCase):
                 self.assertEqual(first.status_code, 200, first.text)
                 self.assertIn("1 betaling(en) toegekend", first.text)
                 self.assertIn("Alle boekingen van", first.text)
-                self.assertIn(str(statement.key), first.text)
+                annual_table = first.text.split('<table class="plain wide bank-bookings">', 1)[1].split("</table>", 1)[0]
+                self.assertNotIn(str(statement.key), annual_table)
+                self.assertNotIn("<th>ID</th>", annual_table)
                 self.assertIn(">100002</span>", first.text)
                 self.assertIn(">unregistered</span>", first.text)
                 apply_allocations_mock.assert_called_once_with(

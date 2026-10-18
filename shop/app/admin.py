@@ -116,6 +116,7 @@ h1, h2 {{
 }}
 .invoice-section-title {{ font-size: 2em; margin-top: 1.25rem; }}
 .orders-history-title {{ font-size: 2em; margin-top: 3rem; }}
+.bank-bookings-title {{ font-size: 2em; margin-top: 3rem; }}
 header.bar {{
   background: var(--card);
   border-bottom: 1px solid var(--border);
@@ -204,6 +205,11 @@ table.plain.wide th,
 table.plain.wide td {{
   padding: 0.12rem 0.45rem;
   line-height: 1.15;
+}}
+table.plain.wide.bank-bookings th,
+table.plain.wide.bank-bookings td {{
+  padding: 0.1rem 0.3rem;
+  line-height: 1.1;
 }}
 table.plain.wide input[type="number"] {{
   width: 100%;
@@ -816,7 +822,7 @@ def bank_page(report: dict) -> str:
     """Yearly booking register and results from the latest refresh."""
     if report.get("error"):
         return _page(
-            f'<main class="rekening-wide"><h1>{_BANK}</h1>'
+            '<main class="rekening-wide">'
             f'<p class="error">{escape(str(report["error"]))}</p>'
             f'{bank_bookings_table(int(report.get("year", date.today().year)), report.get("bookings", []))}'
             "</main>",
@@ -855,7 +861,6 @@ def bank_page(report: dict) -> str:
 
     body = f"""
 <main class="rekening-wide">
-  <h1>{_BANK}</h1>
   {notice_html}
   <p class="hint">
     Rekening {_clip(report['account_name'])} ({_clip(report['own_iban'])}),
@@ -938,7 +943,6 @@ def bank_bookings_table(year: int, bookings: list[dict]) -> str:
     for booking in bookings:
         rows.append(
             "<tr>"
-            f"<td>{int(booking['id'])}</td>"
             f"{_clip(str(booking['created_at']))}"
             f"{_clip(str(booking['booked_on'] or '—'))}"
             f"{_clip(str(booking['name'] or ''))}"
@@ -948,15 +952,16 @@ def bank_bookings_table(year: int, bookings: list[dict]) -> str:
             f"{_clip(str(booking['status'] or ''))}"
             "</tr>"
         )
-    body = "".join(rows) or '<tr><td colspan="8">Geen boekingen gevonden.</td></tr>'
+    body = "".join(rows) or '<tr><td colspan="7">Geen boekingen gevonden.</td></tr>'
     return f"""
-  <h2>Alle boekingen van {int(year)}</h2>
-  <table class="plain wide">
+  <h2 class="bank-bookings-title">Bankafschriften</h2>
+  <p class="hint">Alle boekingen van {int(year)}</p>
+  <table class="plain wide bank-bookings">
     <colgroup>
-      <col style="width:7%"><col style="width:14%"><col style="width:10%"><col style="width:16%">
-      <col style="width:15%"><col style="width:10%"><col style="width:19%"><col style="width:9%">
+      <col style="width:12%"><col style="width:9%"><col style="width:18%"><col style="width:13%">
+      <col style="width:10%"><col style="width:24%"><col style="width:14%">
     </colgroup>
-    <thead><tr><th>ID</th><th>Aangemaakt</th><th>Boekdatum</th><th>Naam</th><th>IBAN</th><th>Bedrag</th><th>Omschrijving</th><th>Status</th></tr></thead>
+    <thead><tr><th>Aangemaakt</th><th>Boekdatum</th><th>Naam</th><th>IBAN</th><th>Bedrag</th><th>Omschrijving</th><th>Status</th></tr></thead>
     <tbody>{body}</tbody>
   </table>
 """
