@@ -61,12 +61,14 @@ class Catalog:
 
 
 def vat_cents(amount_cents: int, rate: Decimal) -> int:
-    """VAT part of a VAT-inclusive amount, rounded to the cent."""
-    if amount_cents < 0:
-        raise ValueError("amount_cents must be >= 0")
-    gross = Decimal(amount_cents)
+    """VAT part of a VAT-inclusive amount, rounded to the cent.
+
+    Works with negative amounts by computing on the magnitude.
+    """
+    sign = -1 if amount_cents < 0 else 1
+    gross = Decimal(abs(amount_cents))
     vat = (gross * rate / (Decimal(1) + rate)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    return int(vat)
+    return int(vat) * sign
 
 
 def euro(cents: int) -> str:

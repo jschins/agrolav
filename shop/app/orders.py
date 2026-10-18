@@ -13,9 +13,12 @@ from pathlib import Path
 
 
 def _load_root_env() -> None:
-    """The database settings live in the repository root .env, next to shop/."""
-    if os.environ.get("HUB_DATABASE_URL", "").strip():
-        return
+    """The database settings live in the repository root .env, next to shop/.
+
+    The file is authoritative: it is loaded with override so a stale
+    HUB_DATABASE_URL left in the shell that launched the server cannot win over
+    it. This mirrors app.main.load_root_env.
+    """
     root_env = Path(__file__).resolve().parents[2] / ".env"
     if not root_env.is_file():
         return
@@ -23,7 +26,7 @@ def _load_root_env() -> None:
         from dotenv import load_dotenv
     except ModuleNotFoundError:
         return
-    load_dotenv(root_env, interpolate=False, override=False)
+    load_dotenv(root_env, interpolate=False, override=True)
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,17 @@ def _agrolav_url() -> str:
     return url
 
 
+def _target(url: str) -> str:
+    """Server and database from a connection string, with any password left out."""
+    wanted = {"server", "data source", "database", "initial catalog"}
+    shown = [
+        f"{key.strip()}={value}"
+        for key, _, value in (piece.partition("=") for piece in url.split(";"))
+        if key.strip().casefold() in wanted
+    ]
+    return " ".join(shown) or "(unknown server)"
+
+
 def _open(url: str, *, autocommit: bool, which: str):
     try:
         import pyodbc
@@ -91,7 +105,7 @@ def _open(url: str, *, autocommit: bool, which: str):
     try:
         return pyodbc.connect(url, autocommit=autocommit, timeout=15)
     except pyodbc.Error as exc:
-        raise RuntimeError(f"{which} login failed") from exc
+        raise RuntimeError(f"{which} connection failed at {_target(url)}: {exc}") from exc
 
 
 def connect(*, autocommit: bool = False):
@@ -299,3 +313,36 @@ def mark_invoiced(conn, order_id: int, invoice_number: str) -> None:
         (invoice_number, order_id),
     )
     conn.commit()
+
+
+def set_order_lines(
+    conn,
+    order_id: int,
+    lines: list[tuple[str, int, int]],
+    vat_cents_amount: int,
+) -> None:
+    """Replace orderlines for an order and recompute totals.
+
+    lines: (slug, number_of_copies, price_cents_per_copy)
+    """
+    try:
+        run(conn, "DELETE FROM dbo.orderlines WHERE order_id = ?", (order_id,))
+        payable = 0
+        for slug, copies, price in lines:
+            if copies == 0:
+                continue
+            run(
+                conn,
+                "INSERT INTO dbo.orderlines (order_id, slug, number_of_copies, price_cents_per_copy) VALUES (?, ?, ?, ?)",
+                (order_id, slug, copies, price),
+            )
+            payable += copies * price
+        run(
+            conn,
+            "UPDATE dbo.orders SET amount_cents = ?, vat_cents = ? WHERE id = ?",
+            (payable, vat_cents_amount, order_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise

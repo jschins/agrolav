@@ -8,9 +8,17 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
-from app.catalog import add_book, book_keys, euro, load_catalog, replace_book, search_books, update_voorraad
-from app.ledger import create_debtor_invoice, overlay_stock, set_stock
-from app.orders import connect, get_order, get_order_by_token, order_number, orders_without_invoice
+from app.catalog import add_book, book_keys, euro, load_catalog, replace_book, search_books, update_voorraad, vat_cents
+from app.ledger import (
+    InvoiceLine,
+    create_debtor_invoice,
+    get_invoice,
+    open_invoices,
+    overlay_stock,
+    set_invoice_lines,
+    set_stock,
+)
+from app.orders import connect, get_order, get_order_by_token, order_number, orders_without_invoice, set_order_lines
 
 _ROOT = Path(__file__).resolve().parent.parent
 _MENU = "Voeg nieuw boek toe"
@@ -212,9 +220,120 @@ def _value(form, name: str) -> str:
 def _whole(raw: str, label: str) -> int | None:
     if raw == "":
         return None
-    if not raw.isdigit():
+    if not raw.strip().isdigit():
         raise ValueError(f"{label} moet een geheel getal van 0 of meer zijn.")
-    return int(raw)
+    return int(raw.strip())
+
+
+def _int_signed(raw: str, label: str) -> int | None:
+    if raw == "":
+        return None
+    text = raw.strip()
+    try:
+        # for simple integers
+        if text.startswith("-") or text.startswith("+"):
+            return int(text)
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        import decimal
+
+        d = decimal.Decimal(text.replace(" ", "").replace(",", "."))
+        return int(d.to_integral_value(rounding=decimal.ROUND_HALF_UP))
+    except Exception:
+        raise ValueError(f"{label} moet een geheel getal zijn.")
+
+
+def _cents_from_euro(raw: str, label: str) -> int | None:
+    if raw == "":
+        return None
+    text = raw.strip()
+    try:
+        import decimal
+
+        d = decimal.Decimal(text.replace(" ", "").replace(",", "."))
+        return int((d * 100).quantize(decimal.Decimal("1"), rounding=decimal.ROUND_HALF_UP))
+    except Exception:
+        raise ValueError(f"{label} moet een bedrag in euro zijn.")
+
+
+def _cents_to_euro(cents: int) -> str:
+    sign = "-" if cents < 0 else ""
+    whole, frac = divmod(abs(cents), 100)
+    return f"{sign}{whole}.{frac:02d}"
+
+
+def _line_copies(form, index: int, label: str) -> int:
+    raw = str(form.get(f"copies-{index}") or "").strip()
+    if not raw:
+        raise ValueError(f"{label}: aantal ontbreekt.")
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(f"{label}: aantal moet een geheel getal zijn.")
+
+
+def _line_price(form, index: int, label: str) -> int:
+    raw = str(form.get(f"price-{index}") or "").strip()
+    if not raw:
+        raise ValueError(f"{label}: prijs ontbreekt.")
+    return _cents_from_euro(raw, label)
+
+
+def _parsed_lines(form, existing) -> list[tuple[str, int, int]]:
+    """Build (slug, copies, price_cents) from the editor form, in order."""
+    labels = [getattr(item, "slug", str(index)) for index, item in enumerate(existing)]
+    count_raw = str(form.get("count") or "0").strip()
+    try:
+        count = int(count_raw)
+    except ValueError:
+        raise ValueError("Ongeldig aantal regels.")
+    lines: list[tuple[str, int, int]] = []
+    for index in range(count):
+        label = labels[index] if index < len(labels) else f"regel {index + 1}"
+        if form.get(f"delete-{index}"):
+            continue
+        slug = str(existing[index].slug) if index < len(existing) else ""
+        lines.append((slug, _line_copies(form, index, label), _line_price(form, index, label)))
+    new_slug = str(form.get("new-slug") or "").strip()
+    if new_slug:
+        label = new_slug
+        copies_raw = str(form.get("new-copies") or "").strip()
+        price_raw = str(form.get("new-price") or "").strip()
+        if not copies_raw:
+            raise ValueError(f"{label}: aantal ontbreekt.")
+        try:
+            copies = int(copies_raw)
+        except ValueError:
+            raise ValueError(f"{label}: aantal moet een geheel getal zijn.")
+        lines.append((new_slug, copies, _cents_from_euro(price_raw, label)))
+    return lines
+
+
+def _form_lines(form, existing) -> list[dict]:
+    """Rebuild the line dicts for re-rendering the editor after a failed save."""
+    labels = [getattr(item, "slug", str(index)) for index, item in enumerate(existing)]
+    count_raw = str(form.get("count") or "0").strip()
+    try:
+        count = int(count_raw)
+    except ValueError:
+        count = 0
+    lines: list[dict] = []
+    for index in range(count):
+        if index >= len(existing):
+            break
+        label = labels[index] if index < len(labels) else f"regel {index + 1}"
+        try:
+            copies = _line_copies(form, index, label)
+        except ValueError:
+            copies = existing[index].number_of_copies
+        try:
+            price_cents = _line_price(form, index, label)
+        except ValueError:
+            price_cents = existing[index].price_cents_per_copy
+        lines.append({"id": index, "slug": existing[index].slug, "copies": copies, "price_cents": price_cents})
+    return lines
 
 
 def form_page(
@@ -328,6 +447,7 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
     conn = connect()
     try:
         pending = orders_without_invoice(conn)
+        invoices = open_invoices(conn)
     finally:
         conn.close()
     rows = []
@@ -338,11 +458,27 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
             f"{_clip(order.debtor_name)}"
             f"{_clip(order.email)}"
             f"<td>{escape(euro(order.amount_cents))}</td>"
-            f'<td><form method="post" action="/facturen/order/{escape(order.token)}">'
-            f'<button class="btn" type="submit">Factureer</button></form></td>'
+            f'<td><form method="post" action="/facturen/order/{escape(order.token)}" style="display:inline-block; margin-right:.5rem">'
+            f'<button class="btn" type="submit">Factureer</button></form>'
+            f'<form method="get" action="/facturen/bestelling/{escape(order.token)}/regels" style="display:inline-block">'
+            f'<button class="btn" type="submit">Bewerk factuur</button></form></td>'
             "</tr>"
         )
     body_rows = "".join(rows) or '<tr><td colspan="5">Geen openstaande bestellingen.</td></tr>'
+    invoice_rows = []
+    for invoice in invoices:
+        invoice_rows.append(
+            "<tr>"
+            f"{_clip(invoice.number)}"
+            f"{_clip(invoice.name)}"
+            f"{_clip(invoice.email)}"
+            f"<td>{escape(euro(invoice.payable_cents))}</td>"
+            f"<td>{escape(euro(invoice.open_cents))}</td>"
+            f'<td><form method="get" action="/facturen/{escape(invoice.number)}/regels">'
+            f'<button class="btn" type="submit">Bewerk factuur</button></form></td>'
+            "</tr>"
+        )
+    body_invoice_rows = "".join(invoice_rows) or '<tr><td colspan="6">Geen openstaande facturen.</td></tr>'
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""
@@ -363,9 +499,115 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
     </tr></thead>
     <tbody>{body_rows}</tbody>
   </table>
+  <h2>Openstaande facturen</h2>
+  <table class="plain wide">
+    <colgroup>
+      <col style="width:16%">
+      <col style="width:24%">
+      <col style="width:24%">
+      <col style="width:12%">
+      <col style="width:10%">
+      <col style="width:14%">
+    </colgroup>
+    <thead><tr>
+      <th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Openstaand</th><th>Bewerken</th>
+    </tr></thead>
+    <tbody>{body_invoice_rows}</tbody>
+  </table>
 </main>
 """
     return _page(body, _INVOICES, "/facturen")
+
+
+def regels_page(
+    catalog_path: Path,
+    *,
+    title: str,
+    active: str,
+    action: str,
+    lines: list[dict],
+    new_slug: str = "",
+    new_copies: str = "",
+    new_price: str = "",
+    error: str = "",
+    notice: str = "",
+) -> str:
+    """One editable row per invoice/order line, plus a row to add a new line.
+
+    `lines` items: {"id": int, "slug": str, "copies": int, "price_cents": int}
+    copies and price may be negative.
+    """
+    catalog = load_catalog(catalog_path)
+    by_slug = {book.slug: book for book in catalog.books}
+    rows = []
+    for line in lines:
+        book = by_slug.get(line["slug"])
+        titel = book.titel if book is not None else line["slug"]
+        rows.append(
+            "<tr>"
+            f"{_clip(titel)}"
+            f'{_clip(line["slug"])}'
+            f'<td><input type="number" step="1" name="copies-{escape(str(line["id"]))}" '
+            f'value="{escape(str(line["copies"]))}"></td>'
+            f'<td><input type="number" step="0.01" name="price-{escape(str(line["id"]))}" '
+            f'value="{escape(_cents_to_euro(line["price_cents"]))}"></td>'
+            f'<td><input type="checkbox" name="delete-{escape(str(line["id"]))}" value="1"></td>'
+            "</tr>"
+        )
+    options = [
+        f'<option value="{escape(book.slug)}">{escape(book.titel)} — {escape(book.slug)}</option>'
+        for book in catalog.books
+    ]
+    body_rows = "".join(rows) or '<tr><td colspan="5">Geen regels.</td></tr>'
+    notice_html = f"<p>{escape(notice)}</p>" if notice else ""
+    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
+    body = f"""
+<main class="rekening-wide">
+  <h1>{escape(title)}</h1>
+  {notice_html}{error_html}
+  <p class="hint">Aantal en prijs mogen negatief zijn; een negatief bedrag betekent dat de klant geld terugkrijgt.</p>
+  <form method="post" action="{escape(action)}">
+    <input type="hidden" name="count" value="{len(lines)}">
+    <table class="plain wide">
+      <colgroup>
+        <col style="width:32%">
+        <col style="width:24%">
+        <col style="width:16%">
+        <col style="width:16%">
+        <col style="width:12%">
+      </colgroup>
+      <thead><tr>
+        <th>Titel</th><th>Slug</th><th>Aantal</th><th>Prijs per stuk (€)</th><th>Verwijder</th>
+      </tr></thead>
+      <tbody>{body_rows}</tbody>
+    </table>
+    <table class="plain wide" style="margin-top:1.2rem">
+      <colgroup>
+        <col style="width:32%">
+        <col style="width:24%">
+        <col style="width:16%">
+        <col style="width:16%">
+        <col style="width:12%">
+      </colgroup>
+      <thead><tr>
+        <th>Titel</th><th>Slug</th><th>Aantal</th><th>Prijs per stuk (€)</th><th></th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td>{escape(by_slug.get(new_slug).titel if new_slug in by_slug else new_slug)}</td>
+          <td><input list="slug-lijst" name="new-slug" value="{escape(new_slug)}">
+              <datalist id="slug-lijst">{"".join(options)}</datalist></td>
+          <td><input type="number" step="1" name="new-copies" value="{escape(new_copies)}"></td>
+          <td><input type="number" step="0.01" name="new-price" value="{escape(new_price)}"></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <p><button class="btn" type="submit">Regels opslaan</button></p>
+  </form>
+</main>
+"""
+    return _page(body, title, active)
 
 
 def _book_values(item: dict) -> dict[str, str]:
@@ -586,6 +828,119 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
         finally:
             conn.close()
         return HTMLResponse(invoices_page(catalog_path, notice=f"Factuur {invoice.number} aangemaakt."))
+
+    @app.get("/facturen/bestelling/{token}/regels", response_class=HTMLResponse)
+    def edit_order_lines(token: str) -> HTMLResponse:
+        conn = connect()
+        try:
+            order = get_order_by_token(conn, token)
+        finally:
+            conn.close()
+        if order is None:
+            return HTMLResponse(invoices_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
+        if order.invoice_number:
+            return HTMLResponse(
+                invoices_page(catalog_path, "Deze bestelling is al gefactureerd; bewerk de factuur."),
+                status_code=400,
+            )
+        lines = [
+            {"id": i, "slug": item.slug, "copies": item.number_of_copies, "price_cents": item.price_cents_per_copy}
+            for i, item in enumerate(order.items)
+        ]
+        return HTMLResponse(
+            regels_page(
+                catalog_path,
+                title=f"Bewerk bestelling {order_number(order.id)}",
+                active="/facturen",
+                action=f"/facturen/bestelling/{escape(token)}/regels",
+                lines=lines,
+            )
+        )
+
+    @app.post("/facturen/bestelling/{token}/regels", response_class=HTMLResponse)
+    async def save_order_lines(token: str, request: Request) -> HTMLResponse:
+        conn = connect()
+        try:
+            order = get_order_by_token(conn, token)
+            if order is None:
+                return HTMLResponse(invoices_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
+            if order.invoice_number:
+                return HTMLResponse(
+                    invoices_page(catalog_path, "Deze bestelling is al gefactureerd; bewerk de factuur."),
+                    status_code=400,
+                )
+            form = await request.form()
+            try:
+                lines = _parsed_lines(form, order.items)
+                catalog = load_catalog(catalog_path)
+                set_order_lines(conn, order.id, lines, vat_cents(sum(c * p for _s, c, p in lines), catalog.vat_rate))
+            except ValueError as exc:
+                return HTMLResponse(
+                    regels_page(
+                        catalog_path,
+                        title=f"Bewerk bestelling {order_number(order.id)}",
+                        active="/facturen",
+                        action=f"/facturen/bestelling/{escape(token)}/regels",
+                        lines=_form_lines(form, order.items),
+                        new_slug=str(form.get("new-slug") or ""),
+                        new_copies=str(form.get("new-copies") or ""),
+                        new_price=str(form.get("new-price") or ""),
+                        error=str(exc),
+                    ),
+                    status_code=400,
+                )
+        finally:
+            conn.close()
+        return HTMLResponse(invoices_page(catalog_path, notice="Regels opgeslagen."))
+
+    @app.get("/facturen/{number}/regels", response_class=HTMLResponse)
+    def edit_invoice_lines(number: str) -> HTMLResponse:
+        invoice = get_invoice(number)
+        if invoice is None:
+            return HTMLResponse(invoices_page(catalog_path, "Deze factuur bestaat niet."), status_code=404)
+        lines = [
+            {"id": i, "slug": line.slug, "copies": line.number_of_copies, "price_cents": line.price_cents_per_copy}
+            for i, line in enumerate(invoice.lines)
+        ]
+        return HTMLResponse(
+            regels_page(
+                catalog_path,
+                title=f"Bewerk factuur {invoice.number}",
+                active="/facturen",
+                action=f"/facturen/{escape(invoice.number)}/regels",
+                lines=lines,
+            )
+        )
+
+    @app.post("/facturen/{number}/regels", response_class=HTMLResponse)
+    async def save_invoice_lines(number: str, request: Request) -> HTMLResponse:
+        invoice = get_invoice(number)
+        if invoice is None:
+            return HTMLResponse(invoices_page(catalog_path, "Deze factuur bestaat niet."), status_code=404)
+        form = await request.form()
+        try:
+            lines = _parsed_lines(form, invoice.lines)
+            conn = connect()
+            try:
+                set_invoice_lines(conn, number, [InvoiceLine(s, c, p) for s, c, p in lines])
+            finally:
+                conn.close()
+        except ValueError as exc:
+            return HTMLResponse(
+                regels_page(
+                    catalog_path,
+                    title=f"Bewerk factuur {invoice.number}",
+                    active="/facturen",
+                    action=f"/facturen/{escape(invoice.number)}/regels",
+                    lines=_form_lines(form, invoice.lines),
+                    new_slug=str(form.get("new-slug") or ""),
+                    new_copies=str(form.get("new-copies") or ""),
+                    new_price=str(form.get("new-price") or ""),
+                    error=str(exc),
+                ),
+                status_code=400,
+            )
+        return HTMLResponse(invoices_page(catalog_path, notice="Regels opgeslagen."))
 
     return app
 

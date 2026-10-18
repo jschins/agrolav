@@ -636,6 +636,50 @@ def plan_allocations(
     return planned
 
 
+def set_invoice_lines(conn, number: str, lines: list[InvoiceLine]) -> Invoice:
+    """Replace invoice lines and recompute payable/open cents."""
+    invoice_id = _invoice_id(number)
+    if invoice_id is None:
+        raise ValueError("Onbekende factuur.")
+    row = one(
+        conn,
+        "SELECT payable_cents, open_cents, debtor_id, customer_id, token, ordered_at, due_on, portokosten_cents FROM dbo.invoices WHERE id = ?",
+        (invoice_id,),
+    )
+    if row is None:
+        raise ValueError("Onbekende factuur.")
+    payable_old = int(row["payable_cents"])
+    open_old = int(row["open_cents"])
+    payable_new = 0
+    for line in lines:
+        if line.number_of_copies == 0:
+            continue
+        payable_new += line.number_of_copies * line.price_cents_per_copy
+    paid = payable_old - open_old
+    open_new = payable_new - paid
+    try:
+        run(conn, "DELETE FROM dbo.invoicelines WHERE invoice_id = ?", (invoice_id,))
+        for line in lines:
+            run(
+                conn,
+                "INSERT INTO dbo.invoicelines (invoice_id, slug, number_of_copies, price_cents_per_copy) VALUES (?, ?, ?, ?)",
+                (invoice_id, line.slug, line.number_of_copies, line.price_cents_per_copy),
+            )
+        run(
+            conn,
+            "UPDATE dbo.invoices SET payable_cents = ?, open_cents = ? WHERE id = ?",
+            (payable_new, open_new, invoice_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    result = get_invoice(number)
+    if result is None:
+        raise RuntimeError("factuur kon niet worden bijgewerkt")
+    return result
+
+
 def apply_allocations(conn, allocations: list[Allocation]) -> None:
     """Record a bank booking against an invoice. The stock already left at invoicing."""
     for allocation in allocations:
