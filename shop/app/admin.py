@@ -161,6 +161,9 @@ select {{
   font-size: 0.95rem;
   cursor: pointer;
 }}
+.row-actions {{ display: flex; align-items: center; gap: 0.4rem; flex-wrap: nowrap; }}
+.row-actions form {{ margin: 0; flex: 0 0 auto; }}
+.row-actions .btn {{ margin-top: 0; padding: 0.45rem 0.55rem; font-size: 0.85rem; white-space: nowrap; }}
 .error {{ color: var(--destructive); }}
 .sheet {{
   background: var(--card);
@@ -537,7 +540,7 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
             invoice = get_invoice(order.invoice_number)
             if invoice is not None and invoice.status == "prepared":
                 send_action = (
-                    f'<form method="post" action="/bestellingen/{escape(order.token)}/verzend" style="display:inline-block">'
+                    f'<form method="post" action="/bestellingen/{escape(order.token)}/verzend">'
                     '<button class="btn" type="submit">Verzend factuur</button></form>'
                 )
         rows.append(
@@ -546,8 +549,8 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
             f"{_clip(order.debtor_name)}"
             f"{_clip(order.email)}"
             f"<td>{escape(euro(order.amount_cents))}</td>"
-            f'<td><form method="get" action="{escape(href)}" style="display:inline-block">'
-            f'<button class="btn" type="submit">Bewerk factuur</button></form> {send_action}</td>'
+            f'<td><div class="row-actions"><form method="get" action="{escape(href)}">'
+            f'<button class="btn" type="submit">Bewerk factuur</button></form>{send_action}</div></td>'
             "</tr>"
         )
     body_rows = "".join(rows) or '<tr><td colspan="5">Geen openstaande bestellingen.</td></tr>'
@@ -560,11 +563,11 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
             f"{_clip(invoice.email)}"
             f"<td>{escape(euro(invoice.payable_cents))}</td>"
             "<td>"
-            f'<form method="get" action="/facturen/{escape(invoice.number)}/regels" style="display:inline-block">'
+            f'<div class="row-actions"><form method="get" action="/facturen/{escape(invoice.number)}/regels">'
             '<button class="btn" type="submit">Bewerk factuur</button></form> '
-            f'<form method="post" action="/bestellingen/losse-facturen/{escape(invoice.number)}/verzend" style="display:inline-block">'
+            f'<form method="post" action="/bestellingen/losse-facturen/{escape(invoice.number)}/verzend">'
             '<button class="btn" type="submit">Verzend factuur</button></form>'
-            "</td></tr>"
+            "</div></td></tr>"
         )
     body_loose_rows = "".join(loose_rows) or '<tr><td colspan="5">Geen losse facturen om te verzenden.</td></tr>'
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
@@ -575,7 +578,7 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
   {notice_html}{error_html}
   <table class="plain wide">
     <colgroup>
-      <col style="width:18%"><col style="width:26%"><col style="width:26%"><col style="width:14%"><col style="width:16%">
+      <col style="width:15%"><col style="width:22%"><col style="width:22%"><col style="width:12%"><col style="width:29%">
     </colgroup>
     <thead><tr><th>Bestelling</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Bewerken</th></tr></thead>
     <tbody>{body_rows}</tbody>
@@ -583,7 +586,7 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
   <h2>Te verzenden losse facturen</h2>
   <table class="plain wide">
     <colgroup>
-      <col style="width:18%"><col style="width:26%"><col style="width:26%"><col style="width:14%"><col style="width:16%">
+      <col style="width:15%"><col style="width:22%"><col style="width:22%"><col style="width:12%"><col style="width:29%">
     </colgroup>
     <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Bewerken</th></tr></thead>
     <tbody>{body_loose_rows}</tbody>

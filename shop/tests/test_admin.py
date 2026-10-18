@@ -520,6 +520,7 @@ class AdminTests(unittest.TestCase):
             self.assertNotIn(adhoc_invoice.number, invoices.text)
             self.assertNotIn("Verzend factuur", invoices.text)
             bestellingen = client.get("/bestellingen")
+            self.assertIn(".row-actions { display: flex;", bestellingen.text)
             self.assertIn(f'action="/bestellingen/{order.token}/verzend"', bestellingen.text)
             self.assertIn(
                 f'action="/bestellingen/losse-facturen/{adhoc_invoice.number}/verzend"',
