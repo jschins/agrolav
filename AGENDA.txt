@@ -56,6 +56,40 @@ $25-rekeningen: aan instudo maar ongedateerd, worden later betaald
 opencode -s ses_eb73a7287ffejqPEjU34VAr9rJ
 
 
+One-time webshop tables cleanup:
+shop\.venv\Scripts\python.exe shop\sql\run_sql.py shop\sql\empty.sql
+(or copy-paste into SSMS)
 
 
 
+_MENUS = (
+    ("/catalogus/nieuw", _MENU_ADD),
+    ("/voorraad", _STOCK),
+    ("/catalogus", _CATALOG),
+    ("/facturen", _INVOICES),
+    ("/bestellingen", _ORDERS),
+    ("/bank", _BANK),
+)
+
+
+powershell -File scripts/show-shop-processes.ps1
+powershell -File scripts/show-shop-processes.ps1 -Service shop
+
+
+The user asks for the command to show (stale) processes. They want the command I used: Get-CimInstance Win32_Process filtering python.exe, showing ProcessId, ParentProcessId, CommandLine.
+Let me give a concise command. Maybe also to identify the shop/admin servers.
+Keep it short.
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" |
+  Select-Object ProcessId, ParentProcessId, CommandLine | Format-List
+
+To spot just the shop/admin servers:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+  Where-Object { $_.CommandLine -match 'shop\.exe|admin\.exe|uvicorn|app\.main|app\.admin' } |
+  Select-Object ProcessId, ParentProcessId, CommandLine | Format-Table -Wrap
+
+Or by listening port:
+Get-NetTCPConnection -State Listen | Where-Object LocalPort -in 9000,9100 |
+  Select-Object LocalPort, OwningProcess

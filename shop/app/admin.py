@@ -29,17 +29,19 @@ from app.ledger import (
 from app.orders import connect, get_order, get_order_by_token, order_number, orders_without_invoice, set_order_lines
 
 _ROOT = Path(__file__).resolve().parent.parent
-_MENU = "Voeg nieuw boek toe"
-_STOCK = "Beheer voorraad"
-_CATALOG = "Beheer catalogus"
-_INVOICES = "Factureer bestellingen"
+_MENU_ADD = "Voeg nieuw boek toe"
+_STOCK = "Voorraad"
+_CATALOG = "Catalogus"
+_INVOICES = "Facturen"
+_ORDERS = "Bestellingen"
 _BANK = "Ververs bankafschriften"
 _EDIT = "Wijzig boek"
 _MENUS = (
-    ("/", _MENU),
+    ("/catalogus/nieuw", _MENU_ADD),
     ("/voorraad", _STOCK),
     ("/catalogus", _CATALOG),
     ("/facturen", _INVOICES),
+    ("/bestellingen", _ORDERS),
     ("/bank", _BANK),
 )
 _FIELDS = (
@@ -216,7 +218,7 @@ td.clip:hover::after {{
 <body>
 <header class="bar">
   <div class="bar-row">
-    <a class="mark" href="/">De Boog</a>
+    <a class="mark" href="/catalogus">De Boog</a>
     <nav>
       {"".join(links)}
     </nav>
@@ -356,9 +358,9 @@ def form_page(
     error: str = "",
     original_slug: str = "",
     cover_name: str = "",
-    title: str = _MENU,
-    active: str = "/",
-    action: str = "/",
+    title: str = _MENU_ADD,
+    active: str = "/catalogus/nieuw",
+    action: str = "/catalogus/nieuw",
 ) -> str:
     fields = []
     for key, label, required in _FIELDS:
@@ -405,11 +407,11 @@ def done_page(titel: str, cover: str) -> str:
     <p>{escape(titel)} staat in catalog.json.</p>
     <p>Het omslag staat in covers/{escape(cover)}.</p>
     <p>Herstart de winkel om het boek te zien.</p>
-    <p><a class="btn" href="/">{_MENU}</a></p>
+    <p><a class="btn" href="/catalogus/nieuw">{_MENU_ADD}</a></p>
   </div>
 </main>
 """
-    return _page(body, "Boek toegevoegd", "/")
+    return _page(body, "Boek toegevoegd", "/catalogus")
 
 
 def _clip(text: str) -> str:
@@ -458,11 +460,50 @@ def stock_page(catalog_path: Path, error: str = "") -> str:
 
 
 def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
-    """Account orders waiting for an administrator to write their invoice."""
+    """Unpaid invoices: 9100/facturen gets the unpaid invoice table. Remove 'Bewerken' column. Add 'Voeg factuur toe' knob above the table."""
+    conn = connect()
+    try:
+        invoices = open_invoices(conn)
+    finally:
+        conn.close()
+    invoice_rows = []
+    for invoice in invoices:
+        invoice_rows.append(
+            "<tr>"
+            f"{_clip(invoice.number)}"
+            f"{_clip(invoice.name)}"
+            f"{_clip(invoice.email)}"
+            f"<td>{escape(euro(invoice.payable_cents))}</td>"
+            f"<td>{escape(euro(invoice.open_cents))}</td>"
+            "</tr>"
+        )
+    body_invoice_rows = "".join(invoice_rows) or '<tr><td colspan="5">Geen openstaande facturen.</td></tr>'
+    notice_html = f"<p>{escape(notice)}</p>" if notice else ""
+    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
+    body = f"""
+<main class="rekening-wide">
+  <h1>{_INVOICES}</h1>
+  {notice_html}{error_html}
+  <p><a class="btn" href="/facturen/nieuw">Voeg factuur toe</a></p>
+  <h2>Openstaande facturen</h2>
+  <table class="plain wide">
+    <colgroup>
+      <col style="width:16%"><col style="width:26%"><col style="width:26%">
+      <col style="width:16%"><col style="width:16%">
+    </colgroup>
+    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Openstaand</th></tr></thead>
+    <tbody>{body_invoice_rows}</tbody>
+  </table>
+</main>
+"""
+    return _page(body, _INVOICES, "/facturen")
+
+
+def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
+    """Unserved orders waiting for modification/processing: 9100/bestellingen."""
     conn = connect()
     try:
         pending = orders_without_invoice(conn)
-        invoices = open_invoices(conn)
     finally:
         conn.close()
     rows = []
@@ -473,65 +514,27 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
             f"{_clip(order.debtor_name)}"
             f"{_clip(order.email)}"
             f"<td>{escape(euro(order.amount_cents))}</td>"
-            f'<td><form method="post" action="/facturen/order/{escape(order.token)}" style="display:inline-block; margin-right:.5rem">'
-            f'<button class="btn" type="submit">Factureer</button></form>'
-            f'<form method="get" action="/facturen/bestelling/{escape(order.token)}/regels" style="display:inline-block">'
+            f'<td><form method="get" action="/facturen/bestelling/{escape(order.token)}/regels" style="display:inline-block">'
             f'<button class="btn" type="submit">Bewerk factuur</button></form></td>'
             "</tr>"
         )
     body_rows = "".join(rows) or '<tr><td colspan="5">Geen openstaande bestellingen.</td></tr>'
-    invoice_rows = []
-    for invoice in invoices:
-        invoice_rows.append(
-            "<tr>"
-            f"{_clip(invoice.number)}"
-            f"{_clip(invoice.name)}"
-            f"{_clip(invoice.email)}"
-            f"<td>{escape(euro(invoice.payable_cents))}</td>"
-            f"<td>{escape(euro(invoice.open_cents))}</td>"
-            f'<td><form method="get" action="/facturen/{escape(invoice.number)}/regels">'
-            f'<button class="btn" type="submit">Bewerk factuur</button></form></td>'
-            "</tr>"
-        )
-    body_invoice_rows = "".join(invoice_rows) or '<tr><td colspan="6">Geen openstaande facturen.</td></tr>'
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""
 <main class="rekening-wide">
-  <h1>{_INVOICES}</h1>
+  <h1>{_ORDERS}</h1>
   {notice_html}{error_html}
-  <p class="hint">Een bestelling wordt gefactureerd nadat de boeken zijn verstuurd.</p>
   <table class="plain wide">
     <colgroup>
-      <col style="width:18%">
-      <col style="width:26%">
-      <col style="width:26%">
-      <col style="width:14%">
-      <col style="width:16%">
+      <col style="width:18%"><col style="width:26%"><col style="width:26%"><col style="width:14%"><col style="width:16%">
     </colgroup>
-    <thead><tr>
-      <th>Bestelling</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Factuur</th>
-    </tr></thead>
+    <thead><tr><th>Bestelling</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Bewerken</th></tr></thead>
     <tbody>{body_rows}</tbody>
-  </table>
-  <h2>Openstaande facturen</h2>
-  <table class="plain wide">
-    <colgroup>
-      <col style="width:16%">
-      <col style="width:24%">
-      <col style="width:24%">
-      <col style="width:12%">
-      <col style="width:10%">
-      <col style="width:14%">
-    </colgroup>
-    <thead><tr>
-      <th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Openstaand</th><th>Bewerken</th>
-    </tr></thead>
-    <tbody>{body_invoice_rows}</tbody>
   </table>
 </main>
 """
-    return _page(body, _INVOICES, "/facturen")
+    return _page(body, _ORDERS, "/bestellingen")
 
 
 def regels_page(
@@ -780,10 +783,14 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def show() -> str:
+        return catalog_page(catalog_path, {})
+
+    @app.get("/catalogus/nieuw", response_class=HTMLResponse)
+    def nieuw() -> str:
         return form_page({})
 
-    @app.post("/", response_class=HTMLResponse)
-    async def save(request: Request) -> HTMLResponse:
+    @app.post("/catalogus/nieuw", response_class=HTMLResponse)
+    async def save_nieuw(request: Request) -> HTMLResponse:
         form = await request.form()
         values = {key: _value(form, key) for key, _label, _required in _FIELDS}
         upload = form.get("cover")
@@ -1006,35 +1013,9 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
             )
         )
 
-    @app.post("/facturen/{number}/regels", response_class=HTMLResponse)
-    async def save_invoice_lines(number: str, request: Request) -> HTMLResponse:
-        invoice = get_invoice(number)
-        if invoice is None:
-            return HTMLResponse(invoices_page(catalog_path, "Deze factuur bestaat niet."), status_code=404)
-        form = await request.form()
-        try:
-            lines = _parsed_lines(form, invoice.lines)
-            conn = connect()
-            try:
-                set_invoice_lines(conn, number, [InvoiceLine(s, c, p) for s, c, p in lines])
-            finally:
-                conn.close()
-        except ValueError as exc:
-            return HTMLResponse(
-                regels_page(
-                    catalog_path,
-                    title=f"Bewerk factuur {invoice.number}",
-                    active="/facturen",
-                    action=f"/facturen/{escape(invoice.number)}/regels",
-                    lines=_form_lines(form, invoice.lines),
-                    new_slug=str(form.get("new-slug") or ""),
-                    new_copies=str(form.get("new-copies") or ""),
-                    new_price=str(form.get("new-price") or ""),
-                    error=str(exc),
-                ),
-                status_code=400,
-            )
-        return HTMLResponse(invoices_page(catalog_path, notice="Regels opgeslagen."))
+    @app.get("/bestellingen", response_class=HTMLResponse)
+    def show_bestellingen() -> str:
+        return bestellingen_page(catalog_path)
 
     @app.get("/bank", response_class=HTMLResponse)
     def refresh_bank(request: Request) -> HTMLResponse:

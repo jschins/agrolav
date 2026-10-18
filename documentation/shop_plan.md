@@ -36,6 +36,14 @@ Two kinds of buyer share one address table:
    would be guessable. Tracked by `invoices.token`.
 3. **Mollie writes a customer + a paid invoice**, never an order.
 4. `invoices.mollie_id` / `mollie_settlement_id` live on the invoice (not the order).
+5. **The payment↔invoice link is `invoices.mollie_id` alone.** The webhook and the
+   return-page poll find the invoice by the stored Mollie payment id, so no Mollie
+   `metadata` is sent. The earlier `metadata.order_id` cross-check was redundant with
+   that stored id (and with `ux_invoices_mollie`); the amount check remains.
+6. **An order's key is an INT counter; the random hex is `orders.token`.** `id` is
+   `INT IDENTITY(1,1)`, so `ORDER BY id` is chronological insertion order and the first
+   order is `1`. `token` (`secrets.token_hex(16)`, 32 hex digits) is the order's public
+   reference, shown on the order page.
 
 ## 3. Connections
 
@@ -53,16 +61,16 @@ The app now needs two connections:
 | file                | change |
 |---------------------|--------|
 | `app/orders.py`     | connection layer (`connect`, `connect_bookkeeping`); `Address(street, number, postalcode, city)`; `save_address` / `address_by_id`; `get_order` / `orders_without_invoice` / `mark_invoiced`. Orders are written by `create_account_order` in `ledger`. Mollie-on-orders helpers removed. |
-| `app/ledger.py`     | `save_shop_debtor` / `shop_debtor_by_code` on `debtors`; `create_customer_invoice` (Mollie); `create_debtor_invoice(order)` (admin); `attach_mollie`; `invoice_by_payment`; `mark_invoice_paid`; `get_invoice` resolves owner; `open_invoices` = debtor invoices only; `read_incoming_bookings` uses the bookkeeping connection. |
+| `app/ledger.py`     | `save_shop_debtor` / `shop_debtor_by_code` on `debtors`; `create_account_order` inserts with `OUTPUT INSERTED.id` (the INT counter) and a `secrets.token_hex(16)` token; `create_customer_invoice` (Mollie); `create_debtor_invoice(order)` (admin); `attach_mollie`; `invoice_by_payment`; `mark_invoice_paid`; `get_invoice` resolves owner; `open_invoices` = debtor invoices only; `read_incoming_bookings` uses the bookkeeping connection. |
 | `app/main.py`       | `/afrekenen` → address + customer + invoice + Mollie payment; `/mollie/webhook` → mark invoice paid; `/betaling/{number}?token=`; `/rekening/voltooi` → order only. |
-| `app/pages.py`      | render the new `Order` / `Invoice`; paid vs open invoice. |
+| `app/pages.py`      | render the new `Order` / `Invoice`; paid vs open invoice; the order page shows `order.token`. |
 | `app/admin.py`      | new **invoice screen**: list un-invoiced debtor orders, turn one into an invoice. |
 | `app/reminders.py`  | bookkeeping connection for bookings. |
-| `sql/webshop.sql`   | new schema; `invoices.token`, `orders.invoice_number`. |
+| `sql/webshop.sql`   | new schema; `orders` (`id` INT IDENTITY + `token`, `invoice_number`), `invoices.token`; drops and rebuilds an old hex-keyed `orders`. |
 
 ## 5. Schema (webshop)
 
-`address`, `debtors`, `customers`, `orders` (+ `invoice_number`), `orderlines`,
+`address`, `debtors`, `customers`, `orders` (+ `token`, `invoice_number`), `orderlines`,
 `invoices` (+ `token`, `mollie_id`, `mollie_settlement_id`, `ck_invoices_owner`,
 filtered unique index `ux_invoices_mollie`), `invoicelines`, `payments`, `reminders`,
 `stock`.
@@ -70,22 +78,38 @@ filtered unique index `ux_invoices_mollie`), `invoicelines`, `payments`, `remind
 Idempotent: guarded by `DB_ID` / `OBJECT_ID` / `COL_LENGTH` / `sys.indexes`, so it can
 be re-run to bring an existing database up to date.
 
+### Order key: `id` is an INT counter, `token` is the random hex
+
+`orders.id` is `INT IDENTITY(1,1)`, so `ORDER BY id` is chronological insertion order
+and the first order written is 1. The random value moved to `orders.token`
+(`secrets.token_hex(16)` → 32 hex digits); that is the order's public reference and what
+`account_order_page` prints. `orderlines.order_id` is the same `int` as `orders.id`, just
+as `invoicelines.invoice_id` is an `int`.
+
+Code: `Order.id` is `int` and `Order.token` is `str`; `_ORDER_SELECT` reads `o.token`;
+`_order_from_row` sets `int(row["id"])`; `get_order` accepts the route's string and
+converts it (returning `None` for a non-numeric id, so an unknown order still 404s);
+`admin.py` prints `str(order.id)`.
+
+An older table (32-hex `id`, no `token`) is emptied and rebuilt by `webshop.sql`, because
+the key type changed: a guarded block drops `orderlines` then `orders`, and the
+`CREATE TABLE` below rebuilds them. This is a one-time migration of the old key, not a
+runtime behaviour: no application code empties a table.
+
 ### Columns that are presently unused
 
-The operator chose to keep the schema as it is, so these `orders` columns still exist
-even though the application no longer needs them. They are candidates for a later drop.
+The operator chose to keep these two `orders` columns even though the application no
+longer needs them. They are candidates for a later drop.
 
 | column                    | nullability  | status |
 |---------------------------|--------------|--------|
-| `orders.token`            | `NOT NULL`   | left over from the earlier per-order return page (`/bestelling/{id}?token=…`), which `invoices.token` replaced. `create_account_order` still writes it; nothing reads it. |
-| `orders.vat_cents`        | `NOT NULL`   | written by `create_account_order`; never read. The debtor invoice takes its VAT from the lines, not from the order. |
+| `orders.vat_cents`        | `NOT NULL`   | written by `create_account_order`; never read. The debtor invoice takes its VAT from the lines, not the order. |
 | `orders.portokosten_cents`| `NULL`       | never written and never read. |
 
-The Python model mirrors the first two: `Order.token` and `Order.vat_cents` are populated
-by `order._order_from_row` only so the read path matches the columns. When the columns
-are dropped, drop these fields, the `o.token` / `o.vat_cents` entries in `_ORDER_SELECT`,
-the `token` / `vat_cents` values in `create_account_order`'s `INSERT`, and the `secrets`
-token it generates for the order.
+`Order.vat_cents` is still populated by `_order_from_row` so the read path matches the
+column. To drop `vat_cents` later: remove the `o.vat_cents` entry from `_ORDER_SELECT`,
+the `vat_cents` value from `create_account_order`'s `INSERT`, and the `vat_cents` field
+from `Order` / `_order_from_row`.
 
 ## 6. Removed legacy (cleanup pass)
 
@@ -108,9 +132,11 @@ Still present in `catalog.json` but no longer read by any code: the `hero_kicker
 
 ## 7. Verification
 
-- `shop/sql/webshop.sql` re-runs clean (10 tables, 7 FKs, `ck_invoices_owner`).
+- `shop/sql/webshop.sql` re-runs clean (10 tables, 7 FKs, `ck_invoices_owner`), and
+  rebuilds an old hex-keyed `orders` (INT `id` IDENTITY + `token`).
 - compile-check every `app/*.py`.
 - `python -m unittest shop.tests.test_ledger shop.tests.test_shop shop.tests.test_admin`
-  — 20 tests, green on repeated runs (integration tests hit the live `webshop`
+  — 22 tests, green on repeated runs (integration tests hit the live `webshop`
   database, as they did before).
+- order ids start at `1` and rise by one; `orders.token` is 32 hex digits.
 

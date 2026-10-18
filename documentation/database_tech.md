@@ -17,9 +17,10 @@ The folder names `local_backups` and `remote_backups` mean **where the file
 was written**, and they are the same on both machines. Each SQL container
 bind-mounts its host backup root at `/var/opt/mssql/backup`, so SSMS always
 uses the container path (a Windows path such as `C:\SQLBackups\…` fails with
-MSG 3201). The pull script writes `agrolav.bak` on the droplet, copies it
-here, then **deletes** it (backups hold Enable Banking keys). Dated names
-(`agrolav20260917_1150.bak`) are local archive only.
+MSG 3201). The pull script writes `agrolav.bak` and `webshop.bak` on the
+droplet, copies both here, then **deletes** them (the agrolav backup holds
+Enable Banking keys). Dated names (for example,
+`agrolav20260917_1150.bak`) are local archive only.
 
 | | Local PC | Remote droplet |
 |:--|:---------|:---------------|
@@ -76,31 +77,30 @@ Do not `docker cp` through `/tmp`. The bind mount is the same directory.
 
 Uid **10001** is the SQL Server process inside `MSSQL2022`. User `agrolav` is the SSH login. A `BACKUP` is a create or an overwrite by uid 10001. An `scp` download is a read by `agrolav`.
 
-`BACKUP` returns operating-system error 5 when `remote_backups` or the existing `agrolav.bak` is owned by `agrolav`: uid 10001 cannot create or replace that file. The script therefore gives the directory and the file to 10001 before the backup. After the backup the owner stays 10001 and the group becomes `agrolav`, mode 640, so `scp` can read the file and the next backup can still overwrite it.
+`BACKUP` returns operating-system error 5 when `remote_backups` or either existing backup is owned by `agrolav`: uid 10001 cannot create or replace that file. The script therefore gives the directory and each backup file to 10001 before the backup. Afterward each file stays owned by 10001 and the group becomes `agrolav`, mode 640, so `scp` can read it and the next backup can still overwrite it.
 
 The script asks for the `agrolav` password once (SSH and sudo; paste with Shift+Insert). It retries each ssh/scp step up to five times. The `sa` password is read on the droplet from `/root/sqlserver/.env` or `/opt/agrolav/.env`. It is not typed into the script.
 
-**1. On the droplet, give the folder and the file to SQL.**
+**1. On the droplet, give the folder and both files to SQL.**
 
 ```bash
 sudo chown 10001:10001 /opt/sql_backups/remote_backups
 sudo chmod 775 /opt/sql_backups/remote_backups
 ```
 
-When `agrolav.bak` is already there:
-
 ```bash
-sudo chown 10001:10001 /opt/sql_backups/remote_backups/agrolav.bak
-sudo chmod 660 /opt/sql_backups/remote_backups/agrolav.bak
+for DB in agrolav webshop; do
+  FILE="/opt/sql_backups/remote_backups/$DB.bak"
+  if sudo test -f "$FILE"; then
+    sudo chown 10001:10001 "$FILE"
+    sudo chmod 660 "$FILE"
+  else
+    sudo install -o 10001 -g 10001 -m 660 /dev/null "$FILE"
+  fi
+done
 ```
 
-When it is not there, create an empty file owned by 10001 so the backup overwrites that file instead of creating one as the wrong user:
-
-```bash
-sudo install -o 10001 -g 10001 -m 660 /dev/null /opt/sql_backups/remote_backups/agrolav.bak
-```
-
-**2. Write the database.** SSMS on the authorized computer, or `sqlcmd` inside `MSSQL2022`. The path is the container path. `INIT` replaces the contents of that file.
+**2. Write both databases.** SSMS on the authorized computer, or `sqlcmd` inside `MSSQL2022`. These paths are the container paths. `INIT` replaces the contents of each file.
 
 ```sql
 BACKUP DATABASE [agrolav]
@@ -110,23 +110,35 @@ WITH
     COMPRESSION,
     CHECKSUM,
     STATS = 10;
+
+BACKUP DATABASE [webshop]
+TO DISK = N'/var/opt/mssql/backup/remote_backups/webshop.bak'
+WITH
+    INIT,
+    COMPRESSION,
+    CHECKSUM,
+    STATS = 10;
 ```
 
-**3. Let `agrolav` read the file, and drop older dated copies in that folder.**
+**3. Let `agrolav` read both files, and drop older dated copies in that folder.**
 
 ```bash
-sudo chown 10001:agrolav /opt/sql_backups/remote_backups/agrolav.bak
-sudo chmod 640 /opt/sql_backups/remote_backups/agrolav.bak
+for DB in agrolav webshop; do
+  sudo chown 10001:agrolav "/opt/sql_backups/remote_backups/$DB.bak"
+  sudo chmod 640 "/opt/sql_backups/remote_backups/$DB.bak"
+done
 sudo rm -f /opt/sql_backups/remote_backups/agrolav[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.bak
-sudo ls -lh /opt/sql_backups/remote_backups/agrolav.bak
+sudo rm -f /opt/sql_backups/remote_backups/webshop[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.bak
+sudo ls -lh /opt/sql_backups/remote_backups/agrolav.bak /opt/sql_backups/remote_backups/webshop.bak
 ```
 
-The host path of that file is `/opt/sql_backups/remote_backups/agrolav.bak`.
+The host paths are `/opt/sql_backups/remote_backups/agrolav.bak` and `/opt/sql_backups/remote_backups/webshop.bak`.
 
-**4. From Windows, copy it into the dated archive.** The stamp is the file time, with no seconds.
+**4. From Windows, copy both into the dated archive.** Each stamp is its file time, with no seconds.
 
 ```powershell
 scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/agrolav.bak C:/SQLBackups/remote_backups/agrolavYYYYMMDD_HHMM.bak
+scp -P 4523 agrolav@209.38.39.105:/opt/sql_backups/remote_backups/webshop.bak C:/SQLBackups/remote_backups/webshopYYYYMMDD_HHMM.bak
 ```
 
 **5. On the droplet, delete every `.bak`.** The copy on the PC stays. The droplet must not keep the file: a backup holds the Enable Banking keys.
@@ -141,7 +153,7 @@ That whole list is:
 powershell -File scripts/pull-remote-backup.ps1
 ```
 
-`-CopyOnly` skips steps 1–3, copies the `agrolav.bak` already on the droplet, then runs step 5. That file has to be readable by `agrolav` already (owner 10001, group `agrolav`, mode 640).
+`-CopyOnly` skips steps 1–3, copies both `.bak` files already on the droplet, then runs step 5. Both files have to be readable by `agrolav` already (owner 10001, group `agrolav`, mode 640).
 
 <!-- {en:remote[5],backup[5],copy[5],pc[5],bak,scp} -->
 <!-- {nl:extern[5],reservekopie[5],kopie[5],pc[5],bak,scp} -->
@@ -158,6 +170,18 @@ This sends a `.bak` that is already on the PC to `MSSQL2022`, then either replac
 Hand the directory to `agrolav` for the `scp`, then hand the new file and the directory back to 10001 before `RESTORE`. SQL reads that file as uid 10001. A later `BACKUP` into the same folder is also uid 10001, and it returns error 5 while the folder belongs to `agrolav`.
 
 Use one filename in every command below. `agrolav.bak` is that name on the droplet. Substitute your dated PC name in the `scp` source only.
+
+**0. Alternative to 1-4 below**
+
+From Windows 
+```powershell
+PS C:\Coding\agrolav\shop> scp -P 4523 C:/SQLBackups/local_backups/webshop.bak agrolav@209.38.39.105:~/webshop.bak                              
+```
+
+On the droplet
+```bash
+sudo mv ~/webshop.bak /opt/sql_backups/local_backups/webshop.bak
+```
 
 **1. On the droplet, clear the destination and give the folder to `agrolav`.**
 

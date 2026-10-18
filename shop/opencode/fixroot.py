@@ -1,0 +1,6 @@
+s = open('shop/app/admin.py', encoding='utf-8').read()
+s = s.replace('href="/">De Boog', 'href="/catalogus">De Boog')
+s = s.replace('href="/">', 'href="/catalogus/nieuw">')
+s = s.replace('<a class="btn" href="/catalogus/nieuw">{_MENU}', '<a class="btn" href="/catalogus/nieuw">{_MENU_ADD}')
+open('shop/app/admin.py', 'w', encoding='utf-8').write(s)
+print('ok')

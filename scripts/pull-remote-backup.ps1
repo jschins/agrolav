@@ -4,9 +4,9 @@
 #   powershell -File scripts/pull-remote-backup.ps1
 #   powershell -File scripts/pull-remote-backup.ps1 -CopyOnly
 #
-# Remote keeps no .bak after a successful pull (Enable Banking keys).
-# Local file is agrolavYYYYMMDD_HHMM.bak from the backup file time (no seconds).
-# -CopyOnly skips BACKUP, pulls the file already on the droplet, then deletes it.
+# Remote keeps no .bak after a successful pull (agrolav backups hold Enable
+# Banking keys). Local files are <database>YYYYMMDD_HHMM.bak from file time.
+# -CopyOnly skips BACKUP, pulls both files already on the droplet, then deletes them.
 #
 # The password is asked once. It reaches ssh/scp through an SSH_ASKPASS helper
 # (OpenSSH >= 8.4; the helper reads it from the environment, nothing is written
@@ -25,7 +25,7 @@ $SshPort = 4523
 $RemoteUser = "agrolav"
 $RemoteDir = "/opt/sql_backups/remote_backups"
 $LocalDir = "C:/SQLBackups/remote_backups"
-$RemoteWorking = "$RemoteDir/agrolav.bak"
+$Databases = @("agrolav", "webshop")
 $Target = "${RemoteUser}@${RemoteHost}"
 $MaxAttempts = 5
 $RetryDelays = @(2, 4, 6, 8)
@@ -55,18 +55,9 @@ sudo true
 $remoteBackup = $remoteSudoPrelude + "`n" + @'
 DIR="/opt/sql_backups/remote_backups"
 CONTAINER_PATH="/var/opt/mssql/backup/remote_backups"
-FILE="agrolav.bak"
 
 sudo chown 10001:10001 "$DIR"
 sudo chmod 775 "$DIR"
-# SQL (uid 10001) cannot overwrite a file owned by agrolav (error 5). Always
-# give it the file before BACKUP; scp only needs read, not ownership.
-if sudo test -f "$DIR/$FILE"; then
-  sudo chown 10001:10001 "$DIR/$FILE"
-  sudo chmod 660 "$DIR/$FILE"
-else
-  sudo install -o 10001 -g 10001 -m 660 /dev/null "$DIR/$FILE"
-fi
 
 PW=""
 for f in /root/sqlserver/.env /opt/agrolav/.env; do
@@ -87,8 +78,18 @@ if ! sudo docker exec MSSQL2022 test -x "$SQLCMD"; then
   SQLCMD=/opt/mssql-tools/bin/sqlcmd
 fi
 
-sudo docker exec -e SQLCMDPASSWORD="$PW" MSSQL2022 "$SQLCMD" -S localhost -U sa -C -b -Q "
-BACKUP DATABASE [agrolav]
+for DB in agrolav webshop; do
+  FILE="${DB}.bak"
+  # SQL (uid 10001) cannot overwrite a file owned by agrolav (error 5).
+  if sudo test -f "$DIR/$FILE"; then
+    sudo chown 10001:10001 "$DIR/$FILE"
+    sudo chmod 660 "$DIR/$FILE"
+  else
+    sudo install -o 10001 -g 10001 -m 660 /dev/null "$DIR/$FILE"
+  fi
+
+  sudo docker exec -e SQLCMDPASSWORD="$PW" MSSQL2022 "$SQLCMD" -S localhost -U sa -C -b -Q "
+BACKUP DATABASE [${DB}]
 TO DISK = N'${CONTAINER_PATH}/${FILE}'
 WITH
     INIT,
@@ -97,17 +98,19 @@ WITH
     STATS = 10;
 "
 
-# Keep owner 10001 so the next BACKUP works; group-read for scp as agrolav.
-sudo chown 10001:agrolav "$DIR/$FILE"
-sudo chmod 640 "$DIR/$FILE"
+  # Keep owner 10001 so the next BACKUP works; group-read for scp.
+  sudo chown 10001:agrolav "$DIR/$FILE"
+  sudo chmod 640 "$DIR/$FILE"
+  sudo ls -lh "$DIR/$FILE"
+done
 sudo rm -f "$DIR"/agrolav[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.bak
-sudo ls -lh "$DIR/$FILE"
+sudo rm -f "$DIR"/webshop[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.bak
 '@
 
 $remoteRemove = $remoteSudoPrelude + "`n" + @'
 DIR="/opt/sql_backups/remote_backups"
 sudo find "$DIR" -type f \( -name '*.bak' -o -name '*.bak.partial' \) -delete
-sudo rm -f /tmp/agrolav.bak /tmp/pull-remote-backup.sh /tmp/pull-remote-backup-rm.sh
+sudo rm -f /tmp/agrolav.bak /tmp/webshop.bak /tmp/pull-remote-backup.sh /tmp/pull-remote-backup-rm.sh
 sudo ls -la "$DIR"
 left=$(sudo find "$DIR" -type f -name '*.bak' | wc -l)
 if [ "$left" -ne 0 ]; then
@@ -216,14 +219,16 @@ function Invoke-SshScript {
 # --- Steps --------------------------------------------------------------------
 
 function Copy-RemoteBak {
+    param([string]$Database)
     New-Item -ItemType Directory -Force -Path $LocalDir | Out-Null
-    $tmp = "$LocalDir/agrolav.bak.partial"
+    $remoteFile = "$RemoteDir/$Database.bak"
+    $tmp = "$LocalDir/$Database.bak.partial"
     Invoke-Remote "scp" {
         if (Test-Path $tmp) { Remove-Item -Force $tmp }
         $prevEap = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
         try {
-            $out = & scp @ScpOpts "${Target}:${RemoteWorking}" $tmp 2>&1 | ForEach-Object { "$_" }
+            $out = & scp @ScpOpts "${Target}:${remoteFile}" $tmp 2>&1 | ForEach-Object { "$_" }
         } finally {
             $ErrorActionPreference = $prevEap
         }
@@ -233,7 +238,7 @@ function Copy-RemoteBak {
     }
     $item = Get-Item $tmp
     $stamp = $item.LastWriteTime.ToString("yyyyMMdd_HHmm")
-    $dest = "$LocalDir/agrolav$stamp.bak"
+    $dest = "$LocalDir/$Database$stamp.bak"
     Move-Item -Force $tmp $dest
     return $dest
 }
@@ -248,27 +253,31 @@ function Remove-RemoteBak {
 }
 
 function Finish-Pull {
-    $dest = Copy-RemoteBak
+    $dest = @(
+        foreach ($database in $Databases) {
+            Copy-RemoteBak $database
+        }
+    )
     Remove-RemoteBak
     Get-Item $dest | Format-Table Name, Length, LastWriteTime
-    Write-Host "Done. Local file: $dest (nothing left on the droplet)"
+    Write-Host "Done. Local files: $($dest -join ', ') (nothing left on the droplet)"
 }
 
 try {
     Set-Password (Read-Password "Password for $Target (SSH and sudo: enter using SHIFT-Insert)")
 
     if ($CopyOnly) {
-        Write-Host "Copying existing ${RemoteHost}:$RemoteWorking (no BACKUP) ..."
+        Write-Host "Copying existing agrolav.bak and webshop.bak from $RemoteHost (no BACKUP) ..."
         Finish-Pull
     } else {
         # Windows OpenSSH cannot multiplex (ControlMaster -> "Not a socket").
         $staleMux = Join-Path $scratch "agrlv-ssh"
         if (Test-Path -LiteralPath $staleMux) { Remove-Item -LiteralPath $staleMux -Force }
 
-        Write-Host "Backing up on ${RemoteHost} as agrolav.bak ..."
+        Write-Host "Backing up agrolav and webshop on $RemoteHost ..."
         Invoke-SshScript "remote backup" $remoteBackup "/tmp/pull-remote-backup.sh"
 
-        Write-Host "Copying agrolav.bak ..."
+        Write-Host "Copying agrolav.bak and webshop.bak ..."
         Start-Sleep -Seconds 2
         Finish-Pull
     }

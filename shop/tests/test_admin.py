@@ -65,15 +65,15 @@ class AdminTests(unittest.TestCase):
         home = client.get("/")
         self.assertEqual(home.status_code, 200)
         self.assertNotIn("Voeg nieuw boek toe", home.text)
-        self.assertNotIn("Beheer voorraad", home.text)
-        self.assertNotIn("Beheer catalogus", home.text)
+        self.assertNotIn("Voorraad", home.text)
+        self.assertNotIn("Catalogus", home.text)
         self.assertNotIn("9100", home.text)
 
     def test_form_lists_the_catalog_fields_and_a_png_upload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
-            page = client.get("/")
+            page = client.get("/catalogus/nieuw")
             self.assertEqual(page.status_code, 200)
             self.assertIn("hsl(40 50% 92.9%)", page.text)
             self.assertGreaterEqual(page.text.count("Voeg nieuw boek toe"), 2)
@@ -88,7 +88,7 @@ class AdminTests(unittest.TestCase):
             catalog = _catalog(directory)
             client = TestClient(create_admin_app(catalog, directory / "covers"))
             saved = client.post(
-                "/",
+                "/catalogus/nieuw",
                 data={
                     "slug": "nieuw-boek",
                     "titel": "Nieuw boek",
@@ -177,7 +177,7 @@ class AdminTests(unittest.TestCase):
             client = TestClient(create_admin_app(catalog, directory / "covers"))
             page = client.get("/voorraad")
             self.assertEqual(page.status_code, 200)
-            self.assertIn("Beheer voorraad", page.text)
+            self.assertIn("Voorraad", page.text)
             self.assertIn(">Titel</th>", page.text)
             self.assertIn(">Auteur</th>", page.text)
             self.assertIn(">Voorraad</th>", page.text)
@@ -199,7 +199,7 @@ class AdminTests(unittest.TestCase):
             client = TestClient(create_admin_app(catalog, directory / "covers"))
             page = client.get("/catalogus")
             self.assertEqual(page.status_code, 200)
-            self.assertIn("Beheer catalogus", page.text)
+            self.assertIn("Catalogus", page.text)
             for name in ("slug", "titel", "auteur", "genre", "formaat", "tijdvak", "ISBN", "prijs_cent_excl", "cover", "voorraad"):
                 self.assertIn(f'name="{name}"', page.text)
             self.assertIn('href="/catalogus/bestaand"', page.text)
@@ -250,7 +250,7 @@ class AdminTests(unittest.TestCase):
 
             page = client.get("/facturen")
             self.assertEqual(page.status_code, 200)
-            self.assertIn("Factureer bestellingen", page.text)
+            self.assertIn("Facturen", page.text)
             self.assertIn("Parochie Test", page.text)
             self.assertIn("Factureer", page.text)
             self.assertIn('class="selected" href="/facturen"', page.text)
