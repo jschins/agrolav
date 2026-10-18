@@ -966,6 +966,34 @@ def registered_bank_bookings(conn) -> list[Booking]:
     ]
 
 
+def bookings_for_year(conn, year: int) -> list[dict]:
+    """All persisted statement bookings with a bank booking date in the year."""
+    start = f"{int(year):04d}-01-01"
+    end = f"{int(year) + 1:04d}-01-01"
+    return query(
+        conn,
+        """
+        SELECT id, created_at, booked_on, name, iban, description, amount_cents, status
+        FROM dbo.bookings
+        WHERE booked_on >= ? AND booked_on < ?
+        ORDER BY booked_on, created_at, id
+        """,
+        (start, end),
+    )
+
+
+def latest_booking_created_at(conn) -> date | None:
+    row = one(conn, "SELECT MAX(created_at) AS latest_created_at FROM dbo.bookings")
+    if row is None or row["latest_created_at"] is None:
+        return None
+    value = row["latest_created_at"]
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value)[:10])
+
+
 def open_invoice_candidates(conn) -> list[dict]:
     """Open Mollie and sent account invoices eligible for exact bank matching."""
     rows = query(

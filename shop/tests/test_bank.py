@@ -14,8 +14,8 @@ class BankRangeTests(unittest.TestCase):
         end_day = date.fromisoformat(end)
 
         self.assertEqual(end, "2026-10-18")
-        self.assertEqual((end_day - start_day).days, 89)
-        self.assertEqual((end_day - start_day).days + 1, 90)
+        self.assertEqual(start, "2026-07-20")
+        self.assertEqual((end_day - start_day).days, 90)
 
 
 if __name__ == "__main__":

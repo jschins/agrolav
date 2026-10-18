@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from html import escape
+from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -15,9 +16,11 @@ from app.ledger import (
     InvoiceLine,
     apply_allocations,
     applied_transaction_ids,
+    bookings_for_year,
     create_adhoc_invoice,
     get_invoice,
     latest_reminder_dates,
+    latest_booking_created_at,
     mark_invoice_sent,
     match_registered_bank_bookings,
     mollie_invoices,
@@ -46,7 +49,7 @@ _STOCK = "Voorraad"
 _CATALOG = "Catalogus"
 _INVOICES = "Facturen"
 _ORDERS = "Bestellingen"
-_BANK = "Ververs bankafschriften"
+_BANK = "Bankafschriften"
 _EDIT = "Wijzig boek"
 _MENUS = (
     ("/catalogus/nieuw", _MENU_ADD),
@@ -810,11 +813,13 @@ def regels_page(
 
 
 def bank_page(report: dict) -> str:
-    """Result of one 'Ververs bankafschriften' click: what was matched and what was not."""
+    """Yearly booking register and results from the latest refresh."""
     if report.get("error"):
         return _page(
             f'<main class="rekening-wide"><h1>{_BANK}</h1>'
-            f'<p class="error">{escape(str(report["error"]))}</p></main>',
+            f'<p class="error">{escape(str(report["error"]))}</p>'
+            f'{bank_bookings_table(int(report.get("year", date.today().year)), report.get("bookings", []))}'
+            "</main>",
             _BANK,
             "/bank",
         )
@@ -846,6 +851,7 @@ def bank_page(report: dict) -> str:
     unmatched_body = "".join(unmatched_rows) or '<tr><td colspan="5">Geen openstaande boekingen op bekende IBAN&#39;s.</td></tr>'
     notice = str(report.get("notice") or "")
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
+    bookings_html = bank_bookings_table(int(report["year"]), report["bookings"])
 
     body = f"""
 <main class="rekening-wide">
@@ -864,6 +870,7 @@ def bank_page(report: dict) -> str:
       <td>{report['already']}</td>
     </tr></tbody>
   </table>
+  {bookings_html}
   <h2>Betaald (toegekend)</h2>
   <table class="plain wide">
     <colgroup>
@@ -924,6 +931,35 @@ def catalog_page(catalog_path: Path, query: dict[str, str]) -> str:
 </main>
 """
     return _page(body, _CATALOG, "/catalogus")
+
+
+def bank_bookings_table(year: int, bookings: list[dict]) -> str:
+    rows = []
+    for booking in bookings:
+        rows.append(
+            "<tr>"
+            f"<td>{int(booking['id'])}</td>"
+            f"{_clip(str(booking['created_at']))}"
+            f"{_clip(str(booking['booked_on'] or '—'))}"
+            f"{_clip(str(booking['name'] or ''))}"
+            f"{_clip(str(booking['iban'] or ''))}"
+            f"<td>{escape(euro(int(booking['amount_cents'])))}</td>"
+            f"{_clip(str(booking['description'] or ''))}"
+            f"{_clip(str(booking['status'] or ''))}"
+            "</tr>"
+        )
+    body = "".join(rows) or '<tr><td colspan="8">Geen boekingen gevonden.</td></tr>'
+    return f"""
+  <h2>Alle boekingen van {int(year)}</h2>
+  <table class="plain wide">
+    <colgroup>
+      <col style="width:7%"><col style="width:14%"><col style="width:10%"><col style="width:16%">
+      <col style="width:15%"><col style="width:10%"><col style="width:19%"><col style="width:9%">
+    </colgroup>
+    <thead><tr><th>ID</th><th>Aangemaakt</th><th>Boekdatum</th><th>Naam</th><th>IBAN</th><th>Bedrag</th><th>Omschrijving</th><th>Status</th></tr></thead>
+    <tbody>{body}</tbody>
+  </table>
+"""
 
 
 def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
@@ -1273,16 +1309,42 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
 
     @app.get("/bank", response_class=HTMLResponse)
     def refresh_bank(request: Request) -> HTMLResponse:
-        """Download recent bookings and settle the ones that identify a payment."""
+        """Download, register, and match recent bank bookings."""
         psu = bank.bind_psu(
             request.client.host if request.client else "",
             request.headers.get("user-agent", ""),
         )
         try:
+            today = date.today()
+            conn = connect()
             try:
-                result = bank.download_statements()
+                latest_created = latest_booking_created_at(conn)
+            finally:
+                conn.close()
+            start, _end = bank.default_range(today)
+            start_day = date.fromisoformat(start)
+            if latest_created is not None:
+                start_day = max(start_day, min(latest_created, today))
+            try:
+                result = bank.download_statements(
+                    date_from=start_day.isoformat(),
+                    date_to=today.isoformat(),
+                )
             except bank.EnableBankingError as exc:
-                return HTMLResponse(bank_page({"error": str(exc)}))
+                conn = connect()
+                try:
+                    year_bookings = bookings_for_year(conn, today.year)
+                finally:
+                    conn.close()
+                return HTMLResponse(
+                    bank_page(
+                        {
+                            "error": str(exc),
+                            "year": today.year,
+                            "bookings": year_bookings,
+                        }
+                    )
+                )
 
             conn = connect()
             try:
@@ -1295,6 +1357,7 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
                 planned = match_registered_bank_bookings(registered, candidates)
                 if planned:
                     apply_allocations(conn, planned, mark_bookings=True)
+                year_bookings = bookings_for_year(conn, today.year)
             finally:
                 conn.close()
         finally:
@@ -1333,6 +1396,8 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
             "own_iban": result.own_iban,
             "date_from": result.date_from,
             "date_to": result.date_to,
+            "year": today.year,
+            "bookings": year_bookings,
             "downloaded": len(result.statements),
             "in_scope": len(in_scope),
             "already": len(already),

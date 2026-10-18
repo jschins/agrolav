@@ -55,6 +55,45 @@ def _catalog(directory: Path) -> Path:
 
 
 class AdminTests(unittest.TestCase):
+    def test_bank_page_lists_saved_bookings_and_uses_the_new_menu_label(self) -> None:
+        from app.admin import bank_page
+
+        page = bank_page(
+            {
+                "year": 2026,
+                "bookings": [
+                    {
+                        "id": 123,
+                        "created_at": "2026-10-18 10:30:00",
+                        "booked_on": "2026-10-17",
+                        "name": "Parochie Voorbeeld",
+                        "iban": "NL00TEST",
+                        "description": "Factuur BDF-100000",
+                        "amount_cents": 2500,
+                        "status": "100000",
+                    }
+                ],
+                "account_name": "De Boog",
+                "own_iban": "NL00BOOG",
+                "date_from": "2026-01-01",
+                "date_to": "2026-10-18",
+                "downloaded": 1,
+                "in_scope": 1,
+                "already": 1,
+                "applied": [],
+                "unmatched": [],
+                "out_of_scope": 0,
+                "notice": "Geen nieuwe betalingen herkend.",
+            }
+        )
+
+        self.assertIn('<a class="selected" href="/bank">Bankafschriften</a>', page)
+        self.assertIn("Alle boekingen van 2026", page)
+        self.assertIn("2026-10-18 10:30:00", page)
+        self.assertIn("Parochie Voorbeeld", page)
+        self.assertIn("NL00TEST", page)
+        self.assertIn(">100000</span>", page)
+
     def test_bestellingen_sent_history_heading_matches_size_and_spacing(self) -> None:
         from app.admin import bestellingen_page
 
@@ -557,7 +596,9 @@ class AdminTests(unittest.TestCase):
 
             updated = client.get("/bestellingen")
             without_sent = updated.text.split("<h1>Bestellingen zonder verzonden facturen</h1>", 1)[1].split("</table>", 1)[0]
-            with_sent = updated.text.split("<h2>Bestellingen met verzonden facturen</h2>", 1)[1]
+            with_sent = updated.text.split(
+                '<h2 class="orders-history-title">Bestellingen met verzonden facturen</h2>', 1
+            )[1]
             self.assertNotIn(order_number(sent_order.invoice_id), without_sent)
             self.assertIn(order_number(pending_order.invoice_id), without_sent)
             self.assertIn(order_number(sent_order.invoice_id), with_sent)
@@ -613,6 +654,8 @@ class AdminTests(unittest.TestCase):
             self.assertIsNotNone(sent_invoice.sent_at)
 
     def test_bank_refresh_matches_and_records_a_payment_once(self) -> None:
+        from datetime import date
+
         from app.bank import DEBOOG_ACCOUNT_IBAN, DownloadResult, Statement
         from app.ledger import create_account_order, get_invoice, mark_invoice_sent, save_shop_debtor
         from app.orders import connect, one, order_number, run
@@ -682,11 +725,18 @@ class AdminTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
-            with patch("app.admin.bank.download_statements", return_value=result) as download:
+            latest_booking_date = date.today()
+            with (
+                patch("app.admin.latest_booking_created_at", return_value=latest_booking_date),
+                patch("app.admin.bank.download_statements", return_value=result) as download,
+            ):
                 first = client.get("/bank")
                 self.assertEqual(first.status_code, 200)
                 self.assertIn(invoice.number, first.text)
                 self.assertRegex(first.text, r"\d+ betaling\(en\) toegekend")
+                self.assertIn(f"Alle boekingen van {date.today().year}", first.text)
+                self.assertIn(str(statement.key), first.text)
+                self.assertIn(f">{order.invoice_id}</span>", first.text)
                 paid = get_invoice(invoice.number)
                 assert paid is not None
                 self.assertEqual(paid.open_cents, 0)
@@ -694,7 +744,7 @@ class AdminTests(unittest.TestCase):
                 self.assertEqual(paid.paid_at, statement.booked_on)
                 orders_page = client.get("/bestellingen")
                 sent_section = orders_page.text.split(
-                    "<h2>Bestellingen met verzonden facturen</h2>", 1
+                    '<h2 class="orders-history-title">Bestellingen met verzonden facturen</h2>', 1
                 )[1]
                 self.assertIn(order_number(order.invoice_id), sent_section)
                 invoice_page = client.get("/facturen")
@@ -710,6 +760,14 @@ class AdminTests(unittest.TestCase):
                 self.assertIn("Geen nieuwe betalingen herkend", second.text)
                 self.assertIn(">1</td>", second.text)
                 self.assertEqual(download.call_count, 2)
+                for call in download.call_args_list:
+                    self.assertEqual(
+                        call.kwargs,
+                        {
+                            "date_from": latest_booking_date.isoformat(),
+                            "date_to": latest_booking_date.isoformat(),
+                        },
+                    )
 
         conn = connect()
         try:
