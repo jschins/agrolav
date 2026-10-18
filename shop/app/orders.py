@@ -302,11 +302,11 @@ def order_number(order_id: int) -> str:
 
 
 def orders_awaiting_send(conn) -> list[Order]:
-    """Orders whose invoice has not gone out yet.
+    """Orders without an invoice and orders whose invoice is still prepared.
 
     That is an order without an invoice (from before invoices were written at
     ordering time) plus an order whose invoice is still a draft ('prepared').
-    An invoice that was sent or paid already has left the screen.
+    Sent and paid invoices appear in orders_with_sent_invoices instead.
     """
     rows = query(
         conn,
@@ -316,6 +316,22 @@ def orders_awaiting_send(conn) -> list[Order]:
             ON i.id = CASE WHEN o.invoice_number LIKE 'DBF-%'
                            THEN TRY_CONVERT(int, RIGHT(o.invoice_number, LEN(o.invoice_number) - 4)) END
         WHERE o.invoice_number IS NULL OR i.status = N'prepared'
+        ORDER BY o.id
+        """,
+    )
+    return [_order_from_row(conn, row) for row in rows]
+
+
+def orders_with_sent_invoices(conn) -> list[Order]:
+    """Orders whose invoice was sent; paid invoices remain in this history list."""
+    rows = query(
+        conn,
+        f"""
+        {_ORDER_SELECT}
+        INNER JOIN dbo.invoices i
+            ON i.id = CASE WHEN o.invoice_number LIKE 'DBF-%'
+                           THEN TRY_CONVERT(int, RIGHT(o.invoice_number, LEN(o.invoice_number) - 4)) END
+        WHERE i.status IN (N'sent', N'paid')
         ORDER BY o.id
         """,
     )

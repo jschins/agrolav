@@ -36,10 +36,10 @@ website. It carries a token, a status, the amounts, and one row per book in
 An **invoice** has a unique number and its lines are in `invoicelines`. Each
 invoice belongs to a debtor or to a customer, never both. A debtor's invoice
 is created with the order and starts as `prepared`; the administrator edits it
-and sends it as a PDF attachment from either the invoice or order screen. Its
-status then becomes `sent`, and the buyer is told to put the invoice number in
-the payment description. A customer's invoice is written at checkout, already
-paid.
+and sends it as a PDF attachment from the order screen. Its status then becomes
+`sent`, and the buyer is told to put the invoice number in the payment
+description. A loose invoice is emailed automatically after it is created. A
+customer's checkout invoice is written and paid through Mollie.
 
 The admin site's `/bank` action downloads recent Enable Banking statements
 and matches a known counterparty IBAN, account-holder name, and exact open

@@ -813,31 +813,6 @@ def unpaid_invoices(conn) -> list[Invoice]:
     return found
 
 
-def prepared_unlinked_invoices(conn) -> list[Invoice]:
-    """Prepared debtor invoices without an order, e.g. ad-hoc correction invoices."""
-    rows = query(
-        conn,
-        """
-        SELECT i.id
-        FROM dbo.invoices i
-        WHERE i.status = N'prepared'
-          AND i.debtor_id IS NOT NULL
-          AND NOT EXISTS (
-              SELECT 1
-              FROM dbo.orders o
-              WHERE o.invoice_number = N'DBF-' + CONVERT(nvarchar(20), i.id)
-          )
-        ORDER BY i.id
-        """,
-    )
-    found = []
-    for row in rows:
-        invoice = get_invoice(invoice_number(int(row["id"])))
-        if invoice is not None:
-            found.append(invoice)
-    return found
-
-
 def applied_transaction_ids(conn) -> set[int]:
     rows = query(conn, "SELECT DISTINCT transaction_id FROM dbo.payments")
     return {int(row["transaction_id"]) for row in rows}

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import tempfile
 import unittest
 import uuid
@@ -437,150 +438,139 @@ class AdminTests(unittest.TestCase):
             self.assertEqual(noparty.status_code, 400, noparty.text)
             self.assertIn("Kies een bedrijf of klant", noparty.text)
 
-            created = client.post(
-                "/facturen/nieuw",
-                data={
-                    "party": party,
-                    "count": "0",
-                    "new-slug": "niet-op-voorraad",
-                    "new-copies": "3",
-                    "new-price": "2.50",
-                },
-                follow_redirects=False,
-            )
-            self.assertEqual(created.status_code, 303, created.text)
-            location = created.headers["location"]
-            self.assertRegex(location, r"^/facturen/DBF-\d+/regels$")
-            number = location.split("/")[2]
-
-            editor = client.get(location)
-            self.assertEqual(editor.status_code, 200)
-            self.assertIn(f"Bewerk factuur {number}", editor.text)
+            with patch("app.admin.send_invoice_email") as send_email:
+                created = client.post(
+                    "/facturen/nieuw",
+                    data={
+                        "party": party,
+                        "count": "0",
+                        "new-slug": "niet-op-voorraad",
+                        "new-copies": "3",
+                        "new-price": "2.50",
+                    },
+                )
+            self.assertEqual(created.status_code, 200, created.text)
+            self.assertIn("Factuur aanmaken en verzenden", form.text)
+            self.assertIn("verzonden naar adhoc@example.com", created.text)
+            self.assertEqual(send_email.call_count, 1)
+            self.assertTrue(send_email.call_args.args[2].startswith(b"%PDF-"))
+            number_match = re.search(r"DBF-\d+", created.text)
+            self.assertIsNotNone(number_match)
+            assert number_match is not None
+            number = number_match.group(0)
 
             invoice = get_invoice(number)
             assert invoice is not None
             self.assertEqual(invoice.name, "Parochie Adhoc")
             self.assertEqual(invoice.payable_cents, 750)
-            self.assertEqual(invoice.status, "prepared")
+            self.assertEqual(invoice.status, "sent")
             self.assertIsNotNone(invoice.debtor_id)
             self.assertIsNone(invoice.customer_id)
 
             listing = client.get("/facturen")
             self.assertIn("<h1>Openstaande facturen</h1>", listing.text)
-            self.assertNotIn(number, listing.text)
+            self.assertIn(number, listing.text)
             self.assertNotIn("<th>Status</th>", listing.text)
             self.assertNotIn("Verzend factuur", listing.text)
             bestellingen = client.get("/bestellingen")
-            self.assertIn("Te verzenden losse facturen", bestellingen.text)
-            self.assertIn(number, bestellingen.text)
-            self.assertIn("Parochie Adhoc", bestellingen.text)
-            self.assertIn(
-                f'action="/bestellingen/losse-facturen/{number}/verzend"',
-                bestellingen.text,
-            )
+            self.assertNotIn("Te verzenden losse facturen", bestellingen.text)
+            self.assertNotIn(number, bestellingen.text)
 
-    def test_order_and_adhoc_invoices_can_be_sent_from_bestellingen(self) -> None:
+    def test_orders_move_between_unsent_and_sent_tables(self) -> None:
         from app.bank import DEBOOG_ACCOUNT_IBAN
-        from app.ledger import create_account_order, create_adhoc_invoice, get_invoice, save_shop_debtor, shop_debtor_by_code
+        from app.ledger import create_account_order, get_invoice, save_shop_debtor
         from app.orders import order_number
 
-        order_suffix = uuid.uuid4().hex[:10]
-        code = save_shop_debtor(
-            f"Parochie Bestelling {order_suffix}",
-            f"{order_suffix}@example.com",
-            "NL000000000B01",
-        )
-        order = create_account_order(
-            code=code,
-            lines=[(f"send-{order_suffix}", 1, 1234)],
-            books=(),
-            vat_cents_amount=102,
-        )
+        def make_order():
+            suffix = uuid.uuid4().hex[:10]
+            code = save_shop_debtor(
+                f"Parochie Bestelling {suffix}",
+                f"{suffix}@example.com",
+                "NL000000000B01",
+            )
+            return create_account_order(
+                code=code,
+                lines=[(f"send-{suffix}", 1, 1234)],
+                books=(),
+                vat_cents_amount=102,
+            )
 
-        adhoc_suffix = uuid.uuid4().hex[:10]
-        adhoc_code = save_shop_debtor(
-            f"Parochie Los {adhoc_suffix}",
-            f"{adhoc_suffix}@example.com",
-            "NL000000000B01",
-        )
-        adhoc_debtor = shop_debtor_by_code(adhoc_code)
-        assert adhoc_debtor is not None
-        adhoc_invoice = create_adhoc_invoice(
-            owner=f'debtor:{adhoc_debtor["id"]}',
-            lines=[(f"adhoc-{adhoc_suffix}", 1, 2345)],
-            books=(),
-            vat_cents_amount=193,
-        )
+        sent_order = make_order()
+        pending_order = make_order()
+        sent_invoice = get_invoice(sent_order.invoice_number)
+        assert sent_invoice is not None
 
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
-            invoices = client.get("/facturen")
-            self.assertNotIn(order.invoice_number, invoices.text)
-            self.assertNotIn(adhoc_invoice.number, invoices.text)
-            self.assertNotIn("Verzend factuur", invoices.text)
-            bestellingen = client.get("/bestellingen")
-            self.assertIn(".row-actions { display: flex;", bestellingen.text)
-            self.assertIn(f'action="/bestellingen/{order.token}/verzend"', bestellingen.text)
-            self.assertIn(
-                f'action="/bestellingen/losse-facturen/{adhoc_invoice.number}/verzend"',
-                bestellingen.text,
-            )
-            self.assertIn(order_number(order.id), bestellingen.text)
+            initial = client.get("/bestellingen")
+            self.assertIn("Bestellingen zonder verzonden facturen", initial.text)
+            self.assertIn("Bestellingen met verzonden facturen", initial.text)
+            self.assertIn(".row-actions { display: flex;", initial.text)
+            self.assertIn(order_number(sent_order.id), initial.text)
+            self.assertIn(order_number(pending_order.id), initial.text)
 
             with patch("app.admin.send_invoice_email") as send_email:
-                sent_order = client.post(f"/bestellingen/{order.token}/verzend")
-                self.assertEqual(sent_order.status_code, 200, sent_order.text)
-                self.assertIn("verzonden naar", sent_order.text)
+                response = client.post(f"/bestellingen/{sent_order.token}/verzend")
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertIn("verzonden naar", response.text)
+                self.assertEqual(send_email.call_count, 1)
+                self.assertTrue(send_email.call_args.args[2].startswith(b"%PDF-"))
+                self.assertEqual(send_email.call_args.args[3], DEBOOG_ACCOUNT_IBAN)
 
-                sent_adhoc = client.post(
-                    f"/bestellingen/losse-facturen/{adhoc_invoice.number}/verzend"
-                )
-                self.assertEqual(sent_adhoc.status_code, 200, sent_adhoc.text)
-                self.assertIn("verzonden naar", sent_adhoc.text)
-                self.assertEqual(send_email.call_count, 2)
-                for call in send_email.call_args_list:
-                    self.assertTrue(call.args[2].startswith(b"%PDF-"))
-                    self.assertEqual(call.args[3], DEBOOG_ACCOUNT_IBAN)
-
-                duplicate = client.post(f"/bestellingen/{order.token}/verzend")
+                duplicate = client.post(f"/bestellingen/{sent_order.token}/verzend")
                 self.assertEqual(duplicate.status_code, 409)
-                self.assertEqual(send_email.call_count, 2)
+                self.assertEqual(send_email.call_count, 1)
 
-            self.assertEqual(get_invoice(order.invoice_number).status, "sent")
-            self.assertEqual(get_invoice(adhoc_invoice.number).status, "sent")
-            sent_list = client.get("/facturen")
-            self.assertIn(order.invoice_number, sent_list.text)
-            self.assertIn(adhoc_invoice.number, sent_list.text)
-            remaining_orders = client.get("/bestellingen")
-            self.assertNotIn(order_number(order.id), remaining_orders.text)
-            self.assertNotIn(adhoc_invoice.number, remaining_orders.text)
+            self.assertEqual(get_invoice(sent_order.invoice_number).status, "sent")
+            updated = client.get("/bestellingen")
+            without_sent = updated.text.split("<h2>Bestellingen zonder verzonden facturen</h2>", 1)[1].split("</table>", 1)[0]
+            with_sent = updated.text.split("<h2>Bestellingen met verzonden facturen</h2>", 1)[1]
+            self.assertNotIn(order_number(sent_order.id), without_sent)
+            self.assertIn(order_number(pending_order.id), without_sent)
+            self.assertIn(order_number(sent_order.id), with_sent)
+            self.assertIn(sent_invoice.number, with_sent)
+            self.assertNotIn(order_number(pending_order.id), with_sent)
 
-    def test_failed_invoice_email_leaves_it_prepared(self) -> None:
-        from app.ledger import create_account_order, get_invoice, save_shop_debtor
+    def test_failed_automatic_adhoc_send_can_be_retried(self) -> None:
+        from app.ledger import get_invoice, save_shop_debtor, shop_debtor_by_code
 
         code = save_shop_debtor("Parochie Mailfout", "mailfout@example.com", "NL000000000B01")
-        order = create_account_order(
-            code=code,
-            lines=[("mailfout-regel", 1, 100)],
-            books=(),
-            vat_cents_amount=8,
-        )
-        invoice = get_invoice(order.invoice_number)
-        assert invoice is not None
+        debtor = shop_debtor_by_code(code)
+        assert debtor is not None
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
             with patch("app.admin.send_invoice_email", side_effect=RuntimeError("SMTP offline")):
-                response = client.post(f"/facturen/{invoice.number}/verzend")
+                response = client.post(
+                    "/facturen/nieuw",
+                    data={
+                        "party": f'debtor:{debtor["id"]}',
+                        "count": "0",
+                        "new-slug": "mailfout-regel",
+                        "new-copies": "1",
+                        "new-price": "1.00",
+                    },
+                )
             self.assertEqual(response.status_code, 502)
-            self.assertIn("Factuur verzenden is mislukt", response.text)
-        self.assertEqual(get_invoice(invoice.number).status, "prepared")
+            self.assertIn("is niet verzonden", response.text)
+            number_match = re.search(r"DBF-\d+", response.text)
+            self.assertIsNotNone(number_match)
+            assert number_match is not None
+            number = number_match.group(0)
+            self.assertEqual(get_invoice(number).status, "prepared")
+
+            with patch("app.admin.send_invoice_email") as send_email:
+                retry = client.post(f"/facturen/{number}/verzend")
+            self.assertEqual(retry.status_code, 200, retry.text)
+            self.assertIn("verzonden naar mailfout@example.com", retry.text)
+            send_email.assert_called_once()
+            self.assertEqual(get_invoice(number).status, "sent")
 
     def test_bank_refresh_matches_and_records_a_payment_once(self) -> None:
         from app.bank import DEBOOG_ACCOUNT_IBAN, DownloadResult, Statement
         from app.ledger import create_account_order, get_invoice, mark_invoice_sent, save_shop_debtor
-        from app.orders import connect, one, run
+        from app.orders import connect, one, order_number, run
 
         suffix = uuid.uuid4().hex[:12]
         party_name = f"Parochie Bank {suffix}"
@@ -640,6 +630,11 @@ class AdminTests(unittest.TestCase):
                 assert paid is not None
                 self.assertEqual(paid.open_cents, 0)
                 self.assertEqual(paid.status, "paid")
+                orders_page = client.get("/bestellingen")
+                sent_section = orders_page.text.split(
+                    "<h2>Bestellingen met verzonden facturen</h2>", 1
+                )[1]
+                self.assertIn(order_number(order.id), sent_section)
 
                 second = client.get("/bank")
                 self.assertEqual(second.status_code, 200)
