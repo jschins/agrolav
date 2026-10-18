@@ -18,7 +18,6 @@ from app.ledger import (
     applied_transaction_ids,
     compact_iban,
     create_adhoc_invoice,
-    create_debtor_invoice,
     get_invoice,
     known_party_ibans,
     mark_invoice_sent,
@@ -529,22 +528,17 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
         conn.close()
     rows = []
     for order in pending:
-        href = (
-            f"/facturen/{order.invoice_number}/regels"
-            if order.invoice_number
-            else f"/facturen/bestelling/{order.token}/regels"
-        )
+        href = f"/facturen/{order.invoice_number}/regels"
         send_action = ""
-        if order.invoice_number:
-            invoice = get_invoice(order.invoice_number)
-            if invoice is not None and invoice.status == "prepared":
-                send_action = (
-                    f'<form method="post" action="/bestellingen/{escape(order.token)}/verzend">'
-                    '<button class="btn" type="submit">Verzend factuur</button></form>'
-                )
+        invoice = get_invoice(order.invoice_number)
+        if invoice is not None and invoice.status == "prepared":
+            send_action = (
+                f'<form method="post" action="/bestellingen/{escape(order.token)}/verzend">'
+                '<button class="btn" type="submit">Verzend factuur</button></form>'
+            )
         rows.append(
             "<tr>"
-            f"{_clip(order_number(order.id))}"
+            f"{_clip(order_number(order.invoice_id))}"
             f"{_clip(order.debtor_name)}"
             f"{_clip(order.email)}"
             f"<td>{escape(euro(order.amount_cents))}</td>"
@@ -555,10 +549,10 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
     body_rows = "".join(rows) or '<tr><td colspan="5">Geen openstaande bestellingen.</td></tr>'
     sent_rows = []
     for order in sent_orders:
-        invoice_number = escape(order.invoice_number or "")
+        invoice_number = escape(order.invoice_number)
         sent_rows.append(
             "<tr>"
-            f"{_clip(order_number(order.id))}"
+            f"{_clip(order_number(order.invoice_id))}"
             f"{_clip(order.debtor_name)}"
             f"{_clip(order.email)}"
             f"<td>{escape(euro(order.amount_cents))}</td>"
@@ -1142,76 +1136,6 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
             return HTMLResponse(again(str(exc)), status_code=400)
         return send_invoice_response(invoice.number, allow_customer=True, created=True)
 
-    @app.get("/facturen/bestelling/{token}/regels", response_class=HTMLResponse)
-    def edit_order_lines(token: str) -> Response:
-        conn = connect()
-        try:
-            order = get_order_by_token(conn, token)
-        finally:
-            conn.close()
-        if order is None:
-            return HTMLResponse(bestellingen_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
-        if order.invoice_number:
-            invoice = get_invoice(order.invoice_number)
-            if invoice is not None:
-                return RedirectResponse(f"/facturen/{invoice.number}/regels", status_code=303)
-        lines = [
-            {"id": i, "slug": item.slug, "copies": item.number_of_copies, "price_cents": item.price_cents_per_copy}
-            for i, item in enumerate(order.items)
-        ]
-        return HTMLResponse(
-            regels_page(
-                catalog_path,
-                title=f"Bewerk bestelling {order_number(order.id)}",
-                active="/bestellingen",
-                action=f"/facturen/bestelling/{escape(token)}/regels",
-                lines=lines,
-            )
-        )
-
-    @app.post("/facturen/bestelling/{token}/regels", response_class=HTMLResponse)
-    async def save_order_lines(token: str, request: Request) -> HTMLResponse:
-        form = await request.form()
-        conn = connect()
-        try:
-            order = get_order_by_token(conn, token)
-            if order is None:
-                return HTMLResponse(bestellingen_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
-            invoice = get_invoice(order.invoice_number) if order.invoice_number else None
-            existing = invoice.lines if invoice is not None else order.items
-            try:
-                lines = _parsed_lines(form, existing)
-                if invoice is None:
-                    invoice = create_debtor_invoice(conn, order)
-                set_invoice_lines(
-                    conn,
-                    invoice.number,
-                    [InvoiceLine(slug, copies, price) for slug, copies, price in lines],
-                )
-            except ValueError as exc:
-                title = (
-                    f"Bewerk factuur {invoice.number}"
-                    if invoice is not None
-                    else f"Bewerk bestelling {order_number(order.id)}"
-                )
-                return HTMLResponse(
-                    regels_page(
-                        catalog_path,
-                        title=title,
-                        active="/bestellingen",
-                        action=f"/facturen/bestelling/{escape(token)}/regels",
-                        lines=_form_lines(form, existing),
-                        new_slug=str(form.get("new-slug") or ""),
-                        new_copies=str(form.get("new-copies") or ""),
-                        new_price=str(form.get("new-price") or ""),
-                        error=str(exc),
-                    ),
-                    status_code=400,
-                )
-        finally:
-            conn.close()
-        return HTMLResponse(bestellingen_page(catalog_path, notice="Regels opgeslagen."))
-
     @app.get("/facturen/{number}/regels", response_class=HTMLResponse)
     def edit_invoice_lines(number: str) -> HTMLResponse:
         invoice = get_invoice(number)
@@ -1278,11 +1202,6 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
             conn.close()
         if order is None:
             return HTMLResponse(bestellingen_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
-        if not order.invoice_number:
-            return HTMLResponse(
-                bestellingen_page(catalog_path, "Bewerk de bestelling eerst om de factuur aan te maken."),
-                status_code=409,
-            )
         return send_invoice_response(order.invoice_number, orders_screen=True)
 
     @app.get("/bank", response_class=HTMLResponse)

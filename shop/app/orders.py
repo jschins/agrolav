@@ -1,9 +1,8 @@
 """Shop rows in the webshop database. This is not the bookkeeping database.
 
-An order is written the moment an account buyer orders on the website, and its
-invoice is written in the same breath (see app.ledger); only orders from before
-that rule still arrive without one. A Mollie buyer has no order, only an
-invoice, paid at checkout. Editing happens on the invoice, never on the order.
+A debtor order is written against its invoice id in the same transaction as the
+invoice (see app.ledger). A Mollie buyer has an invoice but no debtor order row.
+Editing happens on the invoice, never on the order.
 """
 from __future__ import annotations
 
@@ -52,7 +51,7 @@ class Address:
 
 @dataclass(frozen=True)
 class Order:
-    id: int
+    invoice_id: int
     token: str
     email: str
     status: str
@@ -62,7 +61,10 @@ class Order:
     debtor_id: int
     debtor_name: str
     address: Address
-    invoice_number: str | None
+
+    @property
+    def invoice_number(self) -> str:
+        return f"BDF-{self.invoice_id}"
 
 
 def _webshop_url() -> str:
@@ -229,7 +231,7 @@ def address_by_id(conn, address_id: int | None) -> Address:
     )
 
 
-def _lines_for(conn, order_id: int) -> tuple[OrderItem, ...]:
+def _lines_for(conn, invoice_id: int) -> tuple[OrderItem, ...]:
     rows = query(
         conn,
         """
@@ -238,7 +240,7 @@ def _lines_for(conn, order_id: int) -> tuple[OrderItem, ...]:
         WHERE order_id = ?
         ORDER BY id
         """,
-        (order_id,),
+        (invoice_id,),
     )
     return tuple(
         OrderItem(
@@ -252,34 +254,33 @@ def _lines_for(conn, order_id: int) -> tuple[OrderItem, ...]:
 
 def _order_from_row(conn, row: dict) -> Order:
     return Order(
-        id=int(row["id"]),
+        invoice_id=int(row["invoice_id"]),
         token=str(row["token"] or ""),
         email=row["email"],
         status=row["status"],
-        items=_lines_for(conn, int(row["id"])),
+        items=_lines_for(conn, int(row["invoice_id"])),
         amount_cents=row["amount_cents"],
         vat_cents=row["vat_cents"],
         debtor_id=int(row["debtor_id"]),
         debtor_name=row["debtor_name"],
         address=address_by_id(conn, row["address_id"]),
-        invoice_number=row["invoice_number"],
     )
 
 
 _ORDER_SELECT = """
-    SELECT o.id, o.token, o.email, o.status, o.amount_cents, o.vat_cents, o.invoice_number,
+    SELECT o.invoice_id, o.token, o.email, o.status, o.amount_cents, o.vat_cents,
            d.id AS debtor_id, d.name AS debtor_name, d.address_id
     FROM dbo.orders o
     JOIN dbo.debtors d ON d.id = o.debtor_id
 """
 
 
-def get_order(conn, order_id: int | str) -> Order | None:
+def get_order(conn, invoice_id: int | str) -> Order | None:
     try:
-        key = int(order_id)
+        key = int(invoice_id)
     except (TypeError, ValueError):
         return None
-    row = one(conn, f"{_ORDER_SELECT} WHERE o.id = ?", (key,))
+    row = one(conn, f"{_ORDER_SELECT} WHERE o.invoice_id = ?", (key,))
     if row is None:
         return None
     return _order_from_row(conn, row)
@@ -296,27 +297,20 @@ def get_order_by_token(conn, token: str) -> Order | None:
     return _order_from_row(conn, row)
 
 
-def order_number(order_id: int) -> str:
-    """Human-readable order number, e.g. order 100000 -> DB-100000."""
-    return f"DB-{int(order_id)}"
+def order_number(invoice_id: int) -> str:
+    """Human-readable order number, using the invoice id, e.g. DB-100000."""
+    return f"DB-{int(invoice_id)}"
 
 
 def orders_awaiting_send(conn) -> list[Order]:
-    """Orders without an invoice and orders whose invoice is still prepared.
-
-    That is an order without an invoice (from before invoices were written at
-    ordering time) plus an order whose invoice is still a draft ('prepared').
-    Sent and paid invoices appear in orders_with_sent_invoices instead.
-    """
+    """Orders whose linked invoice is still prepared for delivery."""
     rows = query(
         conn,
         f"""
         {_ORDER_SELECT}
-        LEFT JOIN dbo.invoices i
-            ON i.id = CASE WHEN o.invoice_number LIKE 'DBF-%'
-                           THEN TRY_CONVERT(int, RIGHT(o.invoice_number, LEN(o.invoice_number) - 4)) END
-        WHERE o.invoice_number IS NULL OR i.status = N'prepared'
-        ORDER BY o.id
+        INNER JOIN dbo.invoices i ON i.id = o.invoice_id
+        WHERE i.status = N'prepared'
+        ORDER BY o.invoice_id
         """,
     )
     return [_order_from_row(conn, row) for row in rows]
@@ -328,20 +322,9 @@ def orders_with_sent_invoices(conn) -> list[Order]:
         conn,
         f"""
         {_ORDER_SELECT}
-        INNER JOIN dbo.invoices i
-            ON i.id = CASE WHEN o.invoice_number LIKE 'DBF-%'
-                           THEN TRY_CONVERT(int, RIGHT(o.invoice_number, LEN(o.invoice_number) - 4)) END
+        INNER JOIN dbo.invoices i ON i.id = o.invoice_id
         WHERE i.status IN (N'sent', N'paid')
-        ORDER BY o.id
+        ORDER BY o.invoice_id
         """,
     )
     return [_order_from_row(conn, row) for row in rows]
-
-
-def mark_invoiced(conn, order_id: int, invoice_number: str) -> None:
-    run(
-        conn,
-        "UPDATE dbo.orders SET invoice_number = ?, status = 'invoiced' WHERE id = ?",
-        (invoice_number, order_id),
-    )
-    conn.commit()

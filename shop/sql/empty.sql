@@ -6,15 +6,15 @@ GO
 
 DELETE FROM dbo.orderlines;
 GO
-DELETE FROM dbo.invoicelines;
+DELETE FROM dbo.orders;
 GO
 DELETE FROM dbo.payments;
 GO
 DELETE FROM dbo.reminders;
 GO
-DELETE FROM dbo.invoices;
+DELETE FROM dbo.invoicelines;
 GO
-DELETE FROM dbo.orders;
+DELETE FROM dbo.invoices;
 GO
 DELETE FROM dbo.customers;
 GO
@@ -25,10 +25,8 @@ GO
 DELETE FROM dbo.stock;
 GO
 
--- New orders and invoices count from 100000 again; the other counters start at 1.
+-- Invoice ids (also debtor order ids) count from 100000; other counters start at 1.
 -- On an emptied table the first next value is one past the number given, hence n-1.
-DBCC CHECKIDENT (N'dbo.orders', RESEED, 99999);
-GO
 DBCC CHECKIDENT (N'dbo.invoices', RESEED, 99999);
 GO
 DBCC CHECKIDENT (N'dbo.address', RESEED, 0);

@@ -35,11 +35,13 @@ website. It carries a token, a status, the amounts, and one row per book in
 
 An **invoice** has a unique number and its lines are in `invoicelines`. Each
 invoice belongs to a debtor or to a customer, never both. A debtor's invoice
-is created with the order and starts as `prepared`; the administrator edits it
-and sends it as a PDF attachment from the order screen. Its status then becomes
-`sent`, and the buyer is told to put the invoice number in the payment
-description. A loose invoice is emailed automatically after it is created. A
-customer's checkout invoice is written and paid through Mollie.
+is created with the order and starts as `prepared`; the order uses the same
+invoice ID as its primary and foreign key. The order number is `DB-{id}` and the
+invoice number is `BDF-{id}`. The administrator edits and sends the invoice as a
+PDF attachment from the order screen; its status then becomes `sent`, and the
+buyer is told to put the invoice number in the payment description. A loose
+invoice is emailed automatically after it is created. A customer's checkout
+invoice is written and paid through Mollie, without a debtor order row.
 
 The admin site's `/bank` action downloads recent Enable Banking statements
 and matches a known counterparty IBAN, account-holder name, and exact open

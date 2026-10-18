@@ -18,13 +18,12 @@ Two kinds of buyer share one address table:
 
 - `invoices` — **exactly one** owner per invoice (`ck_invoices_owner`: `debtor_id` xor
   `customer_id`).
-  - For a **debtor**, the invoice is produced by an administrator, after the mail
-    order has been sent; in case all books are available (usual case) the invoice lines
-    are identical to the order lines; in case not all books are available, the administrator
-    modifies the invoice accordingly, before sending it off;
+  - For a **debtor**, the invoice is created with the order and starts prepared. Its
+    `id` is also the primary/foreign key of the corresponding order; the administrator
+    edits and sends the invoice from Bestellingen.
   - For a **customer**, the invoice is written *and paid* at Mollie checkout.
   - the administrator can always make an invoice without reference to an order, e.g. in case
-    of a correction invoice (both credit and debet)
+    of a correction invoice (both credit and debet); it is emailed automatically after creation.
 - `address(id, street, number, postalcode, city)` — `number` is **text** (`12`, `12a`, `12-3`).
   Both `debtors.address_id` and `customers.address_id` point here.
 - `orders` — written the moment an account buyer orders on the website. Debtor only.
@@ -32,9 +31,9 @@ Two kinds of buyer share one address table:
 
 ## 2. Decisions taken
 
-1. **Rekening flow writes an order only.** The website's `REKENING` completion no longer
-   creates the invoice; it records the order. A new **admin invoice screen** turns an
-   order into an invoice after the mail order is sent. Tracked by `orders.invoice_number`.
+1. **Rekening flow writes an invoice and order together.** The invoice is inserted first;
+   `orders.invoice_id` uses that same ID and is both the order's primary key and a foreign
+   key to `invoices.id`.
 2. **Customer invoices carry a token.** A Mollie buyer views their purchase at
    `/betaling/{number}?token=…`; invoice numbers are sequential, so a bare number page
    would be guessable. Tracked by `invoices.token`.
@@ -44,10 +43,9 @@ Two kinds of buyer share one address table:
    return-page poll find the invoice by the stored Mollie payment id, so no Mollie
    `metadata` is sent. The earlier `metadata.order_id` cross-check was redundant with
    that stored id (and with `ux_invoices_mollie`); the amount check remains.
-6. **An order's key is an INT counter; the random hex is `orders.token`.** `id` is
-   `INT IDENTITY(1,1)`, so `ORDER BY id` is chronological insertion order and the first
-   order is `1`. `token` (`secrets.token_hex(16)`, 32 hex digits) is the order's public
-   reference, shown on the order page.
+6. **Order and invoice numbers share the invoice ID.** An order is displayed as
+   `DB-{orders.invoice_id}` and its invoice as `BDF-{invoices.id}`. The order token remains
+   the random 32-hex secret used in the order URL.
 
 ## 3. Connections
 
@@ -64,17 +62,17 @@ The app now needs two connections:
 
 | file                | change |
 |---------------------|--------|
-| `app/orders.py`     | connection layer (`connect`, `connect_bookkeeping`); `Address(street, number, postalcode, city)`; `save_address` / `address_by_id`; `get_order` / `orders_without_invoice` / `mark_invoiced`. Orders are written by `create_account_order` in `ledger`. Mollie-on-orders helpers removed. |
-| `app/ledger.py`     | `save_shop_debtor` / `shop_debtor_by_code` on `debtors`; `create_account_order` inserts with `OUTPUT INSERTED.id` (the INT counter) and a `secrets.token_hex(16)` token; `create_customer_invoice` (Mollie); `create_debtor_invoice(order)` (admin); `attach_mollie`; `invoice_by_payment`; `mark_invoice_paid`; `get_invoice` resolves owner; `open_invoices` = debtor invoices only; `read_incoming_bookings` uses the bookkeeping connection. |
-| `app/main.py`       | `/afrekenen` → address + customer + invoice + Mollie payment; `/mollie/webhook` → mark invoice paid; `/betaling/{number}?token=`; `/rekening/voltooi` → order only. |
+| `app/orders.py`     | connection layer (`connect`, `connect_bookkeeping`); `Address(street, number, postalcode, city)`; order lookup by the shared invoice ID or token. Orders are written by `create_account_order` in `ledger`. |
+| `app/ledger.py`     | `save_shop_debtor` / `shop_debtor_by_code` on `debtors`; `create_account_order` inserts the invoice and uses its `id` for `orders.invoice_id`; `create_customer_invoice` (Mollie); `attach_mollie`; `invoice_by_payment`; `get_invoice` resolves owner; `open_invoices` = debtor invoices only; `read_incoming_bookings` uses the bookkeeping connection. |
+| `app/main.py`       | `/afrekenen` → address + customer + invoice + Mollie payment; `/mollie/webhook` → mark invoice paid; `/betaling/{number}?token=`; `/rekening/voltooi` → order and invoice together. |
 | `app/pages.py`      | render the new `Order` / `Invoice`; paid vs open invoice; the order page shows `order.token`. |
-| `app/admin.py`      | new **invoice screen**: list un-invoiced debtor orders, turn one into an invoice. |
+| `app/admin.py`      | invoice and order screens; orders link to their invoice by the shared ID. |
 | `app/reminders.py`  | bookkeeping connection for bookings. |
-| `sql/webshop.sql`   | new schema; `orders` (`id` INT IDENTITY + `token`, `invoice_number`), `invoices.token`; drops and rebuilds an old hex-keyed `orders`. |
+| `sql/webshop.sql`   | schema with `orders.invoice_id` as PK/FK to `invoices.id`; order number `DB-{id}`, invoice number `BDF-{id}`. |
 
 ## 5. Schema (webshop)
 
-`address`, `debtors`, `customers`, `orders` (+ `token`, `invoice_number`), `orderlines`,
+`address`, `debtors`, `customers`, `orders` (`invoice_id` PK/FK, `token`), `orderlines`,
 `invoices` (+ `token`, `mollie_id`, `mollie_settlement_id`, `ck_invoices_owner`,
 filtered unique index `ux_invoices_mollie`), `invoicelines`, `payments`, `reminders`,
 `stock`.
@@ -82,23 +80,14 @@ filtered unique index `ux_invoices_mollie`), `invoicelines`, `payments`, `remind
 Idempotent: guarded by `DB_ID` / `OBJECT_ID` / `COL_LENGTH` / `sys.indexes`, so it can
 be re-run to bring an existing database up to date.
 
-### Order key: `id` is an INT counter, `token` is the random hex
+### Shared order and invoice key
 
-`orders.id` is `INT IDENTITY(1,1)`, so `ORDER BY id` is chronological insertion order
-and the first order written is 1. The random value moved to `orders.token`
-(`secrets.token_hex(16)` → 32 hex digits); that is the order's public reference and what
-`account_order_page` prints. `orderlines.order_id` is the same `int` as `orders.id`, just
-as `invoicelines.invoice_id` is an `int`.
-
-Code: `Order.id` is `int` and `Order.token` is `str`; `_ORDER_SELECT` reads `o.token`;
-`_order_from_row` sets `int(row["id"])`; `get_order` accepts the route's string and
-converts it (returning `None` for a non-numeric id, so an unknown order still 404s);
-`admin.py` prints `str(order.id)`.
-
-An older table (32-hex `id`, no `token`) is emptied and rebuilt by `webshop.sql`, because
-the key type changed: a guarded block drops `orderlines` then `orders`, and the
-`CREATE TABLE` below rebuilds them. This is a one-time migration of the old key, not a
-runtime behaviour: no application code empties a table.
+`invoices.id` is the identity counter. For debtor purchases the invoice is inserted
+first, then `orders.invoice_id` stores that same value as both PK and FK. Its public
+order number is `DB-{invoice_id}` and its invoice number is `BDF-{invoice_id}`.
+`orderlines.order_id` references `orders.invoice_id`; customer checkout creates an
+invoice without an order row. Run `empty.sql` after the schema change; no existing
+orders or invoices are carried into the new structure.
 
 ### Columns that are presently unused
 
@@ -136,11 +125,10 @@ Still present in `catalog.json` but no longer read by any code: the `hero_kicker
 
 ## 7. Verification
 
-- `shop/sql/webshop.sql` re-runs clean (10 tables, 7 FKs, `ck_invoices_owner`), and
-  rebuilds an old hex-keyed `orders` (INT `id` IDENTITY + `token`).
+- `shop/sql/webshop.sql` creates `orders.invoice_id` as a PK/FK to `invoices.id`;
+  `shop/sql/empty.sql` clears all shop rows without carrying old data forward.
 - compile-check every `app/*.py`.
-- `python -m unittest shop.tests.test_ledger shop.tests.test_shop shop.tests.test_admin`
-  — 22 tests, green on repeated runs (integration tests hit the live `webshop`
-  database, as they did before).
-- order ids start at `1` and rise by one; `orders.token` is 32 hex digits.
-
+- `python -m unittest shop.tests.test_shop shop.tests.test_ledger shop.tests.test_admin`
+  — integration suite green against an emptied and freshly initialized `webshop`.
+- debtor order IDs and invoice IDs are the same; order names are `DB-{id}` and invoice
+  names are `BDF-{id}`. `orders.token` remains 32 hex digits.

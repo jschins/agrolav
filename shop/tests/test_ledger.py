@@ -64,7 +64,7 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(steps_due(prepared, date(2026, 10, 8), set()), [])
 
     def test_invoice_email_contains_the_pdf_attachment_and_payment_details(self) -> None:
-        invoice = _invoice("DBF-100000", 1000)
+        invoice = _invoice("BDF-100000", 1000)
         with patch("app.reminders._deliver") as deliver:
             send_invoice("shop@example.com", invoice, b"%PDF-test", "NL00TEST")
 

@@ -27,7 +27,6 @@ from app.orders import (
     connect_bookkeeping,
     get_order,
     insert_id,
-    mark_invoiced,
     one,
     query,
     run,
@@ -161,12 +160,12 @@ def _take_stock(conn, slug: str, copies: int) -> None:
 
 
 def invoice_number(invoice_id: int) -> str:
-    """The invoice's public number, derived from its id: DBF-{id}."""
-    return f"DBF-{int(invoice_id)}"
+    """The invoice's public number, derived from its id: BDF-{id}."""
+    return f"BDF-{int(invoice_id)}"
 
 
 def _invoice_id(number: str) -> int | None:
-    match = re.fullmatch(r"DBF-(\d+)", str(number or "").strip())
+    match = re.fullmatch(r"BDF-(\d+)", str(number or "").strip())
     return int(match.group(1)) if match else None
 
 
@@ -275,30 +274,6 @@ def create_account_order(
     conn = connect(autocommit=False)
     try:
         seed_stock(conn, books)
-        order_id = insert_id(
-            conn,
-            """
-            INSERT INTO dbo.orders (
-                token, email, status, amount_cents, vat_cents,
-                created_at, debtor_id, invoice_number
-            ) OUTPUT INSERTED.id
-            VALUES (?, ?, 'open', ?, ?, ?, ?, NULL)
-            """,
-            (
-                token,
-                email,
-                payable,
-                vat_cents_amount,
-                ordered_at,
-                int(debtor["id"]),
-            ),
-        )
-        for slug, copies, price in lines:
-            run(
-                conn,
-                "INSERT INTO dbo.orderlines (order_id, slug, number_of_copies, price_cents_per_copy) VALUES (?, ?, ?, ?)",
-                (order_id, slug, copies, price),
-            )
         for slug, copies, _price in lines:
             _take_stock(conn, slug, copies)
         invoice_id = insert_id(
@@ -329,7 +304,31 @@ def create_account_order(
                 """,
                 (invoice_id, slug, copies, price),
             )
-        mark_invoiced(conn, order_id, invoice_number(invoice_id))
+        run(
+            conn,
+            """
+            INSERT INTO dbo.orders (
+                invoice_id, token, email, status, amount_cents, vat_cents,
+                created_at, debtor_id
+            )
+            VALUES (?, ?, ?, 'invoiced', ?, ?, ?, ?)
+            """,
+            (
+                invoice_id,
+                token,
+                email,
+                payable,
+                vat_cents_amount,
+                ordered_at,
+                int(debtor["id"]),
+            ),
+        )
+        for slug, copies, price in lines:
+            run(
+                conn,
+                "INSERT INTO dbo.orderlines (order_id, slug, number_of_copies, price_cents_per_copy) VALUES (?, ?, ?, ?)",
+                (invoice_id, slug, copies, price),
+            )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -338,83 +337,12 @@ def create_account_order(
         conn.close()
     conn = connect(autocommit=True)
     try:
-        order = get_order(conn, order_id)
+        order = get_order(conn, invoice_id)
     finally:
         conn.close()
     if order is None:
         raise RuntimeError("bestelling kon niet worden opgeslagen")
     return order
-
-
-def create_debtor_invoice(conn, order: Order) -> Invoice:
-    """Give a legacy order (one from before invoices were written at ordering
-    time) its invoice on first edit. The stock leaves here."""
-    row = one(
-        conn,
-        "SELECT name, email, vat_number, code FROM dbo.debtors WHERE id = ?",
-        (order.debtor_id,),
-    )
-    if row is None:
-        raise ValueError("De bestelling hoort niet bij een bedrijf.")
-    vat_number = str(row["vat_number"] or "").strip()
-    if not vat_number:
-        raise ValueError("Een bestelling op rekening heeft een btw-nummer nodig.")
-    if not order.items:
-        raise ValueError("De factuur heeft geen regels.")
-    when = datetime.now()
-    token = secrets.token_urlsafe(32)
-    payable = order.amount_cents
-    due_on = when.date() + timedelta(days=ACCOUNT_DUE_DAYS)
-    ordered_at = when.strftime("%Y-%m-%d %H:%M")
-    try:
-        invoice_id = insert_id(
-            conn,
-            """
-            INSERT INTO dbo.invoices (
-                token, debtor_id, customer_id, mollie_id, mollie_settlement_id,
-                ordered_at, due_on, payable_cents, open_cents, portokosten_cents, status
-            )
-            OUTPUT INSERTED.id
-            VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, 'prepared')
-            """,
-            (token, order.debtor_id, ordered_at, due_on.isoformat(), payable, payable),
-        )
-        number = invoice_number(invoice_id)
-        stored: list[InvoiceLine] = []
-        for item in order.items:
-            _take_stock(conn, item.slug, item.number_of_copies)
-            run(
-                conn,
-                """
-                INSERT INTO dbo.invoicelines (invoice_id, slug, number_of_copies, price_cents_per_copy)
-                VALUES (?, ?, ?, ?)
-                """,
-                (invoice_id, item.slug, item.number_of_copies, item.price_cents_per_copy),
-            )
-            stored.append(InvoiceLine(item.slug, item.number_of_copies, item.price_cents_per_copy))
-        mark_invoiced(conn, order.id, number)
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    return Invoice(
-        number=number,
-        name=str(row["name"] or ""),
-        email=str(row["email"] or ""),
-        address=order.address.formatted(),
-        vat_number=vat_number,
-        ordered_at=ordered_at,
-        due_on=due_on,
-        payable_cents=payable,
-        open_cents=payable,
-        ship_before_payment=True,
-        portokosten_cents=None,
-        token=token,
-        lines=tuple(stored),
-        debtor_id=order.debtor_id,
-        customer_id=None,
-        status="prepared",
-    )
 
 
 def create_customer_invoice(

@@ -69,57 +69,8 @@ IF COL_LENGTH(N'dbo.customers', N'iban') IS NULL
     ALTER TABLE dbo.customers ADD iban nvarchar(64) NULL;
 GO
 
--- The order id is an INT counter starting at 100000; the random hex lives in token. An
--- older table (32-hex id, no token, or a different seed) is emptied and rebuilt.
-IF OBJECT_ID(N'dbo.orders', N'U') IS NOT NULL
-   AND (
-        COL_LENGTH(N'dbo.orders', N'token') IS NULL
-        OR CONVERT(bigint, (SELECT seed_value FROM sys.identity_columns
-                            WHERE object_id = OBJECT_ID(N'dbo.orders'))) <> 100000
-   )
-BEGIN
-    IF OBJECT_ID(N'dbo.orderlines', N'U') IS NOT NULL DROP TABLE dbo.orderlines;
-    DROP TABLE dbo.orders;
-END
-GO
-
--- Website orders. Account buyers only. id counts up, so ORDER BY id is chronological.
-IF OBJECT_ID(N'dbo.orders', N'U') IS NULL
-CREATE TABLE dbo.orders (
-    id                  int             IDENTITY(100000,1) NOT NULL,
-    token               nvarchar(64)    NOT NULL,   -- 32 random hex digits
-    email               nvarchar(max)   NOT NULL,
-    status              nvarchar(40)    NOT NULL,
-    amount_cents        int             NOT NULL,
-    vat_cents           int             NOT NULL,
-    created_at          nvarchar(80)    NOT NULL,
-    debtor_id           int             NOT NULL,
-    portokosten_cents   int             NULL,
-    invoice_number      nvarchar(40)    NULL,   -- set when the order's invoice is written
-    CONSTRAINT pk_orders PRIMARY KEY (id),
-    CONSTRAINT fk_orders_debtor FOREIGN KEY (debtor_id) REFERENCES dbo.debtors (id)
-);
-GO
-
--- Bring an already-created orders table up to date.
-IF COL_LENGTH(N'dbo.orders', N'invoice_number') IS NULL
-    ALTER TABLE dbo.orders ADD invoice_number nvarchar(40) NULL;
-GO
-
-IF OBJECT_ID(N'dbo.orderlines', N'U') IS NULL
-CREATE TABLE dbo.orderlines (
-    id                      int             IDENTITY(1,1) NOT NULL,
-    order_id                int             NOT NULL,
-    slug                    nvarchar(max)   NOT NULL,
-    number_of_copies        int             NOT NULL,
-    price_cents_per_copy    int             NOT NULL,
-    CONSTRAINT pk_orderlines PRIMARY KEY (id),
-    CONSTRAINT fk_orderlines_order FOREIGN KEY (order_id) REFERENCES dbo.orders (id)
-);
-GO
-
 -- Invoices. A debtor or a customer owns the invoice, never both.
--- The number is derived from id (DBF-{id}); there is no number column.
+-- The number is derived from id (BDF-{id}); there is no number column.
 -- An older table that still carried a number column is emptied and rebuilt.
 IF OBJECT_ID(N'dbo.invoices', N'U') IS NOT NULL
    AND COL_LENGTH(N'dbo.invoices', N'number') IS NOT NULL
@@ -187,6 +138,48 @@ CREATE TABLE dbo.invoicelines (
     price_cents_per_copy    int             NOT NULL,
     CONSTRAINT pk_invoicelines PRIMARY KEY (id),
     CONSTRAINT fk_invoicelines_invoice FOREIGN KEY (invoice_id) REFERENCES dbo.invoices (id)
+);
+GO
+
+-- Orders exist only for debtor purchases; their primary key is also their
+-- invoice id. Rebuild the older independent-id orders table without carrying
+-- old rows forward.
+IF OBJECT_ID(N'dbo.orders', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.orders', N'invoice_id') IS NULL
+BEGIN
+    IF OBJECT_ID(N'dbo.orderlines', N'U') IS NOT NULL DROP TABLE dbo.orderlines;
+    DROP TABLE dbo.orders;
+END
+GO
+
+IF OBJECT_ID(N'dbo.orders', N'U') IS NULL
+CREATE TABLE dbo.orders (
+    invoice_id          int             NOT NULL,
+    token               nvarchar(64)    NOT NULL,   -- 32 random hex digits
+    email               nvarchar(max)   NOT NULL,
+    status              nvarchar(40)    NOT NULL,
+    amount_cents        int             NOT NULL,
+    vat_cents           int             NOT NULL,
+    created_at          nvarchar(80)    NOT NULL,
+    debtor_id           int             NOT NULL,
+    portokosten_cents   int             NULL,
+    CONSTRAINT pk_orders PRIMARY KEY (invoice_id),
+    CONSTRAINT uq_orders_token UNIQUE (token),
+    CONSTRAINT fk_orders_invoice FOREIGN KEY (invoice_id) REFERENCES dbo.invoices (id),
+    CONSTRAINT fk_orders_debtor FOREIGN KEY (debtor_id) REFERENCES dbo.debtors (id)
+);
+GO
+
+-- Each order line uses the same invoice id as its parent order.
+IF OBJECT_ID(N'dbo.orderlines', N'U') IS NULL
+CREATE TABLE dbo.orderlines (
+    id                      int             IDENTITY(1,1) NOT NULL,
+    order_id                int             NOT NULL,
+    slug                    nvarchar(max)   NOT NULL,
+    number_of_copies        int             NOT NULL,
+    price_cents_per_copy    int             NOT NULL,
+    CONSTRAINT pk_orderlines PRIMARY KEY (id),
+    CONSTRAINT fk_orderlines_order FOREIGN KEY (order_id) REFERENCES dbo.orders (invoice_id)
 );
 GO
 

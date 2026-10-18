@@ -254,11 +254,12 @@ class AdminTests(unittest.TestCase):
             try:
                 stored = get_order_by_token(conn, order.token)
                 assert stored is not None
-                self.assertRegex(stored.invoice_number, r"^DBF-\d+$")
+                self.assertRegex(stored.invoice_number, r"^BDF-\d+$")
+                self.assertEqual(stored.invoice_id, order.invoice_id)
                 self.assertEqual(stored.status, "invoiced")
             finally:
                 conn.close()
-            assert stored is not None and stored.invoice_number is not None
+            assert stored is not None
             invoice = get_invoice(stored.invoice_number)
             assert invoice is not None
             self.assertEqual(invoice.status, "prepared")
@@ -279,7 +280,7 @@ class AdminTests(unittest.TestCase):
 
             best = client.get("/bestellingen")
             self.assertEqual(best.status_code, 200)
-            self.assertIn(order_number(order.id), best.text)
+            self.assertIn(order_number(order.invoice_id), best.text)
             self.assertIn("Bewerk factuur", best.text)
             self.assertIn(f'action="/bestellingen/{order.token}/verzend"', best.text)
             self.assertIn(f'action="/facturen/{invoice.number}/regels"', best.text)
@@ -307,10 +308,9 @@ class AdminTests(unittest.TestCase):
             try:
                 stored = get_order_by_token(conn, order.token)
                 assert stored is not None
-                assert stored.invoice_number is not None
             finally:
                 conn.close()
-            assert stored is not None and stored.invoice_number is not None
+            assert stored is not None
 
             saved = client.post(
                 f"/facturen/{stored.invoice_number}/regels",
@@ -336,77 +336,6 @@ class AdminTests(unittest.TestCase):
                 self.assertEqual(untouched.items[0].price_cents_per_copy, 100)
             finally:
                 conn.close()
-
-    def test_a_legacy_order_gets_its_invoice_on_first_edit(self) -> None:
-        from app.ledger import create_account_order, get_invoice, save_shop_debtor
-        from app.orders import connect, get_order_by_token, order_number, run
-
-        code = save_shop_debtor("Parochie Oud", "oud@example.com", "NL000000000B01")
-        order = create_account_order(
-            code=code,
-            lines=[("niet-op-voorraad", 1, 100)],
-            books=load_catalog(_ROOT / "catalog.json").books,
-            vat_cents_amount=8,
-        )
-        conn = connect()
-        try:
-            stored = get_order_by_token(conn, order.token)
-            assert stored is not None
-            assert stored.invoice_number is not None
-            invoice_id = int(stored.invoice_number.split("-", 1)[1])
-            run(conn, "DELETE FROM dbo.invoicelines WHERE invoice_id = ?", (invoice_id,))
-            run(conn, "DELETE FROM dbo.invoices WHERE id = ?", (invoice_id,))
-            run(
-                conn,
-                "UPDATE dbo.orders SET invoice_number = NULL, status = 'open' WHERE id = ?",
-                (order.id,),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp)
-            catalog = _catalog(directory)
-            client = TestClient(create_admin_app(catalog, directory / "covers"))
-
-            edit = client.get(f"/facturen/bestelling/{order.token}/regels")
-            self.assertEqual(edit.status_code, 200)
-            self.assertIn(f"Bewerk bestelling {order_number(order.id)}", edit.text)
-            self.assertIn('name="copies-0" value="1"', edit.text)
-            self.assertIn('class="selected" href="/bestellingen"', edit.text)
-
-            saved = client.post(
-                f"/facturen/bestelling/{order.token}/regels",
-                data={"count": "1", "copies-0": "2", "price-0": "1.50"},
-            )
-            self.assertEqual(saved.status_code, 200, saved.text)
-            self.assertIn("Regels opgeslagen", saved.text)
-
-            conn = connect()
-            try:
-                done = get_order_by_token(conn, order.token)
-                assert done is not None
-                self.assertRegex(done.invoice_number, r"^DBF-\d+$")
-                self.assertEqual(done.status, "invoiced")
-                self.assertEqual(done.amount_cents, 100)
-                self.assertEqual(len(done.items), 1)
-                self.assertEqual(done.items[0].number_of_copies, 1)
-                self.assertEqual(done.items[0].price_cents_per_copy, 100)
-            finally:
-                conn.close()
-            assert done is not None and done.invoice_number is not None
-
-            invoice = get_invoice(done.invoice_number)
-            assert invoice is not None
-            self.assertEqual(invoice.status, "prepared")
-            self.assertEqual(invoice.payable_cents, 300)
-            self.assertEqual(invoice.lines[0].number_of_copies, 2)
-            self.assertEqual(invoice.lines[0].price_cents_per_copy, 150)
-
-            best = client.get("/bestellingen")
-            self.assertEqual(best.status_code, 200)
-            self.assertIn(order_number(order.id), best.text)
 
     def test_adhoc_factuur_from_the_nieuw_form(self) -> None:
         from app.ledger import get_invoice, save_shop_debtor, shop_debtor_by_code
@@ -454,7 +383,7 @@ class AdminTests(unittest.TestCase):
             self.assertIn("verzonden naar adhoc@example.com", created.text)
             self.assertEqual(send_email.call_count, 1)
             self.assertTrue(send_email.call_args.args[2].startswith(b"%PDF-"))
-            number_match = re.search(r"DBF-\d+", created.text)
+            number_match = re.search(r"BDF-\d+", created.text)
             self.assertIsNotNone(number_match)
             assert number_match is not None
             number = number_match.group(0)
@@ -507,8 +436,8 @@ class AdminTests(unittest.TestCase):
             self.assertIn("Bestellingen zonder verzonden facturen", initial.text)
             self.assertIn("Bestellingen met verzonden facturen", initial.text)
             self.assertIn(".row-actions { display: flex;", initial.text)
-            self.assertIn(order_number(sent_order.id), initial.text)
-            self.assertIn(order_number(pending_order.id), initial.text)
+            self.assertIn(order_number(sent_order.invoice_id), initial.text)
+            self.assertIn(order_number(pending_order.invoice_id), initial.text)
 
             with patch("app.admin.send_invoice_email") as send_email:
                 response = client.post(f"/bestellingen/{sent_order.token}/verzend")
@@ -526,11 +455,11 @@ class AdminTests(unittest.TestCase):
             updated = client.get("/bestellingen")
             without_sent = updated.text.split("<h2>Bestellingen zonder verzonden facturen</h2>", 1)[1].split("</table>", 1)[0]
             with_sent = updated.text.split("<h2>Bestellingen met verzonden facturen</h2>", 1)[1]
-            self.assertNotIn(order_number(sent_order.id), without_sent)
-            self.assertIn(order_number(pending_order.id), without_sent)
-            self.assertIn(order_number(sent_order.id), with_sent)
+            self.assertNotIn(order_number(sent_order.invoice_id), without_sent)
+            self.assertIn(order_number(pending_order.invoice_id), without_sent)
+            self.assertIn(order_number(sent_order.invoice_id), with_sent)
             self.assertIn(sent_invoice.number, with_sent)
-            self.assertNotIn(order_number(pending_order.id), with_sent)
+            self.assertNotIn(order_number(pending_order.invoice_id), with_sent)
 
     def test_failed_automatic_adhoc_send_can_be_retried(self) -> None:
         from app.ledger import get_invoice, save_shop_debtor, shop_debtor_by_code
@@ -554,7 +483,7 @@ class AdminTests(unittest.TestCase):
                 )
             self.assertEqual(response.status_code, 502)
             self.assertIn("is niet verzonden", response.text)
-            number_match = re.search(r"DBF-\d+", response.text)
+            number_match = re.search(r"BDF-\d+", response.text)
             self.assertIsNotNone(number_match)
             assert number_match is not None
             number = number_match.group(0)
@@ -634,7 +563,7 @@ class AdminTests(unittest.TestCase):
                 sent_section = orders_page.text.split(
                     "<h2>Bestellingen met verzonden facturen</h2>", 1
                 )[1]
-                self.assertIn(order_number(order.id), sent_section)
+                self.assertIn(order_number(order.invoice_id), sent_section)
 
                 second = client.get("/bank")
                 self.assertEqual(second.status_code, 200)

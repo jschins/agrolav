@@ -19,7 +19,7 @@ from app.ledger import (
 )
 from app.main import Settings, create_app
 from app.mollie import DevMollie, Payment, euro_value, payment_from_api, payment_payload
-from app.orders import Address, connect, get_order_by_token
+from app.orders import Address, connect, get_order_by_token, order_number
 
 _ROOT = Path(__file__).resolve().parent.parent
 _SHIP = {
@@ -270,10 +270,12 @@ class ShopFlowTests(unittest.TestCase):
                 order = get_order_by_token(conn, token)
                 self.assertIsNotNone(order)
                 assert order is not None
-                self.assertIsInstance(order.id, int)
-                self.assertGreaterEqual(order.id, 1)
+                self.assertIsInstance(order.invoice_id, int)
+                self.assertGreaterEqual(order.invoice_id, 1)
+                self.assertEqual(order.invoice_id, int(order.invoice_number.split("-", 1)[1]))
+                self.assertRegex(order_number(order.invoice_id), r"^DB-\d+$")
                 self.assertRegex(order.token, r"^[0-9a-f]{32}$")
-                self.assertRegex(order.invoice_number, r"^DBF-\d+$")
+                self.assertRegex(order.invoice_number, r"^BDF-\d+$")
                 self.assertEqual(order.status, "invoiced")
                 self.assertEqual(order.debtor_name, "Parochie Voorbeeld")
                 self.assertEqual(len(order.items), 1)
