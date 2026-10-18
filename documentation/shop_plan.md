@@ -27,7 +27,7 @@ Two kinds of buyer share one address table:
 - `address(id, street, number, postalcode, city)` — `number` is **text** (`12`, `12a`, `12-3`).
   Both `debtors.address_id` and `customers.address_id` point here.
 - `orders` — written the moment an account buyer orders on the website. Debtor only.
-- `invoicelines`, `orderlines`, `stock`, `payments`, `reminders` as before.
+- `invoicelines`, `orderlines`, `stock`, `bookings`, `payments`, `reminders`.
 
 ## 2. Decisions taken
 
@@ -66,7 +66,7 @@ The app now needs two connections:
 | `app/ledger.py`     | `save_shop_debtor` / `shop_debtor_by_code` on `debtors`; `create_account_order` inserts the invoice and uses its `id` for `orders.invoice_id`; `create_customer_invoice` (Mollie); `attach_mollie`; `invoice_by_payment`; `get_invoice` resolves owner; `open_invoices` = debtor invoices only; `read_incoming_bookings` uses the bookkeeping connection. |
 | `app/main.py`       | `/afrekenen` → address + customer + invoice + Mollie payment; `/mollie/webhook` → mark invoice paid; `/betaling/{number}?token=`; `/rekening/voltooi` → order and invoice together. |
 | `app/pages.py`      | render the new `Order` / `Invoice`; paid vs open invoice; the order page shows `order.token`. |
-| `app/admin.py`      | open and paid invoice tables; pending orders; send and reminder dates. |
+| `app/admin.py`      | open, paid, and Mollie invoice tables; pending and sent orders; bank refresh registration and matching. |
 | `app/reminders.py`  | bookkeeping connection for bookings. |
 | `sql/webshop.sql`   | schema with `orders.invoice_id` as PK/FK to `invoices.id`; order number `DB-{id}`, invoice number `BDF-{id}`. |
 
@@ -75,7 +75,7 @@ The app now needs two connections:
 `address`, `debtors`, `customers`, `orders` (`invoice_id` PK/FK, `token`), `orderlines`,
 `invoices` (+ `token`, `mollie_id`, `mollie_settlement_id`, `sent_at`, `paid_at`,
 `status`, `ck_invoices_owner`, filtered unique index `ux_invoices_mollie`), `invoicelines`,
-`payments`, `reminders`, `stock`.
+`bookings`, `payments`, `reminders`, `stock`.
 
 Idempotent: guarded by `DB_ID` / `OBJECT_ID` / `COL_LENGTH` / `sys.indexes`, so it can
 be re-run to bring an existing database up to date.

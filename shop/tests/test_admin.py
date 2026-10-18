@@ -55,6 +55,27 @@ def _catalog(directory: Path) -> Path:
 
 
 class AdminTests(unittest.TestCase):
+    def test_bestellingen_sent_history_heading_matches_size_and_spacing(self) -> None:
+        from app.admin import bestellingen_page
+
+        with (
+            patch("app.admin.connect") as connect,
+            patch("app.admin.orders_awaiting_send", return_value=[]),
+            patch("app.admin.orders_with_sent_invoices", return_value=[]),
+        ):
+            page = bestellingen_page(Path("catalog.json"))
+
+        self.assertIn("<h1>Bestellingen zonder verzonden facturen</h1>", page)
+        self.assertIn(
+            '<h2 class="orders-history-title">Bestellingen met verzonden facturen</h2>',
+            page,
+        )
+        self.assertIn(
+            ".orders-history-title { font-size: 2em; margin-top: 3rem; }",
+            page,
+        )
+        connect.return_value.close.assert_called_once()
+
     def test_invoice_tables_separate_account_and_mollie_invoices(self) -> None:
         from types import SimpleNamespace
 
@@ -598,7 +619,7 @@ class AdminTests(unittest.TestCase):
 
         suffix = uuid.uuid4().hex[:12]
         party_name = f"Parochie Bank {suffix}"
-        iban = "NL91ABNA0417164300"
+        iban = f"NL{uuid.uuid4().hex[:16].upper()}"
         code = save_shop_debtor(party_name, f"{suffix}@example.com", "NL000000000B01")
         conn = connect()
         try:
@@ -628,13 +649,29 @@ class AdminTests(unittest.TestCase):
         statement = Statement(
             key=uuid.uuid4().int & ((1 << 63) - 1),
             iban=iban,
-            name=party_name,
+            name="Andere naam; match is on IBAN and amount",
             amount_cents=invoice.open_cents,
             booked_on="2026-10-18",
-            description=f"Betaling factuur {invoice.number}",
+            description="Boeking zonder factuurnummer",
+        )
+        registered_unmatched = Statement(
+            key=uuid.uuid4().int & ((1 << 63) - 1),
+            iban=iban,
+            name=party_name,
+            amount_cents=99999,
+            booked_on="2026-10-17",
+            description="Nog niet te koppelen",
+        )
+        unregistered = Statement(
+            key=uuid.uuid4().int & ((1 << 63) - 1),
+            iban=f"NL{uuid.uuid4().hex[:16].upper()}",
+            name="Onbekende rekening",
+            amount_cents=500,
+            booked_on="2026-10-16",
+            description="Buiten de relaties",
         )
         result = DownloadResult(
-            statements=(statement,),
+            statements=(statement, registered_unmatched, unregistered),
             account_name="De Boog",
             own_iban=DEBOOG_ACCOUNT_IBAN,
             date_from="2026-10-01",
@@ -649,7 +686,7 @@ class AdminTests(unittest.TestCase):
                 first = client.get("/bank")
                 self.assertEqual(first.status_code, 200)
                 self.assertIn(invoice.number, first.text)
-                self.assertIn("1 betaling(en) toegekend", first.text)
+                self.assertRegex(first.text, r"\d+ betaling\(en\) toegekend")
                 paid = get_invoice(invoice.number)
                 assert paid is not None
                 self.assertEqual(paid.open_cents, 0)
@@ -684,3 +721,24 @@ class AdminTests(unittest.TestCase):
         finally:
             conn.close()
         self.assertEqual(int(payment["total"]), 1)
+
+        conn = connect()
+        try:
+            matched_booking = one(
+                conn,
+                "SELECT status, created_at, booked_on, name, iban, description, amount_cents FROM dbo.bookings WHERE id = ?",
+                (statement.key,),
+            )
+            open_booking = one(conn, "SELECT status FROM dbo.bookings WHERE id = ?", (registered_unmatched.key,))
+            ignored_booking = one(conn, "SELECT status FROM dbo.bookings WHERE id = ?", (unregistered.key,))
+        finally:
+            conn.close()
+        self.assertEqual(str(matched_booking["status"]), str(order.invoice_id))
+        self.assertIsNotNone(matched_booking["created_at"])
+        self.assertEqual(str(matched_booking["booked_on"])[:10], statement.booked_on)
+        self.assertEqual(matched_booking["name"], statement.name)
+        self.assertEqual(matched_booking["iban"], iban)
+        self.assertEqual(matched_booking["description"], statement.description)
+        self.assertEqual(int(matched_booking["amount_cents"]), invoice.payable_cents)
+        self.assertEqual(open_booking["status"], "registered")
+        self.assertEqual(ignored_booking["status"], "unregistered")

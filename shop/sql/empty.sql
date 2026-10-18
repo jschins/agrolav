@@ -10,6 +10,8 @@ DELETE FROM dbo.orders;
 GO
 DELETE FROM dbo.payments;
 GO
+DELETE FROM dbo.bookings;
+GO
 DELETE FROM dbo.reminders;
 GO
 DELETE FROM dbo.invoicelines;

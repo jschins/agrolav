@@ -12,22 +12,21 @@ from app import bank
 from app.catalog import add_book, book_keys, euro, load_catalog, replace_book, search_books, update_voorraad, vat_cents
 from app.invoice_pdf import build_invoice_pdf
 from app.ledger import (
-    Allocation,
     InvoiceLine,
     apply_allocations,
     applied_transaction_ids,
-    compact_iban,
     create_adhoc_invoice,
     get_invoice,
-    known_party_ibans,
     latest_reminder_dates,
     mark_invoice_sent,
-    match_statements,
+    match_registered_bank_bookings,
     mollie_invoices,
     open_invoice_candidates,
     overlay_stock,
     paid_invoices,
     party_choices,
+    register_bank_bookings,
+    registered_bank_bookings,
     set_invoice_lines,
     set_stock,
     unpaid_invoices,
@@ -113,6 +112,7 @@ h1, h2 {{
   margin: 0;
 }}
 .invoice-section-title {{ font-size: 2em; margin-top: 1.25rem; }}
+.orders-history-title {{ font-size: 2em; margin-top: 3rem; }}
 header.bar {{
   background: var(--card);
   border-bottom: 1px solid var(--border);
@@ -641,7 +641,7 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
     <thead><tr><th>Bestelling</th><th>Bedrijf</th><th>E-mail</th><th>Totaal</th><th>Bewerken</th></tr></thead>
     <tbody>{body_rows}</tbody>
   </table>
-  <h2>Bestellingen met verzonden facturen</h2>
+  <h2 class="orders-history-title">Bestellingen met verzonden facturen</h2>
   <table class="plain wide">
     <colgroup>
       <col style="width:15%"><col style="width:22%"><col style="width:22%"><col style="width:12%"><col style="width:29%">
@@ -1286,49 +1286,42 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
 
             conn = connect()
             try:
-                candidates = open_invoice_candidates(conn)
-                known = known_party_ibans(conn)
                 applied = applied_transaction_ids(conn)
-                in_scope = [st for st in result.statements if compact_iban(st.iban) in known]
+                in_scope_keys = register_bank_bookings(conn, result.statements)
+                in_scope = [st for st in result.statements if st.key in in_scope_keys]
                 already = [st for st in in_scope if st.key in applied]
-                processed = [st for st in in_scope if st.key not in applied]
-                planned = match_statements(processed, candidates, applied)
+                registered = registered_bank_bookings(conn)
+                candidates = open_invoice_candidates(conn)
+                planned = match_registered_bank_bookings(registered, candidates)
                 if planned:
-                    statements_by_key = {st.key: st for st in processed}
-                    apply_allocations(
-                        conn,
-                        [
-                            Allocation(k, n, a, statements_by_key[k].booked_on or None)
-                            for k, n, a in planned
-                        ],
-                    )
+                    apply_allocations(conn, planned, mark_bookings=True)
             finally:
                 conn.close()
         finally:
             bank.reset_psu(psu)
 
-        by_key = {st.key: st for st in result.statements}
-        matched_keys = {key for key, _n, _a in planned}
+        by_key = {booking.transaction_id: booking for booking in registered}
+        matched_keys = {allocation.transaction_id for allocation in planned}
         applied_rows = [
             {
-                "invoice": number,
-                "amount_cents": amount,
-                "name": by_key[key].name,
-                "iban": by_key[key].iban,
-                "date": by_key[key].booked_on,
+                "invoice": allocation.invoice_number,
+                "amount_cents": allocation.amount_cents,
+                "name": by_key[allocation.transaction_id].name,
+                "iban": by_key[allocation.transaction_id].iban,
+                "date": by_key[allocation.transaction_id].booked_on,
             }
-            for key, number, amount in planned
+            for allocation in planned
         ]
         unmatched_rows = [
             {
-                "name": st.name,
-                "iban": st.iban,
-                "amount_cents": st.amount_cents,
-                "date": st.booked_on,
-                "description": st.description,
+                "name": booking.name,
+                "iban": booking.iban,
+                "amount_cents": booking.amount_cents,
+                "date": booking.booked_on,
+                "description": booking.description,
             }
-            for st in processed
-            if st.key not in matched_keys
+            for booking in registered
+            if booking.transaction_id not in matched_keys
         ]
         notice = (
             f"{len(planned)} betaling(en) toegekend aan facturen."

@@ -43,14 +43,16 @@ buyer is told to put the invoice number in the payment description. A loose
 invoice is emailed automatically after it is created. A customer's checkout
 invoice is written and paid through Mollie, without a debtor order row.
 
-The admin site's `/bank` action downloads recent Enable Banking statements
-and matches a known counterparty IBAN, account-holder name, and exact open
-amount. The same statement is applied at most once. The separate `remind`
-task also syncs Boog-account bookings from the bookkeeping database; that
-path matches invoice numbers in the description and supports partial or
-combined payments. Reminders go out only for `sent` invoices: seven days
-before the due date, on the due date, and fourteen and thirty days after.
-Each send is recorded in `reminders`.
+The admin site's `/bank` action downloads incoming Enable Banking statements
+and records them in `dbo.bookings`. A known counterparty IBAN starts with
+status `registered`; an exact IBAN-and-open-amount match changes that status
+to the invoice ID. This keeps each downloaded booking available for matching
+again on later refreshes without applying it twice. The separate `remind`
+task syncs Boog-account bookings from the bookkeeping database; that path
+matches invoice numbers in descriptions and supports partial or combined
+payments. Reminders go out only for `sent` invoices: seven days before the due
+date, on the due date, and fourteen and thirty days after. Each send is
+recorded in `reminders`.
 
 Invoice email uses `SHOP_MAIL_FROM` and the `SHOP_SMTP_*` settings. PDF issuer
 details come from the shop catalogue (`shop_name` and `place`); the payment

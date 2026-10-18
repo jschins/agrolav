@@ -86,6 +86,8 @@ class Booking:
     amount_cents: int
     description: str
     booked_on: str = ""
+    name: str = ""
+    iban: str = ""
 
 
 @dataclass(frozen=True)
@@ -871,18 +873,6 @@ def compact_iban(value: object) -> str:
     return "".join(str(value or "").split()).upper()
 
 
-def party_name_matches(left: str, right: str) -> bool:
-    """Two account holder names agree when their letters and digits line up."""
-
-    def norm(text: str) -> str:
-        return re.sub(r"[^a-z0-9]+", "", (text or "").casefold())
-
-    a, b = norm(left), norm(right)
-    if not a or not b:
-        return False
-    return a == b or a in b or b in a
-
-
 def known_party_ibans(conn) -> set[str]:
     """Every IBAN a debtor or customer can be paid from."""
     rows = query(
@@ -896,33 +886,116 @@ def known_party_ibans(conn) -> set[str]:
     return {compact_iban(row["iban"]) for row in rows if row["iban"]}
 
 
+def register_bank_bookings(conn, statements) -> set[int]:
+    """Persist downloaded statements once, marking known-party IBANs registered."""
+    known = known_party_ibans(conn)
+    recognized: set[int] = set()
+    for statement in statements:
+        booking_id = int(statement.key)
+        iban = compact_iban(statement.iban)
+        is_known = bool(iban and iban in known)
+        if is_known:
+            recognized.add(booking_id)
+        previous = one(conn, "SELECT status FROM dbo.bookings WHERE id = ?", (booking_id,))
+        if previous is None:
+            run(
+                conn,
+                """
+                INSERT INTO dbo.bookings (
+                    id, booked_on, name, iban, description, amount_cents, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    booking_id,
+                    str(statement.booked_on or "") or None,
+                    str(statement.name or ""),
+                    iban,
+                    str(statement.description or ""),
+                    int(statement.amount_cents),
+                    "registered" if is_known else "unregistered",
+                ),
+            )
+            continue
+
+        old_status = str(previous["status"] or "unregistered")
+        if old_status in {"registered", "unregistered"}:
+            new_status = "registered" if is_known or old_status == "registered" else "unregistered"
+        else:
+            new_status = old_status
+        run(
+            conn,
+            """
+            UPDATE dbo.bookings
+            SET booked_on = ?, name = ?, iban = ?, description = ?, amount_cents = ?, status = ?
+            WHERE id = ?
+            """,
+            (
+                str(statement.booked_on or "") or None,
+                str(statement.name or ""),
+                iban,
+                str(statement.description or ""),
+                int(statement.amount_cents),
+                new_status,
+                booking_id,
+            ),
+        )
+    conn.commit()
+    return recognized
+
+
+def registered_bank_bookings(conn) -> list[Booking]:
+    rows = query(
+        conn,
+        """
+        SELECT id, amount_cents, description, booked_on, name, iban
+        FROM dbo.bookings
+        WHERE status = N'registered'
+        ORDER BY created_at, id
+        """,
+    )
+    return [
+        Booking(
+            transaction_id=int(row["id"]),
+            amount_cents=int(row["amount_cents"]),
+            description=str(row["description"] or ""),
+            booked_on="" if row["booked_on"] is None else str(row["booked_on"]),
+            name=str(row["name"] or ""),
+            iban=compact_iban(row["iban"]),
+        )
+        for row in rows
+    ]
+
+
 def open_invoice_candidates(conn) -> list[dict]:
-    """Open invoices with the owning party's IBAN and name, for matching a payment."""
+    """Open Mollie and sent account invoices eligible for exact bank matching."""
     rows = query(
         conn,
         """
         SELECT i.id, i.debtor_id, i.open_cents,
-               d.iban AS debtor_iban, d.name AS debtor_name,
-               c.iban AS customer_iban, c.name AS customer_name
+               d.iban AS debtor_iban, c.iban AS customer_iban
         FROM dbo.invoices i
         LEFT JOIN dbo.debtors d ON d.id = i.debtor_id
         LEFT JOIN dbo.customers c ON c.id = i.customer_id
         WHERE i.open_cents > 0
+          AND (
+              (i.debtor_id IS NOT NULL AND i.sent_at IS NOT NULL)
+              OR (i.customer_id IS NOT NULL AND i.mollie_id IS NOT NULL)
+          )
         ORDER BY i.id
         """,
     )
     out: list[dict] = []
     for row in rows:
         if row["debtor_id"] is not None:
-            iban, party_name = row["debtor_iban"], row["debtor_name"]
+            iban = row["debtor_iban"]
         else:
-            iban, party_name = row["customer_iban"], row["customer_name"]
+            iban = row["customer_iban"]
         if not compact_iban(iban):
             continue
         out.append(
             {
+                "invoice_id": int(row["id"]),
                 "iban": compact_iban(iban),
-                "party_name": str(party_name or ""),
                 "invoice_number": invoice_number(int(row["id"])),
                 "open_cents": int(row["open_cents"]),
             }
@@ -930,51 +1003,36 @@ def open_invoice_candidates(conn) -> list[dict]:
     return out
 
 
-def match_statements(
-    statements,
-    candidates: list[dict],
-    applied: set[int],
-) -> list[tuple[int, str, int]]:
-    """Identify payments: a statement pays an invoice when IBAN, name and amount agree.
-
-    `statements` expose `.key`, `.iban`, `.name`, `.amount_cents`. Returns
-    ``(statement_key, invoice_number, amount_cents)`` triples for statements not
-    already attributed and matching exactly one open invoice. An invoice is
-    spent once per run so two bookings cannot settle it twice.
-    """
+def match_registered_bank_bookings(
+    bookings: list[Booking], candidates: list[dict]
+) -> list[Allocation]:
+    """Match a registered booking by exact counterparty IBAN and open amount."""
     by_iban: dict[str, list[dict]] = {}
     for candidate in candidates:
-        by_iban.setdefault(candidate["iban"], []).append(candidate)
+        by_iban.setdefault(compact_iban(candidate["iban"]), []).append(candidate)
 
-    planned: list[tuple[int, str, int]] = []
+    planned: list[Allocation] = []
     taken: set[str] = set()
-    for statement in statements:
-        key = int(getattr(statement, "key", 0))
-        if key in applied:
+    for booking in bookings:
+        bucket = by_iban.get(compact_iban(booking.iban), [])
+        matches = [
+            candidate
+            for candidate in bucket
+            if candidate["invoice_number"] not in taken
+            and int(candidate["open_cents"]) == booking.amount_cents
+        ]
+        if len(matches) != 1:
             continue
-        amount_cents = int(getattr(statement, "amount_cents", 0))
-        if amount_cents <= 0:
-            continue
-        iban = compact_iban(getattr(statement, "iban", ""))
-        if not iban:
-            continue
-        bucket = by_iban.get(iban)
-        if not bucket:
-            continue
-        hit = None
-        for candidate in bucket:
-            if candidate["invoice_number"] in taken:
-                continue
-            if candidate["open_cents"] != amount_cents:
-                continue
-            if not party_name_matches(getattr(statement, "name", ""), candidate["party_name"]):
-                continue
-            hit = candidate
-            break
-        if hit is None:
-            continue
-        taken.add(hit["invoice_number"])
-        planned.append((key, hit["invoice_number"], amount_cents))
+        invoice = matches[0]
+        taken.add(invoice["invoice_number"])
+        planned.append(
+            Allocation(
+                booking.transaction_id,
+                invoice["invoice_number"],
+                booking.amount_cents,
+                booking.booked_on or None,
+            )
+        )
     return planned
 
 
@@ -1022,7 +1080,12 @@ def set_invoice_lines(conn, number: str, lines: list[InvoiceLine]) -> Invoice:
     return result
 
 
-def apply_allocations(conn, allocations: list[Allocation]) -> None:
+def apply_allocations(
+    conn,
+    allocations: list[Allocation],
+    *,
+    mark_bookings: bool = False,
+) -> None:
     """Record a bank booking against an invoice. The stock already left at invoicing.
 
     A debtor invoice settled in full turns 'paid'; a customer invoice keeps its
@@ -1068,6 +1131,12 @@ def apply_allocations(conn, allocations: list[Allocation]) -> None:
                 conn,
                 "UPDATE dbo.invoices SET open_cents = ? WHERE id = ?",
                 (remaining, invoice_id),
+            )
+        if mark_bookings:
+            run(
+                conn,
+                "UPDATE dbo.bookings SET status = ? WHERE id = ? AND status = N'registered'",
+                (str(invoice_id), allocation.transaction_id),
             )
     conn.commit()
 

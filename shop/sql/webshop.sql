@@ -203,6 +203,22 @@ CREATE TABLE dbo.payments (
 );
 GO
 
+-- Every incoming statement downloaded from the admin bank-refresh action.
+-- status is 'unregistered', 'registered', or the matched dbo.invoices.id.
+IF OBJECT_ID(N'dbo.bookings', N'U') IS NULL
+CREATE TABLE dbo.bookings (
+    id              bigint          NOT NULL,   -- stable Enable Banking statement key
+    created_at      datetime2(0)    NOT NULL CONSTRAINT df_bookings_created_at DEFAULT SYSUTCDATETIME(),
+    booked_on       nvarchar(40)    NULL,
+    name            nvarchar(max)   NOT NULL,
+    iban            nvarchar(64)    NOT NULL,
+    description     nvarchar(max)   NOT NULL,
+    amount_cents    int             NOT NULL,
+    status          nvarchar(40)    NOT NULL,
+    CONSTRAINT pk_bookings PRIMARY KEY (id)
+);
+GO
+
 IF OBJECT_ID(N'dbo.reminders', N'U') IS NULL
 CREATE TABLE dbo.reminders (
     id              int             IDENTITY(1,1) NOT NULL,
