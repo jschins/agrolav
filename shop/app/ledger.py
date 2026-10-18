@@ -636,6 +636,117 @@ def plan_allocations(
     return planned
 
 
+def compact_iban(value: object) -> str:
+    return "".join(str(value or "").split()).upper()
+
+
+def party_name_matches(left: str, right: str) -> bool:
+    """Two account holder names agree when their letters and digits line up."""
+
+    def norm(text: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", (text or "").casefold())
+
+    a, b = norm(left), norm(right)
+    if not a or not b:
+        return False
+    return a == b or a in b or b in a
+
+
+def known_party_ibans(conn) -> set[str]:
+    """Every IBAN a debtor or customer can be paid from."""
+    rows = query(
+        conn,
+        """
+        SELECT iban FROM dbo.debtors WHERE iban IS NOT NULL AND LTRIM(RTRIM(iban)) <> N''
+        UNION
+        SELECT iban FROM dbo.customers WHERE iban IS NOT NULL AND LTRIM(RTRIM(iban)) <> N''
+        """,
+    )
+    return {compact_iban(row["iban"]) for row in rows if row["iban"]}
+
+
+def open_invoice_candidates(conn) -> list[dict]:
+    """Open invoices with the owning party's IBAN and name, for matching a payment."""
+    rows = query(
+        conn,
+        """
+        SELECT i.id, i.debtor_id, i.open_cents,
+               d.iban AS debtor_iban, d.name AS debtor_name,
+               c.iban AS customer_iban, c.name AS customer_name
+        FROM dbo.invoices i
+        LEFT JOIN dbo.debtors d ON d.id = i.debtor_id
+        LEFT JOIN dbo.customers c ON c.id = i.customer_id
+        WHERE i.open_cents > 0
+        ORDER BY i.id
+        """,
+    )
+    out: list[dict] = []
+    for row in rows:
+        if row["debtor_id"] is not None:
+            iban, party_name = row["debtor_iban"], row["debtor_name"]
+        else:
+            iban, party_name = row["customer_iban"], row["customer_name"]
+        if not compact_iban(iban):
+            continue
+        out.append(
+            {
+                "iban": compact_iban(iban),
+                "party_name": str(party_name or ""),
+                "invoice_number": invoice_number(int(row["id"])),
+                "open_cents": int(row["open_cents"]),
+            }
+        )
+    return out
+
+
+def match_statements(
+    statements,
+    candidates: list[dict],
+    applied: set[int],
+) -> list[tuple[int, str, int]]:
+    """Identify payments: a statement pays an invoice when IBAN, name and amount agree.
+
+    `statements` expose `.key`, `.iban`, `.name`, `.amount_cents`. Returns
+    ``(statement_key, invoice_number, amount_cents)`` triples for statements not
+    already attributed and matching exactly one open invoice. An invoice is
+    spent once per run so two bookings cannot settle it twice.
+    """
+    by_iban: dict[str, list[dict]] = {}
+    for candidate in candidates:
+        by_iban.setdefault(candidate["iban"], []).append(candidate)
+
+    planned: list[tuple[int, str, int]] = []
+    taken: set[str] = set()
+    for statement in statements:
+        key = int(getattr(statement, "key", 0))
+        if key in applied:
+            continue
+        amount_cents = int(getattr(statement, "amount_cents", 0))
+        if amount_cents <= 0:
+            continue
+        iban = compact_iban(getattr(statement, "iban", ""))
+        if not iban:
+            continue
+        bucket = by_iban.get(iban)
+        if not bucket:
+            continue
+        hit = None
+        for candidate in bucket:
+            if candidate["invoice_number"] in taken:
+                continue
+            if candidate["open_cents"] != amount_cents:
+                continue
+            if not party_name_matches(getattr(statement, "name", ""), candidate["party_name"]):
+                continue
+            hit = candidate
+            break
+        if hit is None:
+            continue
+        taken.add(hit["invoice_number"])
+        planned.append((key, hit["invoice_number"], amount_cents))
+    return planned
+
+
 def set_invoice_lines(conn, number: str, lines: list[InvoiceLine]) -> Invoice:
     """Replace invoice lines and recompute payable/open cents."""
     invoice_id = _invoice_id(number)

@@ -8,11 +8,19 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
+from app import bank
 from app.catalog import add_book, book_keys, euro, load_catalog, replace_book, search_books, update_voorraad, vat_cents
 from app.ledger import (
+    Allocation,
     InvoiceLine,
+    apply_allocations,
+    applied_transaction_ids,
+    compact_iban,
     create_debtor_invoice,
     get_invoice,
+    known_party_ibans,
+    match_statements,
+    open_invoice_candidates,
     open_invoices,
     overlay_stock,
     set_invoice_lines,
@@ -25,8 +33,15 @@ _MENU = "Voeg nieuw boek toe"
 _STOCK = "Beheer voorraad"
 _CATALOG = "Beheer catalogus"
 _INVOICES = "Factureer bestellingen"
+_BANK = "Ververs bankafschriften"
 _EDIT = "Wijzig boek"
-_MENUS = (("/", _MENU), ("/voorraad", _STOCK), ("/catalogus", _CATALOG), ("/facturen", _INVOICES))
+_MENUS = (
+    ("/", _MENU),
+    ("/voorraad", _STOCK),
+    ("/catalogus", _CATALOG),
+    ("/facturen", _INVOICES),
+    ("/bank", _BANK),
+)
 _FIELDS = (
     ("slug", "slug", True),
     ("titel", "titel", True),
@@ -610,6 +625,85 @@ def regels_page(
     return _page(body, title, active)
 
 
+def bank_page(report: dict) -> str:
+    """Result of one 'Ververs bankafschriften' click: what was matched and what was not."""
+    if report.get("error"):
+        return _page(
+            f'<main class="rekening-wide"><h1>{_BANK}</h1>'
+            f'<p class="error">{escape(str(report["error"]))}</p></main>',
+            _BANK,
+            "/bank",
+        )
+
+    applied_rows = []
+    for row in report["applied"]:
+        applied_rows.append(
+            "<tr>"
+            f"{_clip(row['invoice'])}"
+            f"<td>{escape(euro(row['amount_cents']))}</td>"
+            f"{_clip(row['name'])}"
+            f"{_clip(row['iban'])}"
+            f"{_clip(row['date'])}"
+            "</tr>"
+        )
+    unmatched_rows = []
+    for row in report["unmatched"]:
+        unmatched_rows.append(
+            "<tr>"
+            f"{_clip(row['name'])}"
+            f"{_clip(row['iban'])}"
+            f"<td>{escape(euro(row['amount_cents']))}</td>"
+            f"{_clip(row['date'])}"
+            f"{_clip(row['description'])}"
+            "</tr>"
+        )
+
+    applied_body = "".join(applied_rows) or '<tr><td colspan="5">Geen betalingen herkend.</td></tr>'
+    unmatched_body = "".join(unmatched_rows) or '<tr><td colspan="5">Geen openstaande boekingen op bekende IBAN&#39;s.</td></tr>'
+    notice = str(report.get("notice") or "")
+    notice_html = f"<p>{escape(notice)}</p>" if notice else ""
+
+    body = f"""
+<main class="rekening-wide">
+  <h1>{_BANK}</h1>
+  {notice_html}
+  <p class="hint">
+    Rekening {_clip(report['account_name'])} ({_clip(report['own_iban'])}),
+    periode {_clip(report['date_from'])} t/m {_clip(report['date_to'])}.
+  </p>
+  <table class="plain wide">
+    <colgroup><col style="width:34%"><col style="width:33%"><col style="width:33%"></colgroup>
+    <thead><tr><th>Gedownload</th><th>Op bekende IBAN</th><th>Al toegekend</th></tr></thead>
+    <tbody><tr>
+      <td>{report['downloaded']}</td>
+      <td>{report['in_scope']}</td>
+      <td>{report['already']}</td>
+    </tr></tbody>
+  </table>
+  <h2>Betaald (toegekend)</h2>
+  <table class="plain wide">
+    <colgroup>
+      <col style="width:18%"><col style="width:16%"><col style="width:26%">
+      <col style="width:24%"><col style="width:16%">
+    </colgroup>
+    <thead><tr><th>Factuur</th><th>Bedrag</th><th>Naam</th><th>IBAN</th><th>Datum</th></tr></thead>
+    <tbody>{applied_body}</tbody>
+  </table>
+  <h2>Niet herkend (nog niet toegekend)</h2>
+  <table class="plain wide">
+    <colgroup>
+      <col style="width:22%"><col style="width:24%"><col style="width:14%">
+      <col style="width:14%"><col style="width:26%">
+    </colgroup>
+    <thead><tr><th>Naam</th><th>IBAN</th><th>Bedrag</th><th>Datum</th><th>Omschrijving</th></tr></thead>
+    <tbody>{unmatched_body}</tbody>
+  </table>
+  <p class="hint">{report['out_of_scope']} boekingen met een tegenpartij buiten de klant- en debiteurenlijst zijn genegeerd.</p>
+</main>
+"""
+    return _page(body, _BANK, "/bank")
+
+
 def _book_values(item: dict) -> dict[str, str]:
     values: dict[str, str] = {}
     for key, _label, _required in _FIELDS:
@@ -941,6 +1035,78 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
                 status_code=400,
             )
         return HTMLResponse(invoices_page(catalog_path, notice="Regels opgeslagen."))
+
+    @app.get("/bank", response_class=HTMLResponse)
+    def refresh_bank(request: Request) -> HTMLResponse:
+        """Download recent bookings and settle the ones that identify a payment."""
+        psu = bank.bind_psu(
+            request.client.host if request.client else "",
+            request.headers.get("user-agent", ""),
+        )
+        try:
+            try:
+                result = bank.download_statements()
+            except bank.EnableBankingError as exc:
+                return HTMLResponse(bank_page({"error": str(exc)}))
+
+            conn = connect()
+            try:
+                candidates = open_invoice_candidates(conn)
+                known = known_party_ibans(conn)
+                applied = applied_transaction_ids(conn)
+                in_scope = [st for st in result.statements if compact_iban(st.iban) in known]
+                already = [st for st in in_scope if st.key in applied]
+                processed = [st for st in in_scope if st.key not in applied]
+                planned = match_statements(processed, candidates, applied)
+                if planned:
+                    apply_allocations(conn, [Allocation(k, n, a) for k, n, a in planned])
+            finally:
+                conn.close()
+        finally:
+            bank.reset_psu(psu)
+
+        by_key = {st.key: st for st in result.statements}
+        matched_keys = {key for key, _n, _a in planned}
+        applied_rows = [
+            {
+                "invoice": number,
+                "amount_cents": amount,
+                "name": by_key[key].name,
+                "iban": by_key[key].iban,
+                "date": by_key[key].booked_on,
+            }
+            for key, number, amount in planned
+        ]
+        unmatched_rows = [
+            {
+                "name": st.name,
+                "iban": st.iban,
+                "amount_cents": st.amount_cents,
+                "date": st.booked_on,
+                "description": st.description,
+            }
+            for st in processed
+            if st.key not in matched_keys
+        ]
+        notice = (
+            f"{len(planned)} betaling(en) toegekend aan facturen."
+            if planned
+            else "Geen nieuwe betalingen herkend."
+        )
+        report = {
+            "account_name": result.account_name,
+            "own_iban": result.own_iban,
+            "date_from": result.date_from,
+            "date_to": result.date_to,
+            "downloaded": len(result.statements),
+            "in_scope": len(in_scope),
+            "already": len(already),
+            "applied": applied_rows,
+            "unmatched": unmatched_rows,
+            "out_of_scope": len(result.statements) - len(in_scope),
+            "notice": notice,
+        }
+        return HTMLResponse(bank_page(report))
 
     return app
 

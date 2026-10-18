@@ -40,9 +40,15 @@ CREATE TABLE dbo.debtors (
     vat_number  nvarchar(max)   NOT NULL,
     code        nvarchar(max)   NOT NULL,   -- bestelcode: ship before payment
     address_id  int             NULL,
+    iban        nvarchar(64)    NULL,       -- bank IBAN used to identify their payments
     CONSTRAINT pk_debtors PRIMARY KEY (id),
     CONSTRAINT fk_debtors_address FOREIGN KEY (address_id) REFERENCES dbo.address (id)
 );
+GO
+
+-- Bring an already-created debtors table up to date.
+IF COL_LENGTH(N'dbo.debtors', N'iban') IS NULL
+    ALTER TABLE dbo.debtors ADD iban nvarchar(64) NULL;
 GO
 
 -- Buyers who pay online through Mollie. Invoices only, no orders.
@@ -52,9 +58,15 @@ CREATE TABLE dbo.customers (
     name        nvarchar(max)   NOT NULL,
     email       nvarchar(max)   NOT NULL,
     address_id  int             NULL,
+    iban        nvarchar(64)    NULL,       -- bank IBAN used to identify their payments
     CONSTRAINT pk_customers PRIMARY KEY (id),
     CONSTRAINT fk_customers_address FOREIGN KEY (address_id) REFERENCES dbo.address (id)
 );
+GO
+
+-- Bring an already-created customers table up to date.
+IF COL_LENGTH(N'dbo.customers', N'iban') IS NULL
+    ALTER TABLE dbo.customers ADD iban nvarchar(64) NULL;
 GO
 
 -- The order id is an INT counter starting at 100000; the random hex lives in token. An
