@@ -22,10 +22,6 @@ _ROOT = Path(__file__).resolve().parent.parent
 
 
 def send_message(sender: str, recipient: str, subject: str, body: str, copy: str = "") -> None:
-    host = os.environ.get("SHOP_SMTP_HOST", "").strip()
-    if not host:
-        raise RuntimeError("SHOP_SMTP_HOST is not set")
-    port = int(os.environ.get("SHOP_SMTP_PORT", "587"))
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = sender
@@ -33,6 +29,14 @@ def send_message(sender: str, recipient: str, subject: str, body: str, copy: str
     if copy and copy.lower() != recipient.lower():
         message["Cc"] = copy
     message.set_content(body)
+    _deliver(message)
+
+
+def _deliver(message: EmailMessage) -> None:
+    host = os.environ.get("SHOP_SMTP_HOST", "").strip()
+    if not host:
+        raise RuntimeError("SHOP_SMTP_HOST is not set")
+    port = int(os.environ.get("SHOP_SMTP_PORT", "587"))
     with smtplib.SMTP(host, port, timeout=30) as smtp:
         username = os.environ.get("SHOP_SMTP_USER", "").strip()
         password = os.environ.get("SHOP_SMTP_PASSWORD", "").strip()
@@ -40,6 +44,32 @@ def send_message(sender: str, recipient: str, subject: str, body: str, copy: str
             smtp.starttls()
             smtp.login(username, password)
         smtp.send_message(message)
+
+
+def send_invoice(sender: str, invoice, pdf: bytes, iban: str = "") -> None:
+    """Email a debtor invoice with its PDF attached."""
+    from app.catalog import euro
+
+    message = EmailMessage()
+    message["Subject"] = f"Factuur {invoice.number} — Uitgeverij De Boog"
+    message["From"] = sender
+    message["To"] = invoice.email
+    body = (
+        f"Geachte {invoice.name},\n\n"
+        f"In de bijlage vindt u factuur {invoice.number}.\n"
+        f"Het openstaande bedrag is {euro(invoice.open_cents)}; de vervaldatum is {invoice.due_on}.\n"
+    )
+    if iban and invoice.open_cents > 0:
+        body += f"\nMaak het bedrag over naar IBAN {iban} en vermeld {invoice.number} bij de betaling.\n"
+    body += "\nMet vriendelijke groet,\nUitgeverij De Boog\n"
+    message.set_content(body)
+    message.add_attachment(
+        pdf,
+        maintype="application",
+        subtype="pdf",
+        filename=f"factuur-{invoice.number}.pdf",
+    )
+    _deliver(message)
 
 
 def send_reminder(invoice, body: str, sender: str) -> None:
@@ -81,6 +111,8 @@ def run(today: date | None = None) -> int:
         already = sent_steps(conn)
         when = datetime.now()
         for invoice in open_invoices(conn):
+            if invoice.status != "sent":
+                continue
             current = invoice
             for step in steps_due(current, today, already):
                 refreshed = open_invoices(conn)

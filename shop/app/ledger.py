@@ -4,9 +4,11 @@ beheer_boog stays the general ledger in agrolav. This module reads bookings from
 there and does not write a booking, a category, or a modification. Every row it
 writes here belongs to one of two buyers:
 
-  a debtor   -- an account company; the administrator invoices it after the mail
-                order has been sent, so its invoices can stay open.
-  a customer -- a Mollie buyer; invoiced and paid at checkout.
+  a debtor   -- an account company; its order becomes a draft invoice
+                (status 'prepared') the moment it is placed, so its invoices
+                can stay open.
+  a customer -- a Mollie buyer; invoiced (status 'customer') and paid at
+                checkout.
 """
 from __future__ import annotations
 
@@ -66,6 +68,7 @@ class Invoice:
     debtor_id: int | None
     customer_id: int | None
     mollie_id: str | None = None
+    status: str = "prepared"
 
     @property
     def paid(self) -> bool:
@@ -245,8 +248,14 @@ def create_account_order(
     books: tuple[Book, ...],
     vat_cents_amount: int,
 ) -> Order:
-    """Write the order for a code-carrying debtor. The invoice comes later, from the
-    administrator. lines are (slug, copies, price_cents_per_copy)."""
+    """Write the order and its invoice in one transaction.
+
+    The order becomes a draft invoice (status 'prepared') the moment it is
+    placed; the stock leaves here, so an order that exceeds the stock is
+    refused before anything is written. lines are (slug, copies,
+    price_cents_per_copy); the invoice mirrors them exactly, and the
+    administrator edits the invoice, not the order, afterwards.
+    """
     debtor = shop_debtor_by_code(code)
     if debtor is None:
         raise ValueError("Deze code hoort niet bij een bedrijf.")
@@ -260,6 +269,9 @@ def create_account_order(
         raise ValueError("De bestelling heeft geen regels.")
     payable = sum(copies * price for _slug, copies, price in lines)
     token = secrets.token_hex(16)
+    when = datetime.now()
+    due_on = when.date() + timedelta(days=ACCOUNT_DUE_DAYS)
+    ordered_at = when.strftime("%Y-%m-%d %H:%M")
     conn = connect(autocommit=False)
     try:
         seed_stock(conn, books)
@@ -277,7 +289,7 @@ def create_account_order(
                 email,
                 payable,
                 vat_cents_amount,
-                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                ordered_at,
                 int(debtor["id"]),
             ),
         )
@@ -287,6 +299,37 @@ def create_account_order(
                 "INSERT INTO dbo.orderlines (order_id, slug, number_of_copies, price_cents_per_copy) VALUES (?, ?, ?, ?)",
                 (order_id, slug, copies, price),
             )
+        for slug, copies, _price in lines:
+            _take_stock(conn, slug, copies)
+        invoice_id = insert_id(
+            conn,
+            """
+            INSERT INTO dbo.invoices (
+                token, debtor_id, customer_id, mollie_id, mollie_settlement_id,
+                ordered_at, due_on, payable_cents, open_cents, portokosten_cents, status
+            )
+            OUTPUT INSERTED.id
+            VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, 'prepared')
+            """,
+            (
+                secrets.token_urlsafe(32),
+                int(debtor["id"]),
+                ordered_at,
+                due_on.isoformat(),
+                payable,
+                payable,
+            ),
+        )
+        for slug, copies, price in lines:
+            run(
+                conn,
+                """
+                INSERT INTO dbo.invoicelines (invoice_id, slug, number_of_copies, price_cents_per_copy)
+                VALUES (?, ?, ?, ?)
+                """,
+                (invoice_id, slug, copies, price),
+            )
+        mark_invoiced(conn, order_id, invoice_number(invoice_id))
         conn.commit()
     except Exception:
         conn.rollback()
@@ -304,7 +347,8 @@ def create_account_order(
 
 
 def create_debtor_invoice(conn, order: Order) -> Invoice:
-    """An administrator turns a shipped order into an invoice. The stock leaves here."""
+    """Give a legacy order (one from before invoices were written at ordering
+    time) its invoice on first edit. The stock leaves here."""
     row = one(
         conn,
         "SELECT name, email, vat_number, code FROM dbo.debtors WHERE id = ?",
@@ -328,10 +372,10 @@ def create_debtor_invoice(conn, order: Order) -> Invoice:
             """
             INSERT INTO dbo.invoices (
                 token, debtor_id, customer_id, mollie_id, mollie_settlement_id,
-                ordered_at, due_on, payable_cents, open_cents, portokosten_cents
+                ordered_at, due_on, payable_cents, open_cents, portokosten_cents, status
             )
             OUTPUT INSERTED.id
-            VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL)
+            VALUES (?, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, 'prepared')
             """,
             (token, order.debtor_id, ordered_at, due_on.isoformat(), payable, payable),
         )
@@ -369,6 +413,7 @@ def create_debtor_invoice(conn, order: Order) -> Invoice:
         lines=tuple(stored),
         debtor_id=order.debtor_id,
         customer_id=None,
+        status="prepared",
     )
 
 
@@ -402,10 +447,10 @@ def create_customer_invoice(
             """
             INSERT INTO dbo.invoices (
                 token, debtor_id, customer_id, mollie_id, mollie_settlement_id,
-                ordered_at, due_on, payable_cents, open_cents, portokosten_cents
+                ordered_at, due_on, payable_cents, open_cents, portokosten_cents, status
             )
             OUTPUT INSERTED.id
-            VALUES (?, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)
+            VALUES (?, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?, 'customer')
             """,
             (
                 token,
@@ -448,6 +493,150 @@ def create_customer_invoice(
         lines=tuple(stored),
         debtor_id=None,
         customer_id=customer_id,
+        status="customer",
+    )
+
+
+def party_choices(conn) -> list[tuple[str, str]]:
+    """Who an ad-hoc invoice can be written to: (value, label) per debtor and
+    customer, the label carrying the name plus IBAN when there is one."""
+    rows = query(
+        conn,
+        """
+        SELECT 'debtor' AS kind, id, name, iban FROM dbo.debtors
+        UNION ALL
+        SELECT 'customer' AS kind, id, name, iban FROM dbo.customers
+        ORDER BY name, kind
+        """,
+    )
+    choices: list[tuple[str, str]] = []
+    for row in rows:
+        name = str(row["name"] or "").strip() or "(zonder naam)"
+        iban = str(row["iban"] or "").strip()
+        label = f"{name} — {iban}" if iban else name
+        choices.append((f'{row["kind"]}:{int(row["id"])}', label))
+    return choices
+
+
+def create_adhoc_invoice(
+    *,
+    owner: str,
+    lines: list[tuple[str, int, int]],
+    books: tuple[Book, ...] = (),
+    vat_cents_amount: int | None = None,
+) -> Invoice:
+    """An ad-hoc invoice from the administrator's 'Voeg factuur toe' form.
+
+    owner is 'debtor:12' or 'customer:7'. A debtor invoice starts as a draft
+    (status 'prepared'); a customer invoice is a customer invoice ('customer')
+    right away. lines are (slug, copies, price_cents_per_copy) and the stock
+    leaves here.
+    """
+    kind, sep, raw_id = str(owner or "").strip().partition(":")
+    if not sep or kind not in {"debtor", "customer"}:
+        raise ValueError("Kies een bedrijf of klant.")
+    try:
+        owner_id = int(raw_id.strip())
+    except ValueError:
+        raise ValueError("Kies een bedrijf of klant.")
+    wanted = [(slug.strip(), copies, price) for slug, copies, price in lines if copies != 0]
+    if not wanted:
+        raise ValueError("De factuur heeft geen regels.")
+    for slug, _copies, _price in wanted:
+        if not slug:
+            raise ValueError("Elke regel heeft een slug nodig.")
+    token = secrets.token_urlsafe(32)
+    when = datetime.now()
+    due_on = when.date() + timedelta(days=ACCOUNT_DUE_DAYS)
+    ordered_at = when.strftime("%Y-%m-%d %H:%M")
+    conn = connect(autocommit=False)
+    try:
+        seed_stock(conn, books)
+        if kind == "debtor":
+            row = one(
+                conn,
+                "SELECT name, email, vat_number, address_id FROM dbo.debtors WHERE id = ?",
+                (owner_id,),
+            )
+            if row is None:
+                raise ValueError("Onbekend bedrijf.")
+            if not str(row["vat_number"] or "").strip():
+                raise ValueError("Een factuur op rekening heeft een btw-nummer nodig.")
+            debtor_id, customer_id = owner_id, None
+            vat_number = str(row["vat_number"] or "")
+            status, portokosten = "prepared", None
+        else:
+            row = one(
+                conn,
+                "SELECT name, email, address_id FROM dbo.customers WHERE id = ?",
+                (owner_id,),
+            )
+            if row is None:
+                raise ValueError("Onbekende klant.")
+            debtor_id, customer_id = None, owner_id
+            vat_number = ""
+            status, portokosten = "customer", vat_cents_amount
+        name = str(row["name"] or "")
+        email = str(row["email"] or "")
+        address = address_by_id(conn, row["address_id"]).formatted()
+        payable = sum(copies * price for _slug, copies, price in wanted)
+        invoice_id = insert_id(
+            conn,
+            """
+            INSERT INTO dbo.invoices (
+                token, debtor_id, customer_id, mollie_id, mollie_settlement_id,
+                ordered_at, due_on, payable_cents, open_cents, portokosten_cents, status
+            )
+            OUTPUT INSERTED.id
+            VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                token,
+                debtor_id,
+                customer_id,
+                ordered_at,
+                due_on.isoformat(),
+                payable,
+                payable,
+                portokosten,
+                status,
+            ),
+        )
+        stored: list[InvoiceLine] = []
+        for slug, copies, price in wanted:
+            _take_stock(conn, slug, copies)
+            run(
+                conn,
+                """
+                INSERT INTO dbo.invoicelines (invoice_id, slug, number_of_copies, price_cents_per_copy)
+                VALUES (?, ?, ?, ?)
+                """,
+                (invoice_id, slug, copies, price),
+            )
+            stored.append(InvoiceLine(slug, copies, price))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return Invoice(
+        number=invoice_number(invoice_id),
+        name=name,
+        email=email,
+        address=address,
+        vat_number=vat_number,
+        ordered_at=ordered_at,
+        due_on=due_on,
+        payable_cents=payable,
+        open_cents=payable,
+        ship_before_payment=kind == "debtor",
+        portokosten_cents=portokosten,
+        token=token,
+        lines=tuple(stored),
+        debtor_id=debtor_id,
+        customer_id=customer_id,
+        status=status,
     )
 
 
@@ -500,7 +689,7 @@ def get_invoice(number: str) -> Invoice | None:
             conn,
             """
             SELECT i.id, i.token, i.mollie_id, i.ordered_at, i.due_on, i.payable_cents, i.open_cents,
-                   i.portokosten_cents, i.debtor_id, i.customer_id,
+                   i.portokosten_cents, i.debtor_id, i.customer_id, i.status,
                    d.name AS debtor_name, d.email AS debtor_email, d.vat_number AS debtor_vat,
                    d.address_id AS debtor_address_id, d.code AS debtor_code,
                    c.name AS customer_name, c.email AS customer_email, c.address_id AS customer_address_id
@@ -563,7 +752,30 @@ def get_invoice(number: str) -> Invoice | None:
         debtor_id=None if for_customer else int(row["debtor_id"]),
         customer_id=int(row["customer_id"]) if for_customer else None,
         mollie_id=row["mollie_id"],
+        status=str(row["status"] or "prepared"),
     )
+
+
+def mark_invoice_sent(conn, number: str) -> bool:
+    """Atomically move a prepared invoice to sent; return false if unavailable."""
+    invoice_id = _invoice_id(number)
+    if invoice_id is None:
+        return False
+    changed = query(
+        conn,
+        """
+        UPDATE dbo.invoices
+        SET status = 'sent'
+        OUTPUT INSERTED.id
+        WHERE id = ? AND status = 'prepared'
+        """,
+        (invoice_id,),
+    )
+    if not changed:
+        conn.rollback()
+        return False
+    conn.commit()
+    return True
 
 
 def invoice_by_token(number: str, token: str) -> Invoice | None:
@@ -578,6 +790,24 @@ def open_invoices(conn) -> list[Invoice]:
     rows = query(
         conn,
         "SELECT id FROM dbo.invoices WHERE debtor_id IS NOT NULL AND open_cents > 0 ORDER BY id",
+    )
+    found = []
+    for row in rows:
+        invoice = get_invoice(invoice_number(int(row["id"])))
+        if invoice is not None:
+            found.append(invoice)
+    return found
+
+
+def unpaid_invoices(conn) -> list[Invoice]:
+    """Everything the shop is still owed: debtors and ad-hoc customers alike.
+
+    A Mollie checkout invoice is left out while its payment is in flight; a
+    settled one drops out through open_cents.
+    """
+    rows = query(
+        conn,
+        "SELECT id FROM dbo.invoices WHERE open_cents > 0 AND mollie_id IS NULL ORDER BY id",
     )
     found = []
     for row in rows:
@@ -792,7 +1022,10 @@ def set_invoice_lines(conn, number: str, lines: list[InvoiceLine]) -> Invoice:
 
 
 def apply_allocations(conn, allocations: list[Allocation]) -> None:
-    """Record a bank booking against an invoice. The stock already left at invoicing."""
+    """Record a bank booking against an invoice. The stock already left at invoicing.
+
+    A debtor invoice settled in full turns 'paid'; a customer invoice keeps its
+    own status, its paid state is the open_cents that drop to zero."""
     for allocation in allocations:
         run(
             conn,
@@ -800,15 +1033,22 @@ def apply_allocations(conn, allocations: list[Allocation]) -> None:
             (allocation.transaction_id, allocation.invoice_number, allocation.amount_cents),
         )
         invoice_id = _invoice_id(allocation.invoice_number)
-        row = one(conn, "SELECT open_cents FROM dbo.invoices WHERE id = ?", (invoice_id,))
+        row = one(conn, "SELECT open_cents, customer_id FROM dbo.invoices WHERE id = ?", (invoice_id,))
         if row is None:
             continue
         remaining = int(row["open_cents"]) - allocation.amount_cents
-        run(
-            conn,
-            "UPDATE dbo.invoices SET open_cents = ? WHERE id = ?",
-            (remaining, invoice_id),
-        )
+        if remaining <= 0 and row["customer_id"] is None:
+            run(
+                conn,
+                "UPDATE dbo.invoices SET open_cents = ?, status = 'paid' WHERE id = ?",
+                (remaining, invoice_id),
+            )
+        else:
+            run(
+                conn,
+                "UPDATE dbo.invoices SET open_cents = ? WHERE id = ?",
+                (remaining, invoice_id),
+            )
     conn.commit()
 
 
@@ -858,7 +1098,7 @@ def sent_steps(conn) -> set[tuple[str, str]]:
 
 
 def steps_due(invoice: Invoice, today: date, sent: set[tuple[str, str]]) -> list[str]:
-    if invoice.open_cents <= 0:
+    if invoice.status != "sent" or invoice.open_cents <= 0:
         return []
     due = []
     for name, offset in REMINDER_STEPS:

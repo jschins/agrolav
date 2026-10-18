@@ -1,8 +1,9 @@
 """Shop rows in the webshop database. This is not the bookkeeping database.
 
-An order is written the moment an account buyer orders on the website. Invoices are
-separate: a debtor is invoiced later by an administrator, and a Mollie buyer is
-invoiced (and paid) at checkout. See app.ledger.
+An order is written the moment an account buyer orders on the website, and its
+invoice is written in the same breath (see app.ledger); only orders from before
+that rule still arrive without one. A Mollie buyer has no order, only an
+invoice, paid at checkout. Editing happens on the invoice, never on the order.
 """
 from __future__ import annotations
 
@@ -300,9 +301,24 @@ def order_number(order_id: int) -> str:
     return f"DB-{int(order_id)}"
 
 
-def orders_without_invoice(conn) -> list[Order]:
-    """Account orders an administrator has not yet turned into an invoice."""
-    rows = query(conn, f"{_ORDER_SELECT} WHERE o.invoice_number IS NULL ORDER BY o.id")
+def orders_awaiting_send(conn) -> list[Order]:
+    """Orders whose invoice has not gone out yet.
+
+    That is an order without an invoice (from before invoices were written at
+    ordering time) plus an order whose invoice is still a draft ('prepared').
+    An invoice that was sent or paid already has left the screen.
+    """
+    rows = query(
+        conn,
+        f"""
+        {_ORDER_SELECT}
+        LEFT JOIN dbo.invoices i
+            ON i.id = CASE WHEN o.invoice_number LIKE 'DBF-%'
+                           THEN TRY_CONVERT(int, RIGHT(o.invoice_number, LEN(o.invoice_number) - 4)) END
+        WHERE o.invoice_number IS NULL OR i.status = N'prepared'
+        ORDER BY o.id
+        """,
+    )
     return [_order_from_row(conn, row) for row in rows]
 
 
@@ -313,36 +329,3 @@ def mark_invoiced(conn, order_id: int, invoice_number: str) -> None:
         (invoice_number, order_id),
     )
     conn.commit()
-
-
-def set_order_lines(
-    conn,
-    order_id: int,
-    lines: list[tuple[str, int, int]],
-    vat_cents_amount: int,
-) -> None:
-    """Replace orderlines for an order and recompute totals.
-
-    lines: (slug, number_of_copies, price_cents_per_copy)
-    """
-    try:
-        run(conn, "DELETE FROM dbo.orderlines WHERE order_id = ?", (order_id,))
-        payable = 0
-        for slug, copies, price in lines:
-            if copies == 0:
-                continue
-            run(
-                conn,
-                "INSERT INTO dbo.orderlines (order_id, slug, number_of_copies, price_cents_per_copy) VALUES (?, ?, ?, ?)",
-                (order_id, slug, copies, price),
-            )
-            payable += copies * price
-        run(
-            conn,
-            "UPDATE dbo.orders SET amount_cents = ?, vat_cents = ? WHERE id = ?",
-            (payable, vat_cents_amount, order_id),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise

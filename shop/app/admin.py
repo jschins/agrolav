@@ -6,27 +6,32 @@ from html import escape
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
 from app import bank
 from app.catalog import add_book, book_keys, euro, load_catalog, replace_book, search_books, update_voorraad, vat_cents
+from app.invoice_pdf import build_invoice_pdf
 from app.ledger import (
     Allocation,
     InvoiceLine,
     apply_allocations,
     applied_transaction_ids,
     compact_iban,
+    create_adhoc_invoice,
     create_debtor_invoice,
     get_invoice,
     known_party_ibans,
+    mark_invoice_sent,
     match_statements,
     open_invoice_candidates,
-    open_invoices,
     overlay_stock,
+    party_choices,
     set_invoice_lines,
     set_stock,
+    unpaid_invoices,
 )
-from app.orders import connect, get_order, get_order_by_token, order_number, orders_without_invoice, set_order_lines
+from app.orders import connect, get_order_by_token, order_number, orders_awaiting_send
+from app.reminders import send_invoice as send_invoice_email
 
 _ROOT = Path(__file__).resolve().parent.parent
 _MENU_ADD = "Voeg nieuw boek toe"
@@ -131,7 +136,8 @@ nav a {{
 nav a.selected {{ background: var(--border); }}
 .wrap {{ max-width: 40rem; margin: 0 auto; padding: 2rem 1.5rem 4rem; }}
 label {{ display: block; margin: 0.9rem 0 0.25rem; font-family: "Alegreya Sans", sans-serif; }}
-input {{
+input,
+select {{
   width: 100%;
   max-width: 28rem;
   background: var(--card);
@@ -419,6 +425,18 @@ def _clip(text: str) -> str:
     return f'<td class="clip" data-full="{shown}"><span>{shown}</span></td>'
 
 
+_STATUS_LABELS = {
+    "prepared": "Te verzenden",
+    "sent": "Verzonden",
+    "paid": "Betaald",
+    "customer": "Klant",
+}
+
+
+def _status_label(status: str) -> str:
+    return _STATUS_LABELS.get(status, status)
+
+
 def stock_page(catalog_path: Path, error: str = "") -> str:
     conn = connect()
     try:
@@ -460,24 +478,32 @@ def stock_page(catalog_path: Path, error: str = "") -> str:
 
 
 def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
-    """Unpaid invoices: 9100/facturen gets the unpaid invoice table. Remove 'Bewerken' column. Add 'Voeg factuur toe' knob above the table."""
+    """Unpaid invoices: 9100/facturen, one column telling how far each one is."""
     conn = connect()
     try:
-        invoices = open_invoices(conn)
+        invoices = unpaid_invoices(conn)
     finally:
         conn.close()
     invoice_rows = []
     for invoice in invoices:
+        send_action = (
+            f'<form method="post" action="/facturen/{escape(invoice.number)}/verzend" style="display:inline-block">'
+            '<button class="btn" type="submit">Verzend factuur</button></form>'
+            if invoice.status == "prepared"
+            else ""
+        )
         invoice_rows.append(
             "<tr>"
-            f"{_clip(invoice.number)}"
+            f'<td><a href="/facturen/{escape(invoice.number)}/regels">{escape(invoice.number)}</a></td>'
             f"{_clip(invoice.name)}"
             f"{_clip(invoice.email)}"
             f"<td>{escape(euro(invoice.payable_cents))}</td>"
             f"<td>{escape(euro(invoice.open_cents))}</td>"
+            f"<td>{escape(_status_label(invoice.status))}</td>"
+            f"<td>{send_action}</td>"
             "</tr>"
         )
-    body_invoice_rows = "".join(invoice_rows) or '<tr><td colspan="5">Geen openstaande facturen.</td></tr>'
+    body_invoice_rows = "".join(invoice_rows) or '<tr><td colspan="7">Geen openstaande facturen.</td></tr>'
     notice_html = f"<p>{escape(notice)}</p>" if notice else ""
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     body = f"""
@@ -488,10 +514,10 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
   <h2>Openstaande facturen</h2>
   <table class="plain wide">
     <colgroup>
-      <col style="width:16%"><col style="width:26%"><col style="width:26%">
-      <col style="width:16%"><col style="width:16%">
+       <col style="width:14%"><col style="width:20%"><col style="width:20%">
+       <col style="width:12%"><col style="width:12%"><col style="width:10%"><col style="width:12%">
     </colgroup>
-    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Openstaand</th></tr></thead>
+    <thead><tr><th>Factuur</th><th>Bedrijf</th><th>E-mail</th><th>Te betalen</th><th>Openstaand</th><th>Status</th><th>Actie</th></tr></thead>
     <tbody>{body_invoice_rows}</tbody>
   </table>
 </main>
@@ -500,22 +526,35 @@ def invoices_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
 
 
 def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> str:
-    """Unserved orders waiting for modification/processing: 9100/bestellingen."""
+    """Orders whose invoice has not gone out yet: 9100/bestellingen."""
     conn = connect()
     try:
-        pending = orders_without_invoice(conn)
+        pending = orders_awaiting_send(conn)
     finally:
         conn.close()
     rows = []
     for order in pending:
+        href = (
+            f"/facturen/{order.invoice_number}/regels"
+            if order.invoice_number
+            else f"/facturen/bestelling/{order.token}/regels"
+        )
+        send_action = ""
+        if order.invoice_number:
+            invoice = get_invoice(order.invoice_number)
+            if invoice is not None and invoice.status == "prepared":
+                send_action = (
+                    f'<form method="post" action="/bestellingen/{escape(order.token)}/verzend" style="display:inline-block">'
+                    '<button class="btn" type="submit">Verzend factuur</button></form>'
+                )
         rows.append(
             "<tr>"
             f"{_clip(order_number(order.id))}"
             f"{_clip(order.debtor_name)}"
             f"{_clip(order.email)}"
             f"<td>{escape(euro(order.amount_cents))}</td>"
-            f'<td><form method="get" action="/facturen/bestelling/{escape(order.token)}/regels" style="display:inline-block">'
-            f'<button class="btn" type="submit">Bewerk factuur</button></form></td>'
+            f'<td><form method="get" action="{escape(href)}" style="display:inline-block">'
+            f'<button class="btn" type="submit">Bewerk factuur</button></form> {send_action}</td>'
             "</tr>"
         )
     body_rows = "".join(rows) or '<tr><td colspan="5">Geen openstaande bestellingen.</td></tr>'
@@ -535,6 +574,73 @@ def bestellingen_page(catalog_path: Path, error: str = "", notice: str = "") -> 
 </main>
 """
     return _page(body, _ORDERS, "/bestellingen")
+
+
+def nieuwe_factuur_page(
+    catalog_path: Path,
+    parties: list[tuple[str, str]],
+    *,
+    error: str = "",
+    party: str = "",
+    new_slug: str = "",
+    new_copies: str = "",
+    new_price: str = "",
+) -> str:
+    """'Voeg factuur toe': pick the debtor or customer, then the first line.
+
+    The invoice is created with that one line; the editor adds more afterwards.
+    """
+    catalog = load_catalog(catalog_path)
+    options = []
+    for value, label in parties:
+        mark = " selected" if value == party else ""
+        options.append(f'<option value="{escape(value)}"{mark}>{escape(label)}</option>')
+    slug_options = [
+        f'<option value="{escape(book.slug)}">{escape(book.titel)} — {escape(book.slug)}</option>'
+        for book in catalog.books
+    ]
+    titel_of = {book.slug: book.titel for book in catalog.books}
+    notice_html = f'<p class="error">{escape(error)}</p>' if error else ""
+    body = f"""
+<main class="rekening-wide">
+  <h1>Voeg factuur toe</h1>
+  {notice_html}
+  <form method="post" action="/facturen/nieuw">
+    <table class="plain wide">
+      <colgroup><col style="width:40%"><col style="width:60%"></colgroup>
+      <thead><tr><th>Bedrijf of klant</th><th></th></tr></thead>
+      <tbody><tr>
+        <td><select id="party" name="party">{"".join(options)}</select></td>
+        <td class="hint">De factuur krijgt hieronder één regel; in het scherm daarna kunt u er meer bijzetten.</td>
+      </tr></tbody>
+    </table>
+    <table class="plain wide" style="margin-top:1.2rem">
+      <colgroup>
+        <col style="width:32%">
+        <col style="width:24%">
+        <col style="width:16%">
+        <col style="width:16%">
+        <col style="width:12%">
+      </colgroup>
+      <thead><tr>
+        <th>Titel</th><th>Slug</th><th>Aantal</th><th>Prijs per stuk (€)</th><th></th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td>{escape(titel_of.get(new_slug, new_slug))}</td>
+          <td><input list="slug-lijst" name="new-slug" value="{escape(new_slug)}">
+              <datalist id="slug-lijst">{"".join(slug_options)}</datalist></td>
+          <td><input type="number" step="1" name="new-copies" value="{escape(new_copies)}"></td>
+          <td><input type="number" step="0.01" name="new-price" value="{escape(new_price)}"></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <p><button class="btn" type="submit">Factuur aanmaken</button></p>
+  </form>
+</main>
+"""
+    return _page(body, "Voeg factuur toe", "/facturen")
 
 
 def regels_page(
@@ -748,6 +854,46 @@ def catalog_page(catalog_path: Path, query: dict[str, str]) -> str:
 def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
     app = FastAPI()
 
+    def send_invoice_response(number: str, *, orders_screen: bool = False) -> HTMLResponse:
+        invoice = get_invoice(number)
+        make_page = bestellingen_page if orders_screen else invoices_page
+        if invoice is None:
+            return HTMLResponse(make_page(catalog_path, "Deze factuur bestaat niet."), status_code=404)
+        if invoice.status != "prepared":
+            return HTMLResponse(
+                make_page(catalog_path, "Alleen een voorbereide factuur kan worden verzonden."),
+                status_code=409,
+            )
+        if not invoice.email.strip():
+            return HTMLResponse(
+                make_page(catalog_path, "De factuur heeft geen e-mailadres."),
+                status_code=400,
+            )
+
+        sender = os.environ.get("SHOP_MAIL_FROM", "info@deboog.nl").strip() or "info@deboog.nl"
+        iban = os.environ.get("SHOP_BOOG_IBAN", "").strip() or bank.DEBOOG_ACCOUNT_IBAN
+        try:
+            pdf = build_invoice_pdf(invoice, load_catalog(catalog_path), iban)
+            send_invoice_email(sender, invoice, pdf, iban)
+        except Exception:  # SMTP/provider and PDF errors leave the invoice prepared for a retry.
+            return HTMLResponse(
+                make_page(catalog_path, "Factuur verzenden is mislukt."),
+                status_code=502,
+            )
+
+        conn = connect()
+        try:
+            marked = mark_invoice_sent(conn, invoice.number)
+        finally:
+            conn.close()
+        if not marked:
+            return HTMLResponse(
+                make_page(catalog_path, "De e-mail is verzonden, maar de factuurstatus kon niet worden bijgewerkt."),
+                status_code=409,
+            )
+        notice = f"Factuur {invoice.number} verzonden naar {invoice.email}."
+        return HTMLResponse(make_page(catalog_path, notice=notice))
+
     @app.get("/favicon.ico")
     def favicon() -> Response:
         path = (catalog_path.parent / "favicon.ico").resolve()
@@ -915,35 +1061,69 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
     def show_invoices() -> str:
         return invoices_page(catalog_path)
 
-    @app.post("/facturen/order/{order_id}", response_class=HTMLResponse)
-    def invoice_order(order_id: str) -> HTMLResponse:
+    @app.post("/facturen/{number}/verzend", response_class=HTMLResponse)
+    def send_invoice_from_invoice_page(number: str) -> HTMLResponse:
+        return send_invoice_response(number)
+
+    @app.get("/facturen/nieuw", response_class=HTMLResponse)
+    def nieuw_factuur() -> HTMLResponse:
         conn = connect()
         try:
-            order = get_order_by_token(conn, order_id)
-            if order is None:
-                return HTMLResponse(invoices_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
-            try:
-                invoice = create_debtor_invoice(conn, order)
-            except ValueError as exc:
-                return HTMLResponse(invoices_page(catalog_path, str(exc)), status_code=400)
+            parties = party_choices(conn)
         finally:
             conn.close()
-        return HTMLResponse(invoices_page(catalog_path, notice=f"Factuur {invoice.number} aangemaakt."))
+        return HTMLResponse(nieuwe_factuur_page(catalog_path, parties))
+
+    @app.post("/facturen/nieuw", response_class=HTMLResponse)
+    async def maak_factuur(request: Request) -> Response:
+        form = await request.form()
+        values = dict(
+            party=_value(form, "party"),
+            new_slug=str(form.get("new-slug") or ""),
+            new_copies=str(form.get("new-copies") or ""),
+            new_price=str(form.get("new-price") or ""),
+        )
+
+        def again(error: str) -> str:
+            conn = connect()
+            try:
+                parties = party_choices(conn)
+            finally:
+                conn.close()
+            return nieuwe_factuur_page(catalog_path, parties, error=error, **values)
+
+        try:
+            lines = _parsed_lines(form, [])
+            if not lines:
+                raise ValueError("De factuur heeft ten minste één regel nodig.")
+        except ValueError as exc:
+            return HTMLResponse(again(str(exc)), status_code=400)
+        catalog = load_catalog(catalog_path)
+        amount = sum(copies * price for _slug, copies, price in lines)
+        try:
+            invoice = create_adhoc_invoice(
+                owner=values["party"],
+                lines=lines,
+                books=catalog.books,
+                vat_cents_amount=vat_cents(amount, catalog.vat_rate),
+            )
+        except ValueError as exc:
+            return HTMLResponse(again(str(exc)), status_code=400)
+        return RedirectResponse(f"/facturen/{invoice.number}/regels", status_code=303)
 
     @app.get("/facturen/bestelling/{token}/regels", response_class=HTMLResponse)
-    def edit_order_lines(token: str) -> HTMLResponse:
+    def edit_order_lines(token: str) -> Response:
         conn = connect()
         try:
             order = get_order_by_token(conn, token)
         finally:
             conn.close()
         if order is None:
-            return HTMLResponse(invoices_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
+            return HTMLResponse(bestellingen_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
         if order.invoice_number:
-            return HTMLResponse(
-                invoices_page(catalog_path, "Deze bestelling is al gefactureerd; bewerk de factuur."),
-                status_code=400,
-            )
+            invoice = get_invoice(order.invoice_number)
+            if invoice is not None:
+                return RedirectResponse(f"/facturen/{invoice.number}/regels", status_code=303)
         lines = [
             {"id": i, "slug": item.slug, "copies": item.number_of_copies, "price_cents": item.price_cents_per_copy}
             for i, item in enumerate(order.items)
@@ -952,7 +1132,7 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
             regels_page(
                 catalog_path,
                 title=f"Bewerk bestelling {order_number(order.id)}",
-                active="/facturen",
+                active="/bestellingen",
                 action=f"/facturen/bestelling/{escape(token)}/regels",
                 lines=lines,
             )
@@ -960,29 +1140,36 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
 
     @app.post("/facturen/bestelling/{token}/regels", response_class=HTMLResponse)
     async def save_order_lines(token: str, request: Request) -> HTMLResponse:
+        form = await request.form()
         conn = connect()
         try:
             order = get_order_by_token(conn, token)
             if order is None:
-                return HTMLResponse(invoices_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
-            if order.invoice_number:
-                return HTMLResponse(
-                    invoices_page(catalog_path, "Deze bestelling is al gefactureerd; bewerk de factuur."),
-                    status_code=400,
-                )
-            form = await request.form()
+                return HTMLResponse(bestellingen_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
+            invoice = get_invoice(order.invoice_number) if order.invoice_number else None
+            existing = invoice.lines if invoice is not None else order.items
             try:
-                lines = _parsed_lines(form, order.items)
-                catalog = load_catalog(catalog_path)
-                set_order_lines(conn, order.id, lines, vat_cents(sum(c * p for _s, c, p in lines), catalog.vat_rate))
+                lines = _parsed_lines(form, existing)
+                if invoice is None:
+                    invoice = create_debtor_invoice(conn, order)
+                set_invoice_lines(
+                    conn,
+                    invoice.number,
+                    [InvoiceLine(slug, copies, price) for slug, copies, price in lines],
+                )
             except ValueError as exc:
+                title = (
+                    f"Bewerk factuur {invoice.number}"
+                    if invoice is not None
+                    else f"Bewerk bestelling {order_number(order.id)}"
+                )
                 return HTMLResponse(
                     regels_page(
                         catalog_path,
-                        title=f"Bewerk bestelling {order_number(order.id)}",
-                        active="/facturen",
+                        title=title,
+                        active="/bestellingen",
                         action=f"/facturen/bestelling/{escape(token)}/regels",
-                        lines=_form_lines(form, order.items),
+                        lines=_form_lines(form, existing),
                         new_slug=str(form.get("new-slug") or ""),
                         new_copies=str(form.get("new-copies") or ""),
                         new_price=str(form.get("new-price") or ""),
@@ -992,7 +1179,7 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
                 )
         finally:
             conn.close()
-        return HTMLResponse(invoices_page(catalog_path, notice="Regels opgeslagen."))
+        return HTMLResponse(bestellingen_page(catalog_path, notice="Regels opgeslagen."))
 
     @app.get("/facturen/{number}/regels", response_class=HTMLResponse)
     def edit_invoice_lines(number: str) -> HTMLResponse:
@@ -1013,9 +1200,59 @@ def create_admin_app(catalog_path: Path, files_dir: Path) -> FastAPI:
             )
         )
 
+    @app.post("/facturen/{number}/regels", response_class=HTMLResponse)
+    async def save_invoice_lines(number: str, request: Request) -> HTMLResponse:
+        invoice = get_invoice(number)
+        if invoice is None:
+            return HTMLResponse(invoices_page(catalog_path, "Deze factuur bestaat niet."), status_code=404)
+        form = await request.form()
+        conn = connect()
+        try:
+            try:
+                lines = _parsed_lines(form, invoice.lines)
+                set_invoice_lines(
+                    conn,
+                    number,
+                    [InvoiceLine(slug, copies, price) for slug, copies, price in lines],
+                )
+            except ValueError as exc:
+                return HTMLResponse(
+                    regels_page(
+                        catalog_path,
+                        title=f"Bewerk factuur {invoice.number}",
+                        active="/facturen",
+                        action=f"/facturen/{escape(invoice.number)}/regels",
+                        lines=_form_lines(form, invoice.lines),
+                        new_slug=str(form.get("new-slug") or ""),
+                        new_copies=str(form.get("new-copies") or ""),
+                        new_price=str(form.get("new-price") or ""),
+                        error=str(exc),
+                    ),
+                    status_code=400,
+                )
+        finally:
+            conn.close()
+        return HTMLResponse(invoices_page(catalog_path, notice=f"Factuur {invoice.number} bijgewerkt."))
+
     @app.get("/bestellingen", response_class=HTMLResponse)
     def show_bestellingen() -> str:
         return bestellingen_page(catalog_path)
+
+    @app.post("/bestellingen/{token}/verzend", response_class=HTMLResponse)
+    def send_invoice_from_order(token: str) -> HTMLResponse:
+        conn = connect()
+        try:
+            order = get_order_by_token(conn, token)
+        finally:
+            conn.close()
+        if order is None:
+            return HTMLResponse(bestellingen_page(catalog_path, "Deze bestelling bestaat niet."), status_code=404)
+        if not order.invoice_number:
+            return HTMLResponse(
+                bestellingen_page(catalog_path, "Bewerk de bestelling eerst om de factuur aan te maken."),
+                status_code=409,
+            )
+        return send_invoice_response(order.invoice_number, orders_screen=True)
 
     @app.get("/bank", response_class=HTMLResponse)
     def refresh_bank(request: Request) -> HTMLResponse:

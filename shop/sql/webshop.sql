@@ -6,7 +6,7 @@
 --   customers -- buyers paying online through Mollie; they have invoices only.
 --
 --   orders   : written the moment an account buyer orders on the website.
---   invoices : for a debtor, written later by an administrator; for a customer,
+--   invoices : for a debtor, written alongside the order; for a customer,
 --              written and paid at Mollie checkout.
 --
 -- Idempotent. Run once with an account allowed to create a database.
@@ -95,7 +95,7 @@ CREATE TABLE dbo.orders (
     created_at          nvarchar(80)    NOT NULL,
     debtor_id           int             NOT NULL,
     portokosten_cents   int             NULL,
-    invoice_number      nvarchar(40)    NULL,   -- set once an administrator writes it
+    invoice_number      nvarchar(40)    NULL,   -- set when the order's invoice is written
     CONSTRAINT pk_orders PRIMARY KEY (id),
     CONSTRAINT fk_orders_debtor FOREIGN KEY (debtor_id) REFERENCES dbo.debtors (id)
 );
@@ -142,6 +142,8 @@ CREATE TABLE dbo.invoices (
     payable_cents       int             NOT NULL,
     open_cents          int             NOT NULL,
     portokosten_cents   int             NULL,
+    status              nvarchar(20)    NOT NULL
+        CONSTRAINT df_invoices_status DEFAULT N'prepared',
     CONSTRAINT pk_invoices PRIMARY KEY (id),
     CONSTRAINT fk_invoices_debtor FOREIGN KEY (debtor_id) REFERENCES dbo.debtors (id),
     CONSTRAINT fk_invoices_customer FOREIGN KEY (customer_id) REFERENCES dbo.customers (id),
@@ -161,6 +163,12 @@ IF COL_LENGTH(N'dbo.invoices', N'mollie_settlement_id') IS NULL
 GO
 IF COL_LENGTH(N'dbo.invoices', N'token') IS NULL
     ALTER TABLE dbo.invoices ADD token nvarchar(64) NULL;
+GO
+-- The invoice lifecycle: prepared -> sent -> paid; a Mollie/customer invoice
+-- stays 'customer' from creation on.
+IF COL_LENGTH(N'dbo.invoices', N'status') IS NULL
+    ALTER TABLE dbo.invoices ADD status nvarchar(20) NOT NULL
+        CONSTRAINT df_invoices_status DEFAULT N'prepared';
 GO
 IF NOT EXISTS (
     SELECT 1 FROM sys.indexes

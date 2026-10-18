@@ -34,18 +34,25 @@ website. It carries a token, a status, the amounts, and one row per book in
 `orderlines`.
 
 An **invoice** has a unique number and its lines are in `invoicelines`. Each
-invoice belongs to a debtor or to a customer, never both. A debtor is
-invoiced later, by an administrator through the admin site, after the mail
-order has been sent, and is told to put the invoice number in the payment
-description. A customer's invoice is written at checkout, already paid.
+invoice belongs to a debtor or to a customer, never both. A debtor's invoice
+is created with the order and starts as `prepared`; the administrator edits it
+and sends it as a PDF attachment from either the invoice or order screen. Its
+status then becomes `sent`, and the buyer is told to put the invoice number in
+the payment description. A customer's invoice is written at checkout, already
+paid.
 
-Payment matching and reminders run apart from the website, with `remind`
-from the `shop` directory. A booking on the Boog account counts when its
-description contains the invoice number and the money is coming in. A short
-payment leaves the rest open. Several invoice numbers are settled only when
-the booking equals their open sum. The same booking is not applied twice.
-Reminders go out seven days before the due date, on the due date, and
-fourteen and thirty days after, and each send is recorded in `reminders`.
+The admin site's `/bank` action downloads recent Enable Banking statements
+and matches a known counterparty IBAN, account-holder name, and exact open
+amount. The same statement is applied at most once. The separate `remind`
+task also syncs Boog-account bookings from the bookkeeping database; that
+path matches invoice numbers in the description and supports partial or
+combined payments. Reminders go out only for `sent` invoices: seven days
+before the due date, on the due date, and fourteen and thirty days after.
+Each send is recorded in `reminders`.
+
+Invoice email uses `SHOP_MAIL_FROM` and the `SHOP_SMTP_*` settings. PDF issuer
+details come from the shop catalogue (`shop_name` and `place`); the payment
+IBAN comes from `SHOP_BOOG_IBAN` or the configured De Boog account IBAN.
 
 `beheer_boog` is country 6 in the bookkeeping database. Its bookings are
 `dbo.transaction_beheer_boog`. That database remains the general ledger.

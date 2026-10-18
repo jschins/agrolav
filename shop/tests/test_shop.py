@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 from app.catalog import euro, load_catalog, vat_cents
 from app.ledger import (
-    create_debtor_invoice,
     get_invoice,
     invoice_by_payment,
     open_invoices,
@@ -152,6 +151,7 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIsNotNone(invoice)
             assert invoice is not None
             self.assertTrue(invoice.for_customer)
+            self.assertEqual(invoice.status, "customer")
             self.assertEqual(invoice.name, "Lezer Voorbeeld")
             self.assertEqual(invoice.address, "Kerkstraat 1, 3512 KB Utrecht")
             self.assertFalse(invoice.paid)
@@ -236,7 +236,7 @@ class ShopFlowTests(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_rekening_writes_an_order_and_an_admin_invoices_it(self) -> None:
+    def test_rekening_writes_an_order_that_lands_as_a_prepared_invoice(self) -> None:
         book = _paper_book()
         code = save_shop_debtor("Parochie Voorbeeld", "parochie@example.com", "NL000000000B01")
         with tempfile.TemporaryDirectory() as tmp:
@@ -273,32 +273,69 @@ class ShopFlowTests(unittest.TestCase):
                 self.assertIsInstance(order.id, int)
                 self.assertGreaterEqual(order.id, 1)
                 self.assertRegex(order.token, r"^[0-9a-f]{32}$")
-                self.assertIsNone(order.invoice_number)
+                self.assertRegex(order.invoice_number, r"^DBF-\d+$")
+                self.assertEqual(order.status, "invoiced")
                 self.assertEqual(order.debtor_name, "Parochie Voorbeeld")
                 self.assertEqual(len(order.items), 1)
 
-                invoice = create_debtor_invoice(conn, order)
-                self.assertRegex(invoice.number, r"^DBF-\d+$")
+                invoice = get_invoice(order.invoice_number)
+                self.assertIsNotNone(invoice)
+                assert invoice is not None
                 self.assertEqual(invoice.name, "Parochie Voorbeeld")
                 self.assertTrue(invoice.ship_before_payment)
                 self.assertFalse(invoice.paid)
-
-                stored = get_order_by_token(conn, token)
-                assert stored is not None
-                self.assertEqual(stored.invoice_number, invoice.number)
-                self.assertEqual(stored.status, "invoiced")
-
-                reopened = get_invoice(invoice.number)
-                self.assertIsNotNone(reopened)
-                assert reopened is not None
-                self.assertEqual(reopened.number, invoice.number)
-                self.assertEqual(len(reopened.lines), 1)
+                self.assertEqual(invoice.status, "prepared")
+                self.assertEqual(invoice.payable_cents, order.amount_cents)
+                self.assertEqual(len(invoice.lines), 1)
+                self.assertEqual(invoice.lines[0].slug, order.items[0].slug)
+                self.assertEqual(invoice.lines[0].number_of_copies, order.items[0].number_of_copies)
+                self.assertEqual(invoice.lines[0].price_cents_per_copy, order.items[0].price_cents_per_copy)
 
                 # A debtor invoice can stay open; open_invoices only reports debtors.
                 before = {item.number for item in open_invoices(conn)}
                 self.assertIn(invoice.number, before)
             finally:
                 conn.close()
+
+    def test_stock_leaves_the_shelf_when_the_order_lands(self) -> None:
+        from app.ledger import stock_map
+
+        book = _paper_book()
+        self._ensure_stock(book.slug, 5)
+        code = save_shop_debtor("Parochie Voorraad", "voorraad@example.com", "NL000000000B01")
+        client, _mollie = self._client()
+        done = client.post(
+            "/rekening/voltooi",
+            data={f"aantal-{book.slug}": "2", "code": code},
+            follow_redirects=False,
+        )
+        self.assertEqual(done.status_code, 303)
+        conn = connect()
+        try:
+            amounts = stock_map(conn)
+        finally:
+            conn.close()
+        self.assertEqual(amounts.get(book.slug), 3)
+
+    def test_an_order_over_the_stock_is_refused(self) -> None:
+        from app.ledger import stock_map
+
+        book = _paper_book()
+        self._ensure_stock(book.slug, 1)
+        code = save_shop_debtor("Parochie Teveel", "teveel@example.com", "NL000000000B01")
+        client, _mollie = self._client()
+        refused = client.post(
+            "/rekening/voltooi",
+            data={f"aantal-{book.slug}": "2", "code": code},
+        )
+        self.assertEqual(refused.status_code, 400)
+        self.assertIn("Onvoldoende voorraad", refused.text)
+        conn = connect()
+        try:
+            amounts = stock_map(conn)
+        finally:
+            conn.close()
+        self.assertEqual(amounts.get(book.slug), 1)
 
     def test_bestelcode_request_shows_all_compulsory_address_fields(self) -> None:
         book = _paper_book()

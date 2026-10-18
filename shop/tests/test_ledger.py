@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 from datetime import date, datetime
+from unittest.mock import patch
 
 from app.ledger import (
     Booking,
@@ -12,6 +14,7 @@ from app.ledger import (
     plan_allocations,
     steps_due,
 )
+from app.reminders import send_invoice
 
 
 def _invoice(number: str, open_cents: int, due: date | None = None) -> Invoice:
@@ -31,6 +34,7 @@ def _invoice(number: str, open_cents: int, due: date | None = None) -> Invoice:
         lines=(InvoiceLine("een", 1, open_cents),),
         debtor_id=1,
         customer_id=None,
+        status="sent",
     )
 
 
@@ -53,3 +57,23 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(steps_due(invoice, date(2026, 10, 8), set()), ["before_7"])
         self.assertEqual(steps_due(invoice, date(2026, 10, 15), set()), ["due"])
         self.assertEqual(steps_due(invoice, date(2026, 10, 15), {("DB-00001", "due")}), [])
+
+    def test_prepared_invoice_has_no_reminders(self) -> None:
+        invoice = _invoice("DB-00001", 1000, due=date(2026, 10, 15))
+        prepared = replace(invoice, status="prepared")
+        self.assertEqual(steps_due(prepared, date(2026, 10, 8), set()), [])
+
+    def test_invoice_email_contains_the_pdf_attachment_and_payment_details(self) -> None:
+        invoice = _invoice("DBF-100000", 1000)
+        with patch("app.reminders._deliver") as deliver:
+            send_invoice("shop@example.com", invoice, b"%PDF-test", "NL00TEST")
+
+        message = deliver.call_args.args[0]
+        self.assertEqual(message["To"], invoice.email)
+        body = message.get_body(preferencelist=("plain",)).get_content()
+        self.assertIn(invoice.number, body)
+        self.assertIn("NL00TEST", body)
+        attachments = list(message.iter_attachments())
+        self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0].get_filename(), f"factuur-{invoice.number}.pdf")
+        self.assertEqual(attachments[0].get_content(), b"%PDF-test")

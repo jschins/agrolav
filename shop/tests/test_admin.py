@@ -7,6 +7,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -232,9 +233,9 @@ class AdminTests(unittest.TestCase):
             self.assertEqual(saved.status_code, 200, saved.text)
             self.assertEqual(load_catalog(catalog).by_slug("bestaand").titel, "Gewijzigd")
 
-    def test_facturen_screen_turns_an_order_into_an_invoice(self) -> None:
-        from app.ledger import create_account_order, save_shop_debtor
-        from app.orders import connect, get_order, get_order_by_token, orders_without_invoice
+    def test_order_arrives_as_a_prepared_invoice_on_both_screens(self) -> None:
+        from app.ledger import create_account_order, get_invoice, save_shop_debtor
+        from app.orders import connect, get_order_by_token, order_number
 
         code = save_shop_debtor("Parochie Test", "test@example.com", "NL000000000B01")
         order = create_account_order(
@@ -248,25 +249,375 @@ class AdminTests(unittest.TestCase):
             catalog = _catalog(directory)
             client = TestClient(create_admin_app(catalog, directory / "covers"))
 
-            page = client.get("/facturen")
-            self.assertEqual(page.status_code, 200)
-            self.assertIn("Facturen", page.text)
-            self.assertIn("Parochie Test", page.text)
-            self.assertIn("Factureer", page.text)
-            self.assertIn('class="selected" href="/facturen"', page.text)
-
-            invoiced = client.post(f"/facturen/order/{order.token}", follow_redirects=False)
-            self.assertEqual(invoiced.status_code, 200, invoiced.text)
-            self.assertIn("aangemaakt", invoiced.text)
-
             conn = connect()
             try:
                 stored = get_order_by_token(conn, order.token)
                 assert stored is not None
                 self.assertRegex(stored.invoice_number, r"^DBF-\d+$")
-                self.assertNotIn(order.id, [item.id for item in orders_without_invoice(conn)])
+                self.assertEqual(stored.status, "invoiced")
+            finally:
+                conn.close()
+            assert stored is not None and stored.invoice_number is not None
+            invoice = get_invoice(stored.invoice_number)
+            assert invoice is not None
+            self.assertEqual(invoice.status, "prepared")
+            self.assertEqual(invoice.name, "Parochie Test")
+            self.assertEqual(invoice.payable_cents, 100)
+            self.assertEqual(len(invoice.lines), 1)
+
+            page = client.get("/facturen")
+            self.assertEqual(page.status_code, 200)
+            self.assertIn(invoice.number, page.text)
+            self.assertIn("Parochie Test", page.text)
+            self.assertIn("Te verzenden", page.text)
+            self.assertNotIn("Factureer", page.text)
+            self.assertIn('class="selected" href="/facturen"', page.text)
+            self.assertIn(f'href="/facturen/{invoice.number}/regels"', page.text)
+
+            best = client.get("/bestellingen")
+            self.assertEqual(best.status_code, 200)
+            self.assertIn(order_number(order.id), best.text)
+            self.assertIn("Bewerk factuur", best.text)
+            self.assertIn(f'action="/facturen/{invoice.number}/regels"', best.text)
+            self.assertIn('class="selected" href="/bestellingen"', best.text)
+
+            gone = client.post(f"/facturen/order/{order.token}", follow_redirects=False)
+            self.assertEqual(gone.status_code, 404)
+
+    def test_editing_a_factuur_leaves_the_order_untouched(self) -> None:
+        from app.ledger import create_account_order, get_invoice, save_shop_debtor
+        from app.orders import connect, get_order_by_token
+
+        code = save_shop_debtor("Parochie Regels", "regels@example.com", "NL000000000B01")
+        order = create_account_order(
+            code=code,
+            lines=[("niet-op-voorraad", 1, 100)],
+            books=load_catalog(_ROOT / "catalog.json").books,
+            vat_cents_amount=8,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            catalog = _catalog(directory)
+            client = TestClient(create_admin_app(catalog, directory / "covers"))
+            conn = connect()
+            try:
+                stored = get_order_by_token(conn, order.token)
+                assert stored is not None
+                assert stored.invoice_number is not None
+            finally:
+                conn.close()
+            assert stored is not None and stored.invoice_number is not None
+
+            saved = client.post(
+                f"/facturen/{stored.invoice_number}/regels",
+                data={"count": "1", "copies-0": "3", "price-0": "2.50"},
+            )
+            self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertIn("bijgewerkt", saved.text)
+
+            invoice = get_invoice(stored.invoice_number)
+            assert invoice is not None
+            self.assertEqual(invoice.payable_cents, 750)
+            self.assertEqual(invoice.open_cents, 750)
+            self.assertEqual(invoice.lines[0].number_of_copies, 3)
+            self.assertEqual(invoice.lines[0].price_cents_per_copy, 250)
+
+            conn = connect()
+            try:
+                untouched = get_order_by_token(conn, order.token)
+                assert untouched is not None
+                self.assertEqual(untouched.amount_cents, 100)
+                self.assertEqual(len(untouched.items), 1)
+                self.assertEqual(untouched.items[0].number_of_copies, 1)
+                self.assertEqual(untouched.items[0].price_cents_per_copy, 100)
             finally:
                 conn.close()
 
-            missing = client.post("/facturen/order/bestaat-niet", follow_redirects=False)
-            self.assertEqual(missing.status_code, 404)
+    def test_a_legacy_order_gets_its_invoice_on_first_edit(self) -> None:
+        from app.ledger import create_account_order, get_invoice, save_shop_debtor
+        from app.orders import connect, get_order_by_token, order_number, run
+
+        code = save_shop_debtor("Parochie Oud", "oud@example.com", "NL000000000B01")
+        order = create_account_order(
+            code=code,
+            lines=[("niet-op-voorraad", 1, 100)],
+            books=load_catalog(_ROOT / "catalog.json").books,
+            vat_cents_amount=8,
+        )
+        conn = connect()
+        try:
+            stored = get_order_by_token(conn, order.token)
+            assert stored is not None
+            assert stored.invoice_number is not None
+            invoice_id = int(stored.invoice_number.split("-", 1)[1])
+            run(conn, "DELETE FROM dbo.invoicelines WHERE invoice_id = ?", (invoice_id,))
+            run(conn, "DELETE FROM dbo.invoices WHERE id = ?", (invoice_id,))
+            run(
+                conn,
+                "UPDATE dbo.orders SET invoice_number = NULL, status = 'open' WHERE id = ?",
+                (order.id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            catalog = _catalog(directory)
+            client = TestClient(create_admin_app(catalog, directory / "covers"))
+
+            edit = client.get(f"/facturen/bestelling/{order.token}/regels")
+            self.assertEqual(edit.status_code, 200)
+            self.assertIn(f"Bewerk bestelling {order_number(order.id)}", edit.text)
+            self.assertIn('name="copies-0" value="1"', edit.text)
+            self.assertIn('class="selected" href="/bestellingen"', edit.text)
+
+            saved = client.post(
+                f"/facturen/bestelling/{order.token}/regels",
+                data={"count": "1", "copies-0": "2", "price-0": "1.50"},
+            )
+            self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertIn("Regels opgeslagen", saved.text)
+
+            conn = connect()
+            try:
+                done = get_order_by_token(conn, order.token)
+                assert done is not None
+                self.assertRegex(done.invoice_number, r"^DBF-\d+$")
+                self.assertEqual(done.status, "invoiced")
+                self.assertEqual(done.amount_cents, 100)
+                self.assertEqual(len(done.items), 1)
+                self.assertEqual(done.items[0].number_of_copies, 1)
+                self.assertEqual(done.items[0].price_cents_per_copy, 100)
+            finally:
+                conn.close()
+            assert done is not None and done.invoice_number is not None
+
+            invoice = get_invoice(done.invoice_number)
+            assert invoice is not None
+            self.assertEqual(invoice.status, "prepared")
+            self.assertEqual(invoice.payable_cents, 300)
+            self.assertEqual(invoice.lines[0].number_of_copies, 2)
+            self.assertEqual(invoice.lines[0].price_cents_per_copy, 150)
+
+            best = client.get("/bestellingen")
+            self.assertEqual(best.status_code, 200)
+            self.assertIn(order_number(order.id), best.text)
+
+    def test_adhoc_factuur_from_the_nieuw_form(self) -> None:
+        from app.ledger import get_invoice, save_shop_debtor, shop_debtor_by_code
+
+        code = save_shop_debtor("Parochie Adhoc", "adhoc@example.com", "NL000000000B01")
+        debtor = shop_debtor_by_code(code)
+        assert debtor is not None
+        party = f'debtor:{debtor["id"]}'
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            catalog = _catalog(directory)
+            client = TestClient(create_admin_app(catalog, directory / "covers"))
+
+            form = client.get("/facturen/nieuw")
+            self.assertEqual(form.status_code, 200)
+            self.assertIn("Voeg factuur toe", form.text)
+            self.assertIn('name="party"', form.text)
+            self.assertIn(f'value="{party}"', form.text)
+            self.assertIn("Parochie Adhoc", form.text)
+
+            empty = client.post("/facturen/nieuw", data={"party": party, "count": "0"})
+            self.assertEqual(empty.status_code, 400, empty.text)
+            self.assertIn("regel", empty.text)
+
+            noparty = client.post(
+                "/facturen/nieuw",
+                data={"party": "", "count": "0", "new-slug": "x", "new-copies": "1", "new-price": "1"},
+            )
+            self.assertEqual(noparty.status_code, 400, noparty.text)
+            self.assertIn("Kies een bedrijf of klant", noparty.text)
+
+            created = client.post(
+                "/facturen/nieuw",
+                data={
+                    "party": party,
+                    "count": "0",
+                    "new-slug": "niet-op-voorraad",
+                    "new-copies": "3",
+                    "new-price": "2.50",
+                },
+                follow_redirects=False,
+            )
+            self.assertEqual(created.status_code, 303, created.text)
+            location = created.headers["location"]
+            self.assertRegex(location, r"^/facturen/DBF-\d+/regels$")
+            number = location.split("/")[2]
+
+            editor = client.get(location)
+            self.assertEqual(editor.status_code, 200)
+            self.assertIn(f"Bewerk factuur {number}", editor.text)
+
+            invoice = get_invoice(number)
+            assert invoice is not None
+            self.assertEqual(invoice.name, "Parochie Adhoc")
+            self.assertEqual(invoice.payable_cents, 750)
+            self.assertEqual(invoice.status, "prepared")
+            self.assertIsNotNone(invoice.debtor_id)
+            self.assertIsNone(invoice.customer_id)
+
+            listing = client.get("/facturen")
+            self.assertIn(number, listing.text)
+            self.assertIn("Parochie Adhoc", listing.text)
+            self.assertIn("Te verzenden", listing.text)
+
+    def test_factuur_can_be_sent_from_both_admin_screens(self) -> None:
+        from app.bank import DEBOOG_ACCOUNT_IBAN
+        from app.ledger import create_account_order, get_invoice, save_shop_debtor
+        from app.orders import order_number
+
+        def make_order(label: str):
+            code = save_shop_debtor(f"Parochie {label}", f"{label}@example.com", "NL000000000B01")
+            return create_account_order(
+                code=code,
+                lines=[(f"send-{label}", 1, 1234)],
+                books=(),
+                vat_cents_amount=102,
+            )
+
+        invoice_screen_order = make_order(uuid.uuid4().hex[:10])
+        order_screen_order = make_order(uuid.uuid4().hex[:10])
+        invoice_screen_invoice = get_invoice(invoice_screen_order.invoice_number)
+        order_screen_invoice = get_invoice(order_screen_order.invoice_number)
+        assert invoice_screen_invoice is not None
+        assert order_screen_invoice is not None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
+            invoices = client.get("/facturen")
+            self.assertIn(f'action="/facturen/{invoice_screen_invoice.number}/verzend"', invoices.text)
+            bestellingen = client.get("/bestellingen")
+            self.assertIn(f'action="/bestellingen/{order_screen_order.token}/verzend"', bestellingen.text)
+            self.assertIn(order_number(order_screen_order.id), bestellingen.text)
+
+            with patch("app.admin.send_invoice_email") as send_email:
+                sent_from_invoices = client.post(f"/facturen/{invoice_screen_invoice.number}/verzend")
+                self.assertEqual(sent_from_invoices.status_code, 200, sent_from_invoices.text)
+                self.assertIn("verzonden naar", sent_from_invoices.text)
+
+                sent_from_orders = client.post(f"/bestellingen/{order_screen_order.token}/verzend")
+                self.assertEqual(sent_from_orders.status_code, 200, sent_from_orders.text)
+                self.assertIn("verzonden naar", sent_from_orders.text)
+                self.assertEqual(send_email.call_count, 2)
+                for call in send_email.call_args_list:
+                    self.assertTrue(call.args[2].startswith(b"%PDF-"))
+                    self.assertEqual(call.args[3], DEBOOG_ACCOUNT_IBAN)
+
+                duplicate = client.post(f"/bestellingen/{order_screen_order.token}/verzend")
+                self.assertEqual(duplicate.status_code, 409)
+                self.assertEqual(send_email.call_count, 2)
+
+            self.assertEqual(get_invoice(invoice_screen_invoice.number).status, "sent")
+            self.assertEqual(get_invoice(order_screen_invoice.number).status, "sent")
+            remaining_orders = client.get("/bestellingen")
+            self.assertNotIn(order_number(invoice_screen_order.id), remaining_orders.text)
+            self.assertNotIn(order_number(order_screen_order.id), remaining_orders.text)
+
+    def test_failed_invoice_email_leaves_it_prepared(self) -> None:
+        from app.ledger import create_account_order, get_invoice, save_shop_debtor
+
+        code = save_shop_debtor("Parochie Mailfout", "mailfout@example.com", "NL000000000B01")
+        order = create_account_order(
+            code=code,
+            lines=[("mailfout-regel", 1, 100)],
+            books=(),
+            vat_cents_amount=8,
+        )
+        invoice = get_invoice(order.invoice_number)
+        assert invoice is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
+            with patch("app.admin.send_invoice_email", side_effect=RuntimeError("SMTP offline")):
+                response = client.post(f"/facturen/{invoice.number}/verzend")
+            self.assertEqual(response.status_code, 502)
+            self.assertIn("Factuur verzenden is mislukt", response.text)
+        self.assertEqual(get_invoice(invoice.number).status, "prepared")
+
+    def test_bank_refresh_matches_and_records_a_payment_once(self) -> None:
+        from app.bank import DEBOOG_ACCOUNT_IBAN, DownloadResult, Statement
+        from app.ledger import create_account_order, get_invoice, mark_invoice_sent, save_shop_debtor
+        from app.orders import connect, one, run
+
+        suffix = uuid.uuid4().hex[:12]
+        party_name = f"Parochie Bank {suffix}"
+        iban = "NL91ABNA0417164300"
+        code = save_shop_debtor(party_name, f"{suffix}@example.com", "NL000000000B01")
+        conn = connect()
+        try:
+            debtor = one(conn, "SELECT id FROM dbo.debtors WHERE code = ?", (code,))
+            assert debtor is not None
+            run(conn, "UPDATE dbo.debtors SET iban = ? WHERE id = ?", (iban, int(debtor["id"])))
+            conn.commit()
+        finally:
+            conn.close()
+
+        order = create_account_order(
+            code=code,
+            lines=[("bank-e2e-regel", 1, 12345)],
+            books=(),
+            vat_cents_amount=1018,
+        )
+        invoice = get_invoice(order.invoice_number)
+        assert invoice is not None
+        conn = connect()
+        try:
+            self.assertTrue(mark_invoice_sent(conn, invoice.number))
+        finally:
+            conn.close()
+        invoice = get_invoice(order.invoice_number)
+        assert invoice is not None
+        self.assertEqual(invoice.status, "sent")
+        statement = Statement(
+            key=uuid.uuid4().int & ((1 << 63) - 1),
+            iban=iban,
+            name=party_name,
+            amount_cents=invoice.open_cents,
+            booked_on="2026-10-18",
+            description=f"Betaling factuur {invoice.number}",
+        )
+        result = DownloadResult(
+            statements=(statement,),
+            account_name="De Boog",
+            own_iban=DEBOOG_ACCOUNT_IBAN,
+            date_from="2026-10-01",
+            date_to="2026-10-18",
+            errors=(),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            client = TestClient(create_admin_app(_catalog(directory), directory / "covers"))
+            with patch("app.admin.bank.download_statements", return_value=result) as download:
+                first = client.get("/bank")
+                self.assertEqual(first.status_code, 200)
+                self.assertIn(invoice.number, first.text)
+                self.assertIn("1 betaling(en) toegekend", first.text)
+                paid = get_invoice(invoice.number)
+                assert paid is not None
+                self.assertEqual(paid.open_cents, 0)
+                self.assertEqual(paid.status, "paid")
+
+                second = client.get("/bank")
+                self.assertEqual(second.status_code, 200)
+                self.assertIn("Geen nieuwe betalingen herkend", second.text)
+                self.assertIn(">1</td>", second.text)
+                self.assertEqual(download.call_count, 2)
+
+        conn = connect()
+        try:
+            payment = one(
+                conn,
+                "SELECT COUNT(*) AS total FROM dbo.payments WHERE transaction_id = ? AND invoice_number = ?",
+                (statement.key, invoice.number),
+            )
+        finally:
+            conn.close()
+        self.assertEqual(int(payment["total"]), 1)
