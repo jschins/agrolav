@@ -1,11 +1,77 @@
 AGENDA
 
-1. op rekening voor meerdere klanten
-2. factuur
-3. kortingscodes
-4. boekhouding: automatische betaalde bestelling deels terugboeken
-5. debiteurbeheer & automatisch versturen van betalingsherinneringen via email
-6. statistiek
+1. webmail backup van webheld email de boog
+2. kortingscodes
+3. den eker egress_ip=217.63.252.84
+
+
+
+scripts/webheld_bestellingen.py			leest alle bestellingen uit oude site en schrijft bestellingen.json
+scripts/json_to_csv.py				leest bestellingen.json en schrijft 4 csv bestanden
+scripts/load_bestellingen.py			leest bestellingen.csv en beschrijft 4 webshop tabellen
+
+
+
+
+PS C:\Coding\agrolav\shop> uv run python ../scripts/load_bestellingen.py
+inserted 5026 invoices+orders (invoice_id = woo id + 1000000; 0 skipped: no lines; 500 addresses; 367 book titles seen)
+=== Cannot upload (no matching column / not in JSON) ===
+- VAT number, IBAN: not in the WooCommerce export → debtors.vat_number='-', iban NULL.
+- Debtor bestelcode: synthesized as IMPORT-{id} (not a real ship-before-payment code).
+- Mollie payment / settlement ids: JSON has payment_method names only, not Mollie ids.
+- WooCommerce line_id / variation_id / sku: line tables only store slug/copies/price;
+  slug is woo-{product_id}; book title is not a column.
+- Line subtotal / line total / line tax: only unit price × quantity are stored.
+- Phone, country, address_2, shipping address, customer_note, discount_total,
+  payment_method, invoice_number / number from WooCommerce: no shop columns.
+- Guest identity: all customer_id=0 share debtors.id=0 (latest guest billing wins
+  for that debtor row); per-order billing email still goes on orders.email.
+
+=== Numbering ===
+- invoice_id / orders.invoice_id = WooCommerce id + 1000000
+  (e.g. woo 4975 → DB-1004975 / DBF-1004975).
+
+=== Columns unused or only placeholder after this load ===
+invoices: customer_id, mollie_id, mollie_settlement_id, sent_at
+  (token generated; portokosten_cents set when shipping_total > 0)
+orders:   (vat_cents from total_tax; email/status/amount/porto filled)
+debtors:  iban; vat_number/code are placeholders; address_id set when billing has an address
+customers, stock, payments, bookings, reminders: not touched
+address:  written for debtors with billing street data (not per order)
+PS C:\Coding\agrolav\shop> 
+
+
+
+Are bestellingen.json's 
++ product_id
++ name
+consistent with the definitions in catalog.json ?
+No — not as identifiers, and only partly by name.
+
+			bestellingen.json			catalog.json
+Key			WooCommerce product_id (numeric)	slug (e.g. terug-naar-het-midden)
+Title			line_items[].name			titel
+product_id in catalog?	—					No — catalog has no WooCommerce id
+
+So you cannot join on product_id. Consistency is only via title text.
+
+Title check (normalized): among 367 WooCommerce product ids
+
+~275 match a catalog titel exactly (after normalizing case/punctuation)
+~89 match uniquely with a looser contains-match
+3 don’t: Donatie (11749), Vijftig vragen over Jezus (842), and one title that hits both paper and e-book catalog entries
+Other inconsistencies:
+
+~100 non-zero product_ids appear with more than one name spelling over time (punctuation, “e-book”, etc.).
+product_id 0 is used for many unrelated titles (not a real book id).
+Catalog has 241 books; WooCommerce has 367 product ids (older/removed products, bundles, e-books, donations).
+Bottom line: product_id is not aligned with the catalog at all; name ≈ titel for most sold books, but it’s fuzzy and not 1:1. The loader’s woo-{product_id} slugs are not catalog slugs.
+
+
+
+
+
+
 
 
 ALLE formulieren checken op CSRF, XSS, SQL injection
@@ -55,6 +121,9 @@ $25-rekeningen: aan instudo maar ongedateerd, worden later betaald
 
 opencode -s ses_eb73a7287ffejqPEjU34VAr9rJ
 
+Set-Location C:\Coding\agrolav
+opencode --model openai/gpt-6-luna
+
 
 One-time webshop tables cleanup:
 shop\.venv\Scripts\python.exe shop\sql\run_sql.py shop\sql\empty.sql
@@ -93,3 +162,638 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
 Or by listening port:
 Get-NetTCPConnection -State Listen | Where-Object LocalPort -in 9000,9100 |
   Select-Object LocalPort, OwningProcess
+
+
+
+
+
+
+
+
+
+PS C:\Coding\agrolav\shop> uv run python ../scripts/load_paper_books.py
+paper_books loaded: 361
+remaining → C:\Coding\agrolav\shop\remaining_paper_books.json: 145
+invoices+orders inserted: 4953 (skipped 73)
+
+=== Alerts ===
+- stub paper_books product_id=394 from WooCommerce title 'Francisco en Jacinta van Fatima' (not a unique catalog match)
+- stub paper_books product_id=402 from WooCommerce title 'Gebeden' (not a unique catalog match)
+- stub paper_books product_id=411 from WooCommerce title 'Gesprekken met Mgr Escriva' (not a unique catalog match)
+- stub paper_books product_id=417 from WooCommerce title 'Hoe biechten wij goed' (not a unique catalog match)
+- stub paper_books product_id=418 from WooCommerce title 'Jezus Christus' (not a unique catalog match)
+- stub paper_books product_id=420 from WooCommerce title 'Kom Heilige Geest' (not a unique catalog match)
+- stub paper_books product_id=422 from WooCommerce title 'Met ziel en lichaam' (not a unique catalog match)
+- stub paper_books product_id=424 from WooCommerce title 'Montse Grases' (not a unique catalog match)
+- stub paper_books product_id=442 from WooCommerce title 'Belijdenissen' (not a unique catalog match)
+- stub paper_books product_id=443 from WooCommerce title 'De droefheid van Christus' (not a unique catalog match)
+- stub paper_books product_id=455 from WooCommerce title 'De Kerststal van God' (not a unique catalog match)
+- stub paper_books product_id=457 from WooCommerce title 'De Kruisweg' (not a unique catalog match)
+- stub paper_books product_id=459 from WooCommerce title 'De liefde tot de Kerk' (not a unique catalog match)
+- stub paper_books product_id=460 from WooCommerce title 'De Smidse' (not a unique catalog match)
+- stub paper_books product_id=461 from WooCommerce title 'De Voor' (not a unique catalog match)
+- stub paper_books product_id=464 from WooCommerce title 'De Weg' (not a unique catalog match)
+- stub paper_books product_id=465 from WooCommerce title 'Edward Poppe' (not a unique catalog match)
+- stub paper_books product_id=478 from WooCommerce title 'Rome ons thuis' (not a unique catalog match)
+- stub paper_books product_id=479 from WooCommerce title 'Spreken met God Alle delen' (not a unique catalog match)
+- stub paper_books product_id=481 from WooCommerce title 'Spreken met God Deel  1' (not a unique catalog match)
+- stub paper_books product_id=482 from WooCommerce title 'Spreken met God Deel  2' (not a unique catalog match)
+- stub paper_books product_id=483 from WooCommerce title 'Spreken met God Deel  3' (not a unique catalog match)
+- stub paper_books product_id=484 from WooCommerce title 'Spreken met God Deel  4' (not a unique catalog match)
+- stub paper_books product_id=485 from WooCommerce title 'Spreken met God Deel  5' (not a unique catalog match)
+- stub paper_books product_id=490 from WooCommerce title 'Spreken met God Deel  6' (not a unique catalog match)
+- stub paper_books product_id=498 from WooCommerce title 'Spreken met God Deel  7' (not a unique catalog match)
+- stub paper_books product_id=499 from WooCommerce title 'Spreken met God Deel  8' (not a unique catalog match)
+- stub paper_books product_id=500 from WooCommerce title 'Spreken met God Deel  9' (not a unique catalog match)
+- stub paper_books product_id=501 from WooCommerce title 'Spreken met God Deel 10' (not a unique catalog match)
+- stub paper_books product_id=502 from WooCommerce title 'The founder of Opus Dei Volume 1: The Early Years' (not a unique catalog match)
+- stub paper_books product_id=503 from WooCommerce title 'The founder of Opus Dei Volume 2: God and Daring' (not a unique catalog match)
+- stub paper_books product_id=523 from WooCommerce title 'Vrienden van God' (not a unique catalog match)
+- stub paper_books product_id=533 from WooCommerce title 'Hoezo wonderen' (not a unique catalog match)
+- stub paper_books product_id=534 from WooCommerce title 'Het Leven na dit leven' (not a unique catalog match)
+- stub paper_books product_id=535 from WooCommerce title 'Jouw vragen Gods antwoorden' (not a unique catalog match)
+- stub paper_books product_id=536 from WooCommerce title 'De Mis en het geestelijk leven' (not a unique catalog match)
+- stub paper_books product_id=544 from WooCommerce title 'Schepping of toeval' (not a unique catalog match)
+- stub paper_books product_id=545 from WooCommerce title 'Levenskunst en levenseinde' (not a unique catalog match)
+- stub paper_books product_id=554 from WooCommerce title 'Liefde en zelfrespect' (not a unique catalog match)
+- stub paper_books product_id=563 from WooCommerce title 'Zout en licht - Overwegingen over het Christelijk leven' (not a unique catalog match)
+- stub paper_books product_id=581 from WooCommerce title 'Liefde is jezelf geven' (not a unique catalog match)
+- sold product_id=592 title too long for paper_books (67): 'Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- stub paper_books product_id=607 from WooCommerce title 'Begeleiden onderscheiden integreren' (not a unique catalog match)
+- stub paper_books product_id=616 from WooCommerce title 'De innerlijke vrijheid' (not a unique catalog match)
+- stub paper_books product_id=617 from WooCommerce title 'Jean Marie Vianney Pastoor van Ars' (not a unique catalog match)
+- stub paper_books product_id=618 from WooCommerce title 'The founder of Opus Dei Volume 3: The Divine Ways on Earth' (not a unique catalog match)
+- stub paper_books product_id=619 from WooCommerce title 'Leven in Christus' (not a unique catalog match)
+- stub paper_books product_id=620 from WooCommerce title 'Ware liefde' (not a unique catalog match)
+- stub paper_books product_id=629 from WooCommerce title 'Tijd voor God' (not a unique catalog match)
+- stub paper_books product_id=642 from WooCommerce title 'Het bruiloftsmaal van het Lam' (not a unique catalog match)
+- stub paper_books product_id=643 from WooCommerce title 'Succesvolle vaders' (not a unique catalog match)
+- stub paper_books product_id=644 from WooCommerce title 'Moraal De kunst van het leven' (not a unique catalog match)
+- stub paper_books product_id=645 from WooCommerce title 'De innerlijke rust' (not a unique catalog match)
+- stub paper_books product_id=665 from WooCommerce title 'Redenen om te geloven' (not a unique catalog match)
+- stub paper_books product_id=676 from WooCommerce title 'Wees gegroet Koningin' (not a unique catalog match)
+- stub paper_books product_id=699 from WooCommerce title 'Deugden in het Gezin' (not a unique catalog match)
+- stub paper_books product_id=709 from WooCommerce title 'Voorbereiding op de puberteit' (not a unique catalog match)
+- stub paper_books product_id=720 from WooCommerce title 'Trouwen of Samenwonen' (not a unique catalog match)
+- stub paper_books product_id=732 from WooCommerce title 'Het is de Heer' (not a unique catalog match)
+- stub paper_books product_id=831 from WooCommerce title 'De Katholieke Kerk verkennen' (not a unique catalog match)
+- stub paper_books product_id=842 from WooCommerce title '50 vragen over Jezus' (not a unique catalog match)
+- stub paper_books product_id=853 from WooCommerce title 'Korte Geschiedenis van de Katholieke Kerk' (not a unique catalog match)
+- stub paper_books product_id=879 from WooCommerce title 'De Bijbel leren kennen' (not a unique catalog match)
+- stub paper_books product_id=890 from WooCommerce title 'Kinderen van God' (not a unique catalog match)
+- stub paper_books product_id=901 from WooCommerce title 'Een Vader die zijn Beloftes Nakomt' (not a unique catalog match)
+- stub paper_books product_id=912 from WooCommerce title 'Persoonlijke vrijheid' (not a unique catalog match)
+- stub paper_books product_id=925 from WooCommerce title 'Inleiding tot het devote leven' (not a unique catalog match)
+- stub paper_books product_id=936 from WooCommerce title 'Van wrok tot vergeving' (not a unique catalog match)
+- stub paper_books product_id=946 from WooCommerce title 'Evangelisatie en bekering' (not a unique catalog match)
+- stub paper_books product_id=969 from WooCommerce title 'Tekenen van leven' (not a unique catalog match)
+- stub paper_books product_id=979 from WooCommerce title 'De zeven Sacramenten' (not a unique catalog match)
+- stub paper_books product_id=1003 from WooCommerce title 'Inleiding tot de Theologie' (not a unique catalog match)
+- sold product_id=1025 title too long for paper_books (72): 'Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- stub paper_books product_id=1038 from WooCommerce title 'De verborgen kracht van vriendelijkheid' (not a unique catalog match)
+- stub paper_books product_id=1066 from WooCommerce title 'Jezus en de joodse wortels van de eucharistie' (not a unique catalog match)
+- stub paper_books product_id=1088 from WooCommerce title 'De Hoop op het Eeuwige Leven' (not a unique catalog match)
+- stub paper_books product_id=1099 from WooCommerce title 'Het Mysterie en de Zending van de Kerk' (not a unique catalog match)
+- stub paper_books product_id=1110 from WooCommerce title 'De heilige Mis beleven' (not a unique catalog match)
+- stub paper_books product_id=1121 from WooCommerce title 'Christus komt langs' (not a unique catalog match)
+- stub paper_books product_id=1132 from WooCommerce title 'Gewoon werk buitengewone genade' (not a unique catalog match)
+- stub paper_books product_id=1141 from WooCommerce title 'Geestelijke lauwheid' (not a unique catalog match)
+- stub paper_books product_id=1152 from WooCommerce title 'Richtlijn voor het geestelijk leven' (not a unique catalog match)
+- stub paper_books product_id=1162 from WooCommerce title 'De poort van het geloof' (not a unique catalog match)
+- stub paper_books product_id=1173 from WooCommerce title 'Spirituele Theologie' (not a unique catalog match)
+- stub paper_books product_id=1184 from WooCommerce title 'Jezus Christus onze Verlosser' (not a unique catalog match)
+- stub paper_books product_id=1206 from WooCommerce title 'Getrouwde priesters' (not a unique catalog match)
+- stub paper_books product_id=1217 from WooCommerce title 'De Dialoog' (not a unique catalog match)
+- stub paper_books product_id=1228 from WooCommerce title 'Fundamentele Theologie Een inleiding' (not a unique catalog match)
+- stub paper_books product_id=1239 from WooCommerce title 'In het begin schiep God' (not a unique catalog match)
+- stub paper_books product_id=1261 from WooCommerce title 'Handige gids bij de Bijbel' (not a unique catalog match)
+- stub paper_books product_id=1284 from WooCommerce title 'De hoop van het gezin' (not a unique catalog match)
+- stub paper_books product_id=1306 from WooCommerce title 'Een Jaar van Gods Barmhartigheid' (not a unique catalog match)
+- stub paper_books product_id=1317 from WooCommerce title 'Het dagboek van mijn ziel' (not a unique catalog match)
+- stub paper_books product_id=1338 from WooCommerce title 'Fundamentele moraal' (not a unique catalog match)
+- stub paper_books product_id=1360 from WooCommerce title 'De rank en de wijnstok' (not a unique catalog match)
+- stub paper_books product_id=1371 from WooCommerce title 'Gods plan met je lichaam' (not a unique catalog match)
+- stub paper_books product_id=1393 from WooCommerce title 'Uit de pen van pater Pio' (not a unique catalog match)
+- stub paper_books product_id=1450 from WooCommerce title 'Honderd jaar Fatima' (not a unique catalog match)
+- stub paper_books product_id=1483 from WooCommerce title 'Geloven vandaag' (not a unique catalog match)
+- stub paper_books product_id=1494 from WooCommerce title 'Op koers met geestelijke begeleiding' (not a unique catalog match)
+- stub paper_books product_id=1505 from WooCommerce title 'Genezing van innerlijke wonden' (not a unique catalog match)
+- stub paper_books product_id=1529 from WooCommerce title 'De Voor' (not a unique catalog match)
+- stub paper_books product_id=1531 from WooCommerce title 'De Weg' (not a unique catalog match)
+- stub paper_books product_id=1541 from WooCommerce title 'The founder of Opus Dei Volume 1: The Early Years' (not a unique catalog match)
+- stub paper_books product_id=1543 from WooCommerce title 'The founder of Opus Dei Volume 2: God and Daring' (not a unique catalog match)
+- stub paper_books product_id=1553 from WooCommerce title 'The founder of Opus Dei Volume 3: The Divine ways on Earth' (not a unique catalog match)
+- stub paper_books product_id=1564 from WooCommerce title 'Hongerende Zielen' (not a unique catalog match)
+- stub paper_books product_id=1576 from WooCommerce title 'Francisco en Jacinta van Fatima' (not a unique catalog match)
+- stub paper_books product_id=1584 from WooCommerce title 'Gebeden' (not a unique catalog match)
+- stub paper_books product_id=1601 from WooCommerce title 'Gesprekken met Mgr Escriva' (not a unique catalog match)
+- stub paper_books product_id=1602 from WooCommerce title 'Hoe bidden wij goed' (not a unique catalog match)
+- stub paper_books product_id=1603 from WooCommerce title 'Hoe biechten wij goed' (not a unique catalog match)
+- stub paper_books product_id=1604 from WooCommerce title 'Jezus Christus' (not a unique catalog match)
+- stub paper_books product_id=1605 from WooCommerce title 'Kom Heilige Geest' (not a unique catalog match)
+- stub paper_books product_id=1607 from WooCommerce title 'Met ziel en lichaam' (not a unique catalog match)
+- stub paper_books product_id=1608 from WooCommerce title 'Montse Grases' (not a unique catalog match)
+- stub paper_books product_id=1610 from WooCommerce title 'Belijdenissen (e-book)' (not a unique catalog match)
+- stub paper_books product_id=1611 from WooCommerce title 'De droefheid van Christus' (not a unique catalog match)
+- stub paper_books product_id=1615 from WooCommerce title 'De Kerststal van God' (not a unique catalog match)
+- stub paper_books product_id=1617 from WooCommerce title 'De Kruisweg' (not a unique catalog match)
+- stub paper_books product_id=1618 from WooCommerce title 'De kunst van vallen en opstaan' (not a unique catalog match)
+- stub paper_books product_id=1619 from WooCommerce title 'De liefde tot de Kerk' (not a unique catalog match)
+- stub paper_books product_id=1620 from WooCommerce title 'De Smidse' (not a unique catalog match)
+- stub paper_books product_id=1621 from WooCommerce title 'De Voor' (not a unique catalog match)
+- stub paper_books product_id=1622 from WooCommerce title 'De Weg' (not a unique catalog match)
+- stub paper_books product_id=1623 from WooCommerce title 'Edward Poppe' (not a unique catalog match)
+- stub paper_books product_id=1638 from WooCommerce title 'Rome ons thuis' (not a unique catalog match)
+- stub paper_books product_id=1639 from WooCommerce title 'Spreken met God Deel  1' (not a unique catalog match)
+- stub paper_books product_id=1640 from WooCommerce title 'Spreken met God Deel  2' (not a unique catalog match)
+- stub paper_books product_id=1641 from WooCommerce title 'Spreken met God Deel  3' (not a unique catalog match)
+- stub paper_books product_id=1642 from WooCommerce title 'Spreken met God Deel  4' (not a unique catalog match)
+- stub paper_books product_id=1643 from WooCommerce title 'Spreken met God Deel  5' (not a unique catalog match)
+- stub paper_books product_id=1648 from WooCommerce title 'Spreken met God Deel  6' (not a unique catalog match)
+- stub paper_books product_id=1656 from WooCommerce title 'Spreken met God Deel  7' (not a unique catalog match)
+- stub paper_books product_id=1657 from WooCommerce title 'Spreken met God Deel  8' (not a unique catalog match)
+- stub paper_books product_id=1658 from WooCommerce title 'Spreken met God Deel  9' (not a unique catalog match)
+- stub paper_books product_id=1659 from WooCommerce title 'Spreken met God Deel 10' (not a unique catalog match)
+- stub paper_books product_id=1660 from WooCommerce title 'Vrienden van God' (not a unique catalog match)
+- stub paper_books product_id=1662 from WooCommerce title 'Hoezo wonderen' (not a unique catalog match)
+- stub paper_books product_id=1663 from WooCommerce title 'Het Leven na dit leven' (not a unique catalog match)
+- stub paper_books product_id=1664 from WooCommerce title 'Jouw vragen Gods antwoorden' (not a unique catalog match)
+- stub paper_books product_id=1665 from WooCommerce title 'De Mis en het geestelijk leven' (not a unique catalog match)
+- stub paper_books product_id=1666 from WooCommerce title 'Schepping of toeval' (not a unique catalog match)
+- stub paper_books product_id=1667 from WooCommerce title 'Levenskunst en levenseinde' (not a unique catalog match)
+- stub paper_books product_id=1684 from WooCommerce title 'Liefde en zelfrespect' (not a unique catalog match)
+- stub paper_books product_id=1693 from WooCommerce title 'Zout en licht - Overwegingen over het christelijk leven' (not a unique catalog match)
+- stub paper_books product_id=1702 from WooCommerce title 'Liefde is jezelf geven' (not a unique catalog match)
+- stub paper_books product_id=1711 from WooCommerce title 'De innerlijke vrijheid' (not a unique catalog match)
+- stub paper_books product_id=1712 from WooCommerce title 'Jean Marie Vianney Pastoor van Ars' (not a unique catalog match)
+- stub paper_books product_id=1713 from WooCommerce title 'Leven in Christus' (not a unique catalog match)
+- stub paper_books product_id=1714 from WooCommerce title 'Ware liefde' (not a unique catalog match)
+- stub paper_books product_id=1723 from WooCommerce title 'Tijd voor God' (not a unique catalog match)
+- stub paper_books product_id=1726 from WooCommerce title 'De Heilige van het Gewone (e-book)' (not a unique catalog match)
+- stub paper_books product_id=1727 from WooCommerce title 'En God zag dat het heel goed was' (not a unique catalog match)
+- stub paper_books product_id=1728 from WooCommerce title 'Het bruiloftsmaal van het Lam' (not a unique catalog match)
+- stub paper_books product_id=1729 from WooCommerce title 'Succesvolle vaders (e-book)' (not a unique catalog match)
+- stub paper_books product_id=1730 from WooCommerce title 'Moraal De kunst van het leven' (not a unique catalog match)
+- stub paper_books product_id=1731 from WooCommerce title 'De innerlijke rust' (not a unique catalog match)
+- stub paper_books product_id=1732 from WooCommerce title 'De Heilige Rozenkrans' (not a unique catalog match)
+- stub paper_books product_id=1733 from WooCommerce title 'Redenen om te geloven' (not a unique catalog match)
+- stub paper_books product_id=1744 from WooCommerce title 'Wees gegroet Koningin (e-book)' (not a unique catalog match)
+- stub paper_books product_id=1756 from WooCommerce title 'Deugden in het Gezin' (not a unique catalog match)
+- stub paper_books product_id=1765 from WooCommerce title 'Voorbereiding op de puberteit' (not a unique catalog match)
+- stub paper_books product_id=1776 from WooCommerce title 'Trouwen of Samenwonen' (not a unique catalog match)
+- stub paper_books product_id=1786 from WooCommerce title 'Het is de Heer (e-book)' (not a unique catalog match)
+- stub paper_books product_id=1797 from WooCommerce title 'De Katholieke Kerk verkennen (e-book)' (not a unique catalog match)
+- stub paper_books product_id=1808 from WooCommerce title '50 vragen over Jezus' (not a unique catalog match)
+- stub paper_books product_id=1819 from WooCommerce title 'Korte Geschiedenis van de Katholieke Kerk' (not a unique catalog match)
+- stub paper_books product_id=1845 from WooCommerce title 'De Bijbel leren kennen' (not a unique catalog match)
+- stub paper_books product_id=1856 from WooCommerce title 'Kinderen van God' (not a unique catalog match)
+- stub paper_books product_id=1867 from WooCommerce title 'Een Vader die zijn Beloftes Nakomt' (not a unique catalog match)
+- stub paper_books product_id=1878 from WooCommerce title 'Persoonlijke vrijheid' (not a unique catalog match)
+- stub paper_books product_id=1891 from WooCommerce title 'Inleiding tot het devote leven (e-book)' (not a unique catalog match)
+- stub paper_books product_id=1902 from WooCommerce title 'Van wrok tot vergeving' (not a unique catalog match)
+- stub paper_books product_id=1912 from WooCommerce title 'Evangelisatie en bekering' (not a unique catalog match)
+- stub paper_books product_id=1924 from WooCommerce title 'Tekenen van leven' (not a unique catalog match)
+- stub paper_books product_id=1934 from WooCommerce title 'De zeven Sacramenten' (not a unique catalog match)
+- stub paper_books product_id=1945 from WooCommerce title 'Inleiding tot de Theologie' (not a unique catalog match)
+- sold product_id=1956 title too long for paper_books (72): 'Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- stub paper_books product_id=1969 from WooCommerce title 'De verborgen kracht van vriendelijkheid (e-book)' (not a unique catalog match)
+- stub paper_books product_id=1990 from WooCommerce title 'Jezus en de joodse wortels van de eucharistie' (not a unique catalog match)
+- stub paper_books product_id=2001 from WooCommerce title 'Zin en Praktijk van de Geestelijke Leiding (e-book)' (not a unique catalog match)
+- stub paper_books product_id=2012 from WooCommerce title 'De Hoop op het Eeuwige Leven' (not a unique catalog match)
+- stub paper_books product_id=2023 from WooCommerce title 'Het Mysterie en de Zending van de Kerk' (not a unique catalog match)
+- stub paper_books product_id=2034 from WooCommerce title 'De heilige Mis beleven' (not a unique catalog match)
+- stub paper_books product_id=2045 from WooCommerce title 'Christus komt langs (e-book)' (not a unique catalog match)
+- stub paper_books product_id=2056 from WooCommerce title 'Gewoon werk buitengewone genade' (not a unique catalog match)
+- stub paper_books product_id=2065 from WooCommerce title 'Geestelijke lauwheid' (not a unique catalog match)
+- stub paper_books product_id=2076 from WooCommerce title 'Richtlijn voor het geestelijk leven' (not a unique catalog match)
+- stub paper_books product_id=2086 from WooCommerce title 'De poort van het geloof' (not a unique catalog match)
+- stub paper_books product_id=2097 from WooCommerce title 'Spirituele Theologie' (not a unique catalog match)
+- stub paper_books product_id=2108 from WooCommerce title 'Jezus Christus onze Verlosser' (not a unique catalog match)
+- stub paper_books product_id=2130 from WooCommerce title 'Getrouwde priesters' (not a unique catalog match)
+- stub paper_books product_id=2141 from WooCommerce title 'De Dialoog' (not a unique catalog match)
+- stub paper_books product_id=2152 from WooCommerce title 'Fundamentele Theologie Een inleiding' (not a unique catalog match)
+- stub paper_books product_id=2163 from WooCommerce title 'In het begin schiep God' (not a unique catalog match)
+- stub paper_books product_id=2185 from WooCommerce title 'Handige gids bij de Bijbel' (not a unique catalog match)
+- stub paper_books product_id=2196 from WooCommerce title 'Gebeden tot de Heilige Geest' (not a unique catalog match)
+- stub paper_books product_id=2207 from WooCommerce title 'De hoop van het gezin (e-book)' (not a unique catalog match)
+- stub paper_books product_id=2229 from WooCommerce title 'Een Jaar van Gods Barmhartigheid' (not a unique catalog match)
+- stub paper_books product_id=2240 from WooCommerce title 'Het dagboek van mijn ziel' (not a unique catalog match)
+- stub paper_books product_id=2261 from WooCommerce title 'Fundamentele moraal' (not a unique catalog match)
+- stub paper_books product_id=2272 from WooCommerce title 'De rank en de wijnstok' (not a unique catalog match)
+- stub paper_books product_id=2283 from WooCommerce title 'Gods plan met je lichaam' (not a unique catalog match)
+- stub paper_books product_id=2294 from WooCommerce title 'Uit de pen van pater Pio (e-book)' (not a unique catalog match)
+- stub paper_books product_id=2305 from WooCommerce title 'Honderd jaar Fatima (e-book)' (not a unique catalog match)
+- stub paper_books product_id=2326 from WooCommerce title 'Geloven vandaag' (not a unique catalog match)
+- stub paper_books product_id=2337 from WooCommerce title 'Op koers met geestelijke begeleiding' (not a unique catalog match)
+- stub paper_books product_id=2348 from WooCommerce title 'Genezing van innerlijke wonden' (not a unique catalog match)
+- stub paper_books product_id=2369 from WooCommerce title 'Christenen in de samenleving' (not a unique catalog match)
+- stub paper_books product_id=2385 from WooCommerce title 'Begeleiden onderscheiden integreren' (not a unique catalog match)
+- stub paper_books product_id=2394 from WooCommerce title 'Bron van Licht en Waarheid' (not a unique catalog match)
+- stub paper_books product_id=2403 from WooCommerce title 'Spreken met God Alle delen' (not a unique catalog match)
+- stub paper_books product_id=2405 from WooCommerce title 'Bron van Licht en Waarheid' (not a unique catalog match)
+- stub paper_books product_id=2416 from WooCommerce title 'Geboden en deugden' (not a unique catalog match)
+- stub paper_books product_id=2420 from WooCommerce title 'Pater Pio. Wij hebben hem gekend' (not a unique catalog match)
+- stub paper_books product_id=2421 from WooCommerce title 'Pater Pio. Wij hebben hem gekend' (not a unique catalog match)
+- stub paper_books product_id=2441 from WooCommerce title 'Leren bidden om te leren beminnen' (not a unique catalog match)
+- stub paper_books product_id=2443 from WooCommerce title 'Jezus Christus en zijn tijd' (not a unique catalog match)
+- stub paper_books product_id=2445 from WooCommerce title 'God roept' (not a unique catalog match)
+- stub paper_books product_id=2447 from WooCommerce title 'Geluk waar je het niet verwacht' (not a unique catalog match)
+- stub paper_books product_id=2449 from WooCommerce title 'Geboden en deugden' (not a unique catalog match)
+- stub paper_books product_id=2458 from WooCommerce title 'Christenen in de samenleving' (not a unique catalog match)
+- stub paper_books product_id=2467 from WooCommerce title 'Voor de christen die mens wil worden' (not a unique catalog match)
+- stub paper_books product_id=2468 from WooCommerce title 'Voor de christen die mens wil worden' (not a unique catalog match)
+- stub paper_books product_id=5087 from WooCommerce title 'Jezus Christus en zijn tijd' (not a unique catalog match)
+- stub paper_books product_id=5282 from WooCommerce title 'Niet te geloven!  Teksten over de Eucharistie' (not a unique catalog match)
+- stub paper_books product_id=5346 from WooCommerce title 'God roept - zojuist verschenen' (not a unique catalog match)
+- stub paper_books product_id=5348 from WooCommerce title 'Geluk waar je het niet verwacht' (not a unique catalog match)
+- stub paper_books product_id=5365 from WooCommerce title 'Het huwelijk' (not a unique catalog match)
+- stub paper_books product_id=6010 from WooCommerce title 'God: een en drievuldig' (not a unique catalog match)
+- stub paper_books product_id=6015 from WooCommerce title 'God: een en drievuldig' (not a unique catalog match)
+- stub paper_books product_id=6581 from WooCommerce title 'Jezus en de joodse wortels van Maria' (not a unique catalog match)
+- stub paper_books product_id=6606 from WooCommerce title 'Het huwelijk' (not a unique catalog match)
+- stub paper_books product_id=6609 from WooCommerce title 'Leren bidden om te leren beminnen' (not a unique catalog match)
+- stub paper_books product_id=6661 from WooCommerce title 'Jozef van Nazareth' (not a unique catalog match)
+- stub paper_books product_id=6665 from WooCommerce title 'Iets groots dat liefde is' (not a unique catalog match)
+- stub paper_books product_id=6716 from WooCommerce title 'H. Thomas van Aquino' (not a unique catalog match)
+- stub paper_books product_id=6718 from WooCommerce title 'De kardinale deugden' (not a unique catalog match)
+- stub paper_books product_id=6721 from WooCommerce title 'Gods engelen waken over ons' (not a unique catalog match)
+- stub paper_books product_id=6724 from WooCommerce title 'Deugdzaam leiderschap' (not a unique catalog match)
+- stub paper_books product_id=6730 from WooCommerce title 'Een gelukkig huwelijk (e-book)' (not a unique catalog match)
+- sold product_id=6754 title too long for paper_books (67): 'Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- stub paper_books product_id=6755 from WooCommerce title 'Hongerende Zielen' (not a unique catalog match)
+- sold product_id=6756 title too long for paper_books (67): 'Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- stub paper_books product_id=6881 from WooCommerce title 'Jezus en de joodse wortels van Maria' (not a unique catalog match)
+- stub paper_books product_id=6883 from WooCommerce title 'Niet te geloven!  Teksten over de Eucharistie' (not a unique catalog match)
+- stub paper_books product_id=6910 from WooCommerce title 'Katholicisme puur en simpel' (not a unique catalog match)
+- stub paper_books product_id=7095 from WooCommerce title 'Jozef van Nazareth' (not a unique catalog match)
+- stub paper_books product_id=7096 from WooCommerce title 'H. Thomas van Aquino' (not a unique catalog match)
+- stub paper_books product_id=7198 from WooCommerce title 'Gods engelen waken over ons' (not a unique catalog match)
+- stub paper_books product_id=7680 from WooCommerce title 'Deugdzaam leiderschap' (not a unique catalog match)
+- stub paper_books product_id=7701 from WooCommerce title 'De kardinale deugden' (not a unique catalog match)
+- stub paper_books product_id=8192 from WooCommerce title 'Katholicisme puur en simpel' (not a unique catalog match)
+- stub paper_books product_id=8264 from WooCommerce title 'De aanbidding in het hart van de wereld' (not a unique catalog match)
+- stub paper_books product_id=8417 from WooCommerce title 'De wereld van binnenuit veranderen' (not a unique catalog match)
+- stub paper_books product_id=8455 from WooCommerce title 'Iets groots dat liefde is' (not a unique catalog match)
+- stub paper_books product_id=8574 from WooCommerce title 'De wereld van binnenuit veranderen' (not a unique catalog match)
+- stub paper_books product_id=8726 from WooCommerce title 'Maria van Nazareth' (not a unique catalog match)
+- stub paper_books product_id=8816 from WooCommerce title 'Maria van Nazareth' (not a unique catalog match)
+- stub paper_books product_id=9034 from WooCommerce title 'Lessen van de heilige Thérèse' (not a unique catalog match)
+- stub paper_books product_id=9268 from WooCommerce title 'Bezoeken aan het Allerheiligste Sacrament' (not a unique catalog match)
+- stub paper_books product_id=9290 from WooCommerce title 'Vreugde alom' (not a unique catalog match)
+- stub paper_books product_id=9321 from WooCommerce title 'De Heilige Rozenkrans' (not a unique catalog match)
+- stub paper_books product_id=9336 from WooCommerce title 'Lessen van de heilige Thérèse' (not a unique catalog match)
+- stub paper_books product_id=9507 from WooCommerce title 'Heiligheid voor losers' (not a unique catalog match)
+- stub paper_books product_id=9509 from WooCommerce title 'Lijdt Christus nu nog?' (not a unique catalog match)
+- stub paper_books product_id=9797 from WooCommerce title 'Heiligheid voor losers' (not a unique catalog match)
+- stub paper_books product_id=9798 from WooCommerce title 'Lijdt Christus nu nog?' (not a unique catalog match)
+- stub paper_books product_id=9799 from WooCommerce title 'Vreugde alom' (not a unique catalog match)
+- stub paper_books product_id=9824 from WooCommerce title 'Bezoeken aan het Allerheiligste Sacrament (e-book)' (not a unique catalog match)
+- stub paper_books product_id=9853 from WooCommerce title 'De grootste troost komt van het gebed (e-book)' (not a unique catalog match)
+- stub paper_books product_id=10481 from WooCommerce title 'Waartoe dient de Mis ?' (not a unique catalog match)
+- stub paper_books product_id=10880 from WooCommerce title 'Waartoe dient de Mis ? (e-book)' (not a unique catalog match)
+- stub paper_books product_id=11618 from WooCommerce title 'Van rede naar Openbaring (e-book)' (not a unique catalog match)
+- stub paper_books product_id=11749 from WooCommerce title 'Donatie' (not a unique catalog match)
+- order woo_id=5039 (invoice 1005039): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5039 (invoice 1005039): skipped — no linkable lines
+- order woo_id=5040 (invoice 1005040): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5040 (invoice 1005040): skipped — no linkable lines
+- order woo_id=5043 (invoice 1005043): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5043 (invoice 1005043): cannot link product_id=0 name='De Heilige Rozenkrans (20 geheimen)'
+- order woo_id=5043 (invoice 1005043): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=5045 (invoice 1005045): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5045 (invoice 1005045): skipped — no linkable lines
+- order woo_id=5054 (invoice 1005054): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5054 (invoice 1005054): skipped — no linkable lines
+- order woo_id=5055 (invoice 1005055): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5055 (invoice 1005055): skipped — no linkable lines
+- order woo_id=5064 (invoice 1005064): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5064 (invoice 1005064): skipped — no linkable lines
+- order woo_id=5079 (invoice 1005079): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5079 (invoice 1005079): skipped — no linkable lines
+- order woo_id=5084 (invoice 1005084): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5085 (invoice 1005085): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5085 (invoice 1005085): skipped — no linkable lines
+- order woo_id=5097 (invoice 1005097): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5097 (invoice 1005097): skipped — no linkable lines
+- order woo_id=5109 (invoice 1005109): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5109 (invoice 1005109): skipped — no linkable lines
+- order woo_id=5271 (invoice 1005271): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5272 (invoice 1005272): cannot link product_id=0 name='Fake news ontmaskerd.'
+- order woo_id=5272 (invoice 1005272): skipped — no linkable lines
+- order woo_id=5373 (invoice 1005373): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=5373 (invoice 1005373): skipped — no linkable lines
+- order woo_id=5392 (invoice 1005392): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=5392 (invoice 1005392): skipped — no linkable lines
+- order woo_id=5406 (invoice 1005406): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=5459 (invoice 1005459): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=5459 (invoice 1005459): skipped — no linkable lines
+- order woo_id=5492 (invoice 1005492): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=5573 (invoice 1005573): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=5573 (invoice 1005573): skipped — no linkable lines
+- order woo_id=5600 (invoice 1005600): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=5721 (invoice 1005721): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=5726 (invoice 1005726): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=5726 (invoice 1005726): skipped — no linkable lines
+- order woo_id=5728 (invoice 1005728): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=5739 (invoice 1005739): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=5739 (invoice 1005739): skipped — no linkable lines
+- order woo_id=6022 (invoice 1006022): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=6032 (invoice 1006032): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6148 (invoice 1006148): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6148 (invoice 1006148): skipped — no linkable lines
+- order woo_id=6248 (invoice 1006248): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6310 (invoice 1006310): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=6310 (invoice 1006310): skipped — no linkable lines
+- order woo_id=6316 (invoice 1006316): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=6316 (invoice 1006316): skipped — no linkable lines
+- order woo_id=6333 (invoice 1006333): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6378 (invoice 1006378): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6407 (invoice 1006407): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=6450 (invoice 1006450): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6459 (invoice 1006459): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=6506 (invoice 1006506): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=6525 (invoice 1006525): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=6525 (invoice 1006525): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=6572 (invoice 1006572): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6572 (invoice 1006572): skipped — no linkable lines
+- order woo_id=6575 (invoice 1006575): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=6577 (invoice 1006577): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=6628 (invoice 1006628): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=6656 (invoice 1006656): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=6669 (invoice 1006669): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=6669 (invoice 1006669): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=6711 (invoice 1006711): cannot link product_id=0 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6711 (invoice 1006711): skipped — no linkable lines
+- order woo_id=6745 (invoice 1006745): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=6745 (invoice 1006745): skipped — no linkable lines
+- order woo_id=6760 (invoice 1006760): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=6778 (invoice 1006778): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6785 (invoice 1006785): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6785 (invoice 1006785): skipped — no linkable lines
+- order woo_id=6813 (invoice 1006813): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6817 (invoice 1006817): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6817 (invoice 1006817): skipped — no linkable lines
+- order woo_id=6872 (invoice 1006872): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=6927 (invoice 1006927): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=6947 (invoice 1006947): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6950 (invoice 1006950): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6952 (invoice 1006952): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=6954 (invoice 1006954): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6954 (invoice 1006954): skipped — no linkable lines
+- order woo_id=6957 (invoice 1006957): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6957 (invoice 1006957): skipped — no linkable lines
+- order woo_id=6958 (invoice 1006958): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6964 (invoice 1006964): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6964 (invoice 1006964): skipped — no linkable lines
+- order woo_id=6965 (invoice 1006965): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6965 (invoice 1006965): skipped — no linkable lines
+- order woo_id=6967 (invoice 1006967): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6967 (invoice 1006967): skipped — no linkable lines
+- order woo_id=6968 (invoice 1006968): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6968 (invoice 1006968): skipped — no linkable lines
+- order woo_id=6974 (invoice 1006974): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6974 (invoice 1006974): cannot link product_id=0 name='De grootsheid van het dagelijkse bestaan'
+- order woo_id=6979 (invoice 1006979): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6992 (invoice 1006992): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=6992 (invoice 1006992): skipped — no linkable lines
+- order woo_id=7034 (invoice 1007034): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7036 (invoice 1007036): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7036 (invoice 1007036): skipped — no linkable lines
+- order woo_id=7039 (invoice 1007039): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7040 (invoice 1007040): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7040 (invoice 1007040): skipped — no linkable lines
+- order woo_id=7046 (invoice 1007046): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7046 (invoice 1007046): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7050 (invoice 1007050): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7057 (invoice 1007057): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7057 (invoice 1007057): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=7058 (invoice 1007058): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7058 (invoice 1007058): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=7090 (invoice 1007090): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7093 (invoice 1007093): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7111 (invoice 1007111): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7130 (invoice 1007130): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7130 (invoice 1007130): skipped — no linkable lines
+- order woo_id=7134 (invoice 1007134): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=7136 (invoice 1007136): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7136 (invoice 1007136): skipped — no linkable lines
+- order woo_id=7150 (invoice 1007150): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7159 (invoice 1007159): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7159 (invoice 1007159): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=7159 (invoice 1007159): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=7174 (invoice 1007174): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7174 (invoice 1007174): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7175 (invoice 1007175): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7189 (invoice 1007189): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7230 (invoice 1007230): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7230 (invoice 1007230): skipped — no linkable lines
+- order woo_id=7234 (invoice 1007234): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7254 (invoice 1007254): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=7371 (invoice 1007371): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7403 (invoice 1007403): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7410 (invoice 1007410): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7417 (invoice 1007417): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7417 (invoice 1007417): skipped — no linkable lines
+- order woo_id=7435 (invoice 1007435): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7511 (invoice 1007511): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7511 (invoice 1007511): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=7514 (invoice 1007514): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7514 (invoice 1007514): skipped — no linkable lines
+- order woo_id=7525 (invoice 1007525): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7543 (invoice 1007543): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=7543 (invoice 1007543): skipped — no linkable lines
+- order woo_id=7544 (invoice 1007544): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7552 (invoice 1007552): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7562 (invoice 1007562): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7568 (invoice 1007568): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7612 (invoice 1007612): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7612 (invoice 1007612): skipped — no linkable lines
+- order woo_id=7649 (invoice 1007649): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=7657 (invoice 1007657): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7728 (invoice 1007728): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7733 (invoice 1007733): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7739 (invoice 1007739): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7739 (invoice 1007739): skipped — no linkable lines
+- order woo_id=7741 (invoice 1007741): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7747 (invoice 1007747): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7747 (invoice 1007747): skipped — no linkable lines
+- order woo_id=7801 (invoice 1007801): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7804 (invoice 1007804): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7810 (invoice 1007810): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=7811 (invoice 1007811): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=7816 (invoice 1007816): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7817 (invoice 1007817): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7821 (invoice 1007821): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7822 (invoice 1007822): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7835 (invoice 1007835): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=7882 (invoice 1007882): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7884 (invoice 1007884): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7889 (invoice 1007889): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=7889 (invoice 1007889): skipped — no linkable lines
+- order woo_id=7892 (invoice 1007892): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7892 (invoice 1007892): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=7897 (invoice 1007897): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=7914 (invoice 1007914): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7914 (invoice 1007914): skipped — no linkable lines
+- order woo_id=7927 (invoice 1007927): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=7927 (invoice 1007927): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7927 (invoice 1007927): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=7927 (invoice 1007927): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=7962 (invoice 1007962): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=7979 (invoice 1007979): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=8001 (invoice 1008001): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=8025 (invoice 1008025): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8033 (invoice 1008033): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8054 (invoice 1008054): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8070 (invoice 1008070): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=8072 (invoice 1008072): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8148 (invoice 1008148): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=8149 (invoice 1008149): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=8149 (invoice 1008149): skipped — no linkable lines
+- order woo_id=8153 (invoice 1008153): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=8153 (invoice 1008153): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=8160 (invoice 1008160): cannot link product_id=1956 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=8190 (invoice 1008190): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8190 (invoice 1008190): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=8204 (invoice 1008204): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=8204 (invoice 1008204): skipped — no linkable lines
+- order woo_id=8244 (invoice 1008244): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=8255 (invoice 1008255): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8255 (invoice 1008255): skipped — no linkable lines
+- order woo_id=8362 (invoice 1008362): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=8362 (invoice 1008362): skipped — no linkable lines
+- order woo_id=8374 (invoice 1008374): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=8374 (invoice 1008374): skipped — no linkable lines
+- order woo_id=8409 (invoice 1008409): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=8409 (invoice 1008409): skipped — no linkable lines
+- order woo_id=8432 (invoice 1008432): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=8459 (invoice 1008459): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8461 (invoice 1008461): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=8461 (invoice 1008461): skipped — no linkable lines
+- order woo_id=8466 (invoice 1008466): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=8494 (invoice 1008494): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8494 (invoice 1008494): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=8498 (invoice 1008498): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8505 (invoice 1008505): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8505 (invoice 1008505): skipped — no linkable lines
+- order woo_id=8523 (invoice 1008523): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8534 (invoice 1008534): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=8552 (invoice 1008552): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8601 (invoice 1008601): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8613 (invoice 1008613): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8613 (invoice 1008613): skipped — no linkable lines
+- order woo_id=8632 (invoice 1008632): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8683 (invoice 1008683): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=8715 (invoice 1008715): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=8753 (invoice 1008753): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8758 (invoice 1008758): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8760 (invoice 1008760): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=8786 (invoice 1008786): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8800 (invoice 1008800): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8802 (invoice 1008802): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=8802 (invoice 1008802): skipped — no linkable lines
+- order woo_id=8805 (invoice 1008805): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8806 (invoice 1008806): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8806 (invoice 1008806): skipped — no linkable lines
+- order woo_id=8826 (invoice 1008826): cannot link product_id=0 name='Leo Allah mahabba'
+- order woo_id=8826 (invoice 1008826): skipped — no linkable lines
+- order woo_id=8836 (invoice 1008836): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8841 (invoice 1008841): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8848 (invoice 1008848): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8876 (invoice 1008876): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=8876 (invoice 1008876): skipped — no linkable lines
+- order woo_id=8884 (invoice 1008884): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=8892 (invoice 1008892): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8912 (invoice 1008912): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8913 (invoice 1008913): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8914 (invoice 1008914): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=8945 (invoice 1008945): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=8967 (invoice 1008967): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=8967 (invoice 1008967): skipped — no linkable lines
+- order woo_id=8972 (invoice 1008972): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=8972 (invoice 1008972): skipped — no linkable lines
+- order woo_id=8987 (invoice 1008987): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=8987 (invoice 1008987): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8994 (invoice 1008994): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=8996 (invoice 1008996): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=9005 (invoice 1009005): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=9005 (invoice 1009005): skipped — no linkable lines
+- order woo_id=9026 (invoice 1009026): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=9026 (invoice 1009026): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=9029 (invoice 1009029): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=9038 (invoice 1009038): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=9068 (invoice 1009068): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=9071 (invoice 1009071): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=9071 (invoice 1009071): skipped — no linkable lines
+- order woo_id=9101 (invoice 1009101): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=9118 (invoice 1009118): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=9127 (invoice 1009127): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=9146 (invoice 1009146): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=9155 (invoice 1009155): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=9155 (invoice 1009155): skipped — no linkable lines
+- order woo_id=9161 (invoice 1009161): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=9189 (invoice 1009189): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=9191 (invoice 1009191): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=9206 (invoice 1009206): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=9207 (invoice 1009207): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=9207 (invoice 1009207): skipped — no linkable lines
+- order woo_id=9251 (invoice 1009251): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=9251 (invoice 1009251): skipped — no linkable lines
+- order woo_id=9283 (invoice 1009283): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=9283 (invoice 1009283): skipped — no linkable lines
+- order woo_id=9330 (invoice 1009330): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=9345 (invoice 1009345): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=9345 (invoice 1009345): skipped — no linkable lines
+- order woo_id=9367 (invoice 1009367): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=9377 (invoice 1009377): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=9399 (invoice 1009399): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=9399 (invoice 1009399): skipped — no linkable lines
+- order woo_id=9443 (invoice 1009443): cannot link product_id=0 name='De Heilige Rozenkrans'
+- order woo_id=9445 (invoice 1009445): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=9463 (invoice 1009463): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=9468 (invoice 1009468): cannot link product_id=0 name='Hoe bidden wij goed'
+- order woo_id=9478 (invoice 1009478): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=9482 (invoice 1009482): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=9515 (invoice 1009515): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=9563 (invoice 1009563): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=9587 (invoice 1009587): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=9587 (invoice 1009587): skipped — no linkable lines
+- order woo_id=9588 (invoice 1009588): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=9595 (invoice 1009595): cannot link product_id=0 name='De kunst van vallen en opstaan'
+- order woo_id=9600 (invoice 1009600): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=9623 (invoice 1009623): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=9688 (invoice 1009688): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=9757 (invoice 1009757): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=9757 (invoice 1009757): skipped — no linkable lines
+- order woo_id=9791 (invoice 1009791): cannot link product_id=0 name='Gebeden tot de Heilige Geest'
+- order woo_id=10203 (invoice 1010203): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=10357 (invoice 1010357): cannot link product_id=1956 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=10648 (invoice 1010648): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=10672 (invoice 1010672): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=10674 (invoice 1010674): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=10681 (invoice 1010681): cannot link product_id=1956 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=10684 (invoice 1010684): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=10684 (invoice 1010684): skipped — no linkable lines
+- order woo_id=10707 (invoice 1010707): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom (e-book)'
+- order woo_id=10748 (invoice 1010748): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=10772 (invoice 1010772): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=10784 (invoice 1010784): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=10806 (invoice 1010806): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=10808 (invoice 1010808): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=10820 (invoice 1010820): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=10832 (invoice 1010832): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=11121 (invoice 1011121): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=11188 (invoice 1011188): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=11190 (invoice 1011190): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=11349 (invoice 1011349): cannot link product_id=6754 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom'
+- order woo_id=11484 (invoice 1011484): cannot link product_id=6756 name='Fake news ontmaskerd. De verborgen geschiedenis van het christendom (e-book)'
+- order woo_id=11836 (invoice 1011836): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=11836 (invoice 1011836): skipped — no linkable lines
+- order woo_id=12013 (invoice 1012013): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=12071 (invoice 1012071): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+- order woo_id=12071 (invoice 1012071): skipped — no linkable lines
+- order woo_id=12133 (invoice 1012133): cannot link product_id=1025 name='Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw'
+- order woo_id=12177 (invoice 1012177): cannot link product_id=592 name='Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)'
+
+
+

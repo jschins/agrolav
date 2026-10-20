@@ -497,16 +497,16 @@ def require_person(person_name: str) -> None:
     )
 
 
-def person_statement_details_allowed(person_name: str) -> bool:
-    """Center/country may open statements only when ``dbo.person.details`` is true."""
+def person_statement_visibility_allowed(person_name: str) -> bool:
+    """Center/country may open statements only when ``dbo.person.visibility`` is true."""
     needle = str(person_name or "").strip().lower()
     if not needle:
         return False
     try:
-        payload = hub_get("/people-details")
+        payload = hub_get("/people-visibility")
     except Exception:  # noqa: BLE001
         return False
-    flags = payload.get("details") if isinstance(payload, dict) else None
+    flags = payload.get("visibility") if isinstance(payload, dict) else None
     if not isinstance(flags, dict):
         return False
     for name, allowed in flags.items():
@@ -515,10 +515,10 @@ def person_statement_details_allowed(person_name: str) -> bool:
     return False
 
 
-def center_expenses_allowed() -> bool:
-    """Country may see this center's expenses per ``dbo.center.details`` / fiat."""
+def center_visibility_allowed() -> bool:
+    """Country may drill category amounts when ``dbo.center.visibility`` is true."""
     try:
-        payload = hub_get("/center-expenses")
+        payload = hub_get("/center-visibility")
     except Exception:  # noqa: BLE001
         return False
     if not isinstance(payload, dict):
@@ -527,20 +527,19 @@ def center_expenses_allowed() -> bool:
 
 
 def require_statement_details(person_name: str) -> None:
-    """Person/unit always; center/country only when the person opts into details.
+    """Person/unit always; center/country when the person opts into visibility.
 
-    Country also needs the active center's expenses to be visible
-    (``dbo.center.details`` 0/1/2 and fiat vs download date).
+    Country also needs ``dbo.center.visibility`` true for the active center.
     """
     require_person(person_name)
     cfg = load_config()
     if cfg.access in (ACCESS_PERSON, ACCESS_UNIT):
         return
-    if cfg.access == ACCESS_COUNTRY and not center_expenses_allowed():
+    if cfg.access == ACCESS_COUNTRY and not center_visibility_allowed():
         raise PermissionError(
             f"Expenses for center {cfg.center!r} are not visible to country login."
         )
-    if person_statement_details_allowed(person_name):
+    if person_statement_visibility_allowed(person_name):
         return
     raise PermissionError(
         f"Statement details for {person_name!r} are only visible to that person."
@@ -646,19 +645,27 @@ def _filter_visible_settings(payload: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _blank_country_center_expenses(payload: dict[str, Any]) -> dict[str, Any]:
-    """Hide booking amounts when country may not see this center's expenses."""
+def _apply_country_center_visibility(payload: dict[str, Any]) -> dict[str, Any]:
+    """Country matrix: blank category totals when ``dbo.center.visibility`` is off.
+
+    Footer rows (bank saldo / datum) stay. When visibility is on, amounts stay
+    so the UI can underline or grey per ``people[].visibility``.
+    """
     cfg = load_config()
     if cfg.access != ACCESS_COUNTRY:
         return payload
-    meta = payload.get("center_expenses") if isinstance(payload.get("center_expenses"), dict) else None
+    meta = (
+        payload.get("center_visibility")
+        if isinstance(payload.get("center_visibility"), dict)
+        else None
+    )
     if meta is None:
         try:
-            meta = hub_get("/center-expenses")
+            meta = hub_get("/center-visibility")
         except Exception:  # noqa: BLE001
-            meta = {"visible": False}
+            meta = {"visibility": None, "visible": False}
         if isinstance(meta, dict):
-            payload = {**payload, "center_expenses": meta}
+            payload = {**payload, "center_visibility": meta}
     if isinstance(meta, dict) and meta.get("visible"):
         return payload
     out = dict(payload)
@@ -683,8 +690,7 @@ def _blank_country_center_expenses(payload: dict[str, Any]) -> dict[str, Any]:
     used = out.get("used")
     if isinstance(used, dict):
         out["used"] = {
-            cat: ([] if str(cat) not in keep else persons)
-            for cat, persons in used.items()
+            cat: ([] if str(cat) not in keep else persons) for cat, persons in used.items()
         }
     out["entries"] = []
     return out
@@ -695,10 +701,9 @@ def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
 
     Person login also drops activa/passiva rows (local_code 1000–2999) so both
     matrix views show profit-and-loss categories plus the saldo/datum footers.
-    Country login blanks booking amounts when the active center's expenses are
-    not visible (``dbo.center.details`` / fiat_date).
+    Country login blanks category totals when the center is not visible.
     """
-    payload = _blank_country_center_expenses(payload if isinstance(payload, dict) else {})
+    payload = _apply_country_center_visibility(payload if isinstance(payload, dict) else {})
     scope = configured_person()
     if not scope:
         return payload

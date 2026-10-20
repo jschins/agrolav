@@ -52,3 +52,4 @@ maaltijden/frontend/node_modules/
 maaltijden/frontend/**/*.tsbuildinfo
 maaltijden/frontend/vite.config.js
 maaltijden/frontend/vite.config.d.ts
+

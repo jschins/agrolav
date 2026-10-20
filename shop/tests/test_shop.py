@@ -278,7 +278,7 @@ class ShopFlowTests(unittest.TestCase):
                 self.assertEqual(order.invoice_id, int(order.invoice_number.split("-", 1)[1]))
                 self.assertRegex(order_number(order.invoice_id), r"^DB-\d+$")
                 self.assertRegex(order.token, r"^[0-9a-f]{32}$")
-                self.assertRegex(order.invoice_number, r"^BDF-\d+$")
+                self.assertRegex(order.invoice_number, r"^DBF-\d+$")
                 self.assertEqual(order.status, "invoiced")
                 self.assertEqual(order.debtor_name, "Parochie Voorbeeld")
                 self.assertEqual(len(order.items), 1)

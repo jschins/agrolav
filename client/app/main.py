@@ -998,9 +998,20 @@ def api_matrix(
         raise _hub_error(exc) from exc
 
 
-@app.post("/api/fiat-approval")
-def api_fiat_approval() -> dict[str, Any]:
-    """Center login stamps ``dbo.center.fiat_date`` (Goedkeuring)."""
+@app.get("/api/center-visibility")
+def api_get_center_visibility() -> dict[str, Any]:
+    """Read ``dbo.center.visibility`` for the active center."""
+    from app.centrale_sync import hub_get
+
+    try:
+        return hub_get("/center-visibility")
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
+@app.post("/api/center-visibility")
+def api_set_center_visibility(body: dict[str, Any]) -> dict[str, Any]:
+    """Center login sets ``dbo.center.visibility`` (Zichtbaarheid)."""
     from app.centrale_sync import hub_post, load_config
     from shared.user_access import ACCESS_CENTER
 
@@ -1008,10 +1019,10 @@ def api_fiat_approval() -> dict[str, Any]:
     if cfg.access != ACCESS_CENTER:
         raise HTTPException(
             status_code=403,
-            detail="Only a center login can give approval.",
+            detail="Only a center login can change visibility.",
         )
     try:
-        return hub_post("/fiat-approval", {})
+        return hub_post("/center-visibility", {"visibility": bool(body.get("visibility"))})
     except Exception as exc:
         raise _hub_error(exc) from exc
 

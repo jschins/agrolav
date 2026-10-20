@@ -259,13 +259,18 @@ export function getExportResultaat(year?: string, account?: string): Promise<Exp
   return getJson(`/api/export-resultaat${text ? `?${text}` : ""}`);
 }
 
-export function fiatApproval(): Promise<{
-  details: number;
-  fiat_date: string | null;
-  download_date: string | null;
+export function getCenterVisibility(): Promise<{
+  visibility: boolean | null;
   visible: boolean;
 }> {
-  return sendJson("/api/fiat-approval", "POST", {});
+  return getJson("/api/center-visibility");
+}
+
+export function setCenterVisibility(visibility: boolean): Promise<{
+  visibility: boolean | null;
+  visible: boolean;
+}> {
+  return sendJson("/api/center-visibility", "POST", { visibility });
 }
 
 export function recalculate(): Promise<MatrixResponse> {

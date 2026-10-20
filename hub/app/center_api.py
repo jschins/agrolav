@@ -880,6 +880,7 @@ def create_person(
     aspsp: str = "ING",
     initial_balance: str | None = None,
     account_number: str | None = None,
+    visibility: bool = False,
 ) -> dict[str, Any]:
     """Create a person in SQL Server (agrolav-sql)."""
     person_name = _valid_person_name(person)
@@ -899,6 +900,7 @@ def create_person(
     aspsp_s = (aspsp or "ING").strip()
     if not aspsp_s:
         raise ValueError("aspsp is required")
+    visibility_flag = bool(visibility)
 
     with _center_scope(center) as ws:
         from app import user_store
@@ -917,6 +919,7 @@ def create_person(
                     person=person_name,
                     country=country_name,
                     title=display_name,
+                    visibility=visibility_flag,
                 )
                 user_store.set_user_format(username=person_name, format=aspsp_s)
                 return {
@@ -924,6 +927,7 @@ def create_person(
                     "center": ws,
                     "person": person_name,
                     "mode": "periodic-consent",
+                    "visibility": visibility_flag,
                     "login": login,
                     "enable_banking_url": "https://enablebanking.com/cp/applications",
                 }
@@ -936,6 +940,7 @@ def create_person(
                     account_name=holder,
                     account_number=account_no,
                     initial_balance=initial_balance or "0",
+                    visibility=visibility_flag,
                 )
                 store.announce_mutation(ws, [f"{person_name}/"], source="central")
                 return {
@@ -943,6 +948,7 @@ def create_person(
                     "center": ws,
                     "person": person_name,
                     "mode": "manual-upload",
+                    "visibility": visibility_flag,
                     "account_name": created.get("account_name"),
                     "account_number": created.get("account_number"),
                     "initial_balance": created.get("initial_balance"),

@@ -166,12 +166,12 @@ def _take_stock(conn, slug: str, copies: int) -> None:
 
 
 def invoice_number(invoice_id: int) -> str:
-    """The invoice's public number, derived from its id: BDF-{id}."""
-    return f"BDF-{int(invoice_id)}"
+    """The invoice's public number, derived from its id: DBF-{id}."""
+    return f"DBF-{int(invoice_id)}"
 
 
 def _invoice_id(number: str) -> int | None:
-    match = re.fullmatch(r"BDF-(\d+)", str(number or "").strip())
+    match = re.fullmatch(r"DBF-(\d+)", str(number or "").strip())
     return int(match.group(1)) if match else None
 
 

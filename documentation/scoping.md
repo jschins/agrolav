@@ -114,6 +114,41 @@ so the standalone sheet filters too.
 <!-- {en:category[5],visibility[5],dim_category,rank} -->
 <!-- {nl:categorie[5],zichtbaarheid[5],dim_category,rang} -->
 
+## Visibility (country vs center expenses)
+
+Two SQL flags decide what a **country** login sees on the matrix for the
+active center. They do not change person, unit, or center logins.
+
+| Flag | Table | Meaning for country login |
+| --- | --- | --- |
+| `visibility` | `dbo.center` | Whether category totals of that center are shown at all |
+| `visibility` | `dbo.person` | Whether that person’s category totals may be opened |
+
+### `dbo.center.visibility = True`
+
+The country login sees every category total for people in that center.
+
+- **`dbo.person.visibility = True`:** those amounts are black and underlined,
+  and a click opens the banking statements (drill-through).
+- **`dbo.person.visibility` is False or NULL:** those amounts stay visible but
+  grey, not underlined, and not clickable.
+
+### `dbo.center.visibility` is False or NULL
+
+The country login does **not** see category totals. Only the bank-balance
+footer rows (saldo / datum) remain. Drill-through into statements is
+refused.
+
+Center operators set `dbo.center.visibility` from the **Visibility** /
+**Zichtbaarheid** menu (checkbox). Person `visibility` is set when the
+person is created (and may be changed in SQL). The hub puts both flags on
+the matrix payload (`center_visibility`, `people[].visibility`). The
+client BFF blanks category cells when the center is not visible, and
+enforces the same rules on statement requests.
+
+<!-- {en:visibility[5],center[5],country[5],person} -->
+<!-- {nl:zichtbaarheid[5],centrum[5],land[5],persoon} -->
+
 ## Center rows in the term lists
 
 The red center row is unchanged. In the right-click P-column dropdown,
@@ -139,6 +174,7 @@ right-click, and a center-wide write from a unit login is refused.
 | Settings and matrix payload maps | `hub/app/sql_catalog.py`, `hub/app/matrix.py`, `hub/app/center_api.py` |
 | HD flag on the unit login | `hub/app/user_store.py`, `client/app/auth.py` |
 | Filter matrix, settings, booking codes | `client/app/centrale_sync.py` |
+| Center visibility + person visibility for country | `hub/app/sql_catalog.py`, `client/app/centrale_sync.py`, `client/frontend/src/App.tsx` |
 | Refuse G-term and foreign-account P-term writes | `client/app/main.py` |
 | Grey G-terms; red center rows | `client/frontend/src/App.tsx`, `client/frontend/src/index.css` |
 | Result sheet and balance / opening sheets | `balance/app/result.py`, `balance/app/balance.py`, `balance/app/result_main.py`, `balance/app/main.py` |

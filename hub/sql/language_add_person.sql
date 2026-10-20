@@ -7,11 +7,21 @@
 USE agrolav;
 GO
 
+-- Rename old add-person label if still present.
+UPDATE dbo.language
+SET term_lang1 = N'Visible to Secretary',
+    term_lang2 = N'Zichtbaar voor secretaris'
+WHERE term_lang1 = N'Details visible to Secretary'
+   OR term_lang2 = N'Details zichtbaar voor secretaris';
+GO
+
 INSERT INTO dbo.language (term_lang1, term_lang2)
 SELECT v.term_lang1, v.term_lang2
 FROM (VALUES
     (N'Name', N'Naam'),
-    (N'Username', N'Gebruikersnaam')
+    (N'Username', N'Gebruikersnaam'),
+    (N'Visible to Secretary', N'Zichtbaar voor secretaris'),
+    (N'Create', N'Aanmaken')
 ) AS v(term_lang1, term_lang2)
 WHERE NOT EXISTS (
     SELECT 1

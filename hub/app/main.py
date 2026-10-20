@@ -1359,6 +1359,7 @@ class CreatePersonRequest(BaseModel):
     aspsp: str = "ING"
     initial_balance: str | None = None
     account_number: str | None = None
+    visibility: bool = False
 
 
 class BootstrapFetchRequest(BaseModel):
@@ -1447,38 +1448,43 @@ def api_matrix(
         ) from exc
 
 
-@app.get("/api/local/{center}/people-details")
-def api_people_details(
+@app.get("/api/local/{center}/people-visibility")
+def api_people_visibility(
     center: str,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     """Which persons expose statement lines to center/country logins."""
-    from app.sql_catalog import person_details_flags
+    from app.sql_catalog import person_visibility_flags
 
-    return {"details": person_details_flags(center)}
+    return {"visibility": person_visibility_flags(center)}
 
 
-@app.get("/api/local/{center}/center-expenses")
-def api_center_expenses(
+@app.get("/api/local/{center}/center-visibility")
+def api_center_visibility(
     center: str,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    """Country visibility of this center's expenses (``dbo.center.details`` / fiat)."""
-    from app.sql_catalog import center_expense_meta
+    """Country visibility of this center (``dbo.center.visibility``)."""
+    from app.sql_catalog import center_visibility_meta
 
-    return center_expense_meta(center)
+    return center_visibility_meta(center)
 
 
-@app.post("/api/local/{center}/fiat-approval")
-def api_fiat_approval(
+class CenterVisibilityBody(BaseModel):
+    visibility: bool
+
+
+@app.post("/api/local/{center}/center-visibility")
+def api_set_center_visibility(
     center: str,
+    body: CenterVisibilityBody,
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    """Stamp ``dbo.center.fiat_date`` to today (center Goedkeuring)."""
-    from app.sql_catalog import stamp_center_fiat_date
+    """Set ``dbo.center.visibility`` (center Zichtbaarheid menu)."""
+    from app.sql_catalog import set_center_visibility
 
     try:
-        return stamp_center_fiat_date(center)
+        return set_center_visibility(center, bool(body.visibility))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -2132,6 +2138,7 @@ def api_create_person(
             aspsp=body.aspsp,
             initial_balance=body.initial_balance,
             account_number=body.account_number,
+            visibility=body.visibility,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -2413,7 +2420,7 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Add person — hub</title>
+  <title>__LABEL_ADD_PERSON__ — hub</title>
   <style>
     :root { font-family: Georgia, "Times New Roman", serif; color: #1a1a1a; }
     body { margin: 0; min-height: 100vh; display: grid; place-items: center;
@@ -2465,7 +2472,7 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
 </head>
 <body>
   <main>
-    <h1>Add person</h1>
+    <h1>__LABEL_ADD_PERSON__</h1>
 
     <label>Center
       <select id="center"></select>
@@ -2474,6 +2481,12 @@ _ADD_PERSON_HTML = """<!DOCTYPE html>
       <select id="mode">
         <option value="periodic-consent" selected>periodic consent</option>
         <option value="manual-upload">manual upload</option>
+      </select>
+    </label>
+    <label style="display:block;margin-top:0.5rem">__LABEL_VISIBILITY__
+      <select id="visibility">
+        <option value="false" selected>False</option>
+        <option value="true">True</option>
       </select>
     </label>
 
@@ -2498,7 +2511,7 @@ Privacy policy URL:      https://deoudegracht.nl/privacy.html
 Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
       </div>
       <div class="actions">
-        <button type="button" id="btnCreate">Create person</button>
+        <button type="button" id="btnCreate">__LABEL_CREATE__</button>
       </div>
     </div>
 
@@ -2628,6 +2641,7 @@ Terms of service URL:  https://deoudegracht.nl/terms.html</pre>
         person,
         mode: modeValue,
         title: document.getElementById("displayName").value.trim(),
+        visibility: document.getElementById("visibility").value === "true",
       };
       if (modeValue === "manual-upload") {
         body.account_name = document.getElementById("accountHolder").value.trim();
@@ -2703,8 +2717,11 @@ def _add_person_labels(center: str | None) -> dict[str, str]:
     """Labels for the add-person form, from the center's country language."""
     from html import escape
 
+    heading = "Add person"
     name = "Name"
     username = "Username"
+    visibility = "Visible to Secretary"
+    create = "Create"
     hint = "Username may contain only letters, digits, underscores and hyphens"
     center_name = (center or "").strip()
     if center_name:
@@ -2716,14 +2733,24 @@ def _add_person_labels(center: str | None) -> dict[str, str]:
                 payload = categories_payload(country)
                 headers = payload.get("table_header_terms") or {}
                 longs = payload.get("language_long") or {}
+                heading = str(headers.get("Add person") or heading)
                 name = str(headers.get("Name") or name)
                 username = str(headers.get("Username") or username)
+                visibility = str(
+                    headers.get("Visible to Secretary")
+                    or headers.get("Details visible to Secretary")
+                    or visibility
+                )
+                create = str(headers.get("Create") or create)
                 hint = str(longs.get("Username characters") or hint)
         except Exception:  # noqa: BLE001
             pass
     return {
+        "heading": escape(heading),
         "name": escape(name),
         "username": escape(username),
+        "visibility": escape(visibility),
+        "create": escape(create),
         "hint": escape(hint),
     }
 
@@ -2736,8 +2763,11 @@ def add_person_page(center: str | None = Query(default=None)) -> str:
     return (
         _ADD_PERSON_HTML.replace("__CLIENT_RETURN_URL__", client_return_url())
         .replace("__REDIRECT_URL__", default_redirect_url())
+        .replace("__LABEL_ADD_PERSON__", labels["heading"])
         .replace("__LABEL_NAME__", labels["name"])
         .replace("__LABEL_USERNAME__", labels["username"])
+        .replace("__LABEL_VISIBILITY__", labels["visibility"])
+        .replace("__LABEL_CREATE__", labels["create"])
         .replace("__USERNAME_HINT__", labels["hint"])
     )
 

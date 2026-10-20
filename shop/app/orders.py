@@ -64,7 +64,7 @@ class Order:
 
     @property
     def invoice_number(self) -> str:
-        return f"BDF-{self.invoice_id}"
+        return f"DBF-{self.invoice_id}"
 
 
 def _webshop_url() -> str:

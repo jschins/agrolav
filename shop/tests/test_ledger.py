@@ -75,7 +75,7 @@ class LedgerTests(unittest.TestCase):
         ), patch("app.ledger.run") as run:
             apply_allocations(
                 conn,
-                [Allocation(1, "BDF-100000", 1000, "2026-10-18")],
+                [Allocation(1, "DBF-100000", 1000, "2026-10-18")],
                 mark_bookings=True,
             )
 
@@ -89,7 +89,7 @@ class LedgerTests(unittest.TestCase):
 
     def test_mollie_payment_stores_the_provider_payment_date(self) -> None:
         conn = Mock()
-        invoice = _invoice("BDF-100000", 1000)
+        invoice = _invoice("DBF-100000", 1000)
         with patch("app.ledger._take_stock"), patch("app.ledger.run") as run:
             result = apply_payment(
                 conn,
@@ -139,7 +139,7 @@ class LedgerTests(unittest.TestCase):
         conn.commit.assert_called_once()
 
     def test_invoice_email_contains_the_pdf_attachment_and_payment_details(self) -> None:
-        invoice = _invoice("BDF-100000", 1000)
+        invoice = _invoice("DBF-100000", 1000)
         with patch("app.reminders._deliver") as deliver:
             send_invoice("shop@example.com", invoice, b"%PDF-test", "NL00TEST")
 

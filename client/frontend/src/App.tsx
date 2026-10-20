@@ -50,7 +50,8 @@ import {
   pendingTermChanges,
   crossPostings,
   calculateOpeningBalance,
-  fiatApproval,
+  getCenterVisibility,
+  setCenterVisibility,
   wipeYear,
   smallExpenses,
   recordModification,
@@ -878,17 +879,17 @@ function personHasTransactions(matrix: MatrixResponse, category: string, person:
   return amountHasValue(matrix.cells[category]?.[person] ?? "");
 }
 
-function personDetailsOpen(matrix: MatrixResponse, person: string): boolean {
+function personVisibilityOpen(matrix: MatrixResponse, person: string): boolean {
   const row = matrix.people.find((p) => p.person_name === person);
-  return Boolean(row?.details);
+  return Boolean(row?.visibility);
 }
 
-function centerExpensesVisible(matrix: MatrixResponse): boolean {
-  return Boolean(matrix.center_expenses?.visible);
+function centerVisibilityOn(matrix: MatrixResponse): boolean {
+  return Boolean(matrix.center_visibility?.visible);
 }
 
-/** Person/unit may open any live cell; center/country only when person.details is true.
- * Country also needs the active center's expenses to be visible. */
+/** Person/unit: any live cell. Center/country: person.visibility.
+ * Country also needs center.visibility. */
 function cellOpensStatements(
   matrix: MatrixResponse,
   category: string,
@@ -899,8 +900,8 @@ function cellOpensStatements(
   if (!personHasTransactions(matrix, category, person)) return false;
   const mode = (access || "").trim().toLowerCase();
   if (mode === "personal" || mode === "unit") return true;
-  if (mode === "country" && !centerExpensesVisible(matrix)) return false;
-  return personDetailsOpen(matrix, person);
+  if (mode === "country" && !centerVisibilityOn(matrix)) return false;
+  return personVisibilityOpen(matrix, person);
 }
 
 function categoryHasTransactions(
@@ -1751,8 +1752,9 @@ function SyncNotifyShell({
   const [headerActions, setHeaderActions] = useState<HeaderAction[]>([]);
   const [scratchBusy, setScratchBusy] = useState(false);
   const [scratchError, setScratchError] = useState<string | null>(null);
-  const [approvalFlash, setApprovalFlash] = useState<string | null>(null);
-  const approvalFlashTimer = useRef<number | null>(null);
+  const [visibilityOpen, setVisibilityOpen] = useState(false);
+  const [visibilityChecked, setVisibilityChecked] = useState(false);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
   const [wipeBusy, setWipeBusy] = useState(false);
   const [crossBusy, setCrossBusy] = useState(false);
   const [openingBusy, setOpeningBusy] = useState(false);
@@ -2278,22 +2280,16 @@ function SyncNotifyShell({
     });
     if (access === "local") {
       items.push({
-        id: "approval",
-        label: tableHeaderTerm(menuTerms, "Approval"),
-        disabled: scratchBusy || wipeBusy || crossBusy,
+        id: "visibility",
+        label: tableHeaderTerm(menuTerms, "Visibility"),
+        disabled: scratchBusy || wipeBusy || crossBusy || visibilityBusy,
         onClick: () => {
-          if (scratchBusy || wipeBusy || crossBusy) return;
+          if (scratchBusy || wipeBusy || crossBusy || visibilityBusy) return;
           setScratchError(null);
-          fiatApproval()
-            .then(() => {
-              if (approvalFlashTimer.current != null) {
-                window.clearTimeout(approvalFlashTimer.current);
-              }
-              setApprovalFlash(tableHeaderTerm(menuTerms, "Approval given"));
-              approvalFlashTimer.current = window.setTimeout(() => {
-                setApprovalFlash(null);
-                approvalFlashTimer.current = null;
-              }, 1000);
+          getCenterVisibility()
+            .then((meta) => {
+              setVisibilityChecked(meta.visibility === true);
+              setVisibilityOpen(true);
             })
             .catch((e: Error) => setScratchError(e.message));
         },
@@ -2392,7 +2388,7 @@ function SyncNotifyShell({
         menuItemAllowed(item.id, access, status?.menu_items, status?.administrator)
       )
     );
-  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, openingBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.result_url, status?.menu_items, status?.administrator, menuTerms]);
+  }, [headerActions, uploadUrl, access, scratchBusy, wipeBusy, crossBusy, openingBusy, visibilityBusy, requestLogout, activeYear, bankView, termsView, categoriesView, ipView, splitView, passwordView, journalView, afschrijvingenView, searchView, status?.balance_url, status?.result_url, status?.menu_items, status?.administrator, menuTerms]);
 
   function runMenuItem(item: HeaderAction) {
     item.onClick?.();
@@ -2518,9 +2514,46 @@ function SyncNotifyShell({
           </div>
         </div>
       )}
-      {approvalFlash ? (
-        <div className="approval-flash-overlay" role="status" aria-live="polite">
-          <div className="approval-flash-dialog">{approvalFlash}</div>
+      {visibilityOpen ? (
+        <div className="central-wins-overlay" role="dialog" aria-modal="true">
+          <div className="central-wins-dialog">
+            <label className="visibility-check-label">
+              <input
+                type="checkbox"
+                checked={visibilityChecked}
+                disabled={visibilityBusy}
+                onChange={(e) => setVisibilityChecked(e.target.checked)}
+              />
+              {tableHeaderTerm(menuTerms, "Check for visibility") || "Aanvinken voor zichtbaarheid"}
+            </label>
+            <div className="visibility-check-actions">
+              <button
+                type="button"
+                className="central-wins-ok"
+                disabled={visibilityBusy}
+                onClick={() => {
+                  setVisibilityBusy(true);
+                  setCenterVisibility(visibilityChecked)
+                    .then(() => {
+                      setVisibilityOpen(false);
+                      onCenterChanged?.();
+                    })
+                    .catch((e: Error) => setScratchError(e.message))
+                    .finally(() => setVisibilityBusy(false));
+                }}
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                className="central-wins-ok"
+                disabled={visibilityBusy}
+                onClick={() => setVisibilityOpen(false)}
+              >
+                {tableHeaderTerm(menuTerms, "Cancel") || "Cancel"}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
       {children(brandName, activeYear, bankView, dataRev, banksState, bankOptions, menuTerms)}
@@ -5354,8 +5387,13 @@ function MatrixTable({
     omitEmpty
   );
   const terms = matrix.table_header_terms;
+  const mode = (access || "").trim().toLowerCase();
+  const countryVisible = mode === "country" && centerVisibilityOn(matrix);
+  const countryOpaque = mode === "country" && !centerVisibilityOn(matrix);
   return (
-    <table className="totals-table matrix-table">
+    <table
+      className={`totals-table matrix-table${countryOpaque ? " country-opaque" : ""}${countryVisible ? " country-visible" : ""}`}
+    >
       <thead>
         <tr>
           <th className="cat">{tableHeaderTerm(terms, "Category")}</th>
@@ -5378,14 +5416,20 @@ function MatrixTable({
               const isActive =
                 selection?.person_name === p.person_name && selection?.category === cat;
               const clickable = cellOpensStatements(matrix, cat, p.person_name, access);
-              const mode = (access || "").trim().toLowerCase();
-              const detailsOpen =
-                personDetailsOpen(matrix, p.person_name) &&
-                (mode !== "country" || centerExpensesVisible(matrix));
+              const personOpen = personVisibilityOpen(matrix, p.person_name);
+              const visibilityOpen =
+                mode === "country"
+                  ? countryVisible && personOpen && !isMatrixFooter(matrix, cat)
+                  : personOpen;
+              const countryPersonOpaque =
+                countryVisible &&
+                !personOpen &&
+                !isMatrixFooter(matrix, cat) &&
+                amountHasValue(amount);
               return (
                 <td
                   key={p.person_name}
-                  className={`num${clickable ? " clickable" : " empty-cell"}${detailsOpen ? " details-open" : ""}${isActive ? " active-cell" : ""}`}
+                  className={`num${clickable ? " clickable" : " empty-cell"}${visibilityOpen ? " visibility-open" : ""}${countryPersonOpaque ? " country-person-opaque" : ""}${isActive ? " active-cell" : ""}`}
                   onClick={clickable ? () => onPick(p.person_name, cat) : undefined}
                 >
                   {displayMatrixCell(matrix, cat, amount)}
@@ -5426,11 +5470,12 @@ function PersonColumnTable({
     : [{ person_name }, ...people];
   const showPersonMenu = scopedPeople.length > 1 && Boolean(onPersonChange);
   const mode = (access || "").trim().toLowerCase();
-  const detailsOpen =
-    personDetailsOpen(matrix, person_name) &&
-    (mode !== "country" || centerExpensesVisible(matrix));
+  const countryVisible = mode === "country" && centerVisibilityOn(matrix);
+  const countryOpaque = mode === "country" && !centerVisibilityOn(matrix);
   return (
-    <table className="totals-table">
+    <table
+      className={`totals-table${countryOpaque ? " country-opaque" : ""}${countryVisible ? " country-visible" : ""}`}
+    >
       <thead>
         <tr>
           <th className="cat">{tableHeaderTerm(terms, "Category")}</th>
@@ -5467,9 +5512,19 @@ function PersonColumnTable({
             {(() => {
               const amount = cells[cat]?.[person_name] ?? "";
               const clickable = cellOpensStatements(matrix, cat, person_name, access);
+              const personOpen = personVisibilityOpen(matrix, person_name);
+              const visibilityOpen =
+                mode === "country"
+                  ? countryVisible && personOpen && !isMatrixFooter(matrix, cat)
+                  : personOpen;
+              const countryPersonOpaque =
+                countryVisible &&
+                !personOpen &&
+                !isMatrixFooter(matrix, cat) &&
+                amountHasValue(amount);
               return (
                 <td
-                  className={`num${clickable ? " clickable" : " empty-cell"}${detailsOpen ? " details-open" : ""}`}
+                  className={`num${clickable ? " clickable" : " empty-cell"}${visibilityOpen ? " visibility-open" : ""}${countryPersonOpaque ? " country-person-opaque" : ""}`}
                   onClick={clickable ? () => onPick(cat) : undefined}
                 >
                   {displayMatrixCell(matrix, cat, amount)}

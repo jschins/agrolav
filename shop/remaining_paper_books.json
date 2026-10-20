@@ -1,0 +1,2461 @@
+[
+  {
+    "slug": "waartoe-dient-de-mis",
+    "titel": "Waartoe dient de Mis ?",
+    "auteur": "Lluís Carreras del Rincón",
+    "voorraad": 65,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-147-5",
+    "ondertitel": "Over Eucharistie en Christelijk leven",
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      10481,
+      10880
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [10481, 10880]"
+    ]
+  },
+  {
+    "slug": "lijdt-christus-nu-nog",
+    "titel": "Lijdt Christus nu nog?",
+    "auteur": "Michel Esparza",
+    "voorraad": 92,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-143-7",
+    "ondertitel": "Meevoelen met het Hart van Jezus",
+    "prijs_cent_excl": 1350,
+    "matched_product_ids": [
+      9509,
+      9798
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [9509, 9798]"
+    ]
+  },
+  {
+    "slug": "heiligheid-voor-losers",
+    "titel": "Heiligheid voor losers",
+    "auteur": "Paul Graas",
+    "voorraad": 121,
+    "formaat": "papier",
+    "ISBN": "9789062571444",
+    "ondertitel": null,
+    "prijs_cent_excl": 1200,
+    "matched_product_ids": [
+      9507,
+      9797
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [9507, 9797]"
+    ]
+  },
+  {
+    "slug": "vreugde-alom",
+    "titel": "Vreugde alom",
+    "auteur": "Scott Hahn",
+    "voorraad": 39,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-141-3",
+    "ondertitel": "Christus kwam ter wereld en alles werd anders (tot op de dag van vandaag)",
+    "prijs_cent_excl": 1850,
+    "matched_product_ids": [
+      9290,
+      9799
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [9290, 9799]"
+    ]
+  },
+  {
+    "slug": "bezoeken-aan-het-allerheiligste-sacrament",
+    "titel": "Bezoeken aan het Allerheiligste Sacrament",
+    "auteur": "Alfonsus Maria de Liguori",
+    "voorraad": 63,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-139-0",
+    "ondertitel": null,
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      9268,
+      9824
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [9268, 9824]"
+    ]
+  },
+  {
+    "slug": "de-heilige-rozenkrans-3",
+    "titel": "De Heilige Rozenkrans",
+    "auteur": "Jozefmaria Escrivá",
+    "voorraad": 214,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-142-0",
+    "ondertitel": null,
+    "prijs_cent_excl": 695,
+    "matched_product_ids": [
+      1732,
+      9321
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1732, 9321]"
+    ]
+  },
+  {
+    "slug": "lessen-van-de-heilige-therese-2",
+    "titel": "Lessen van de heilige Thérèse",
+    "auteur": "John Paul Thomas",
+    "voorraad": 17,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-140-6",
+    "ondertitel": "De wijsheid van Gods kleine bloem",
+    "prijs_cent_excl": 1750,
+    "matched_product_ids": [
+      9034,
+      9336
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [9034, 9336]"
+    ]
+  },
+  {
+    "slug": "maria-van-nazareth",
+    "titel": "Maria van Nazareth",
+    "auteur": "Federico Suárez",
+    "voorraad": 6,
+    "formaat": "papier",
+    "ISBN": "9789062571383",
+    "ondertitel": null,
+    "prijs_cent_excl": 1850,
+    "matched_product_ids": [
+      8726,
+      8816
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [8726, 8816]"
+    ]
+  },
+  {
+    "slug": "de-wereld-van-binnenuit-veranderen",
+    "titel": "De wereld van binnenuit veranderen",
+    "auteur": "Mariano Fazio",
+    "voorraad": 29,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-134-5",
+    "ondertitel": null,
+    "prijs_cent_excl": 1395,
+    "matched_product_ids": [
+      8417,
+      8574
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [8417, 8574]"
+    ]
+  },
+  {
+    "slug": "iets-groots-dat-liefde-is-2e-helft-2021",
+    "titel": "Iets groots dat liefde is",
+    "auteur": "Onbekend",
+    "voorraad": 82,
+    "formaat": "papier",
+    "ISBN": "9789062571321",
+    "ondertitel": "De christelijke roeping: ontmoeting, antwoord, trouw",
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      6665,
+      8455
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [6665, 8455]"
+    ]
+  },
+  {
+    "slug": "deugdzaam-leiderschap-4e-kwartaal-2021",
+    "titel": "Deugdzaam leiderschap",
+    "auteur": "Alexandre Havard",
+    "voorraad": 45,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-128-4",
+    "ondertitel": "Een agenda voor persoonlijke voortreffelijkheid",
+    "prijs_cent_excl": 1750,
+    "matched_product_ids": [
+      6724,
+      7680
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [6724, 7680]"
+    ]
+  },
+  {
+    "slug": "de-kardinale-deugden-4e-kwartaal-2021",
+    "titel": "De kardinale deugden",
+    "auteur": "Josef Pieper",
+    "voorraad": null,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-130-7",
+    "ondertitel": "verstandigheid, rechtvaardigheid, dapperheid, gematigdheid",
+    "prijs_cent_excl": 1850,
+    "matched_product_ids": [
+      6718,
+      7701
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [6718, 7701]"
+    ]
+  },
+  {
+    "slug": "gods-engelen-waken-over-ons-4e-kwartaal-2021",
+    "titel": "Gods engelen waken over ons",
+    "auteur": "Georges Huber",
+    "voorraad": 7,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-127-7",
+    "ondertitel": null,
+    "prijs_cent_excl": 1750,
+    "matched_product_ids": [
+      6721,
+      7198
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [6721, 7198]"
+    ]
+  },
+  {
+    "slug": "jozef-van-nazaret-zomer-2021",
+    "titel": "Jozef van Nazareth",
+    "auteur": "Federico Suárez",
+    "voorraad": 42,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-126-0",
+    "ondertitel": null,
+    "prijs_cent_excl": 1750,
+    "matched_product_ids": [
+      6661,
+      7095
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [6661, 7095]"
+    ]
+  },
+  {
+    "slug": "katholicisme-puur-simpel",
+    "titel": "Katholicisme puur en simpel",
+    "auteur": "Dwight Longenecker",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "9789493207110",
+    "ondertitel": null,
+    "prijs_cent_excl": 1450,
+    "matched_product_ids": [
+      6910,
+      8192
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [6910, 8192]"
+    ]
+  },
+  {
+    "slug": "h-thomas-van-aquino-zomer-2021",
+    "titel": "H. Thomas van Aquino",
+    "auteur": "Gilbert Keith Chesterton",
+    "voorraad": 75,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-125-3",
+    "ondertitel": "De zwijgende os",
+    "prijs_cent_excl": 1750,
+    "matched_product_ids": [
+      6716,
+      7096
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [6716, 7096]"
+    ]
+  },
+  {
+    "slug": "dietrich-von-hildebrand-het-huwelijk-verwacht-najaar-2020",
+    "titel": "Het huwelijk",
+    "auteur": "Dietrich von Hildebrand",
+    "voorraad": 49,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-120-8",
+    "ondertitel": "gave en opgave van trouwe liefde",
+    "prijs_cent_excl": 995,
+    "matched_product_ids": [
+      5365,
+      6606
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [5365, 6606]"
+    ]
+  },
+  {
+    "slug": "leren-te-bidden-om-te-leren-beminnen",
+    "titel": "Leren bidden om te leren beminnen",
+    "auteur": "Jacques Philippe",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-115-4",
+    "ondertitel": null,
+    "prijs_cent_excl": 1395,
+    "matched_product_ids": [
+      2441,
+      6609
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [2441, 6609]"
+    ]
+  },
+  {
+    "slug": "jezus-en-de-joodse-wortels-van-maria",
+    "titel": "Jezus en de joodse wortels van Maria",
+    "auteur": "Brant Pitre",
+    "voorraad": 12,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-124-6",
+    "ondertitel": "Op zoek naar de Moeder van de Messias",
+    "prijs_cent_excl": 1575,
+    "matched_product_ids": [
+      6581,
+      6881
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [6581, 6881]"
+    ]
+  },
+  {
+    "slug": "god-een-en-drievuldig-2",
+    "titel": "God: een en drievuldig",
+    "auteur": "Gonzalo Lobo Mendez",
+    "voorraad": 47,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-042-3",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      6010,
+      6015
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [6010, 6015]"
+    ]
+  },
+  {
+    "slug": "god-roept",
+    "titel": "God roept",
+    "auteur": "A. Aquiló",
+    "voorraad": 46,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-122-2",
+    "ondertitel": "Anekdotes, verhalen en overwegingen over roeping",
+    "prijs_cent_excl": 1650,
+    "matched_product_ids": [
+      2445,
+      5346
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [2445, 5346]"
+    ]
+  },
+  {
+    "slug": "pater-pio-wij-hebben-hem-gekend",
+    "titel": "Pater Pio. Wij hebben hem gekend",
+    "auteur": "John Schug",
+    "voorraad": 34,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-119-2",
+    "ondertitel": null,
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      2420,
+      2421
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [2420, 2421]"
+    ]
+  },
+  {
+    "slug": "geluk-waar-je-het-niet-verwacht-verwacht",
+    "titel": "Geluk waar je het niet verwacht",
+    "auteur": "Jacques Philippe",
+    "voorraad": 126,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-121-5",
+    "ondertitel": "Een medidatie over de zaligsprekingen",
+    "prijs_cent_excl": 1275,
+    "matched_product_ids": [
+      2447,
+      5348
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [2447, 5348]"
+    ]
+  },
+  {
+    "slug": "niet-te-geloven",
+    "titel": "Niet te geloven!  Teksten over de Eucharistie",
+    "auteur": "Régis de la Haye",
+    "voorraad": 14,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-116-1",
+    "ondertitel": "Teksten over de Eucharistie",
+    "prijs_cent_excl": 550,
+    "matched_product_ids": [
+      5282,
+      6883
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [5282, 6883]"
+    ]
+  },
+  {
+    "slug": "fake-news-ontmaskerd-de-verborgen-geschiedenis-van-het-christendom",
+    "titel": "Fake news ontmaskerd. De verborgen geschiedenis van het christendom",
+    "auteur": "Manfred Lütz",
+    "voorraad": 67,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-112-3",
+    "ondertitel": null,
+    "prijs_cent_excl": 1750,
+    "matched_product_ids": [
+      6754,
+      6756
+    ],
+    "reasons": [
+      "title length 67 > 64",
+      "wooslug length 66 > 64",
+      "ambiguous WooCommerce product_id for title: [6754, 6756]"
+    ]
+  },
+  {
+    "slug": "voor-de-christen-die-mens-wil-worden",
+    "titel": "Voor de christen die mens wil worden",
+    "auteur": "Paul Graas",
+    "voorraad": 53,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-118-5",
+    "ondertitel": null,
+    "prijs_cent_excl": 975,
+    "matched_product_ids": [
+      2467,
+      2468
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [2467, 2468]"
+    ]
+  },
+  {
+    "slug": "bron-van-licht-en-waarheid",
+    "titel": "Bron van Licht en Waarheid",
+    "auteur": "Onbekend",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-099-7",
+    "ondertitel": null,
+    "prijs_cent_excl": 290,
+    "matched_product_ids": [
+      2394,
+      2405
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [2394, 2405]"
+    ]
+  },
+  {
+    "slug": "christenen-in-de-samenleving",
+    "titel": "Christenen in de samenleving",
+    "auteur": "Domènec Melé Carné",
+    "voorraad": 14,
+    "formaat": "papier",
+    "ISBN": "9789062570751",
+    "ondertitel": "Inleiding op de sociale leer van de Kerk",
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      2369,
+      2458
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [2369, 2458]"
+    ]
+  },
+  {
+    "slug": "jezus-christus-en-zijn-tijd",
+    "titel": "Jezus Christus en zijn tijd",
+    "auteur": "Frank Sheed",
+    "voorraad": 25,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-114-7",
+    "ondertitel": null,
+    "prijs_cent_excl": 1550,
+    "matched_product_ids": [
+      2443,
+      5087
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [2443, 5087]"
+    ]
+  },
+  {
+    "slug": "hongerende-zielen",
+    "titel": "Hongerende Zielen",
+    "auteur": "G.J.M. van den Aardweg",
+    "voorraad": 547,
+    "formaat": "papier",
+    "ISBN": "90-6257-063-1",
+    "ondertitel": "verschijningen uit het vagevuur",
+    "prijs_cent_excl": 1450,
+    "matched_product_ids": [
+      1564,
+      6755
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1564, 6755]"
+    ]
+  },
+  {
+    "slug": "the-founder-of-opus-dei-volume-3-2",
+    "titel": "The founder of Opus Dei Volume 3: The Divine ways on Earth",
+    "auteur": "Andrés Vazquez de Prada",
+    "voorraad": null,
+    "formaat": "papier",
+    "ISBN": "1-594170-26-6",
+    "ondertitel": "The devine ways on earth",
+    "prijs_cent_excl": 2495,
+    "matched_product_ids": [
+      618,
+      1553
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [618, 1553]"
+    ]
+  },
+  {
+    "slug": "ot06-navarre-bible-wisdom-books",
+    "titel": "OT06 Navarre Bible Wisdom Books",
+    "auteur": "Faculteit Godgeleerdheid van de Universiteit van Navarra",
+    "voorraad": null,
+    "formaat": "papier",
+    "ISBN": "1-85182-741-2",
+    "ondertitel": null,
+    "prijs_cent_excl": 4500,
+    "matched_product_ids": [],
+    "reasons": [
+      "no WooCommerce product_id matched on title"
+    ]
+  },
+  {
+    "slug": "the-founder-of-opus-dei-volume-2-2",
+    "titel": "The founder of Opus Dei Volume 2: God and Daring",
+    "auteur": "Andrés Vazquez de Prada",
+    "voorraad": null,
+    "formaat": "papier",
+    "ISBN": "1-889334-86-3",
+    "ondertitel": "God and daring",
+    "prijs_cent_excl": 2495,
+    "matched_product_ids": [
+      503,
+      1543
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [503, 1543]"
+    ]
+  },
+  {
+    "slug": "the-founder-of-opus-dei-volume-1-2",
+    "titel": "The founder of Opus Dei Volume 1: The Early Years",
+    "auteur": "Andrés Vazquez de Prada",
+    "voorraad": null,
+    "formaat": "papier",
+    "ISBN": "1-889334-26-x",
+    "ondertitel": "The early years",
+    "prijs_cent_excl": 2495,
+    "matched_product_ids": [
+      502,
+      1541
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [502, 1541]"
+    ]
+  },
+  {
+    "slug": "de-weg-2",
+    "titel": "De Weg",
+    "auteur": "Jozefmaria Escriva",
+    "voorraad": 495,
+    "formaat": "papier",
+    "ISBN": "90-6257-017-8",
+    "ondertitel": null,
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      464,
+      1531,
+      1622
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [464, 1531, 1622]"
+    ]
+  },
+  {
+    "slug": "de-voor-2",
+    "titel": "De Voor",
+    "auteur": "Jozefmaria Escriva",
+    "voorraad": 731,
+    "formaat": "papier",
+    "ISBN": "90-6257-019-4",
+    "ondertitel": null,
+    "prijs_cent_excl": 1500,
+    "matched_product_ids": [
+      461,
+      1529,
+      1621
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [461, 1529, 1621]"
+    ]
+  },
+  {
+    "slug": "genezing-van-innerlijke-wonden",
+    "titel": "Genezing van innerlijke wonden",
+    "auteur": "Didier van Havre",
+    "voorraad": 10,
+    "formaat": "papier",
+    "ISBN": "9789062570652",
+    "ondertitel": "Praktische gids bij het sacrament van de biecht",
+    "prijs_cent_excl": 1150,
+    "matched_product_ids": [
+      1505,
+      2348
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1505, 2348]"
+    ]
+  },
+  {
+    "slug": "op-koers-met-geestelijke-begeleiding",
+    "titel": "Op koers met geestelijke begeleiding",
+    "auteur": "Villahoz Antonio P.",
+    "voorraad": 141,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "Wat is er te bespreken?",
+    "prijs_cent_excl": 300,
+    "matched_product_ids": [
+      1494,
+      2337
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1494, 2337]"
+    ]
+  },
+  {
+    "slug": "geloven-vandaag",
+    "titel": "Geloven vandaag",
+    "auteur": "Manuel Cabello",
+    "voorraad": 72,
+    "formaat": "papier",
+    "ISBN": "978 90 6257 064 5",
+    "ondertitel": "Christendom en moderne rede",
+    "prijs_cent_excl": 1350,
+    "matched_product_ids": [
+      1483,
+      2326
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1483, 2326]"
+    ]
+  },
+  {
+    "slug": "honderd-jaar-fatima",
+    "titel": "Honderd jaar Fatima",
+    "auteur": "G.J.M. van den Aardweg",
+    "voorraad": 18,
+    "formaat": "papier",
+    "ISBN": "978 90 6257 060 7",
+    "ondertitel": "Heden en toekomst in het teken van het zonnewonder",
+    "prijs_cent_excl": 1450,
+    "matched_product_ids": [
+      1450,
+      2305
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1450, 2305]"
+    ]
+  },
+  {
+    "slug": "uit-de-pen-van-pater-pio",
+    "titel": "Uit de pen van pater Pio",
+    "auteur": "Pater Pio",
+    "voorraad": 82,
+    "formaat": "papier",
+    "ISBN": "978-90-818917-2-1",
+    "ondertitel": "100 brieven die tot het hart spreken",
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      1393,
+      2294
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1393, 2294]"
+    ]
+  },
+  {
+    "slug": "gods-plan-met-je-lichaam",
+    "titel": "Gods plan met je lichaam",
+    "auteur": "Jason Evert",
+    "voorraad": 8,
+    "formaat": "papier",
+    "ISBN": "978.94.91991.28.8",
+    "ondertitel": "ontdek de schoonheid en het mysterie van je vrouwelijkheid",
+    "prijs_cent_excl": 895,
+    "matched_product_ids": [
+      1371,
+      2283
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1371, 2283]"
+    ]
+  },
+  {
+    "slug": "de-rank-en-de-wijnstok",
+    "titel": "De rank en de wijnstok",
+    "auteur": "Salvatore Canals",
+    "voorraad": 14,
+    "formaat": "papier",
+    "ISBN": "97890.6257.058.4",
+    "ondertitel": "26 meditaties",
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      1360,
+      2272
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1360, 2272]"
+    ]
+  },
+  {
+    "slug": "fundamentele-moraal",
+    "titel": "Fundamentele moraal",
+    "auteur": "Aurelio Fernández",
+    "voorraad": 23,
+    "formaat": "papier",
+    "ISBN": "97890.6257.054.6",
+    "ondertitel": "Een inleiding",
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      1338,
+      2261
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1338, 2261]"
+    ]
+  },
+  {
+    "slug": "het-dagboek-van-mijn-ziel",
+    "titel": "Het dagboek van mijn ziel",
+    "auteur": "Johannes XXIII",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "978.98.6257.056.0",
+    "ondertitel": null,
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      1317,
+      2240
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1317, 2240]"
+    ]
+  },
+  {
+    "slug": "een-jaar-van-gods-barmhartigheid",
+    "titel": "Een Jaar van Gods Barmhartigheid",
+    "auteur": "Helen Opstal",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "978.90.6257.049.2",
+    "ondertitel": null,
+    "prijs_cent_excl": 975,
+    "matched_product_ids": [
+      1306,
+      2229
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1306, 2229]"
+    ]
+  },
+  {
+    "slug": "de-hoop-van-het-gezin",
+    "titel": "De hoop van het gezin",
+    "auteur": "Gerhard-Ludwig Müller",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "978.90.6257.046.1",
+    "ondertitel": null,
+    "prijs_cent_excl": 550,
+    "matched_product_ids": [
+      1284,
+      2207
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1284, 2207]"
+    ]
+  },
+  {
+    "slug": "handige-gids-bij-de-bijbel",
+    "titel": "Handige gids bij de Bijbel",
+    "auteur": "Scott Hahn",
+    "voorraad": 44,
+    "formaat": "papier",
+    "ISBN": "978.94.91991.06.6",
+    "ondertitel": null,
+    "prijs_cent_excl": 490,
+    "matched_product_ids": [
+      1261,
+      2185
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1261, 2185]"
+    ]
+  },
+  {
+    "slug": "missie-voltooid",
+    "titel": "Missie voltooid",
+    "auteur": "Hugo de Azevedo",
+    "voorraad": 94,
+    "formaat": "papier",
+    "ISBN": "9789062570409",
+    "ondertitel": "Biografie van Alvaro del Portillo",
+    "prijs_cent_excl": 1875,
+    "matched_product_ids": [],
+    "reasons": [
+      "no WooCommerce product_id matched on title"
+    ]
+  },
+  {
+    "slug": "in-het-begin-schiep-god",
+    "titel": "In het begin schiep God",
+    "auteur": "Pedro Urbano López de Meneses",
+    "voorraad": 24,
+    "formaat": "papier",
+    "ISBN": "97890.6257.039.3",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      1239,
+      2163
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1239, 2163]"
+    ]
+  },
+  {
+    "slug": "fundamentele-theologie-een-inleiding",
+    "titel": "Fundamentele Theologie",
+    "auteur": "Jutta Burggraf",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "97890.6257.038.6",
+    "ondertitel": "Een inleiding",
+    "prijs_cent_excl": 1675,
+    "matched_product_ids": [
+      1228,
+      2152
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1228, 2152]"
+    ]
+  },
+  {
+    "slug": "de-dialoog",
+    "titel": "De Dialoog",
+    "auteur": "Catharina van Siena",
+    "voorraad": 95,
+    "formaat": "papier",
+    "ISBN": "97890.6257.037.9",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      1217,
+      2141
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1217, 2141]"
+    ]
+  },
+  {
+    "slug": "getrouwde-priesters",
+    "titel": "Getrouwde priesters",
+    "auteur": "Arturo Cattaneo",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "30 prangende vragen over het celibaat",
+    "prijs_cent_excl": 1575,
+    "matched_product_ids": [
+      1206,
+      2130
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1206, 2130]"
+    ]
+  },
+  {
+    "slug": "jezus-christus-onze-verlosser",
+    "titel": "Jezus Christus onze Verlosser",
+    "auteur": "Vicente Ferrer Barriendos",
+    "voorraad": 185,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "inleiding in de Christologie",
+    "prijs_cent_excl": 1675,
+    "matched_product_ids": [
+      1184,
+      2108
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1184, 2108]"
+    ]
+  },
+  {
+    "slug": "spirituele-theologie",
+    "titel": "Spirituele Theologie",
+    "auteur": "Pablo Marti",
+    "voorraad": 6,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "Een inleiding",
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      1173,
+      2097
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1173, 2097]"
+    ]
+  },
+  {
+    "slug": "de-poort-van-het-geloof",
+    "titel": "De poort van het geloof",
+    "auteur": "Abbé Vidal",
+    "voorraad": 14,
+    "formaat": "papier",
+    "ISBN": "97890.6257096.6",
+    "ondertitel": "14 overwegingen",
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      1162,
+      2086
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1162, 2086]"
+    ]
+  },
+  {
+    "slug": "richtlijn-voor-het-geestelijk-leven",
+    "titel": "Richtlijn voor het geestelijk leven",
+    "auteur": "Ludovicus Blosius",
+    "voorraad": 63,
+    "formaat": "papier",
+    "ISBN": "97890.6257095.9",
+    "ondertitel": null,
+    "prijs_cent_excl": 1750,
+    "matched_product_ids": [
+      1152,
+      2076
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1152, 2076]"
+    ]
+  },
+  {
+    "slug": "geestelijke-lauwheid",
+    "titel": "Geestelijke lauwheid",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 270,
+    "formaat": "papier",
+    "ISBN": "97890.6257080.5",
+    "ondertitel": "Sleur en tegenslagen kunnen onze ijver doen verflauwen",
+    "prijs_cent_excl": 1175,
+    "matched_product_ids": [
+      1141,
+      2065
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1141, 2065]"
+    ]
+  },
+  {
+    "slug": "gewoon-werk-buitengewone-genade",
+    "titel": "Gewoon werk buitengewone genade",
+    "auteur": "Scott Hahn",
+    "voorraad": 247,
+    "formaat": "papier",
+    "ISBN": "97890.6257093.5",
+    "ondertitel": "mijn spirituele reis in het Opus Dei",
+    "prijs_cent_excl": 1175,
+    "matched_product_ids": [
+      1132,
+      2056
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1132, 2056]"
+    ]
+  },
+  {
+    "slug": "christus-komt-langs",
+    "titel": "Christus komt langs",
+    "auteur": "Jozefmaria Escriva",
+    "voorraad": 527,
+    "formaat": "papier",
+    "ISBN": "97890.6257073.5",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      1121,
+      2045
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1121, 2045]"
+    ]
+  },
+  {
+    "slug": "de-heilige-mis-beleven",
+    "titel": "De heilige Mis beleven",
+    "auteur": "Javier Echevarria",
+    "voorraad": 183,
+    "formaat": "papier",
+    "ISBN": "97890.6257091.1",
+    "ondertitel": "een persoonlijke ontmoeting met God",
+    "prijs_cent_excl": 1275,
+    "matched_product_ids": [
+      1110,
+      2034
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1110, 2034]"
+    ]
+  },
+  {
+    "slug": "het-mysterie-en-de-zending-van-de-kerk",
+    "titel": "Het Mysterie en de Zending van de Kerk",
+    "auteur": "José Ramón Perez Aranguena",
+    "voorraad": 324,
+    "formaat": "papier",
+    "ISBN": "90.6257.086.0",
+    "ondertitel": "Inleiding tot de Ecclesiologie",
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      1099,
+      2023
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1099, 2023]"
+    ]
+  },
+  {
+    "slug": "de-hoop-op-het-eeuwige-leven",
+    "titel": "De Hoop op het Eeuwige Leven",
+    "auteur": "Justo Luis R. Sanchez de Alva",
+    "voorraad": 200,
+    "formaat": "papier",
+    "ISBN": "97890.6257090.4",
+    "ondertitel": "Inleiding tot de Eschatologie",
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      1088,
+      2012
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1088, 2012]"
+    ]
+  },
+  {
+    "slug": "jezus-en-de-joodse-wortels-van-de-eucharistie",
+    "titel": "Jezus en de joodse wortels van de eucharistie",
+    "auteur": "Brant Pitre",
+    "voorraad": 88,
+    "formaat": "papier",
+    "ISBN": "97890.6257089.8",
+    "ondertitel": null,
+    "prijs_cent_excl": 1375,
+    "matched_product_ids": [
+      1066,
+      1990
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1066, 1990]"
+    ]
+  },
+  {
+    "slug": "de-verborgen-kracht-van-vriendelijkheid",
+    "titel": "De verborgen kracht van vriendelijkheid",
+    "auteur": "Lawrence Lovasik",
+    "voorraad": 23,
+    "formaat": "papier",
+    "ISBN": "97890.6257084.3",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      1038,
+      1969
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1038, 1969]"
+    ]
+  },
+  {
+    "slug": "geschiedenis-van-de-katholieke-kerk-in-de-tweede-helft-van-de-20ste-eeuw",
+    "titel": "Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw",
+    "auteur": "José Orlandis",
+    "voorraad": 194,
+    "formaat": "papier",
+    "ISBN": "97890.6257086.7",
+    "ondertitel": null,
+    "prijs_cent_excl": 1675,
+    "matched_product_ids": [
+      1025,
+      1956
+    ],
+    "reasons": [
+      "title length 72 > 64",
+      "wooslug length 72 > 64",
+      "ambiguous WooCommerce product_id for title: [1025, 1956]"
+    ]
+  },
+  {
+    "slug": "inleiding-tot-de-theologie",
+    "titel": "Inleiding tot de Theologie",
+    "auteur": "José Morales",
+    "voorraad": 298,
+    "formaat": "papier",
+    "ISBN": "97890.6257085.0",
+    "ondertitel": null,
+    "prijs_cent_excl": 1675,
+    "matched_product_ids": [
+      1003,
+      1945
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [1003, 1945]"
+    ]
+  },
+  {
+    "slug": "de-zeven-sacramenten",
+    "titel": "De zeven Sacramenten",
+    "auteur": "Enrique Moline",
+    "voorraad": 173,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "Beknopte Sacramentenleer",
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      979,
+      1934
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [979, 1934]"
+    ]
+  },
+  {
+    "slug": "tekenen-van-leven",
+    "titel": "Tekenen van leven",
+    "auteur": "Scott Hahn",
+    "voorraad": 135,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "Veertig Katholieke gebruiken en devoties en hun Bijbelse wortels",
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      969,
+      1924
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [969, 1924]"
+    ]
+  },
+  {
+    "slug": "evangelisatie-en-bekering",
+    "titel": "Evangelisatie en bekering",
+    "auteur": "John McCloskey",
+    "voorraad": 351,
+    "formaat": "papier",
+    "ISBN": "90.6257073.9",
+    "ondertitel": "met bezieling en respect voor anderen",
+    "prijs_cent_excl": 1275,
+    "matched_product_ids": [
+      946,
+      1912
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [946, 1912]"
+    ]
+  },
+  {
+    "slug": "van-wrok-tot-vergeving",
+    "titel": "Van wrok tot vergeving",
+    "auteur": "Francisco Ugarte",
+    "voorraad": 135,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "de sleutel tot geluk",
+    "prijs_cent_excl": 550,
+    "matched_product_ids": [
+      936,
+      1902
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [936, 1902]"
+    ]
+  },
+  {
+    "slug": "inleiding-tot-het-devote-leven",
+    "titel": "Inleiding tot het devote leven",
+    "auteur": "Franciscus van Sales",
+    "voorraad": 12,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-123-9",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      925,
+      1891
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [925, 1891]"
+    ]
+  },
+  {
+    "slug": "persoonlijke-vrijheid",
+    "titel": "Persoonlijke vrijheid",
+    "auteur": "Jutta Burggraf",
+    "voorraad": 195,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "een geschenk van God",
+    "prijs_cent_excl": 1375,
+    "matched_product_ids": [
+      912,
+      1878
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [912, 1878]"
+    ]
+  },
+  {
+    "slug": "een-vader-die-zijn-beloftes-nakomt",
+    "titel": "Een Vader die zijn Beloftes Nakomt",
+    "auteur": "Scott Hahn",
+    "voorraad": 155,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "Gods verbondsliefde in de Heilige Schrift",
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      901,
+      1867
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [901, 1867]"
+    ]
+  },
+  {
+    "slug": "kinderen-van-god",
+    "titel": "Kinderen van God",
+    "auteur": "Juan Francisco Pozo",
+    "voorraad": 429,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "Het genadeleven",
+    "prijs_cent_excl": 975,
+    "matched_product_ids": [
+      890,
+      1856
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [890, 1856]"
+    ]
+  },
+  {
+    "slug": "de-bijbel-leren-kennen",
+    "titel": "De Bijbel leren kennen",
+    "auteur": "Josemaría Monforte",
+    "voorraad": 250,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": "Inleiding tot de Heilige Schrift",
+    "prijs_cent_excl": 1275,
+    "matched_product_ids": [
+      879,
+      1845
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [879, 1845]"
+    ]
+  },
+  {
+    "slug": "korte-geschiedenis-van-de-katholieke-kerk",
+    "titel": "Korte Geschiedenis van de Katholieke Kerk",
+    "auteur": "José Orlandis",
+    "voorraad": 263,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": null,
+    "prijs_cent_excl": 1375,
+    "matched_product_ids": [
+      853,
+      1819
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [853, 1819]"
+    ]
+  },
+  {
+    "slug": "vijftig-vragen-over-jezus",
+    "titel": "50 vragen over Jezus",
+    "auteur": "Juan Chapa",
+    "voorraad": 220,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": null,
+    "prijs_cent_excl": 1275,
+    "matched_product_ids": [
+      842,
+      1808
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [842, 1808]"
+    ]
+  },
+  {
+    "slug": "de-katholieke-kerk-verkennen",
+    "titel": "De Katholieke Kerk verkennen",
+    "auteur": "Marcellino D Ambrosio",
+    "voorraad": 87,
+    "formaat": "papier",
+    "ISBN": "9,79E+12",
+    "ondertitel": null,
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      831,
+      1797
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [831, 1797]"
+    ]
+  },
+  {
+    "slug": "het-is-de-heer",
+    "titel": "Het is de Heer",
+    "auteur": "Athanasius Schneider",
+    "voorraad": 31,
+    "formaat": "papier",
+    "ISBN": null,
+    "ondertitel": null,
+    "prijs_cent_excl": 375,
+    "matched_product_ids": [
+      732,
+      1786
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [732, 1786]"
+    ]
+  },
+  {
+    "slug": "trouwen-of-samenwonen",
+    "titel": "Trouwen of Samenwonen",
+    "auteur": "Anthony Garascia",
+    "voorraad": 267,
+    "formaat": "papier",
+    "ISBN": null,
+    "ondertitel": null,
+    "prijs_cent_excl": 375,
+    "matched_product_ids": [
+      720,
+      1776
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [720, 1776]"
+    ]
+  },
+  {
+    "slug": "voorbereiding-op-de-puberteit",
+    "titel": "Voorbereiding op de puberteit",
+    "auteur": "James B. Stenson",
+    "voorraad": 494,
+    "formaat": "papier",
+    "ISBN": null,
+    "ondertitel": null,
+    "prijs_cent_excl": 550,
+    "matched_product_ids": [
+      709,
+      1765
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [709, 1765]"
+    ]
+  },
+  {
+    "slug": "deugden-in-het-gezin",
+    "titel": "Deugden in het Gezin",
+    "auteur": "Georges Chevrot",
+    "voorraad": 227,
+    "formaat": "papier",
+    "ISBN": "9062570658",
+    "ondertitel": null,
+    "prijs_cent_excl": 550,
+    "matched_product_ids": [
+      699,
+      1756
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [699, 1756]"
+    ]
+  },
+  {
+    "slug": "wees-gegroet-koningin",
+    "titel": "Wees gegroet Koningin",
+    "auteur": "Scott Hahn",
+    "voorraad": 110,
+    "formaat": "papier",
+    "ISBN": "90.6257.060.7",
+    "ondertitel": "De Moeder van God in het Woord van God",
+    "prijs_cent_excl": 1275,
+    "matched_product_ids": [
+      676,
+      1744
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [676, 1744]"
+    ]
+  },
+  {
+    "slug": "redenen-om-te-geloven",
+    "titel": "Redenen om te geloven",
+    "auteur": "Scott Hahn",
+    "voorraad": 150,
+    "formaat": "papier",
+    "ISBN": "90.6257.059.3",
+    "ondertitel": "Hoe kunnen wij het katholieke geloof begrijpen, uitleggen en verdedigen",
+    "prijs_cent_excl": 1450,
+    "matched_product_ids": [
+      665,
+      1733
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [665, 1733]"
+    ]
+  },
+  {
+    "slug": "de-innerlijke-rust",
+    "titel": "De innerlijke rust",
+    "auteur": "Jacques Philippe",
+    "voorraad": 7,
+    "formaat": "papier",
+    "ISBN": "90-6257-056-9",
+    "ondertitel": null,
+    "prijs_cent_excl": 875,
+    "matched_product_ids": [
+      645,
+      1731
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [645, 1731]"
+    ]
+  },
+  {
+    "slug": "moraal-de-kunst-van-het-leven",
+    "titel": "Moraal De kunst van het leven",
+    "auteur": "J.L. Lorda",
+    "voorraad": 598,
+    "formaat": "papier",
+    "ISBN": "90-6257-057-7",
+    "ondertitel": null,
+    "prijs_cent_excl": 975,
+    "matched_product_ids": [
+      644,
+      1730
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [644, 1730]"
+    ]
+  },
+  {
+    "slug": "succesvolle-vaders",
+    "titel": "Succesvolle vaders",
+    "auteur": "James B. Stenson",
+    "voorraad": 361,
+    "formaat": "papier",
+    "ISBN": "90-6257-055-0",
+    "ondertitel": "Hoe vaders het karakter van hun kinderen kunnen vormen",
+    "prijs_cent_excl": 650,
+    "matched_product_ids": [
+      643,
+      1729
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [643, 1729]"
+    ]
+  },
+  {
+    "slug": "het-bruiloftsmaal-van-het-lam",
+    "titel": "Het bruiloftsmaal van het Lam",
+    "auteur": "Scott Hahn",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "90-6257-048-8",
+    "ondertitel": "De Mis als hemel op aarde",
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      642,
+      1728
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [642, 1728]"
+    ]
+  },
+  {
+    "slug": "tijd-voor-god",
+    "titel": "Tijd voor God",
+    "auteur": "Jacques Philippe",
+    "voorraad": 19,
+    "formaat": "papier",
+    "ISBN": "90-7009-29-13",
+    "ondertitel": null,
+    "prijs_cent_excl": 975,
+    "matched_product_ids": [
+      629,
+      1723
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [629, 1723]"
+    ]
+  },
+  {
+    "slug": "ware-liefde",
+    "titel": "Ware liefde",
+    "auteur": "Jason Evert",
+    "voorraad": 124,
+    "formaat": "papier",
+    "ISBN": "90-6257-049-6",
+    "ondertitel": null,
+    "prijs_cent_excl": 250,
+    "matched_product_ids": [
+      620,
+      1714
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [620, 1714]"
+    ]
+  },
+  {
+    "slug": "leven-in-christus",
+    "titel": "Leven in Christus",
+    "auteur": "Raniero Cantalamessa",
+    "voorraad": 62,
+    "formaat": "papier",
+    "ISBN": "90-6257-050-X",
+    "ondertitel": "De spirituele boodschap van de Brief aan de Romeinen",
+    "prijs_cent_excl": 1675,
+    "matched_product_ids": [
+      619,
+      1713
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [619, 1713]"
+    ]
+  },
+  {
+    "slug": "the-founder-of-opus-dei-volume-3",
+    "titel": "The founder of Opus Dei Volume 3: The Divine Ways on Earth",
+    "auteur": "Andrés Vazquez de Prada",
+    "voorraad": null,
+    "formaat": "papier",
+    "ISBN": "1-594170-26-6",
+    "ondertitel": "The devine ways on earth",
+    "prijs_cent_excl": 1895,
+    "matched_product_ids": [
+      618,
+      1553
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [618, 1553]"
+    ]
+  },
+  {
+    "slug": "jean-marie-vianney-pastoor-van-ars",
+    "titel": "Jean Marie Vianney Pastoor van Ars",
+    "auteur": "Marc Joulin",
+    "voorraad": 181,
+    "formaat": "papier",
+    "ISBN": "90-6257-052-6",
+    "ondertitel": null,
+    "prijs_cent_excl": 975,
+    "matched_product_ids": [
+      617,
+      1712
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [617, 1712]"
+    ]
+  },
+  {
+    "slug": "de-innerlijke-vrijheid",
+    "titel": "De innerlijke vrijheid",
+    "auteur": "Jacques Philippe",
+    "voorraad": 67,
+    "formaat": "papier",
+    "ISBN": "97890.6257.034.8",
+    "ondertitel": null,
+    "prijs_cent_excl": 1275,
+    "matched_product_ids": [
+      616,
+      1711
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [616, 1711]"
+    ]
+  },
+  {
+    "slug": "begeleiden-onderscheiden-integreren",
+    "titel": "Begeleiden onderscheiden integreren",
+    "auteur": "e.a.\nJosé Granados",
+    "voorraad": 65,
+    "formaat": "papier",
+    "ISBN": "97890.6257.074.4",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      607,
+      2385
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [607, 2385]"
+    ]
+  },
+  {
+    "slug": "het-pastoraal-concilie-van-de-nederlandse-kerkprovincie-1966-1970",
+    "titel": "Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)",
+    "auteur": "Dr. P.W.F.M. Hamans",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-073-7",
+    "ondertitel": "Ontwikkelingen van de laatste vijftig jaren",
+    "prijs_cent_excl": 1990,
+    "matched_product_ids": [
+      592
+    ],
+    "reasons": [
+      "title length 67 > 64",
+      "wooslug length 65 > 64"
+    ]
+  },
+  {
+    "slug": "liefde-is-jezelf-geven",
+    "titel": "Liefde is jezelf geven",
+    "auteur": "Stéphane Seminckx",
+    "voorraad": 83,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-072-0",
+    "ondertitel": "De christelijke visie op het huwelijk",
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      581,
+      1702
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [581, 1702]"
+    ]
+  },
+  {
+    "slug": "zout-en-licht",
+    "titel": "Zout en licht - Overwegingen over het Christelijk leven",
+    "auteur": "José Antonio Loarte",
+    "voorraad": 30,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-069-0",
+    "ondertitel": "Overwegingen over het christelijk leven",
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      563,
+      1693
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [563, 1693]"
+    ]
+  },
+  {
+    "slug": "liefde-en-zelfrespect",
+    "titel": "Liefde en zelfrespect",
+    "auteur": "Michel Esparza",
+    "voorraad": 28,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-066-9",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      554,
+      1684
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [554, 1684]"
+    ]
+  },
+  {
+    "slug": "levenskunst-en-levenseinde",
+    "titel": "Levenskunst en levenseinde",
+    "auteur": "Daan van Schalkwijk",
+    "voorraad": 88,
+    "formaat": "papier",
+    "ISBN": "978.90.6527.070.6",
+    "ondertitel": "Achtergronden van een christelijke kijk op levenseinde en euthanasie",
+    "prijs_cent_excl": 400,
+    "matched_product_ids": [
+      545,
+      1667
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [545, 1667]"
+    ]
+  },
+  {
+    "slug": "schepping-of-toeval",
+    "titel": "Schepping of toeval",
+    "auteur": "Wolfgang Kuhn",
+    "voorraad": 4,
+    "formaat": "papier",
+    "ISBN": "90-6257-045-3",
+    "ondertitel": null,
+    "prijs_cent_excl": 975,
+    "matched_product_ids": [
+      544,
+      1666
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [544, 1666]"
+    ]
+  },
+  {
+    "slug": "de-mis-en-het-geestelijk-leven",
+    "titel": "De Mis en het geestelijk leven",
+    "auteur": "B. Vasconcelos",
+    "voorraad": 209,
+    "formaat": "papier",
+    "ISBN": "90-6257-042-9",
+    "ondertitel": null,
+    "prijs_cent_excl": 650,
+    "matched_product_ids": [
+      536,
+      1665
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [536, 1665]"
+    ]
+  },
+  {
+    "slug": "jouw-vragen-gods-antwoorden",
+    "titel": "Jouw vragen Gods antwoorden",
+    "auteur": "Peter Kreeft",
+    "voorraad": 206,
+    "formaat": "papier",
+    "ISBN": "90-6257-039-9",
+    "ondertitel": null,
+    "prijs_cent_excl": 950,
+    "matched_product_ids": [
+      535,
+      1664
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [535, 1664]"
+    ]
+  },
+  {
+    "slug": "het-leven-na-dit-leven",
+    "titel": "Het Leven na dit leven",
+    "auteur": "Federico Suarez",
+    "voorraad": 3,
+    "formaat": "papier",
+    "ISBN": "9789062570713",
+    "ondertitel": null,
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      534,
+      1663
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [534, 1663]"
+    ]
+  },
+  {
+    "slug": "hoezo-wonderen",
+    "titel": "Hoezo wonderen",
+    "auteur": "Patrick Theillier",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "90-6257-038-0",
+    "ondertitel": "kijk eens in Lourdes",
+    "prijs_cent_excl": 750,
+    "matched_product_ids": [
+      533,
+      1662
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [533, 1662]"
+    ]
+  },
+  {
+    "slug": "vrienden-van-god",
+    "titel": "Vrienden van God",
+    "auteur": "Jozefmaria Escriva",
+    "voorraad": 12,
+    "formaat": "papier",
+    "ISBN": "90-6257-023-2",
+    "ondertitel": null,
+    "prijs_cent_excl": 1575,
+    "matched_product_ids": [
+      523,
+      1660
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [523, 1660]"
+    ]
+  },
+  {
+    "slug": "the-founder-of-opus-dei-volume-2",
+    "titel": "The founder of Opus Dei Volume 2: God and Daring",
+    "auteur": "Andrés Vazquez de Prada",
+    "voorraad": null,
+    "formaat": "papier",
+    "ISBN": "1-889334-86-3",
+    "ondertitel": "God and daring",
+    "prijs_cent_excl": 1895,
+    "matched_product_ids": [
+      503,
+      1543
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [503, 1543]"
+    ]
+  },
+  {
+    "slug": "the-founder-of-opus-dei-volume-1",
+    "titel": "The founder of Opus Dei Volume 1: The Early Years",
+    "auteur": "Andrés Vazquez de Prada",
+    "voorraad": null,
+    "formaat": "papier",
+    "ISBN": "1-889334-26-x",
+    "ondertitel": "The early years",
+    "prijs_cent_excl": 1895,
+    "matched_product_ids": [
+      502,
+      1541
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [502, 1541]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-deel-10",
+    "titel": "Spreken met God Deel 10",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 161,
+    "formaat": "papier",
+    "ISBN": "90-6257-110-7",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      501,
+      1659
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [501, 1659]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-deel-9",
+    "titel": "Spreken met God Deel  9",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 149,
+    "formaat": "papier",
+    "ISBN": "90-6257-109-3",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      500,
+      1658
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [500, 1658]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-deel-8",
+    "titel": "Spreken met God Deel  8",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 12,
+    "formaat": "papier",
+    "ISBN": "90-6257-108-5",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      499,
+      1657
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [499, 1657]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-deel-7",
+    "titel": "Spreken met God Deel  7",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 43,
+    "formaat": "papier",
+    "ISBN": "90-6257-107-7",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      498,
+      1656
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [498, 1656]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-deel-6",
+    "titel": "Spreken met God Deel  6",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 143,
+    "formaat": "papier",
+    "ISBN": "90-6257-106-9",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      490,
+      1648
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [490, 1648]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-deel-5",
+    "titel": "Spreken met God Deel  5",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 160,
+    "formaat": "papier",
+    "ISBN": "90-6257-027-5",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      485,
+      1643
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [485, 1643]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-deel-4",
+    "titel": "Spreken met God Deel  4",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 148,
+    "formaat": "papier",
+    "ISBN": "90-6257-104-2",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      484,
+      1642
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [484, 1642]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-deel-3",
+    "titel": "Spreken met God Deel  3",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 46,
+    "formaat": "papier",
+    "ISBN": "90-6257-103-4",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      483,
+      1641
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [483, 1641]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-deel-2",
+    "titel": "Spreken met God Deel  2",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 122,
+    "formaat": "papier",
+    "ISBN": "90-6257-102-6",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      482,
+      1640
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [482, 1640]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-deel-1",
+    "titel": "Spreken met God Deel  1",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": 177,
+    "formaat": "papier",
+    "ISBN": "90-6257-101-8",
+    "ondertitel": null,
+    "prijs_cent_excl": 1475,
+    "matched_product_ids": [
+      481,
+      1639
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [481, 1639]"
+    ]
+  },
+  {
+    "slug": "spreken-met-god-alle-delen",
+    "titel": "Spreken met God  - Alle delen",
+    "auteur": "Francisco Fernandez Carvajal",
+    "voorraad": null,
+    "formaat": "papier",
+    "ISBN": "90-6257-100-x",
+    "ondertitel": null,
+    "prijs_cent_excl": 12000,
+    "matched_product_ids": [
+      479,
+      2403
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [479, 2403]"
+    ]
+  },
+  {
+    "slug": "rome-ons-thuis",
+    "titel": "Rome ons thuis",
+    "auteur": "Scott Hahn",
+    "voorraad": 195,
+    "formaat": "papier",
+    "ISBN": "90-6257-029-1",
+    "ondertitel": "Veertig Katholieke gebruiken en devoties en hun Bijbelse wortels",
+    "prijs_cent_excl": 1395,
+    "matched_product_ids": [
+      478,
+      1638
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [478, 1638]"
+    ]
+  },
+  {
+    "slug": "edward-poppe",
+    "titel": "Edward Poppe",
+    "auteur": "Karl Weekers",
+    "voorraad": 21,
+    "formaat": "papier",
+    "ISBN": "97.890.6257.045.4",
+    "ondertitel": "Een bloemlezing",
+    "prijs_cent_excl": 1595,
+    "matched_product_ids": [
+      465,
+      1623
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [465, 1623]"
+    ]
+  },
+  {
+    "slug": "de-weg",
+    "titel": "De Weg",
+    "auteur": "Jozefmaria Escriva",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "90-6257-014-3",
+    "ondertitel": null,
+    "prijs_cent_excl": 1000,
+    "matched_product_ids": [
+      464,
+      1531,
+      1622
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [464, 1531, 1622]"
+    ]
+  },
+  {
+    "slug": "de-voor",
+    "titel": "De Voor",
+    "auteur": "Jozefmaria Escriva",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "90-6257-019-4",
+    "ondertitel": null,
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      461,
+      1529,
+      1621
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [461, 1529, 1621]"
+    ]
+  },
+  {
+    "slug": "de-smidse",
+    "titel": "De Smidse",
+    "auteur": "Jozefmaria Escriva",
+    "voorraad": 68,
+    "formaat": "papier",
+    "ISBN": "90-6257-159-x",
+    "ondertitel": null,
+    "prijs_cent_excl": 1325,
+    "matched_product_ids": [
+      460,
+      1620
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [460, 1620]"
+    ]
+  },
+  {
+    "slug": "de-liefde-tot-de-kerk",
+    "titel": "De liefde tot de Kerk",
+    "auteur": "Jozefmaria Escriva",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "90-6257-024-0",
+    "ondertitel": null,
+    "prijs_cent_excl": 725,
+    "matched_product_ids": [
+      459,
+      1619
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [459, 1619]"
+    ]
+  },
+  {
+    "slug": "de-kruisweg",
+    "titel": "De Kruisweg",
+    "auteur": "Jozefmaria Escriva",
+    "voorraad": 617,
+    "formaat": "papier",
+    "ISBN": "90-6257-021-6",
+    "ondertitel": null,
+    "prijs_cent_excl": 795,
+    "matched_product_ids": [
+      457,
+      1617
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [457, 1617]"
+    ]
+  },
+  {
+    "slug": "de-kerststal-van-god",
+    "titel": "De Kerststal van God",
+    "auteur": "Enrique Monasterio",
+    "voorraad": 85,
+    "formaat": "papier",
+    "ISBN": "90-6257-032-1",
+    "ondertitel": null,
+    "prijs_cent_excl": 1130,
+    "matched_product_ids": [
+      455,
+      1615
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [455, 1615]"
+    ]
+  },
+  {
+    "slug": "de-droefheid-van-christus",
+    "titel": "De droefheid van Christus",
+    "auteur": "Thomas More",
+    "voorraad": 213,
+    "formaat": "papier",
+    "ISBN": "90-6257-162-x",
+    "ondertitel": "tot aan zijn gevangenneming",
+    "prijs_cent_excl": 650,
+    "matched_product_ids": [
+      443,
+      1611
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [443, 1611]"
+    ]
+  },
+  {
+    "slug": "belijdenissen",
+    "titel": "Belijdenissen",
+    "auteur": "Aurelius Augustinus",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "90-6257-161-1",
+    "ondertitel": "In eigentijdse bewerking",
+    "prijs_cent_excl": 1000,
+    "matched_product_ids": [
+      442,
+      1610
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [442, 1610]"
+    ]
+  },
+  {
+    "slug": "nt09-navarre-bible-captivity-letters",
+    "titel": "NT09 Navarre Bible Captivity Letters",
+    "auteur": "Faculteit Godgeleerdheid van de Universiteit van Navarra",
+    "voorraad": null,
+    "formaat": "papier",
+    "ISBN": "1-85182-079-5",
+    "ondertitel": null,
+    "prijs_cent_excl": 1850,
+    "matched_product_ids": [],
+    "reasons": [
+      "no WooCommerce product_id matched on title"
+    ]
+  },
+  {
+    "slug": "montse-grases",
+    "titel": "Montse Grases",
+    "auteur": "Edith Zeltner",
+    "voorraad": 695,
+    "formaat": "papier",
+    "ISBN": "90-6257-163-8",
+    "ondertitel": "Een korte schets van haar leven",
+    "prijs_cent_excl": 375,
+    "matched_product_ids": [
+      424,
+      1608
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [424, 1608]"
+    ]
+  },
+  {
+    "slug": "met-ziel-en-lichaam",
+    "titel": "Met ziel en lichaam",
+    "auteur": "J.L. Soria",
+    "voorraad": 351,
+    "formaat": "papier",
+    "ISBN": "90-6257-152-2",
+    "ondertitel": "De christen en de seksualiteit",
+    "prijs_cent_excl": 425,
+    "matched_product_ids": [
+      422,
+      1607
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [422, 1607]"
+    ]
+  },
+  {
+    "slug": "kom-heilige-geest",
+    "titel": "Kom Heilige Geest",
+    "auteur": "Francisca J. del Valle",
+    "voorraad": 167,
+    "formaat": "papier",
+    "ISBN": "90-6257-026-7",
+    "ondertitel": "Tien overwegingen op weg naar Pinksteren",
+    "prijs_cent_excl": 650,
+    "matched_product_ids": [
+      420,
+      1605
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [420, 1605]"
+    ]
+  },
+  {
+    "slug": "jezus-christus",
+    "titel": "Jezus Christus",
+    "auteur": "J. Simon",
+    "voorraad": 27,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-156-7",
+    "ondertitel": "De verlosser van de mens",
+    "prijs_cent_excl": 375,
+    "matched_product_ids": [
+      418,
+      1604
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [418, 1604]"
+    ]
+  },
+  {
+    "slug": "hoe-biechten-wij-goed",
+    "titel": "Hoe biechten wij goed",
+    "auteur": "F. Luna",
+    "voorraad": 299,
+    "formaat": "papier",
+    "ISBN": "90-6257-025-9",
+    "ondertitel": null,
+    "prijs_cent_excl": 375,
+    "matched_product_ids": [
+      417,
+      1603
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [417, 1603]"
+    ]
+  },
+  {
+    "slug": "gesprekken-met-mgr-escriva",
+    "titel": "Gesprekken met Mgr Escriva",
+    "auteur": "Jozefmaria Escriva",
+    "voorraad": 225,
+    "formaat": "papier",
+    "ISBN": "90-6257-018-6",
+    "ondertitel": null,
+    "prijs_cent_excl": 1250,
+    "matched_product_ids": [
+      411,
+      1601
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [411, 1601]"
+    ]
+  },
+  {
+    "slug": "gebeden",
+    "titel": "Gebeden",
+    "auteur": "J. van der Mee",
+    "voorraad": 0,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-129-1",
+    "ondertitel": null,
+    "prijs_cent_excl": 595,
+    "matched_product_ids": [
+      402,
+      1584
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [402, 1584]"
+    ]
+  },
+  {
+    "slug": "francisco-en-jacinta-van-fatima",
+    "titel": "Francisco en Jacinta van Fatima",
+    "auteur": "Sonja Hissink",
+    "voorraad": 351,
+    "formaat": "papier",
+    "ISBN": "90-6257-154-9",
+    "ondertitel": "aan wie Maria verschenen is",
+    "prijs_cent_excl": 425,
+    "matched_product_ids": [
+      394,
+      1576
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [394, 1576]"
+    ]
+  },
+  {
+    "slug": "geboden-en-deugden-2",
+    "titel": "Geboden en deugden",
+    "auteur": "Aurelio Fernández",
+    "voorraad": 57,
+    "formaat": "papier",
+    "ISBN": "978-90-6257-164-2",
+    "ondertitel": "Inleiding op de Toegepaste moraal",
+    "prijs_cent_excl": 1675,
+    "matched_product_ids": [
+      2416,
+      2449
+    ],
+    "reasons": [
+      "ambiguous WooCommerce product_id for title: [2416, 2449]"
+    ]
+  },
+  {
+    "slug": null,
+    "titel": "Het pastoraal concilie van de Nederlandse kerkprovincie (1966-1970)",
+    "auteur": null,
+    "voorraad": null,
+    "formaat": null,
+    "ISBN": null,
+    "ondertitel": null,
+    "prijs_cent_excl": null,
+    "matched_product_ids": [
+      592
+    ],
+    "reasons": [
+      "sold in WooCommerce but not loaded from catalog; title length 67 > 64"
+    ]
+  },
+  {
+    "slug": null,
+    "titel": "Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw",
+    "auteur": null,
+    "voorraad": null,
+    "formaat": null,
+    "ISBN": null,
+    "ondertitel": null,
+    "prijs_cent_excl": null,
+    "matched_product_ids": [
+      1025
+    ],
+    "reasons": [
+      "sold in WooCommerce but not loaded from catalog; title length 72 > 64"
+    ]
+  },
+  {
+    "slug": null,
+    "titel": "Geschiedenis van de Katholieke Kerk in de tweede helft van de 20ste eeuw",
+    "auteur": null,
+    "voorraad": null,
+    "formaat": null,
+    "ISBN": null,
+    "ondertitel": null,
+    "prijs_cent_excl": null,
+    "matched_product_ids": [
+      1956
+    ],
+    "reasons": [
+      "sold in WooCommerce but not loaded from catalog; title length 72 > 64"
+    ]
+  },
+  {
+    "slug": null,
+    "titel": "Fake news ontmaskerd. De verborgen geschiedenis van het christendom",
+    "auteur": null,
+    "voorraad": null,
+    "formaat": null,
+    "ISBN": null,
+    "ondertitel": null,
+    "prijs_cent_excl": null,
+    "matched_product_ids": [
+      6754
+    ],
+    "reasons": [
+      "sold in WooCommerce but not loaded from catalog; title length 67 > 64"
+    ]
+  },
+  {
+    "slug": null,
+    "titel": "Fake news ontmaskerd. De verborgen geschiedenis van het christendom",
+    "auteur": null,
+    "voorraad": null,
+    "formaat": null,
+    "ISBN": null,
+    "ondertitel": null,
+    "prijs_cent_excl": null,
+    "matched_product_ids": [
+      6756
+    ],
+    "reasons": [
+      "sold in WooCommerce but not loaded from catalog; title length 67 > 64"
+    ]
+  }
+]

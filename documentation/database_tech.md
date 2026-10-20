@@ -573,6 +573,7 @@ the same way as `dbo.language`. Created by `hub/sql/language_long.sql`.
 | `username` | `NVARCHAR(64)` unique | `dkg`, `gph`, … — the center login |
 | `title` | `NVARCHAR(256)` | display name |
 | `egress_ip` | `VARCHAR(256)` NULL | comma-separated allowlist; empty or NULL admits nobody |
+| `visibility` | `BIT` NULL | country login may see category totals when true; see `scoping.md` |
 
 <!-- {en:center[5],table,login,column} -->
 <!-- {nl:centrum[5],tabel,inloggen,kolom} -->
@@ -588,6 +589,7 @@ the same way as `dbo.language`. Created by `hub/sql/language_long.sql`.
 | `center_id` | `INT` FK | |
 | `password_hash` | `NVARCHAR(256)` NULL | scrypt; see `double_login.md` |
 | `mobile_phone` | `NVARCHAR(32)` NULL | E.164; SMS second step when set |
+| `visibility` | `BIT` NULL | center/country may open statements when true; see `scoping.md` |
 
 Country is `person → center → country`. Account count is `COUNT(*) FROM dbo.account WHERE person_id = person.id`.
 

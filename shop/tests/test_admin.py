@@ -68,7 +68,7 @@ class AdminTests(unittest.TestCase):
                         "booked_on": "2026-10-17",
                         "name": "Parochie Voorbeeld",
                         "iban": "NL00TEST",
-                        "description": "Factuur BDF-100000",
+                        "description": "Factuur DBF-100000",
                         "amount_cents": 2500,
                         "status": "100000",
                     }
@@ -127,7 +127,7 @@ class AdminTests(unittest.TestCase):
         from app.admin import invoices_page
 
         sent = SimpleNamespace(
-            number="BDF-100001",
+            number="DBF-100001",
             name="Bedrijf Open",
             email="open@example.com",
             payable_cents=2500,
@@ -136,7 +136,7 @@ class AdminTests(unittest.TestCase):
             paid_at=None,
         )
         paid = SimpleNamespace(
-            number="BDF-100002",
+            number="DBF-100002",
             name="Bedrijf Betaald",
             email="betaald@example.com",
             payable_cents=3500,
@@ -145,7 +145,7 @@ class AdminTests(unittest.TestCase):
             paid_at="2026-10-18 14:20",
         )
         mollie = SimpleNamespace(
-            number="BDF-100003",
+            number="DBF-100003",
             name="Klant Mollie",
             email="mollie@example.com",
             payable_cents=1800,
@@ -386,7 +386,7 @@ class AdminTests(unittest.TestCase):
             try:
                 stored = get_order_by_token(conn, order.token)
                 assert stored is not None
-                self.assertRegex(stored.invoice_number, r"^BDF-\d+$")
+                self.assertRegex(stored.invoice_number, r"^DBF-\d+$")
                 self.assertEqual(stored.invoice_id, order.invoice_id)
                 self.assertEqual(stored.status, "invoiced")
             finally:
@@ -515,7 +515,7 @@ class AdminTests(unittest.TestCase):
             self.assertIn("verzonden naar adhoc@example.com", created.text)
             self.assertEqual(send_email.call_count, 1)
             self.assertTrue(send_email.call_args.args[2].startswith(b"%PDF-"))
-            number_match = re.search(r"BDF-\d+", created.text)
+            number_match = re.search(r"DBF-\d+", created.text)
             self.assertIsNotNone(number_match)
             assert number_match is not None
             number = number_match.group(0)
@@ -643,7 +643,7 @@ class AdminTests(unittest.TestCase):
                 )
             self.assertEqual(response.status_code, 502)
             self.assertIn("is niet verzonden", response.text)
-            number_match = re.search(r"BDF-\d+", response.text)
+            number_match = re.search(r"DBF-\d+", response.text)
             self.assertIsNotNone(number_match)
             assert number_match is not None
             number = number_match.group(0)
@@ -754,7 +754,7 @@ class AdminTests(unittest.TestCase):
                         {
                             "iban": iban,
                             "invoice_id": 100002,
-                            "invoice_number": "BDF-100002",
+                            "invoice_number": "DBF-100002",
                             "open_cents": statement.amount_cents,
                         }
                     ],
@@ -773,7 +773,7 @@ class AdminTests(unittest.TestCase):
                 self.assertIn(">unregistered</span>", first.text)
                 apply_allocations_mock.assert_called_once_with(
                     connect.return_value,
-                    [Allocation(statement.key, "BDF-100002", statement.amount_cents, statement.booked_on)],
+                    [Allocation(statement.key, "DBF-100002", statement.amount_cents, statement.booked_on)],
                     mark_bookings=True,
                 )
 

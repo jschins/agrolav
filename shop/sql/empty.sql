@@ -24,8 +24,8 @@ DELETE FROM dbo.debtors;
 GO
 DELETE FROM dbo.address;
 GO
-DELETE FROM dbo.stock;
-GO
+--DELETE FROM dbo.stock;
+--GO
 
 -- Invoice ids (also debtor order ids) count from 100000; other counters start at 1.
 -- On an emptied table the first next value is one past the number given, hence n-1.

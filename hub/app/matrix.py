@@ -289,15 +289,15 @@ def build_matrix(
     resultaat = _resultaat_categories(country or "", booking)
     is_resultaat = resultaat != booking
     category_list = booking + [balance_name, date_name]
-    from app.sql_catalog import center_expense_meta, person_details_flags
+    from app.sql_catalog import center_visibility_meta, person_visibility_flags
 
     center_key = active_center() or (packs[0].center if packs else "")
-    details_flags = person_details_flags(center_key)
-    expense_meta = center_expense_meta(center_key)
+    person_vis = person_visibility_flags(center_key)
+    visibility_meta = center_visibility_meta(center_key)
     columns = [
         {
             "person_name": p.person_name,
-            "details": bool(details_flags.get(p.person_name)),
+            "visibility": bool(person_vis.get(p.person_name)),
         }
         for p in packs
     ]
@@ -483,7 +483,7 @@ def build_matrix(
         "entries": sorted(entries_names),
         "footers": {"balance": balance_name, "last_booked": date_name},
         "table_header_terms": table_header_terms(packs),
-        "center_expenses": expense_meta,
+        "center_visibility": visibility_meta,
     }
     vis = load_general_file(packs).get("category_visibility")
     if isinstance(vis, dict) and vis:

@@ -960,6 +960,7 @@ def upsert_user(
     center: str = "",
     country: str = "",
     person: str = "",
+    visibility: bool | None = None,
 ) -> dict[str, Any]:
     """Insert or update a user. Does not change ``format`` or ``password_hash`` on update."""
     name = (username or "").strip()
@@ -990,8 +991,18 @@ def upsert_user(
         if _sql_username_taken(cursor, name, except_person_id=person_id):
             raise ValueError(f"Username already used: {name}")
         title_value = (title_s or "").strip()
+        visibility_bit = None if visibility is None else (1 if visibility else 0)
         if person_id is not None:
-            if title_value:
+            if title_value and visibility_bit is not None:
+                cursor.execute(
+                    """
+                    UPDATE dbo.person
+                    SET title = ?, country_id = ?, center_id = ?, visibility = ?
+                    WHERE id = ?
+                    """,
+                    (title_value, country_id, center_id, visibility_bit, person_id),
+                )
+            elif title_value:
                 cursor.execute(
                     """
                     UPDATE dbo.person
@@ -999,6 +1010,15 @@ def upsert_user(
                     WHERE id = ?
                     """,
                     (title_value, country_id, center_id, person_id),
+                )
+            elif visibility_bit is not None:
+                cursor.execute(
+                    """
+                    UPDATE dbo.person
+                    SET country_id = ?, center_id = ?, visibility = ?
+                    WHERE id = ?
+                    """,
+                    (country_id, center_id, visibility_bit, person_id),
                 )
             else:
                 cursor.execute(
@@ -1014,8 +1034,8 @@ def upsert_user(
                 """
                 INSERT INTO dbo.person
                     (username, title, country_id, center_id,
-                     created_at, password_hash)
-                VALUES (?, ?, ?, ?, ?, ?)
+                     created_at, password_hash, visibility)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -1024,6 +1044,7 @@ def upsert_user(
                     center_id,
                     today,
                     default_password_hash(name),
+                    0 if visibility_bit is None else visibility_bit,
                 ),
             )
         _sql_connect().commit()
@@ -1039,6 +1060,7 @@ def upsert_personal_login(
     person: str,
     country: str = "",
     title: str = "",
+    visibility: bool = False,
 ) -> dict[str, Any]:
     folder = (person or "").strip()
     ws = (center or "").strip()
@@ -1053,6 +1075,7 @@ def upsert_personal_login(
         center=ws,
         country=country_s,
         person=folder,
+        visibility=bool(visibility),
     )
 
 
@@ -1065,6 +1088,7 @@ def create_manual_person(
     account_number: str,
     initial_balance: str = "0",
     country: str = "",
+    visibility: bool = False,
 ) -> dict[str, Any]:
     """Create a manual-upload person with a single opening-balance account."""
     name = (person or "").strip()
@@ -1089,6 +1113,7 @@ def create_manual_person(
 
     country_s = (country or active_country() or resolve_country_for_center(ws) or "").strip()
     today = _utc_today()
+    visibility_bit = 1 if visibility else 0
     with _LOCK:
         init_user_store()
         cursor = _sql_connect().cursor()
@@ -1104,9 +1129,9 @@ def create_manual_person(
             """
             INSERT INTO dbo.person
                 (username, title, country_id, center_id,
-                 created_at, password_hash)
+                 created_at, password_hash, visibility)
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -1115,6 +1140,7 @@ def create_manual_person(
                 center_id,
                 today,
                 default_password_hash(name),
+                visibility_bit,
             ),
         )
         person_id = int(cursor.fetchone()[0])

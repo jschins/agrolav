@@ -1,15 +1,13 @@
 export interface PersonInfo {
   person_name: string;
   /** When true, center/country may open banking statements; amounts are underlined. */
-  details?: boolean;
+  visibility?: boolean;
 }
 
-export interface CenterExpensesMeta {
-  /** dbo.center.details: 0 never, 1 fiat vs download, 2 always (country). */
-  details?: number;
-  fiat_date?: string | null;
-  download_date?: string | null;
-  /** Whether country login may see expense amounts for this center. */
+export interface CenterVisibilityMeta {
+  /** dbo.center.visibility: true / false / null. */
+  visibility?: boolean | null;
+  /** Country may underline amounts and drill down when true. */
   visible?: boolean;
 }
 
@@ -21,7 +19,7 @@ export interface MatrixResponse {
   entries?: string[];
   footers?: { balance: string; last_booked: string };
   table_header_terms: Record<string, string>;
-  center_expenses?: CenterExpensesMeta;
+  center_visibility?: CenterVisibilityMeta;
   center?: string;
 }
 

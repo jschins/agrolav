@@ -16,8 +16,8 @@ Two kinds of buyer share one address table:
 | `debtors`    | account buyers (on rekening)| yes        | yes          |
 | `customers`  | Mollie buyers (iDEAL/card)  | no         | yes          |
 
-- `invoices` — **exactly one** owner per invoice (`ck_invoices_owner`: `debtor_id` xor
-  `customer_id`).
+- `invoices` — owned via `customer_id` and/or `debtor_id` (the old `ck_invoices_owner`
+  xor check was dropped).
   - For a **debtor**, the invoice is created with the order and starts prepared. Its
     `id` is also the primary/foreign key of the corresponding order; the administrator
     edits and sends the invoice from Bestellingen.
@@ -43,9 +43,7 @@ Two kinds of buyer share one address table:
    return-page poll find the invoice by the stored Mollie payment id, so no Mollie
    `metadata` is sent. The earlier `metadata.order_id` cross-check was redundant with
    that stored id (and with `ux_invoices_mollie`); the amount check remains.
-6. **Order and invoice numbers share the invoice ID.** An order is displayed as
-   `DB-{orders.invoice_id}` and its invoice as `BDF-{invoices.id}`. The order token remains
-   the random 32-hex secret used in the order URL.
+6. **Order and invoice numbers share the invoice ID** — see § Invoice numbering.
 
 ## 3. Connections
 
@@ -68,26 +66,45 @@ The app now needs two connections:
 | `app/pages.py`      | render the new `Order` / `Invoice`; paid vs open invoice; the order page shows `order.token`. |
 | `app/admin.py`      | open, paid, and Mollie invoice tables; pending and sent orders; bank refresh registration and matching. |
 | `app/reminders.py`  | bookkeeping connection for bookings. |
-| `sql/webshop.sql`   | schema with `orders.invoice_id` as PK/FK to `invoices.id`; order number `DB-{id}`, invoice number `BDF-{id}`. |
+| `sql/webshop.sql`   | schema with `orders.invoice_id` as PK/FK to `invoices.id`; order number `DB-{id}`, invoice number `DBF-{id}`. |
 
 ## 5. Schema (webshop)
 
 `address`, `debtors`, `customers`, `orders` (`invoice_id` PK/FK, `token`), `orderlines`,
 `invoices` (+ `token`, `mollie_id`, `mollie_settlement_id`, `sent_at`, `paid_at`,
-`status`, `ck_invoices_owner`, filtered unique index `ux_invoices_mollie`), `invoicelines`,
+`status`, filtered unique index `ux_invoices_mollie`), `invoicelines`,
 `bookings`, `payments`, `reminders`, `stock`.
 
 Idempotent: guarded by `DB_ID` / `OBJECT_ID` / `COL_LENGTH` / `sys.indexes`, so it can
 be re-run to bring an existing database up to date.
 
-### Shared order and invoice key
+### Invoice numbering
 
-`invoices.id` is the identity counter. For debtor purchases the invoice is inserted
-first, then `orders.invoice_id` stores that same value as both PK and FK. Its public
-order number is `DB-{invoice_id}` and its invoice number is `BDF-{invoice_id}`.
-`orderlines.order_id` references `orders.invoice_id`; customer checkout creates an
-invoice without an order row. Run `empty.sql` after the schema change; no existing
-orders or invoices are carried into the new structure.
+Public numbers are derived from `invoices.id` (identity). There is no separate
+number column; `ledger.invoice_number` / `orders.order_number` format the strings.
+
+1. **A new `invoice_id` is allocated when an order (or Mollie checkout) is placed.**
+   The invoice row is inserted first; SQL Server returns `invoices.id`.
+2. **Invoice display number:** `DBF-{invoice_id}` (e.g. `DBF-100000`).
+3. **Every order has its invoice.** For a debtor purchase, `orders.invoice_id` is
+   set to that same id and is both the order’s primary key and a foreign key to
+   `invoices.id`. `orderlines.order_id` references `orders.invoice_id`.
+4. **Order display number:** `DB-{invoice_id}` (e.g. `DB-100000`).
+5. **Only debtor orders are stored in `orders`.** Mollie (customer) checkouts write
+   a paid invoice (and customer) only — no order row — because for Mollie buyers
+   the invoice and the purchase are the same thing; a separate order would be
+   redundant.
+
+| Buyer        | DB row(s)                         | Public labels                          |
+|--------------|-----------------------------------|----------------------------------------|
+| Debtor       | `invoices` + `orders` (same id)   | order `DB-{id}`, invoice `DBF-{id}`    |
+| Mollie customer | `invoices` only                | invoice `DBF-{id}` (no `DB-…` order)   |
+
+The order URL token remains a random 32-hex secret (`orders.token`), independent
+of the numeric id. Customer invoices use `invoices.token` the same way.
+
+Run `empty.sql` after the schema change; no existing orders or invoices are
+carried into the new structure.
 
 ### Columns that are presently unused
 
@@ -97,7 +114,8 @@ longer needs them. They are candidates for a later drop.
 | column                    | nullability  | status |
 |---------------------------|--------------|--------|
 | `orders.vat_cents`        | `NOT NULL`   | written by `create_account_order`; never read. The debtor invoice takes its VAT from the lines, not the order. |
-| `orders.portokosten_cents`| `NULL`       | never written and never read. |
+
+`orders.portokosten_cents` was dropped; postage lives on `invoices.portokosten_cents` only.
 
 `Order.vat_cents` is still populated by `_order_from_row` so the read path matches the
 column. To drop `vat_cents` later: remove the `o.vat_cents` entry from `_ORDER_SELECT`,
@@ -131,4 +149,4 @@ Still present in `catalog.json` but no longer read by any code: the `hero_kicker
 - `python -m unittest shop.tests.test_shop shop.tests.test_ledger shop.tests.test_admin`
   — integration suite green against an emptied and freshly initialized `webshop`.
 - debtor order IDs and invoice IDs are the same; order names are `DB-{id}` and invoice
-  names are `BDF-{id}`. `orders.token` remains 32 hex digits.
+  names are `DBF-{id}`. `orders.token` remains 32 hex digits.

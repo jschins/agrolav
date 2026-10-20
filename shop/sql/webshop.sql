@@ -70,7 +70,7 @@ IF COL_LENGTH(N'dbo.customers', N'iban') IS NULL
 GO
 
 -- Invoices. A debtor or a customer owns the invoice, never both.
--- The number is derived from id (BDF-{id}); there is no number column.
+-- The number is derived from id (DBF-{id}); there is no number column.
 -- An older table that still carried a number column is emptied and rebuilt.
 IF OBJECT_ID(N'dbo.invoices', N'U') IS NOT NULL
    AND COL_LENGTH(N'dbo.invoices', N'number') IS NOT NULL
@@ -99,12 +99,13 @@ CREATE TABLE dbo.invoices (
     paid_at             nvarchar(40)    NULL,
     CONSTRAINT pk_invoices PRIMARY KEY (id),
     CONSTRAINT fk_invoices_debtor FOREIGN KEY (debtor_id) REFERENCES dbo.debtors (id),
-    CONSTRAINT fk_invoices_customer FOREIGN KEY (customer_id) REFERENCES dbo.customers (id),
-    CONSTRAINT ck_invoices_owner CHECK (
-        (debtor_id IS NOT NULL AND customer_id IS NULL)
-        OR (debtor_id IS NULL AND customer_id IS NOT NULL)
-    )
+    CONSTRAINT fk_invoices_customer FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)
 );
+GO
+
+-- Older databases may still have the xor-owner check; drop it if present.
+IF OBJECT_ID(N'dbo.ck_invoices_owner', N'C') IS NOT NULL
+    ALTER TABLE dbo.invoices DROP CONSTRAINT ck_invoices_owner;
 GO
 
 -- Bring an already-created invoices table up to date.
@@ -170,12 +171,15 @@ CREATE TABLE dbo.orders (
     vat_cents           int             NOT NULL,
     created_at          nvarchar(80)    NOT NULL,
     debtor_id           int             NOT NULL,
-    portokosten_cents   int             NULL,
     CONSTRAINT pk_orders PRIMARY KEY (invoice_id),
     CONSTRAINT uq_orders_token UNIQUE (token),
     CONSTRAINT fk_orders_invoice FOREIGN KEY (invoice_id) REFERENCES dbo.invoices (id),
     CONSTRAINT fk_orders_debtor FOREIGN KEY (debtor_id) REFERENCES dbo.debtors (id)
 );
+GO
+
+IF COL_LENGTH(N'dbo.orders', N'portokosten_cents') IS NOT NULL
+    ALTER TABLE dbo.orders DROP COLUMN portokosten_cents;
 GO
 
 -- Each order line uses the same invoice id as its parent order.
