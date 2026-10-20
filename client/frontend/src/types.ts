@@ -1,5 +1,7 @@
 export interface PersonInfo {
   person_name: string;
+  /** When true, center/country may open banking statements; amounts are underlined. */
+  details?: boolean;
 }
 
 export interface MatrixResponse {

@@ -978,6 +978,10 @@ th {
   white-space: nowrap;
 }
 
+.totals-table .num.details-open {
+  text-decoration: underline;
+}
+
 .totals-table th.person-column-head {
   padding: 0.15rem 0.25rem;
   min-width: 5.5rem;

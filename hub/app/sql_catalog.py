@@ -385,6 +385,41 @@ def people_in_center(center: str) -> list[str]:
         return []
 
 
+def person_details_flags(center: str) -> dict[str, bool]:
+    """Person username → True when ``dbo.person.details`` is set.
+
+    NULL and false mean only that person may open category amounts into
+    banking statements. True also allows center and country logins.
+    """
+    name = (center or "").strip()
+    if not name or not _sql_ready():
+        return {}
+
+    def _run() -> dict[str, bool]:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            SELECT p.username, p.details
+            FROM dbo.person p
+            JOIN dbo.center n ON n.center_id = p.center_id
+            WHERE n.username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (name,),
+        )
+        out: dict[str, bool] = {}
+        for username, details in cursor.fetchall():
+            person = str(username or "").strip()
+            if not person:
+                continue
+            out[person] = bool(details)
+        return out
+
+    try:
+        return _sql_retry(_run)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def list_uploaded_files(username: str) -> list[dict[str, str]]:
     """Uploaded filenames recorded on ``dbo.uploaded_files`` for this person."""
     name = (username or "").strip()

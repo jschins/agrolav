@@ -289,7 +289,16 @@ def build_matrix(
     resultaat = _resultaat_categories(country or "", booking)
     is_resultaat = resultaat != booking
     category_list = booking + [balance_name, date_name]
-    columns = [{"person_name": p.person_name} for p in packs]
+    from app.sql_catalog import person_details_flags
+
+    details_flags = person_details_flags(active_center() or (packs[0].center if packs else ""))
+    columns = [
+        {
+            "person_name": p.person_name,
+            "details": bool(details_flags.get(p.person_name)),
+        }
+        for p in packs
+    ]
     cells: dict[str, dict[str, str]] = {name: {} for name in category_list}
     ws = active_center() or ""
     sql_matrix = None

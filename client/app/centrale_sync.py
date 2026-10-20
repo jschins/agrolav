@@ -497,6 +497,37 @@ def require_person(person_name: str) -> None:
     )
 
 
+def person_statement_details_allowed(person_name: str) -> bool:
+    """Center/country may open statements only when ``dbo.person.details`` is true."""
+    needle = str(person_name or "").strip().lower()
+    if not needle:
+        return False
+    try:
+        payload = hub_get("/people-details")
+    except Exception:  # noqa: BLE001
+        return False
+    flags = payload.get("details") if isinstance(payload, dict) else None
+    if not isinstance(flags, dict):
+        return False
+    for name, allowed in flags.items():
+        if str(name or "").strip().lower() == needle:
+            return bool(allowed)
+    return False
+
+
+def require_statement_details(person_name: str) -> None:
+    """Person/unit always; center/country only when the person opts into details."""
+    require_person(person_name)
+    cfg = load_config()
+    if cfg.access in (ACCESS_PERSON, ACCESS_UNIT):
+        return
+    if person_statement_details_allowed(person_name):
+        return
+    raise PermissionError(
+        f"Statement details for {person_name!r} are only visible to that person."
+    )
+
+
 def scope_people(people: list[Any] | None) -> list[Any]:
     scope = configured_person()
     if not scope or not isinstance(people, list):

@@ -877,6 +877,25 @@ function personHasTransactions(matrix: MatrixResponse, category: string, person:
   return amountHasValue(matrix.cells[category]?.[person] ?? "");
 }
 
+function personDetailsOpen(matrix: MatrixResponse, person: string): boolean {
+  const row = matrix.people.find((p) => p.person_name === person);
+  return Boolean(row?.details);
+}
+
+/** Person/unit may open any live cell; center/country only when person.details is true. */
+function cellOpensStatements(
+  matrix: MatrixResponse,
+  category: string,
+  person: string,
+  access: string
+): boolean {
+  if (isMatrixFooter(matrix, category)) return false;
+  if (!personHasTransactions(matrix, category, person)) return false;
+  const mode = (access || "").trim().toLowerCase();
+  if (mode === "personal" || mode === "unit") return true;
+  return personDetailsOpen(matrix, person);
+}
+
 function categoryHasTransactions(
   matrix: MatrixResponse,
   category: string,
@@ -3977,6 +3996,7 @@ function MainApp({
               matrix={displayMatrix}
               person_name={selection.person_name}
               selectedCategory={selection.category}
+              access={loginAccess}
               omitEmpty={
                 loginAccess === "local" ||
                 loginAccess === "personal" ||
@@ -4012,6 +4032,7 @@ function MainApp({
             <MatrixTable
               matrix={displayMatrix}
               selection={selection}
+              access={loginAccess}
               omitEmpty={
                 loginAccess === "local" ||
                 loginAccess === "personal" ||
@@ -5277,12 +5298,14 @@ function MonthlyDrilldownApp({
 function MatrixTable({
   matrix,
   selection,
+  access = "",
   omitEmpty = false,
   columnLabel,
   onPick,
 }: {
   matrix: MatrixResponse;
   selection: CellSelection | null;
+  access?: string;
   omitEmpty?: boolean;
   columnLabel?: (person_name: string) => string;
   onPick: (person_name: string, category: string) => void;
@@ -5317,12 +5340,12 @@ function MatrixTable({
               const amount = cells[cat]?.[p.person_name] ?? "";
               const isActive =
                 selection?.person_name === p.person_name && selection?.category === cat;
-              const clickable =
-                !isMatrixFooter(matrix, cat) && personHasTransactions(matrix, cat, p.person_name);
+              const clickable = cellOpensStatements(matrix, cat, p.person_name, access);
+              const detailsOpen = personDetailsOpen(matrix, p.person_name);
               return (
                 <td
                   key={p.person_name}
-                  className={`num${clickable ? " clickable" : " empty-cell"}${isActive ? " active-cell" : ""}`}
+                  className={`num${clickable ? " clickable" : " empty-cell"}${detailsOpen ? " details-open" : ""}${isActive ? " active-cell" : ""}`}
                   onClick={clickable ? () => onPick(p.person_name, cat) : undefined}
                 >
                   {displayMatrixCell(matrix, cat, amount)}
@@ -5340,6 +5363,7 @@ function PersonColumnTable({
   matrix,
   person_name,
   selectedCategory,
+  access = "",
   omitEmpty = false,
   columnLabel,
   onPick,
@@ -5348,6 +5372,7 @@ function PersonColumnTable({
   matrix: MatrixResponse;
   person_name: string;
   selectedCategory: string | null;
+  access?: string;
   omitEmpty?: boolean;
   columnLabel?: (person_name: string) => string;
   onPick: (category: string) => void;
@@ -5360,6 +5385,7 @@ function PersonColumnTable({
     ? people
     : [{ person_name }, ...people];
   const showPersonMenu = scopedPeople.length > 1 && Boolean(onPersonChange);
+  const detailsOpen = personDetailsOpen(matrix, person_name);
   return (
     <table className="totals-table">
       <thead>
@@ -5397,11 +5423,10 @@ function PersonColumnTable({
             <td className="cat">{displayCategoryName(cat)}</td>
             {(() => {
               const amount = cells[cat]?.[person_name] ?? "";
-              const clickable =
-                !isMatrixFooter(matrix, cat) && personHasTransactions(matrix, cat, person_name);
+              const clickable = cellOpensStatements(matrix, cat, person_name, access);
               return (
                 <td
-                  className={`num${clickable ? " clickable" : " empty-cell"}`}
+                  className={`num${clickable ? " clickable" : " empty-cell"}${detailsOpen ? " details-open" : ""}`}
                   onClick={clickable ? () => onPick(cat) : undefined}
                 >
                   {displayMatrixCell(matrix, cat, amount)}

@@ -1396,11 +1396,11 @@ def _hub_transactions(
     year: str | None,
     bank: str | None,
 ) -> dict[str, Any]:
-    from app.centrale_sync import hub_get, load_config, require_person
+    from app.centrale_sync import hub_get, load_config, require_statement_details
     from shared.user_access import ACCESS_PERSON, ACCESS_UNIT
     import urllib.parse
 
-    require_person(person_name)
+    require_statement_details(person_name)
     cfg = load_config()
     view = cfg.account if cfg.access == ACCESS_UNIT and cfg.account else bank
     params = [f"category={urllib.parse.quote(category, safe='')}"]

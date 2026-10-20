@@ -1447,6 +1447,17 @@ def api_matrix(
         ) from exc
 
 
+@app.get("/api/local/{center}/people-details")
+def api_people_details(
+    center: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Which persons expose statement lines to center/country logins."""
+    from app.sql_catalog import person_details_flags
+
+    return {"details": person_details_flags(center)}
+
+
 @app.get("/api/local/{center}/people/{person_name}/banks")
 def api_person_banks(
     center: str,
