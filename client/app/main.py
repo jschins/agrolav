@@ -998,6 +998,24 @@ def api_matrix(
         raise _hub_error(exc) from exc
 
 
+@app.post("/api/fiat-approval")
+def api_fiat_approval() -> dict[str, Any]:
+    """Center login stamps ``dbo.center.fiat_date`` (Goedkeuring)."""
+    from app.centrale_sync import hub_post, load_config
+    from shared.user_access import ACCESS_CENTER
+
+    cfg = load_config()
+    if cfg.access != ACCESS_CENTER:
+        raise HTTPException(
+            status_code=403,
+            detail="Only a center login can give approval.",
+        )
+    try:
+        return hub_post("/fiat-approval", {})
+    except Exception as exc:
+        raise _hub_error(exc) from exc
+
+
 @app.post("/api/recalculate")
 def api_recalculate() -> dict[str, Any]:
     from app.centrale_sync import hub_post, scope_matrix

@@ -4,6 +4,15 @@ export interface PersonInfo {
   details?: boolean;
 }
 
+export interface CenterExpensesMeta {
+  /** dbo.center.details: 0 never, 1 fiat vs download, 2 always (country). */
+  details?: number;
+  fiat_date?: string | null;
+  download_date?: string | null;
+  /** Whether country login may see expense amounts for this center. */
+  visible?: boolean;
+}
+
 export interface MatrixResponse {
   categories: string[];
   people: PersonInfo[];
@@ -12,6 +21,8 @@ export interface MatrixResponse {
   entries?: string[];
   footers?: { balance: string; last_booked: string };
   table_header_terms: Record<string, string>;
+  center_expenses?: CenterExpensesMeta;
+  center?: string;
 }
 
 export interface RefreshAccountResult {

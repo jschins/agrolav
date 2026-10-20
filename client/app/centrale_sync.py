@@ -515,12 +515,31 @@ def person_statement_details_allowed(person_name: str) -> bool:
     return False
 
 
+def center_expenses_allowed() -> bool:
+    """Country may see this center's expenses per ``dbo.center.details`` / fiat."""
+    try:
+        payload = hub_get("/center-expenses")
+    except Exception:  # noqa: BLE001
+        return False
+    if not isinstance(payload, dict):
+        return False
+    return bool(payload.get("visible"))
+
+
 def require_statement_details(person_name: str) -> None:
-    """Person/unit always; center/country only when the person opts into details."""
+    """Person/unit always; center/country only when the person opts into details.
+
+    Country also needs the active center's expenses to be visible
+    (``dbo.center.details`` 0/1/2 and fiat vs download date).
+    """
     require_person(person_name)
     cfg = load_config()
     if cfg.access in (ACCESS_PERSON, ACCESS_UNIT):
         return
+    if cfg.access == ACCESS_COUNTRY and not center_expenses_allowed():
+        raise PermissionError(
+            f"Expenses for center {cfg.center!r} are not visible to country login."
+        )
     if person_statement_details_allowed(person_name):
         return
     raise PermissionError(
@@ -627,12 +646,59 @@ def _filter_visible_settings(payload: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _blank_country_center_expenses(payload: dict[str, Any]) -> dict[str, Any]:
+    """Hide booking amounts when country may not see this center's expenses."""
+    cfg = load_config()
+    if cfg.access != ACCESS_COUNTRY:
+        return payload
+    meta = payload.get("center_expenses") if isinstance(payload.get("center_expenses"), dict) else None
+    if meta is None:
+        try:
+            meta = hub_get("/center-expenses")
+        except Exception:  # noqa: BLE001
+            meta = {"visible": False}
+        if isinstance(meta, dict):
+            payload = {**payload, "center_expenses": meta}
+    if isinstance(meta, dict) and meta.get("visible"):
+        return payload
+    out = dict(payload)
+    footers = out.get("footers") if isinstance(out.get("footers"), dict) else {}
+    keep = {
+        str(footers.get("balance") or "").strip(),
+        str(footers.get("last_booked") or "").strip(),
+    }
+    keep.discard("")
+    cells = out.get("cells")
+    if isinstance(cells, dict):
+        blanked: dict[str, Any] = {}
+        for cat, row in cells.items():
+            if str(cat) in keep:
+                blanked[cat] = row
+                continue
+            if isinstance(row, dict):
+                blanked[cat] = {person: "" for person in row}
+            else:
+                blanked[cat] = row
+        out["cells"] = blanked
+    used = out.get("used")
+    if isinstance(used, dict):
+        out["used"] = {
+            cat: ([] if str(cat) not in keep else persons)
+            for cat, persons in used.items()
+        }
+    out["entries"] = []
+    return out
+
+
 def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
     """Keep matrix categories but only the configured person column when scoped.
 
     Person login also drops activa/passiva rows (local_code 1000–2999) so both
     matrix views show profit-and-loss categories plus the saldo/datum footers.
+    Country login blanks booking amounts when the active center's expenses are
+    not visible (``dbo.center.details`` / fiat_date).
     """
+    payload = _blank_country_center_expenses(payload if isinstance(payload, dict) else {})
     scope = configured_person()
     if not scope:
         return payload

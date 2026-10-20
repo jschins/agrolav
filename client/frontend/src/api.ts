@@ -259,6 +259,15 @@ export function getExportResultaat(year?: string, account?: string): Promise<Exp
   return getJson(`/api/export-resultaat${text ? `?${text}` : ""}`);
 }
 
+export function fiatApproval(): Promise<{
+  details: number;
+  fiat_date: string | null;
+  download_date: string | null;
+  visible: boolean;
+}> {
+  return sendJson("/api/fiat-approval", "POST", {});
+}
+
 export function recalculate(): Promise<MatrixResponse> {
   return sendJson("/api/recalculate", "POST", {});
 }

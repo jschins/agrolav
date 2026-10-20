@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -418,6 +419,127 @@ def person_details_flags(center: str) -> dict[str, bool]:
         return _sql_retry(_run)
     except Exception:  # noqa: BLE001
         return {}
+
+
+def _as_sql_date(value: Any) -> date | None:
+    """Coerce SQL DATE / DATETIME / ISO text to ``date``."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    if "T" in text:
+        text = text.split("T", 1)[0]
+    elif " " in text:
+        text = text.split(" ", 1)[0]
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def center_expenses_visible(
+    details: int,
+    fiat_date: date | None,
+    download_date: date | None,
+) -> bool:
+    """Whether a country login may see expense amounts for this center.
+
+    ``dbo.center.details``: 0 = never, 2 = always, 1 = when ``fiat_date`` is
+    strictly younger (more recent) than the banking-statement download date
+    (``MAX(account.last_booked)`` for people in the center).
+    """
+    level = int(details or 0)
+    if level >= 2:
+        return True
+    if level <= 0:
+        return False
+    if fiat_date is None or download_date is None:
+        return False
+    return fiat_date > download_date
+
+
+def center_expense_meta(center: str) -> dict[str, Any]:
+    """``dbo.center.details`` / ``fiat_date`` plus statement download date."""
+    name = (center or "").strip()
+    empty = {
+        "details": 0,
+        "fiat_date": None,
+        "download_date": None,
+        "visible": False,
+    }
+    if not name or not _sql_ready():
+        return empty
+
+    def _run() -> dict[str, Any]:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            SELECT
+                n.details,
+                n.fiat_date,
+                (
+                    SELECT MAX(a.last_booked)
+                    FROM dbo.account a
+                    JOIN dbo.person p ON p.id = a.person_id
+                    WHERE p.center_id = n.center_id
+                ) AS download_date
+            FROM dbo.center n
+            WHERE n.username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (name,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return empty
+        try:
+            details = int(row[0] or 0)
+        except (TypeError, ValueError):
+            details = 0
+        fiat = _as_sql_date(row[1])
+        download = _as_sql_date(row[2])
+        return {
+            "details": details,
+            "fiat_date": fiat.isoformat() if fiat else None,
+            "download_date": download.isoformat() if download else None,
+            "visible": center_expenses_visible(details, fiat, download),
+        }
+
+    try:
+        return _sql_retry(_run)
+    except Exception:  # noqa: BLE001
+        return empty
+
+
+def stamp_center_fiat_date(center: str) -> dict[str, Any]:
+    """Set ``dbo.center.fiat_date`` to today (center Goedkeuring / Approval)."""
+    from app import user_store
+
+    name = (center or "").strip()
+    if not name or not _sql_ready():
+        raise ValueError("center is required")
+    today = date.today()
+
+    def _run() -> dict[str, Any]:
+        cursor = _cursor()
+        cursor.execute(
+            """
+            UPDATE dbo.center
+            SET fiat_date = ?
+            WHERE username = ? COLLATE Latin1_General_CI_AI
+            """,
+            (today.isoformat(), name),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError(f"center {name!r} not found")
+        user_store._sql_connect().commit()
+        return center_expense_meta(name)
+
+    return _sql_retry(_run)
 
 
 def list_uploaded_files(username: str) -> list[dict[str, str]]:

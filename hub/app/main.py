@@ -1458,6 +1458,31 @@ def api_people_details(
     return {"details": person_details_flags(center)}
 
 
+@app.get("/api/local/{center}/center-expenses")
+def api_center_expenses(
+    center: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Country visibility of this center's expenses (``dbo.center.details`` / fiat)."""
+    from app.sql_catalog import center_expense_meta
+
+    return center_expense_meta(center)
+
+
+@app.post("/api/local/{center}/fiat-approval")
+def api_fiat_approval(
+    center: str,
+    _: None = Depends(require_api_key),
+) -> dict[str, Any]:
+    """Stamp ``dbo.center.fiat_date`` to today (center Goedkeuring)."""
+    from app.sql_catalog import stamp_center_fiat_date
+
+    try:
+        return stamp_center_fiat_date(center)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/api/local/{center}/people/{person_name}/banks")
 def api_person_banks(
     center: str,

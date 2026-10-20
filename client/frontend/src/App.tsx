@@ -50,6 +50,7 @@ import {
   pendingTermChanges,
   crossPostings,
   calculateOpeningBalance,
+  fiatApproval,
   wipeYear,
   smallExpenses,
   recordModification,
@@ -882,7 +883,12 @@ function personDetailsOpen(matrix: MatrixResponse, person: string): boolean {
   return Boolean(row?.details);
 }
 
-/** Person/unit may open any live cell; center/country only when person.details is true. */
+function centerExpensesVisible(matrix: MatrixResponse): boolean {
+  return Boolean(matrix.center_expenses?.visible);
+}
+
+/** Person/unit may open any live cell; center/country only when person.details is true.
+ * Country also needs the active center's expenses to be visible. */
 function cellOpensStatements(
   matrix: MatrixResponse,
   category: string,
@@ -893,6 +899,7 @@ function cellOpensStatements(
   if (!personHasTransactions(matrix, category, person)) return false;
   const mode = (access || "").trim().toLowerCase();
   if (mode === "personal" || mode === "unit") return true;
+  if (mode === "country" && !centerExpensesVisible(matrix)) return false;
   return personDetailsOpen(matrix, person);
 }
 
@@ -1744,6 +1751,8 @@ function SyncNotifyShell({
   const [headerActions, setHeaderActions] = useState<HeaderAction[]>([]);
   const [scratchBusy, setScratchBusy] = useState(false);
   const [scratchError, setScratchError] = useState<string | null>(null);
+  const [approvalFlash, setApprovalFlash] = useState<string | null>(null);
+  const approvalFlashTimer = useRef<number | null>(null);
   const [wipeBusy, setWipeBusy] = useState(false);
   const [crossBusy, setCrossBusy] = useState(false);
   const [openingBusy, setOpeningBusy] = useState(false);
@@ -2267,6 +2276,29 @@ function SyncNotifyShell({
       label: tableHeaderTerm(menuTerms, "Search statements"),
       onClick: () => openView("search"),
     });
+    if (access === "local") {
+      items.push({
+        id: "approval",
+        label: tableHeaderTerm(menuTerms, "Approval"),
+        disabled: scratchBusy || wipeBusy || crossBusy,
+        onClick: () => {
+          if (scratchBusy || wipeBusy || crossBusy) return;
+          setScratchError(null);
+          fiatApproval()
+            .then(() => {
+              if (approvalFlashTimer.current != null) {
+                window.clearTimeout(approvalFlashTimer.current);
+              }
+              setApprovalFlash(tableHeaderTerm(menuTerms, "Approval given"));
+              approvalFlashTimer.current = window.setTimeout(() => {
+                setApprovalFlash(null);
+                approvalFlashTimer.current = null;
+              }, 1000);
+            })
+            .catch((e: Error) => setScratchError(e.message));
+        },
+      });
+    }
     if (status?.result_url) {
       items.push({
         id: "profit-loss",
@@ -2486,6 +2518,11 @@ function SyncNotifyShell({
           </div>
         </div>
       )}
+      {approvalFlash ? (
+        <div className="approval-flash-overlay" role="status" aria-live="polite">
+          <div className="approval-flash-dialog">{approvalFlash}</div>
+        </div>
+      ) : null}
       {children(brandName, activeYear, bankView, dataRev, banksState, bankOptions, menuTerms)}
     </div>
     </NoteRescoreQueuedContext.Provider>
@@ -5341,7 +5378,10 @@ function MatrixTable({
               const isActive =
                 selection?.person_name === p.person_name && selection?.category === cat;
               const clickable = cellOpensStatements(matrix, cat, p.person_name, access);
-              const detailsOpen = personDetailsOpen(matrix, p.person_name);
+              const mode = (access || "").trim().toLowerCase();
+              const detailsOpen =
+                personDetailsOpen(matrix, p.person_name) &&
+                (mode !== "country" || centerExpensesVisible(matrix));
               return (
                 <td
                   key={p.person_name}
@@ -5385,7 +5425,10 @@ function PersonColumnTable({
     ? people
     : [{ person_name }, ...people];
   const showPersonMenu = scopedPeople.length > 1 && Boolean(onPersonChange);
-  const detailsOpen = personDetailsOpen(matrix, person_name);
+  const mode = (access || "").trim().toLowerCase();
+  const detailsOpen =
+    personDetailsOpen(matrix, person_name) &&
+    (mode !== "country" || centerExpensesVisible(matrix));
   return (
     <table className="totals-table">
       <thead>
