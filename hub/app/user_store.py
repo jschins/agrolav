@@ -1114,45 +1114,61 @@ def create_manual_person(
     country_s = (country or active_country() or resolve_country_for_center(ws) or "").strip()
     today = _utc_today()
     visibility_bit = 1 if visibility else 0
+    # Shared hub connection is autocommit: person+account must share one
+    # explicit transaction or a failed account insert leaves an orphan person.
     with _LOCK:
         init_user_store()
-        cursor = _sql_connect().cursor()
-        country_id = _sql_country_id(cursor, country_s)
-        if country_id is None:
-            raise ValueError(f"Unknown country {country_s or name!r}")
-        center_id = _sql_center_id(cursor, country_id, ws)
-        if center_id is None:
-            raise ValueError(f"Unknown center {ws!r} for country_id={country_id}")
-        if _sql_username_taken(cursor, name):
-            raise ValueError(f"Username already used: {name}")
-        cursor.execute(
-            """
-            INSERT INTO dbo.person
-                (username, title, country_id, center_id,
-                 created_at, password_hash, visibility)
-            OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                name,
-                display_name,
-                country_id,
-                center_id,
-                today,
-                default_password_hash(name),
-                visibility_bit,
-            ),
-        )
-        person_id = int(cursor.fetchone()[0])
-        cursor.execute(
-            """
-            INSERT INTO dbo.account
-                (person_id, iban, account_name, format, balance, last_booked, connection_id, uid)
-            VALUES (?, ?, ?, NULL, ?, ?, NULL, NULL)
-            """,
-            (person_id, iban, holder, balance, today),
-        )
-        _sql_connect().commit()
+        conn = new_sql_connection(autocommit=False)
+        try:
+            cursor = conn.cursor()
+            country_id = _sql_country_id(cursor, country_s)
+            if country_id is None:
+                raise ValueError(f"Unknown country {country_s or name!r}")
+            center_id = _sql_center_id(cursor, country_id, ws)
+            if center_id is None:
+                raise ValueError(f"Unknown center {ws!r} for country_id={country_id}")
+            if _sql_username_taken(cursor, name):
+                raise ValueError(f"Username already used: {name}")
+            cursor.execute(
+                """
+                INSERT INTO dbo.person
+                    (username, title, country_id, center_id,
+                     created_at, password_hash, visibility)
+                OUTPUT INSERTED.id
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    display_name,
+                    country_id,
+                    center_id,
+                    today,
+                    default_password_hash(name),
+                    visibility_bit,
+                ),
+            )
+            person_id = int(cursor.fetchone()[0])
+            cursor.execute(
+                """
+                INSERT INTO dbo.account
+                    (person_id, iban, account_name, format, balance, last_booked,
+                     connection_id, uid)
+                VALUES (?, ?, ?, NULL, ?, ?, NULL, NULL)
+                """,
+                (person_id, iban, holder, balance, today),
+            )
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            raise
+        finally:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
     user = find_user(name)
     return {
         "person": name,

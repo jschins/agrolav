@@ -891,9 +891,12 @@ def create_person(
     display_name = (title or "").strip()
     if not display_name:
         raise ValueError("Name is required")
-    if mode_s == "manual-upload" and not holder:
-        raise ValueError("account holder name is required")
     account_no = (account_number or "").strip()
+    if mode_s == "manual-upload":
+        if not holder:
+            raise ValueError("account holder name is required")
+        if not account_no:
+            raise ValueError("account number is required")
     country_s = (country or "NL").strip().upper()
     if len(country_s) != 2:
         raise ValueError(f"country must be ISO alpha-2: {country!r}")
