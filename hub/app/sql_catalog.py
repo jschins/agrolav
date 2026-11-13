@@ -521,59 +521,68 @@ def list_uploaded_files(username: str) -> list[dict[str, str]]:
         return []
 
 
-def record_uploaded_file(username: str, file_name: str, fmt: str | None) -> None:
-    """INSERT one upload filename for the person's first account (skip duplicates)."""
+def record_uploaded_file(
+    username: str,
+    file_name: str,
+    fmt: str | None,
+    *,
+    account_id: int | None = None,
+) -> bool:
+    """Append one upload event to ``dbo.uploaded_files``.
+
+    Same filename may be registered again; this never blocks an upload.
+    Prefers a manual account (``connection_id IS NULL``) when ``account_id`` is
+    omitted. Returns ``True`` when the row was written.
+    """
     name = (username or "").strip()
     stored = str(file_name or "").strip()[:256]
     if not name or not stored or not _sql_ready():
-        return
+        return False
 
-    def _run() -> None:
+    def _run() -> bool:
         from app import user_store
 
-        cursor = _cursor()
-        cursor.execute(
-            "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
-            (name,),
-        )
-        row = cursor.fetchone()
-        if row is None:
-            return
-        person_id = int(row[0])
-        cursor.execute(
-            """
-            SELECT TOP 1 account_id FROM dbo.account
-            WHERE person_id = ?
-            ORDER BY account_id
-            """,
-            (person_id,),
-        )
-        acc = cursor.fetchone()
-        if acc is None:
-            return
-        account_id = int(acc[0])
-        cursor.execute(
-            """
-            SELECT 1 FROM dbo.uploaded_files
-            WHERE account_id = ? AND file_name = ?
-            """,
-            (account_id, stored),
-        )
-        if cursor.fetchone():
-            return
+        conn = user_store._sql_connect()
+        cursor = conn.cursor()
+        target_id = int(account_id) if account_id is not None else None
+        if target_id is None:
+            cursor.execute(
+                "SELECT id FROM dbo.person WHERE username = ? COLLATE Latin1_General_CI_AI",
+                (name,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return False
+            person_id = int(row[0])
+            # Manual/excel accounts first so Enable Banking rows are not used.
+            cursor.execute(
+                """
+                SELECT TOP 1 account_id FROM dbo.account
+                WHERE person_id = ?
+                ORDER BY CASE WHEN connection_id IS NULL THEN 0 ELSE 1 END,
+                         account_id
+                """,
+                (person_id,),
+            )
+            acc = cursor.fetchone()
+            if acc is None:
+                return False
+            target_id = int(acc[0])
         cursor.execute(
             """
             INSERT INTO dbo.uploaded_files (account_id, file_name, format)
             VALUES (?, ?, ?)
             """,
-            (account_id, stored, (str(fmt or "").strip()[:64] or None)),
+            (target_id, stored, (str(fmt or "").strip()[:64] or None)),
         )
-        user_store._sql_connect().commit()
+        conn.commit()
+        return True
 
     try:
-        _sql_retry(_run)
+        return bool(_sql_retry(_run))
     except Exception as exc:  # noqa: BLE001
         print(f"sql catalog: could not record upload file: {exc}")
+        return False
 
 
 def wipe_country_year(

@@ -154,21 +154,43 @@ class AccountBalanceFileTests(unittest.TestCase):
         cursor.execute.assert_called_once()
         self.assertIn("uploaded_files", cursor.execute.call_args[0][0])
 
-    def test_record_inserts_when_filename_is_new(self):
+    def test_record_always_inserts(self):
         from app import sql_catalog
 
         cursor = mock.Mock()
-        cursor.fetchone.side_effect = [(7,), (3,), None]
+        cursor.fetchone.side_effect = [(7,), (3,)]
         conn = mock.Mock()
+        conn.cursor.return_value = cursor
         with mock.patch.object(sql_catalog, "_sql_ready", return_value=True), mock.patch.object(
             sql_catalog, "_sql_retry", side_effect=lambda fn: fn()
-        ), mock.patch.object(sql_catalog, "_cursor", return_value=cursor), mock.patch(
+        ), mock.patch(
             "app.user_store._sql_connect", return_value=conn
         ):
-            sql_catalog.record_uploaded_file("janpiet", "jan.csv", "natwest-csv")
+            recorded = sql_catalog.record_uploaded_file("janpiet", "jan.csv", "natwest-csv")
+        self.assertTrue(recorded)
         insert_sql = cursor.execute.call_args_list[-1][0][0]
         self.assertIn("INSERT INTO dbo.uploaded_files", insert_sql)
+        self.assertIn("connection_id IS NULL", cursor.execute.call_args_list[1][0][0])
         conn.commit.assert_called_once()
+
+    def test_record_uses_explicit_account_id(self):
+        from app import sql_catalog
+
+        cursor = mock.Mock()
+        conn = mock.Mock()
+        conn.cursor.return_value = cursor
+        with mock.patch.object(sql_catalog, "_sql_ready", return_value=True), mock.patch.object(
+            sql_catalog, "_sql_retry", side_effect=lambda fn: fn()
+        ), mock.patch(
+            "app.user_store._sql_connect", return_value=conn
+        ):
+            recorded = sql_catalog.record_uploaded_file(
+                "janpiet", "aug.xlsx", "excel", account_id=42
+            )
+        self.assertTrue(recorded)
+        insert_call = cursor.execute.call_args_list[-1]
+        self.assertIn("INSERT INTO dbo.uploaded_files", insert_call[0][0])
+        self.assertEqual(insert_call[0][1], (42, "aug.xlsx", "excel"))
 
 
 class WipeCountryYearTests(unittest.TestCase):

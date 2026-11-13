@@ -3176,24 +3176,29 @@ def _sync_uploaded_account(
     rows: list[dict[str, Any]] | None = None,
     records: list[dict[str, Any]] | None = None,
     inserted_source_ids: list[str] | None = None,
-) -> None:
-    """Record the upload format, latest booked date, and end balance on ``dbo.account``.
+    file_name: str | None = None,
+) -> bool:
+    """Update ``dbo.account`` and append the upload on ``dbo.uploaded_files``.
 
     Excel accounts (``connection_id IS NULL``) have no Balance column: use the
     spreadsheet SALDO when present, otherwise stored balance plus newly inserted
     net. Enabled Banking accounts are left untouched by the excel balance write.
+    ``dbo.uploaded_files`` is an event log only — never gates the upload.
+
+    Returns whether the upload event was registered.
     """
     from datetime import datetime
     from decimal import Decimal
 
     from app import user_store
+    from app.sql_catalog import record_uploaded_file
     from app.sql_replica import _transaction_table
 
     if not user_store.database_url():
-        return
+        return False
     table = _transaction_table(country)
     if table is None:
-        return
+        return False
     user_store.init_user_store()
     conn = user_store._sql_connect()
     cursor = conn.cursor()
@@ -3203,7 +3208,7 @@ def _sync_uploaded_account(
     )
     row = cursor.fetchone()
     if row is None:
-        return
+        return False
     person_id = int(row[0])
     cursor.execute(f"SELECT MAX(booked_on) FROM {table} WHERE person_id = ?", (person_id,))
     max_row = cursor.fetchone()
@@ -3217,12 +3222,19 @@ def _sync_uploaded_account(
     # when applying spreadsheet SALDO / inserted net.
     excel_scope = "person_id = ? AND connection_id IS NULL"
     account_scope = excel_scope if fmt == "excel" else "person_id = ?"
-    if effective:
+    cursor.execute(
+        f"SELECT TOP 1 account_id FROM dbo.account WHERE {account_scope} "
+        "ORDER BY account_id",
+        (person_id,),
+    )
+    acc_row = cursor.fetchone()
+    target_account_id = int(acc_row[0]) if acc_row and acc_row[0] is not None else None
+    if effective and target_account_id is not None:
         cursor.execute(
-            f"UPDATE dbo.account SET format = ?, last_booked = ? WHERE {account_scope}",
+            "UPDATE dbo.account SET format = ?, last_booked = ? WHERE account_id = ?",
             fmt,
             effective,
-            person_id,
+            target_account_id,
         )
     if balance_cents is None and fmt == "excel" and rows is not None:
         from app.core.excel_import import closing_balance_cents
@@ -3246,13 +3258,18 @@ def _sync_uploaded_account(
                 records or [], inserted_source_ids or []
             ),
         )
-    if balance_cents is not None:
+    if balance_cents is not None and target_account_id is not None:
         cursor.execute(
-            f"UPDATE dbo.account SET balance = ? WHERE {account_scope}",
+            "UPDATE dbo.account SET balance = ? WHERE account_id = ?",
             Decimal(balance_cents) / Decimal("100"),
-            person_id,
+            target_account_id,
         )
     conn.commit()
+    if not file_name or target_account_id is None:
+        return False
+    return record_uploaded_file(
+        person, file_name, fmt, account_id=target_account_id
+    )
 
 
 @app.get("/upload/api/upload/grant")
@@ -3341,7 +3358,6 @@ async def upload_api(
     """Identify a local file, write its rows into ``transaction_{country}`` for the person."""
     from app.core.bank_csv import identify_upload_format
     from app.runtime import bind_scope, resolve_country_for_center
-    from app.sql_catalog import record_uploaded_file
     from app.sql_replica import ingest_bound_transactions
     from app.yearpath import default_upload_year, parse_year
 
@@ -3382,8 +3398,8 @@ async def upload_api(
         inserted = ingest_bound_transactions(
             records, locked=True, inserted_source_ids=inserted_source_ids
         )
-    record_uploaded_file(identity["person"], file.filename or "upload", fmt)
-    _sync_uploaded_account(
+    upload_name = file.filename or "upload"
+    file_recorded = _sync_uploaded_account(
         person=identity["person"],
         country=country,
         fmt=fmt,
@@ -3392,6 +3408,7 @@ async def upload_api(
         rows=rows if fmt == "excel" else None,
         records=records if fmt == "excel" else None,
         inserted_source_ids=inserted_source_ids if fmt == "excel" else None,
+        file_name=upload_name,
     )
     store.announce_mutation(identity["center"], [f"{identity['person']}/"], source="central")
     return {
@@ -3403,6 +3420,8 @@ async def upload_api(
         "transaction_count": len(records),
         "new_rows": inserted > 0,
         "inserted": inserted,
+        "file_name": upload_name,
+        "file_recorded": bool(file_recorded),
     }
 
 
