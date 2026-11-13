@@ -12,8 +12,10 @@ from app.result import (
     _fold_cash_extras,
     _is_unit_level,
     _names_pair,
+    _pl_code_sql,
     _prefer_hd_account,
     _release_kruis_from_rc,
+    _split_pl_bucket,
     _unit_kind,
     _unit_xx0x,
     build_cash_table,
@@ -64,6 +66,25 @@ class UnitLevelTests(unittest.TestCase):
         other = _BankAccount(9, "Bank HD elsewhere", Decimal("0"), "NL3", 8, "", "sia", "hd")
         chosen = _prefer_hd_account([unit_bank, hd_bank, other], "hd_sdog", unit_bank)
         self.assertIs(chosen, hd_bank)
+
+
+class ExpensesPlSplitTests(unittest.TestCase):
+    """Balance-less countries must not use the 3000–4999 buckets."""
+
+    def test_balance_country_keeps_code_ranges(self) -> None:
+        self.assertEqual(_split_pl_bucket(True, 3110, Decimal("-10")), "kosten")
+        self.assertEqual(_split_pl_bucket(True, 4110, Decimal("10")), "opbrengsten")
+        self.assertIsNone(_split_pl_bucket(True, 12, Decimal("-10")))
+
+    def test_expenses_country_splits_by_sign(self) -> None:
+        self.assertEqual(_split_pl_bucket(False, 9, Decimal("-8800")), "kosten")
+        self.assertEqual(_split_pl_bucket(False, 20, Decimal("55194")), "opbrengsten")
+        self.assertIsNone(_split_pl_bucket(False, 20, Decimal("0")))
+
+    def test_pl_sql_predicate_differs_by_flag(self) -> None:
+        self.assertIn("BETWEEN 3000 AND 4999", _pl_code_sql(True))
+        self.assertIn("balance", _pl_code_sql(False))
+        self.assertNotIn("BETWEEN 3000 AND 4999", _pl_code_sql(False))
 
 
 class CrossCashTests(unittest.TestCase):

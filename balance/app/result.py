@@ -1,8 +1,10 @@
 """Profit/loss sheet for port 8500.
 
-Same two-column layout as the balance sheet, but local codes 3000–4999
-(uitgaven / inkomsten) and amounts limited to the login that opened the page.
-Zero amounts are left out. A cash table sets the bank beside those totals.
+Balance countries (``has_balance``): local codes 3000–4999 (uitgaven /
+inkomsten). Balance-less countries: every booking category except footer
+roles, split by amount sign (out → uitgaven, in → inkomsten). Amounts are
+limited to the login that opened the page. Zero amounts are left out. A
+cash table sets the bank beside those totals.
 """
 from __future__ import annotations
 
@@ -18,9 +20,11 @@ from shared.balance_values import (
     UNIT_RESULT_RESERVE_ROLES,
     cash_inkomsten_uitgaven,
     category_labels,
+    country_has_balance,
     implicit_kruisposten_journal,
     category_role_canonical,
     is_cp_role,
+    is_footer_role,
     is_rc_role,
     result_overlay_cents,
     spaar_source_exclude_clause,
@@ -118,19 +122,72 @@ def unit_login_kind(
     return _unit_kind(login_account, login)
 
 
+def _uses_balance_pl(country_id: int, cursor: object | None = None) -> bool:
+    """True when P&L is the 3000–4999 plan (``dbo.country.has_balance``)."""
+    if cursor is not None:
+        return country_has_balance(int(country_id), cursor)
+    with connect() as conn:
+        return country_has_balance(int(country_id), conn.cursor())
+
+
+def _pl_code_sql(has_balance: bool, alias: str = "d") -> str:
+    """SQL predicate for P&L category rows.
+
+    Balance countries: 3000–4999. Balance-less: every coded booking except
+    footer roles (saldo / datum).
+    """
+    if has_balance:
+        return f"{alias}.local_code BETWEEN 3000 AND 4999"
+    return (
+        f"{alias}.local_code IS NOT NULL AND "
+        f"({alias}.category_role IS NULL OR "
+        f"LOWER(LTRIM(RTRIM({alias}.category_role))) "
+        f"NOT IN (N'balance', N'last_booked'))"
+    )
+
+
+def _split_pl_bucket(has_balance: bool, local_code: int, amount: Decimal) -> str | None:
+    """``kosten`` / ``opbrengsten`` / ``None`` for one P&L amount."""
+    if amount == 0:
+        return None
+    if has_balance:
+        if 3000 <= int(local_code) <= 3999:
+            return "kosten"
+        if 4000 <= int(local_code) <= 4999:
+            return "opbrengsten"
+        return None
+    # Expenses countries: bank sign — out negative, in positive.
+    if amount < 0:
+        return "kosten"
+    return "opbrengsten"
+
+
 def _categories(country_id: int) -> list[tuple[int, int, str]]:
     with connect() as conn:
         cur = conn.cursor()
+        has_balance = _uses_balance_pl(country_id, cur)
         labels = category_labels(country_id, cur)
-        cur.execute(
-            "SELECT category_id, local_code, label FROM dbo.dim_category "
-            "WHERE country_id = ? AND local_code BETWEEN 3000 AND 4999 "
-            "ORDER BY local_code, category_id",
-            country_id,
-        )
+        if has_balance:
+            cur.execute(
+                "SELECT category_id, local_code, label, category_role "
+                "FROM dbo.dim_category "
+                "WHERE country_id = ? AND local_code BETWEEN 3000 AND 4999 "
+                "ORDER BY local_code, category_id",
+                country_id,
+            )
+        else:
+            cur.execute(
+                "SELECT category_id, local_code, label, category_role "
+                "FROM dbo.dim_category "
+                "WHERE country_id = ? AND local_code IS NOT NULL "
+                "ORDER BY local_code, category_id",
+                country_id,
+            )
         rows: list[tuple[int, int, str]] = []
-        for cat_id, local_code, label in cur.fetchall():
+        for cat_id, local_code, label, role in cur.fetchall():
             if cat_id is None or local_code is None:
+                continue
+            if not has_balance and is_footer_role(role):
                 continue
             cid = int(cat_id)
             rows.append((cid, int(local_code), labels.get(cid) or str(label or "")))
@@ -153,16 +210,20 @@ def _amounts(
     if table is not None:
         with connect() as conn:
             cur = conn.cursor()
+            has_balance = _uses_balance_pl(country_id, cur)
+            pl_sql = _pl_code_sql(has_balance)
             if unscoped:
-                exclude_sql, exclude_params = spaar_source_exclude_clause(
-                    country_id, cursor=cur
-                )
+                if has_balance:
+                    exclude_sql, exclude_params = spaar_source_exclude_clause(
+                        country_id, cursor=cur
+                    )
+                else:
+                    exclude_sql, exclude_params = "", []
                 sql = (
                     f"SELECT t.category_id, SUM(t.amount) FROM {table} t "
                     "JOIN dbo.dim_category d ON d.category_id = t.category_id "
                     "AND d.country_id = ? "
-                    "WHERE t.year = ? "
-                    "AND d.local_code BETWEEN 3000 AND 4999"
+                    f"WHERE t.year = ? AND {pl_sql}"
                     f"{exclude_sql}"
                 )
                 params = [country_id, year, *exclude_params]
@@ -177,7 +238,7 @@ def _amounts(
                     "AND d.country_id = ? "
                     "LEFT JOIN dbo.account a ON a.account_id = t.account_id "
                     "WHERE n.country_id = ? AND t.year = ? AND t.bank_id IS NULL "
-                    "AND d.local_code BETWEEN 3000 AND 4999"
+                    f"AND {pl_sql}"
                     f"{scope_sql}"
                 )
                 params = [country_id, country_id, year, *scope_params]
@@ -193,15 +254,13 @@ def _amounts(
                     totals[int(cat_id)] = Decimal(str(amount))
                 except (TypeError, ValueError):
                     continue
-    if unscoped and include_overlay:
-        as_of = cutoff.isoformat() if cutoff is not None else None
-        with connect() as conn:
-            cur = conn.cursor()
-            overlay = result_overlay_cents(country_id, year, cur, as_of=as_of)
-        for cat_id, cents in overlay.items():
-            totals[int(cat_id)] = totals.get(int(cat_id), Decimal("0")) + (
-                Decimal(int(cents)) / Decimal(100)
-            )
+            if unscoped and include_overlay and has_balance:
+                as_of = cutoff.isoformat() if cutoff is not None else None
+                overlay = result_overlay_cents(country_id, year, cur, as_of=as_of)
+                for cat_id, cents in overlay.items():
+                    totals[int(cat_id)] = totals.get(int(cat_id), Decimal("0")) + (
+                        Decimal(int(cents)) / Decimal(100)
+                    )
     return totals
 
 
@@ -217,20 +276,21 @@ def _first_booked(
     if table is None:
         return None
     scope_sql, scope_params = _scope_sql(person, center, account)
-    sql = (
-        f"SELECT MIN(t.booked_on) FROM {table} t "
-        "JOIN dbo.person p ON p.id = t.person_id "
-        "JOIN dbo.center n ON n.center_id = p.center_id "
-        "JOIN dbo.dim_category d ON d.category_id = t.category_id "
-        "AND d.country_id = ? "
-        "LEFT JOIN dbo.account a ON a.account_id = t.account_id "
-        "WHERE n.country_id = ? AND t.year = ? "
-        "AND d.local_code BETWEEN 3000 AND 4999"
-        f"{scope_sql}"
-    )
-    params: list[object] = [country_id, country_id, year, *scope_params]
     with connect() as conn:
         cur = conn.cursor()
+        pl_sql = _pl_code_sql(_uses_balance_pl(country_id, cur))
+        sql = (
+            f"SELECT MIN(t.booked_on) FROM {table} t "
+            "JOIN dbo.person p ON p.id = t.person_id "
+            "JOIN dbo.center n ON n.center_id = p.center_id "
+            "JOIN dbo.dim_category d ON d.category_id = t.category_id "
+            "AND d.country_id = ? "
+            "LEFT JOIN dbo.account a ON a.account_id = t.account_id "
+            "WHERE n.country_id = ? AND t.year = ? "
+            f"AND {pl_sql}"
+            f"{scope_sql}"
+        )
+        params: list[object] = [country_id, country_id, year, *scope_params]
         cur.execute(sql, *params)
         row = cur.fetchone()
     if not row or row[0] is None:
@@ -399,20 +459,21 @@ def list_dates(
     if table is None:
         return []
     scope_sql, scope_params = _scope_sql(person, center, account)
-    sql = (
-        f"SELECT DISTINCT CONVERT(varchar(10), t.booked_on, 23) FROM {table} t "
-        "JOIN dbo.person p ON p.id = t.person_id "
-        "JOIN dbo.center n ON n.center_id = p.center_id "
-        "JOIN dbo.dim_category d ON d.category_id = t.category_id "
-        "AND d.country_id = ? "
-        "LEFT JOIN dbo.account a ON a.account_id = t.account_id "
-        "WHERE n.country_id = ? AND t.year = ? "
-        "AND d.local_code BETWEEN 3000 AND 4999 "
-        "AND t.booked_on IS NOT NULL"
-        f"{scope_sql} ORDER BY 1"
-    )
     with connect() as conn:
         cur = conn.cursor()
+        pl_sql = _pl_code_sql(_uses_balance_pl(country_id, cur))
+        sql = (
+            f"SELECT DISTINCT CONVERT(varchar(10), t.booked_on, 23) FROM {table} t "
+            "JOIN dbo.person p ON p.id = t.person_id "
+            "JOIN dbo.center n ON n.center_id = p.center_id "
+            "JOIN dbo.dim_category d ON d.category_id = t.category_id "
+            "AND d.country_id = ? "
+            "LEFT JOIN dbo.account a ON a.account_id = t.account_id "
+            "WHERE n.country_id = ? AND t.year = ? "
+            f"AND {pl_sql} "
+            "AND t.booked_on IS NOT NULL"
+            f"{scope_sql} ORDER BY 1"
+        )
         cur.execute(sql, country_id, country_id, year, *scope_params)
         return [str(r[0]) for r in cur.fetchall() if r[0]]
 
@@ -940,8 +1001,13 @@ def _cross_cash_lines(
 
     The window matches the bank saldo: booked on or after 1 January and on
     or before the present day, consolidated rows only.
+
+    Balance-less countries put every booking in Uitgaven/Inkomsten, so this
+    returns no extras there (avoids dumping P&L lines into Balans).
     """
     if not account_ids:
+        return []
+    if not _uses_balance_pl(country_id):
         return []
     table = _transaction_table(country_id)
     if table is None:
@@ -1108,7 +1174,12 @@ def result_sheet(
     login: str = "",
     as_of: str | None = None,
 ) -> dict[str, Any]:
-    """Uitgaven (3000–3999) and inkomsten (4000–4999) for one login scope."""
+    """Uitgaven and inkomsten for one login scope.
+
+    Balance countries: codes 3000–3999 / 4000–4999. Balance-less: booking
+    categories split by amount sign.
+    """
+    has_balance = _uses_balance_pl(country_id)
     cutoff = _cutoff(
         country_id, year, as_of, person=person, center=center, account=account
     )
@@ -1129,7 +1200,7 @@ def result_sheet(
         center=center,
         account=account,
         cutoff=cutoff,
-        include_overlay=not opening_only,
+        include_overlay=not opening_only and has_balance,
     )
     accounts = _load_accounts(country_id)
     unit_level = _is_unit_level(unit, account)
@@ -1154,10 +1225,11 @@ def result_sheet(
                     center="",
                     account=_iban_key(sibling.iban),
                     cutoff=cutoff,
+                    include_overlay=False,
                 )
                 for cat_id, extra_amount in extra.items():
                     amounts[cat_id] = amounts.get(cat_id, Decimal("0")) + extra_amount
-    reserves = _unit_reserve_categories(country_id)
+    reserves = _unit_reserve_categories(country_id) if has_balance else {}
     reserve_ids = {item[0] for item in reserves.values()}
     kosten: list[dict[str, Any]] = []
     opbrengsten: list[dict[str, Any]] = []
@@ -1165,7 +1237,8 @@ def result_sheet(
         if cat_id in reserve_ids:
             continue
         amount = amounts.get(cat_id, Decimal("0"))
-        if amount == 0:
+        bucket = _split_pl_bucket(has_balance, local_code, amount)
+        if bucket is None:
             continue
         row = {
             "category_id": cat_id,
@@ -1174,9 +1247,9 @@ def result_sheet(
             "amount": float(amount),
             "source": "transactions",
         }
-        if 3000 <= local_code <= 3999:
+        if bucket == "kosten":
             kosten.append(row)
-        elif 4000 <= local_code <= 4999:
+        else:
             opbrengsten.append(row)
 
     def total(rows: list[dict[str, Any]]) -> Decimal:
