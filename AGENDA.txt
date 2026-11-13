@@ -1,8 +1,33 @@
-AGENDA
+AGENDA agrolav
++ zelf DN Sinstellen (technisch werk)
++ minder luxe (geen autoconfigiuratie) instellen handmatig, geen autodiscover
++ synchronisatie met achterliggende agenda: euro 80 per jaar ipv 14
 
+Anton: Als alles eraf mag, heb je van AWS eigenlijk niets nodig. Je hoeft alleen de nameservers van agrolav.nl naar DigitalOcean te laten wijzen.
+In DigitalOcean: ga naar Networking, dan Domains, en voeg agrolav.nl toe. Dat is gratis, ook zonder Droplet.
+Waar staat het domein geregistreerd?
+Bij AWS (Route 53, onder "Registered domains"): open daar agrolav.nl, kies "Edit name servers" en vul ns1.digitalocean.com, ns2.digitalocean.com en ns3.digitalocean.com in.
+Bij een andere registrar (bijvoorbeeld TransIP of Mijndomein): verander de nameservers daar. AWS doet dan alleen het DNS-beheer.
+Opruimen bij AWS: verwijder na een dag de hosted zone van agrolav.nl in Route 53, zodat je de $0,50 per maand niet meer betaalt. Zet je SES-domein en eventuele WorkMail-organisatie of servers ook uit, zodat er geen kosten meer doorlopen.
+Wil je de registratie zelf ook weg bij AWS, dan heb je de verhuiscode (authcode) nodig. Die vraag je in Route 53 aan via "Transfer out". Daarmee verhuis je het domein naar een registrar naar keuze. DigitalOcean registreert zelf geen domeinen.
+
+One choice still decides the architecture:
+
+What should “email correspondence” mean?
+Real inboxes (info@agrolav.nl in Thunderbird/Outlook/webmail) via a provider (Zoho / Google Workspace / Microsoft 365), with MX/SPF/DKIM DNS on DigitalOcean
+Contact form only — the site sends mail; no personal mailboxes
+Both
+(We should not run Postfix/Dovecot on the droplet for primary mail — deliverability and spam reputation are weak.)
+Also confirm: hostname is agrolav.nl (and www), separate from boekhouding.agrolav.nl?
+Reply with 1/2/3 (and domain confirm) and I’ll write the plan for domain/ + Caddy + DNS/email.
+
+
+
+
+
+AGENDA De Boog
 1. webmail backup van webheld email de boog
 2. kortingscodes
-3. den eker egress_ip=217.63.252.84
 
 
 
@@ -112,7 +137,8 @@ center
 217.63.252.84	Den Eker
 
 
-agrolav@agrolav:/opt/agrolav$ sudo journalctl -u agrolav-hub --since "today" | grep "login refused"
+agrolav@agrolav:/opt/agrolav$ 
+sudo journalctl -u agrolav-hub --since "today" | grep "login refused"
 
 
 droplet omzetten: brief

@@ -808,18 +808,26 @@ def load_center_year_matrix(
         if cursor.fetchone()[0] is None:
             return None
         from shared.balance_values import (
+            country_has_balance as _country_has_balance,
             rebuild_spaar_mirror_rows,
             spaar_source_exclude_clause,
         )
 
         country_id = _country_id_for_username(cursor, country) or 0
-        if country_id:
+        balance_country = bool(country_id) and _country_has_balance(
+            int(country_id), cursor
+        )
+        # Spaar mirror rebuild is balance-country only; never run it for
+        # expenses-only countries (has_balance = 0).
+        if balance_country:
             try:
                 rebuild_spaar_mirror_rows(int(country_id), int(year), cursor)
             except Exception as exc:  # noqa: BLE001
                 print(f"sql replica: spaar-mirror rebuild failed: {exc}")
-        exclude_sql, exclude_params = spaar_source_exclude_clause(
-            country_id, cursor=cursor
+        exclude_sql, exclude_params = (
+            spaar_source_exclude_clause(country_id, cursor=cursor)
+            if balance_country
+            else ("", [])
         )
         fallback = _remainder_local_code(cursor, country_id or None)
         cursor.execute(
@@ -876,37 +884,33 @@ def load_center_year_matrix(
             if not person or account_id is None:
                 continue
             account_persons.setdefault(int(account_id), set()).add(person)
-        if country_id:
-            from shared.balance_values import (
-                category_local_codes as _local_codes,
-                country_has_balance as _has_balance,
-            )
+        if balance_country:
+            from shared.balance_values import category_local_codes as _local_codes
 
-            if _has_balance(int(country_id), cursor):
-                cursor.execute(
-                    """
-                    SELECT p.username FROM dbo.person p
-                    JOIN dbo.center n ON n.center_id = p.center_id
-                    WHERE n.username = ? COLLATE Latin1_General_CI_AI
-                    """,
-                    (ws,),
-                )
-                for (username,) in cursor.fetchall():
-                    person = str(username or "").strip()
-                    if person:
-                        totals_cents.setdefault(
-                            person, {name: 0 for name in booking_names}
-                        )
-                id_to_local = _local_codes(int(country_id), cursor)
-                for code, cents in _balance_overlay_cents(
-                    int(year), cursor, country_id=int(country_id)
-                ).items():
-                    local = id_to_local.get(int(code), int(code))
-                    cur_label = name_by_code.get(local) or name_by_code.get(
-                        int(code), str(local)
+            cursor.execute(
+                """
+                SELECT p.username FROM dbo.person p
+                JOIN dbo.center n ON n.center_id = p.center_id
+                WHERE n.username = ? COLLATE Latin1_General_CI_AI
+                """,
+                (ws,),
+            )
+            for (username,) in cursor.fetchall():
+                person = str(username or "").strip()
+                if person:
+                    totals_cents.setdefault(
+                        person, {name: 0 for name in booking_names}
                     )
-                    for bucket in totals_cents.values():
-                        bucket[cur_label] = bucket.get(cur_label, 0) + cents
+            id_to_local = _local_codes(int(country_id), cursor)
+            for code, cents in _balance_overlay_cents(
+                int(year), cursor, country_id=int(country_id)
+            ).items():
+                local = id_to_local.get(int(code), int(code))
+                cur_label = name_by_code.get(local) or name_by_code.get(
+                    int(code), str(local)
+                )
+                for bucket in totals_cents.values():
+                    bucket[cur_label] = bucket.get(cur_label, 0) + cents
         totals = {
             person: {name: _amount_str(cents) for name, cents in amounts.items()}
             for person, amounts in totals_cents.items()

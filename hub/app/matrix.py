@@ -123,17 +123,17 @@ _RESULTAAT_MATRIX_COUNTRIES: frozenset[int] = frozenset({4})
 def _balance_matrix_country_id(country: str) -> int | None:
     """Country id when SQL is configured and the country carries a balance sheet.
 
-    ``dbo.country.has_balance`` decides; falls back to
-    ``_RESULTAAT_MATRIX_COUNTRIES`` when the column is missing or the query
-    fails. ``None`` means a plain country (full booking, live-balance footer).
+    ``dbo.country.has_balance`` is the source of truth. The hardcoded
+    ``_RESULTAAT_MATRIX_COUNTRIES`` set is only a fallback when the column
+    is missing or the query fails — it must not override ``has_balance = 0``.
+    ``None`` means a plain (balance-less) country: full booking rows, live
+    ``dbo.account.balance`` footer.
     """
     from app import user_store
 
     country_id = _resultaat_country_id(country)
     if country_id is None:
         return None
-    if country_id in _RESULTAAT_MATRIX_COUNTRIES:
-        return country_id
     try:
         cursor = user_store._sql_connect().cursor()
         cursor.execute(
@@ -142,8 +142,10 @@ def _balance_matrix_country_id(country: str) -> int | None:
         )
         row = cursor.fetchone()
     except Exception:  # noqa: BLE001
-        return None
-    return country_id if (row and row[0]) else None
+        return country_id if country_id in _RESULTAAT_MATRIX_COUNTRIES else None
+    if row is None:
+        return country_id if country_id in _RESULTAAT_MATRIX_COUNTRIES else None
+    return country_id if row[0] else None
 
 
 def _resultaat_categories(country: str, names: list[str]) -> list[str]:
@@ -284,10 +286,9 @@ def build_matrix(
     roles = roles_raw if isinstance(roles_raw, dict) else {}
     balance_name, date_name = _footer_labels(categories, roles)
     booking = [name for name in categories if _category_code(name) is not None]
-    # Booking keeps the FULL balance plan (1000-4999) as matrix rows; resultaat
-    # is the 3000-4999 subset the "balance" footer is summed over.
+    # Balance countries: full plan (1000-4999) as rows; saldo footer = sum of
+    # 3000-4999. Balance-less: all booking rows; saldo footer = live bank balance.
     resultaat = _resultaat_categories(country or "", booking)
-    is_resultaat = resultaat != booking
     category_list = booking + [balance_name, date_name]
     from app.sql_catalog import center_visibility_meta, person_visibility_flags
 
@@ -386,12 +387,13 @@ def build_matrix(
             ]
             for name in booking
         }
+        # Balance-less: live ``dbo.account.balance``. Balance country: P&L sum.
         for pack in packs:
             key = pack.person_name
             totals = totals_map.get(key) or {}
             for name in booking:
                 cells[name][pack.person_name] = _amount_for_category(totals, name)
-            if is_resultaat:
+            if balance_country is not None:
                 cells[balance_name][pack.person_name] = _sum_totals(totals, resultaat)
             else:
                 cells[balance_name][pack.person_name] = balances.get(key) or ""
@@ -408,7 +410,7 @@ def build_matrix(
                 cells[name][pack.person_name] = _amount_for_category(totals, name)
                 if _amount_for_category(totals, name) != "0.00":
                     used[name].append(pack.person_name)
-            if is_resultaat:
+            if balance_country is not None:
                 cells[balance_name][pack.person_name] = _sum_totals(totals, resultaat)
             else:
                 cells[balance_name][pack.person_name] = person_current_balance(view_pack) or ""

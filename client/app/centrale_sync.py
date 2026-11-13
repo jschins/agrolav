@@ -561,13 +561,29 @@ def scope_people(people: list[Any] | None) -> list[Any]:
 _MATRIX_CATEGORY_CODE = re.compile(r"^(\d{2,4})(?=\D|$)")
 
 
-def _person_matrix_keep_row(name: str) -> bool:
-    """Person login shows P&L (and footers), not activa/passiva 1000–2999."""
-    from shared.balance_values import is_balance_sheet_code
+def _configured_country_has_balance() -> bool:
+    """True when the signed-in country uses a balance sheet (``has_balance``)."""
+    cfg = load_config()
+    if not cfg.enabled or not cfg.country:
+        return False
+    try:
+        data = hub_get("/balance-slug", timeout=5.0)
+    except Exception:  # noqa: BLE001
+        return False
+    return bool(isinstance(data, dict) and data.get("has_balance"))
 
+
+def _person_matrix_keep_row(name: str) -> bool:
+    """Person login on a balance country: drop activa/passiva (1000–2999).
+
+    Balance-less countries keep every coded row; their matrix is expenses-only
+    and must not inherit this balance-country filter.
+    """
     match = _MATRIX_CATEGORY_CODE.match(str(name or "").strip())
     if not match:
         return True
+    from shared.balance_values import is_balance_sheet_code
+
     return not is_balance_sheet_code(int(match.group(1)))
 
 
@@ -699,8 +715,9 @@ def _apply_country_center_visibility(payload: dict[str, Any]) -> dict[str, Any]:
 def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
     """Keep matrix categories but only the configured person column when scoped.
 
-    Person login also drops activa/passiva rows (local_code 1000–2999) so both
-    matrix views show profit-and-loss categories plus the saldo/datum footers.
+    On a balance country, person login also drops activa/passiva rows
+    (local_code 1000–2999) so the matrix shows P&L plus saldo/datum. That
+    filter is not applied to balance-less countries.
     Country login blanks category totals when the center is not visible.
     """
     payload = _apply_country_center_visibility(payload if isinstance(payload, dict) else {})
@@ -713,7 +730,8 @@ def scope_matrix(payload: dict[str, Any]) -> dict[str, Any]:
     person_names = {str(p.get("person_name") or "") for p in people if isinstance(p, dict)}
     cats = out.get("categories")
     keep: set[str] | None = None
-    if isinstance(cats, list):
+    drop_balance_sheet = _configured_country_has_balance()
+    if isinstance(cats, list) and drop_balance_sheet:
         kept = [str(c) for c in cats if _person_matrix_keep_row(str(c))]
         out["categories"] = kept
         keep = set(kept)

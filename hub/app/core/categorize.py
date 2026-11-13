@@ -1226,13 +1226,14 @@ def transactions_for_category(category_name: str) -> list[dict[str, Any]]:
         log("filter.abort", reason="category_name_has_no_numeric_prefix")
         return []
 
+    from app.runtime import active_country
+    from app.sql_catalog import country_has_balance
     from app.sql_replica import load_bound_balance_transactions, load_bound_transactions
     from shared.balance_values import is_balance_sheet_code
 
-    if is_balance_sheet_code(code):
-        # Balance-plan category (activa and passiva): bank-linked categories
-        # list every row on the mapped account; non-bank categories list their
-        # journal, mirror, and booked rows.
+    # Balance-sheet drill (mapped account / journal) is only for countries with
+    # ``has_balance``. Balance-less countries always use ordinary HIT rows.
+    if is_balance_sheet_code(code) and country_has_balance(active_country() or ""):
         rows = load_bound_balance_transactions(category_code=code)
     else:
         rows = load_bound_transactions(category_code=code) or []
