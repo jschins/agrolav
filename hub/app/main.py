@@ -3104,15 +3104,43 @@ def _records_for_upload_format(
 
 
 def _latest_upload_balance(fmt: str, rows: list[dict[str, Any]]) -> int | None:
-    """Latest ``Balance`` column for value-balance CSV files (excel has none)."""
+    """Latest Balance column from CSV uploads (excel has none; handled in sync)."""
     if fmt == "excel":
         return None
     from app.core.bank_csv import csv_layout
-    from app.core.natwest_csv_import import _latest_balance_cents
 
-    if csv_layout(fmt) != "value_balance":
+    layout = csv_layout(fmt)
+    if layout == "value_balance":
+        from app.core.natwest_csv_import import _latest_balance_cents
+
+        return _latest_balance_cents(rows)
+    if layout == "debit_credit":
+        from app.core.bos_lloyds_csv_import import _latest_balance_cents
+
+        return _latest_balance_cents(rows)
+    return None
+
+
+def _inserted_net_cents(
+    records: list[dict[str, Any]], inserted_source_ids: list[str]
+) -> int | None:
+    """Sum of amounts for bookings this upload newly inserted, in cents."""
+    if not inserted_source_ids:
         return None
-    return _latest_balance_cents(rows)
+    wanted = {str(item) for item in inserted_source_ids if str(item).strip()}
+    if not wanted:
+        return None
+    from app.core.excel_import import amount_to_cents
+
+    total = 0
+    for item in records:
+        if not isinstance(item, dict):
+            continue
+        source_id = str(item.get("id") or "").strip()
+        if source_id not in wanted:
+            continue
+        total += amount_to_cents(item.get("amount"))
+    return total
 
 
 def _max_uploaded_date(records: list[dict[str, Any]]):
@@ -3145,8 +3173,16 @@ def _sync_uploaded_account(
     fmt: str,
     last_booked,
     balance_cents: int | None,
+    rows: list[dict[str, Any]] | None = None,
+    records: list[dict[str, Any]] | None = None,
+    inserted_source_ids: list[str] | None = None,
 ) -> None:
-    """Record the upload format, latest booked date, and end balance on ``dbo.account``."""
+    """Record the upload format, latest booked date, and end balance on ``dbo.account``.
+
+    Excel accounts (``connection_id IS NULL``) have no Balance column: use the
+    spreadsheet SALDO when present, otherwise stored balance plus newly inserted
+    net. Enabled Banking accounts are left untouched by the excel balance write.
+    """
     from datetime import datetime
     from decimal import Decimal
 
@@ -3177,16 +3213,42 @@ def _sync_uploaded_account(
     effective = last_booked or from_sql
     if from_sql and last_booked and from_sql > last_booked:
         effective = from_sql
+    # Excel/manual accounts are connection-less; never rewrite Enable Banking rows
+    # when applying spreadsheet SALDO / inserted net.
+    excel_scope = "person_id = ? AND connection_id IS NULL"
+    account_scope = excel_scope if fmt == "excel" else "person_id = ?"
     if effective:
         cursor.execute(
-            "UPDATE dbo.account SET format = ?, last_booked = ? WHERE person_id = ?",
+            f"UPDATE dbo.account SET format = ?, last_booked = ? WHERE {account_scope}",
             fmt,
             effective,
             person_id,
         )
+    if balance_cents is None and fmt == "excel" and rows is not None:
+        from app.core.excel_import import closing_balance_cents
+
+        cursor.execute(
+            f"SELECT TOP 1 balance FROM dbo.account WHERE {excel_scope} "
+            "ORDER BY account_id",
+            (person_id,),
+        )
+        bal_row = cursor.fetchone()
+        previous_cents = 0
+        if bal_row is not None and bal_row[0] is not None:
+            try:
+                previous_cents = int(round(float(bal_row[0]) * 100))
+            except (TypeError, ValueError):
+                previous_cents = 0
+        balance_cents = closing_balance_cents(
+            rows,
+            previous_cents=previous_cents,
+            inserted_net_cents=_inserted_net_cents(
+                records or [], inserted_source_ids or []
+            ),
+        )
     if balance_cents is not None:
         cursor.execute(
-            "UPDATE dbo.account SET balance = ? WHERE person_id = ?",
+            f"UPDATE dbo.account SET balance = ? WHERE {account_scope}",
             Decimal(balance_cents) / Decimal("100"),
             person_id,
         )
@@ -3315,8 +3377,11 @@ async def upload_api(
     if not records:
         raise HTTPException(status_code=400, detail="No dated transaction rows found")
     pack = _upload_person_scope(identity["person"], identity["center"], country, y)
+    inserted_source_ids: list[str] = []
     with bind_scope(pack):
-        inserted = ingest_bound_transactions(records, locked=True)
+        inserted = ingest_bound_transactions(
+            records, locked=True, inserted_source_ids=inserted_source_ids
+        )
     record_uploaded_file(identity["person"], file.filename or "upload", fmt)
     _sync_uploaded_account(
         person=identity["person"],
@@ -3324,6 +3389,9 @@ async def upload_api(
         fmt=fmt,
         last_booked=_max_uploaded_date(records),
         balance_cents=balance_cents,
+        rows=rows if fmt == "excel" else None,
+        records=records if fmt == "excel" else None,
+        inserted_source_ids=inserted_source_ids if fmt == "excel" else None,
     )
     store.announce_mutation(identity["center"], [f"{identity['person']}/"], source="central")
     return {

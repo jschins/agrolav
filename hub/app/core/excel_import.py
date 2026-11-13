@@ -346,6 +346,44 @@ def _find_saldo_cents(
     return saldo
 
 
+def saldo_cents_from_rows(rows: list[dict[str, str]]) -> int | None:
+    """Undated SALDO cell in an excel upload, or ``None`` when absent."""
+    located = find_columns(rows)
+    if located is None:
+        return None
+    header_index, columns = located
+    return _find_saldo_cents(rows, header_index, columns)
+
+
+def dated_net_cents_from_rows(rows: list[dict[str, str]]) -> int:
+    """Inkomsten minus uitgaven over every dated excel row."""
+    located = find_columns(rows)
+    if located is None:
+        return 0
+    header_index, columns = located
+    return _dated_rows_net_cents(rows, header_index, columns)
+
+
+def closing_balance_cents(
+    rows: list[dict[str, str]],
+    *,
+    previous_cents: int,
+    inserted_net_cents: int | None = None,
+) -> int | None:
+    """Bank balance to store after an excel upload.
+
+    Prefer the spreadsheet SALDO when present (safe on re-upload). Otherwise
+    add the net of newly inserted bookings to the stored ``dbo.account.balance``.
+    Returns ``None`` when there is nothing to write.
+    """
+    saldo = saldo_cents_from_rows(rows)
+    if saldo is not None:
+        return saldo
+    if inserted_net_cents is None:
+        return None
+    return int(previous_cents) + int(inserted_net_cents)
+
+
 def _balance_refusal(calculated_cents: int) -> str:
     return f"{BALANCE_REFUSAL} (calculated balance: {amount_str(calculated_cents)})"
 
