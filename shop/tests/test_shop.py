@@ -65,6 +65,7 @@ class ShopFlowTests(unittest.TestCase):
             public_base_url="http://127.0.0.1:9000",
             catalog_path=_ROOT / "catalog.json",
             files_dir=_ROOT / "covers",
+            data_dir=_ROOT / "data",
             dev_payments=True,
         )
         app = create_app(settings, mollie=mollie)
@@ -92,8 +93,14 @@ class ShopFlowTests(unittest.TestCase):
             self.assertEqual(home.text.count("Alle (geen selectie)"), 4)
             first = catalog.books[0]
             self.assertIn(f'href="/boeken/{first.slug}"', home.text)
-            for path in ("/agenda", "/over"):
-                self.assertEqual(client.get(path).status_code, 200)
+            over = client.get("/over")
+            self.assertEqual(over.status_code, 200)
+            self.assertIn('href="/jaarrekening-2025"', over.text)
+            self.assertEqual(client.get("/agenda").status_code, 404)
+            report = client.get("/jaarrekening-2025")
+            self.assertEqual(report.status_code, 200)
+            self.assertEqual(report.headers["content-type"], "application/pdf")
+            self.assertTrue(report.content.startswith(b"%PDF"))
             icon = client.get("/favicon.ico")
             self.assertEqual(icon.status_code, 200)
             self.assertIn("image/png", icon.headers["content-type"])

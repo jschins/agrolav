@@ -78,6 +78,20 @@ h1, h2, h3 {{
   line-height: 1.15;
   margin: 0;
 }}
+.about-block {{
+  margin: 0 0 1.75rem;
+}}
+.about-block h3 {{
+  font-weight: 600;
+  font-size: 1.45rem;
+  margin: 0 0 0.55rem;
+}}
+.about-block p {{
+  margin: 0 0 0.65rem;
+}}
+.about-block p:last-child {{
+  margin-bottom: 0;
+}}
 .wrap {{ max-width: 72rem; margin: 0 auto; padding: 0 1.5rem; }}
 header.bar {{
   position: sticky;
@@ -470,7 +484,7 @@ main.invoice table.plain {{ margin-top: auto; }}
 """
 
 
-MENU = ("home", "agenda", "over", "rekening", "winkelwagen")
+MENU = ("home", "over", "rekening", "winkelwagen")
 
 
 def menu_href(address: str) -> str:
@@ -725,29 +739,31 @@ def home_page(catalog: Catalog, cart_count: int) -> str:
     return page(catalog.shop_name, catalog, body, cart_count, menu_href("home"), show_footer=False, root_class="home")
 
 
-def events_page(catalog: Catalog, cart_count: int) -> str:
-    events = "".join(
-        f'<article class="event"><div class="mono">{escape(event.when)}</div>'
-        f"<div><h3>{escape(event.title)}</h3><p>{escape(event.summary)}</p>"
-        f'<p><a href="/over">Plaats aan de toonbank</a></p></div></article>'
-        for event in catalog.events
-    ) or "<p>Er staat nog niets op de agenda.</p>"
-    body = f"""
-<main class="wrap narrow">
-  <h2>Lezingen en signeren</h2>
-  <p>Een avond is een reden om langs te komen. Een plaats wordt in de winkel gehouden, niet via deze site.</p>
-  <div class="events">{events}</div>
-</main>
-"""
-    return page(menu_header("agenda"), catalog, body, cart_count, menu_href("agenda"))
+def _about_link(href: str) -> str:
+    target = href.strip()
+    if not target:
+        return ""
+    label = target.rstrip("/").rsplit("/", 1)[-1].replace("-", " ")
+    if label:
+        label = label[:1].upper() + label[1:]
+    else:
+        label = target
+    return f'<p><a href="{escape(target)}">{escape(label)}</a></p>'
 
 
 def about_page(catalog: Catalog, cart_count: int) -> str:
-    paragraphs = "".join(f"<p>{escape(part)}</p>" for part in catalog.about.split("\n\n") if part.strip())
+    sections: list[str] = []
+    for section in catalog.about:
+        title = (
+            f"<h3>{escape(section.titel)}</h3>" if section.titel else ""
+        )
+        sections.append(
+            f'<section class="about-block">{title}'
+            f"{_prose(section.tekst)}{_about_link(section.link)}</section>"
+        )
     body = f"""
 <main class="wrap narrow">
-  <h2>{escape(catalog.shop_name)}</h2>
-  {paragraphs}
+  {"".join(sections)}
   <div class="card sheet">
     <p class="mono">De winkel</p>
     <p>{escape(catalog.place)}</p>

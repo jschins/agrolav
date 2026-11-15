@@ -193,6 +193,7 @@ class AdminTests(unittest.TestCase):
             public_base_url="http://127.0.0.1:9000",
             catalog_path=_ROOT / "catalog.json",
             files_dir=_ROOT / "covers",
+            data_dir=_ROOT / "data",
             dev_payments=True,
         )
         client = TestClient(create_app(settings, mollie=DevMollie("http://127.0.0.1:9000")))

@@ -54,7 +54,6 @@ from app.pages import (
     cart_page,
     checkout_page,
     dev_pay_page,
-    events_page,
     home_page,
     message_page,
     invoice_page,
@@ -98,6 +97,7 @@ class Settings:
     public_base_url: str
     catalog_path: Path
     files_dir: Path
+    data_dir: Path
     mollie_api_key: str = ""
     dev_payments: bool = False
     host: str = "127.0.0.1"
@@ -119,11 +119,16 @@ def settings_from_env() -> Settings:
             raise SystemExit("SHOP_SECRET is not set")
         secret = "dev-shop-secret"
     base = os.environ.get("SHOP_PUBLIC_BASE_URL", "http://127.0.0.1:9000").strip().rstrip("/")
+    catalog_path = Path(os.environ.get("SHOP_CATALOG", str(_ROOT / "catalog.json")))
+    data_dir = Path(
+        os.environ.get("SHOP_DATA_DIR", str(catalog_path.resolve().parent / "data"))
+    )
     return Settings(
         secret=secret,
         public_base_url=base,
-        catalog_path=Path(os.environ.get("SHOP_CATALOG", str(_ROOT / "catalog.json"))),
+        catalog_path=catalog_path,
         files_dir=Path(os.environ.get("SHOP_FILES_DIR", str(_ROOT / "covers"))),
+        data_dir=data_dir,
         mollie_api_key=os.environ.get("MOLLIE_API_KEY", "").strip(),
         dev_payments=dev,
         host=os.environ.get("SHOP_HOST", "127.0.0.1").strip() or "127.0.0.1",
@@ -217,10 +222,6 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
     @app.get(menu_href("home"), response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
         return html(home_page(catalog, len(cart_of(request))))
-
-    @app.get(menu_href("agenda"), response_class=HTMLResponse)
-    def events(request: Request) -> HTMLResponse:
-        return html(events_page(catalog, len(cart_of(request))))
 
     @app.get(menu_href("over"), response_class=HTMLResponse)
     def about(request: Request) -> HTMLResponse:
@@ -443,6 +444,20 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         if path.parent != root or not path.is_file():
             return Response(status_code=404)
         return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/jaarrekening-2025")
+    def jaarrekening_2025() -> Response:
+        """ANBI jaarrekening PDF next to the catalog (``shop/data/`` on the droplet)."""
+        root = settings.data_dir.resolve()
+        path = (root / "Jaarrekening-2025-Boogs.pdf").resolve()
+        if path.parent != root or not path.is_file():
+            return Response(status_code=404)
+        return FileResponse(
+            path,
+            media_type="application/pdf",
+            filename="Jaarrekening-2025-Boogs.pdf",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
 
     @app.get("/boeken/{slug}", response_class=HTMLResponse)
     def book(request: Request, slug: str) -> HTMLResponse:

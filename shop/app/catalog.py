@@ -35,10 +35,10 @@ class Book:
 
 
 @dataclass(frozen=True)
-class ShopEvent:
-    when: str
-    title: str
-    summary: str
+class AboutSection:
+    titel: str
+    tekst: str
+    link: str = ""
 
 
 @dataclass(frozen=True)
@@ -49,9 +49,8 @@ class Catalog:
     vat_label: str
     place: str
     hours: str
-    about: str
+    about: tuple[AboutSection, ...]
     books: tuple[Book, ...]
-    events: tuple[ShopEvent, ...]
 
     def by_slug(self, slug: str) -> Book | None:
         for book in self.books:
@@ -157,18 +156,25 @@ def load_catalog(path: Path) -> Catalog:
         seen.add(slug)
     if not books:
         raise ValueError("catalog has no books")
-    events: list[ShopEvent] = []
-    for item in raw.get("events") or []:
-        title = str(item.get("title") or "").strip()
-        if not title:
-            continue
-        events.append(
-            ShopEvent(
-                when=str(item.get("when") or "").strip(),
-                title=title,
-                summary=str(item.get("summary") or "").strip(),
+    about: list[AboutSection] = []
+    raw_about = raw.get("about")
+    if isinstance(raw_about, list):
+        for item in raw_about:
+            if not isinstance(item, dict):
+                continue
+            tekst = str(item.get("tekst") or "").strip()
+            if not tekst:
+                continue
+            about.append(
+                AboutSection(
+                    titel=str(item.get("titel") or "").strip(),
+                    tekst=tekst,
+                    link=str(item.get("link") or "").strip(),
+                )
             )
-        )
+    elif isinstance(raw_about, str) and raw_about.strip():
+        # Older catalogs stored a single prose block.
+        about.append(AboutSection(titel="", tekst=raw_about.strip()))
     return Catalog(
         shop_name=_text(raw, "shop_name") or "Boeken",
         seller_line=_text(raw, "seller_line"),
@@ -176,9 +182,8 @@ def load_catalog(path: Path) -> Catalog:
         vat_label=_text(raw, "vat_label"),
         place=_text(raw, "place"),
         hours=_text(raw, "hours"),
-        about=_text(raw, "about"),
+        about=tuple(about),
         books=tuple(books),
-        events=tuple(events),
     )
 
 

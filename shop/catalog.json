@@ -5,12 +5,33 @@
   "vat_label": "btw 9% (papieren boeken, Nederland), inbegrepen in de prijs",
   "place": "Keizersgracht 218-B, Amsterdam",
   "hours": "Di–vr 11:00–12:15 · zo 11:15–13:15",
-  "hero_kicker": "Papieren boeken",
-  "hero_title": "Twee exemplaren op de toontafel",
-  "hero_text": "De innerlijke rust en De Dialoog, op papier. Er is geen digitaal bestand: u koopt een exemplaar, en dat exemplaar wordt bezorgd.",
-  "quote": "Een exemplaar dat u in de hand kunt houden.",
-  "quote_by": "Uitgeverij De Boog",
-  "about": "Uitgeverij De Boog verkoopt papieren boeken en e-books, aan privé klanten en aan winkels.\n\nElk exemplaar gaat na betaling naar het adres dat u bij het afrekenen opgeeft. De betaling loopt via Mollie. Deze site vraagt geen kaartnummer.",
+  "about": [
+    {
+      "titel": "",
+      "tekst": "Uitgeverij De Boog geeft katholieke boeken uit die helpen om het geloof te verdiepen en te beleven in het dagelijks leven – in het gezin, op het werk en in de gewone dingen van elke dag. Al meer dan zestig jaar vinden deze boeken hun weg naar vele tienduizenden lezers. Veel titels worden speciaal voor het Nederlandse taalgebied vertaald, zodat waardevolle katholieke teksten ook hier toegankelijk blijven. De boeken van De Boog zijn bedoeld voor gewone gelovigen die hun geloof willen verdiepen en concreet willen beleven. Een aantal uitgaven bevat de geschriften van de heilige Jozefmaria Escrivá en boeken over hem en over Opus Dei. Daarnaast zijn er werken van andere katholieke auteurs, zowel klassiekers als eigentijdse titels. De Boog kiest bewust voor boeken met blijvende waarde: teksten die ook na vele jaren gelezen worden en nieuwe generaties blijven inspireren.\n\nHet aanbod van De Boog is breed en zorgvuldig samengesteld. Wij geven boeken uit van auteurs die weten te raken, die ruimte laten aan het werk van de Heilige Geest, en die helpen om het geloof dieper te begrijpen en concreet te leven."
+    },
+    {
+      "titel": "ANBI",
+      "tekst": "De onderneming wordt gedreven in de vorm van een Stichting onder de naam De Boog en is gestart op 01-01-1972.\n\nDe onderneming staat ingeschreven in het handelsregister van de kamer van koophandel onder nummer 41198790.",
+      "link": "/jaarrekening-2025"
+    },
+    {
+      "titel": "Hoofdpunten Beleid 2026",
+      "tekst": "- (her)uitgave van meerdere titels\n- ontwikkeling e-book aanbod\n- onderzoek naar mogelijkheden A\n- verbetering promotie en samenwerking\n- uitbreiding bestuur en vrijwilligersbestand"
+    },
+    {
+      "titel": "Fiscaalnummer/RSIN",
+      "tekst": "31.77.890"
+    },
+    {
+      "titel": "Bestuursleden",
+      "tekst": "C.F. de Quaij\nG.C.A. Gernaert\nJ. van Halem\nA.G. Schins\nJ.V.J. Stoops"
+    },
+    {
+      "titel": "Beloningsbeleid",
+      "tekst": "Bestuurders hebben slechts recht op onkostenvergoeding."
+    }
+  ],
   "books": [
     {
       "slug": "terug-naar-het-midden",
