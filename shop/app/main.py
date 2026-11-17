@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
-from app.cart import dump_cart, load_cart
+from app.cart import cart_size, dump_cart, load_cart
 from app.catalog import Book, Catalog, load_catalog, vat_cents
 from app.ledger import (
     apply_payment,
@@ -149,16 +149,16 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
     app.state.catalog = catalog
     app.state.mollie = mollie
 
-    def cart_of(request: Request) -> list[str]:
+    def cart_of(request: Request) -> dict[str, int]:
         return load_cart(request.cookies.get(_COOKIE), settings.secret, known)
 
     def html(body: str, status: int = 200) -> HTMLResponse:
         return HTMLResponse(body, status_code=status, headers={"Referrer-Policy": "no-referrer"})
 
-    def with_cart(response: Response, slugs: list[str]) -> Response:
+    def with_cart(response: Response, counts: dict[str, int]) -> Response:
         response.set_cookie(
             _COOKIE,
-            dump_cart(slugs, settings.secret),
+            dump_cart(counts, settings.secret),
             max_age=14 * 24 * 3600,
             httponly=True,
             samesite="lax",
@@ -167,8 +167,23 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         )
         return response
 
-    def books_for(slugs: list[str]) -> list[Book]:
-        return [book for slug in slugs if (book := catalog.by_slug(slug)) is not None]
+    def books_for(counts: dict[str, int]) -> list[Book]:
+        books: list[Book] = []
+        for slug, copies in counts.items():
+            book = catalog.by_slug(slug)
+            if book is None:
+                continue
+            books.extend([book] * max(1, int(copies)))
+        return books
+
+    def cart_items(counts: dict[str, int]) -> list[tuple[Book, int]]:
+        items: list[tuple[Book, int]] = []
+        for slug, copies in counts.items():
+            book = catalog.by_slug(slug)
+            if book is None:
+                continue
+            items.append((book, max(1, int(copies))))
+        return items
 
     def record_payment(payment: Payment) -> str:
         conn = connect()
@@ -221,11 +236,11 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
 
     @app.get(menu_href("home"), response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
-        return html(home_page(catalog, len(cart_of(request))))
+        return html(home_page(catalog, cart_size(cart_of(request))))
 
     @app.get(menu_href("over"), response_class=HTMLResponse)
     def about(request: Request) -> HTMLResponse:
-        return html(about_page(catalog, len(cart_of(request))))
+        return html(about_page(catalog, cart_size(cart_of(request))))
 
     def live_catalog() -> Catalog:
         conn = connect()
@@ -251,12 +266,12 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
 
     @app.get(menu_href("rekening"), response_class=HTMLResponse)
     def rekening(request: Request) -> HTMLResponse:
-        return html(rekening_page(live_catalog(), rekening_counts(request), len(cart_of(request))))
+        return html(rekening_page(live_catalog(), rekening_counts(request), cart_size(cart_of(request))))
 
     @app.post("/rekening/bestellen", response_class=HTMLResponse)
     async def rekening_bestellen(request: Request) -> HTMLResponse:
         form = await request.form()
-        count = len(cart_of(request))
+        count = cart_size(cart_of(request))
         counts, problem = counts_from_form(form, catalog.books)
         if counts is None:
             posted = rekening_counts(request)
@@ -272,7 +287,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
     @app.post("/rekening/bestelcode", response_class=HTMLResponse)
     async def rekening_bestelcode(request: Request) -> HTMLResponse:
         form = await request.form()
-        count = len(cart_of(request))
+        count = cart_size(cart_of(request))
         counts, problem = counts_from_form(form, catalog.books)
         lines = order_lines(catalog.books, counts or {})
         if counts is None:
@@ -285,7 +300,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
     @app.post("/rekening/bestelcode/verstuur", response_class=HTMLResponse)
     async def rekening_bestelcode_verstuur(request: Request) -> HTMLResponse:
         form = await request.form()
-        count = len(cart_of(request))
+        count = cart_size(cart_of(request))
         counts, problem = counts_from_form(form, catalog.books)
         lines = order_lines(catalog.books, counts or {})
         company = str(form.get("bedrijfsnaam") or "").strip()
@@ -353,7 +368,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
     @app.post("/rekening/voltooi")
     async def rekening_voltooi(request: Request) -> Response:
         form = await request.form()
-        count = len(cart_of(request))
+        count = cart_size(cart_of(request))
         counts, problem = counts_from_form(form, catalog.books)
         lines = order_lines(catalog.books, counts or {})
         code = str(form.get("code") or "")
@@ -406,7 +421,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             order = get_order_by_token(conn, token)
         finally:
             conn.close()
-        count = len(cart_of(request))
+        count = cart_size(cart_of(request))
         if order is None:
             return html(
                 message_page(catalog, "Onbekende bestelling", "Deze bestelling staat niet in de administratie.", count),
@@ -421,7 +436,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         except (RuntimeError, OSError) as exc:
             log.warning("factuur lookup failed: %s", exc.__cause__ or exc)
             invoice = None
-        count = len(cart_of(request))
+        count = cart_size(cart_of(request))
         if invoice is None:
             return html(message_page(catalog, "Onbekende factuur", "Deze factuur staat niet in de administratie.", count), 404)
         return html(
@@ -463,44 +478,53 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
     def book(request: Request, slug: str) -> HTMLResponse:
         item = catalog.by_slug(slug)
         if item is None:
-            return html(message_page(catalog, "Onbekend boek", "Dit boek staat niet in de catalogus.", len(cart_of(request))), 404)
-        return html(book_page(live_catalog(), live_catalog().by_slug(slug) or item, len(cart_of(request))))
+            return html(message_page(catalog, "Onbekend boek", "Dit boek staat niet in de catalogus.", cart_size(cart_of(request))), 404)
+        return html(book_page(live_catalog(), live_catalog().by_slug(slug) or item, cart_size(cart_of(request))))
 
     @app.post("/winkelwagen")
     async def add_to_cart(request: Request) -> Response:
         form = await request.form()
         slug = str(form.get("slug") or "")
-        slugs = cart_of(request)
-        if slug in known and slug not in slugs:
-            slugs.append(slug)
-        return with_cart(RedirectResponse("/winkelwagen", status_code=303), slugs)
+        counts = dict(cart_of(request))
+        if slug in known:
+            counts[slug] = counts.get(slug, 0) + 1
+        return with_cart(RedirectResponse("/winkelwagen", status_code=303), counts)
 
-    @app.post("/winkelwagen/verwijderen")
-    async def remove_from_cart(request: Request) -> Response:
+    @app.post("/winkelwagen/bijwerken")
+    async def update_cart(request: Request) -> Response:
         form = await request.form()
-        slug = str(form.get("slug") or "")
-        slugs = [item for item in cart_of(request) if item != slug]
-        return with_cart(RedirectResponse("/winkelwagen", status_code=303), slugs)
+        counts: dict[str, int] = {}
+        for slug in known:
+            raw = str(form.get(f"aantal-{slug}") or "").strip()
+            if not raw:
+                continue
+            try:
+                copies = int(raw)
+            except ValueError:
+                continue
+            if copies > 0:
+                counts[slug] = copies
+        return with_cart(RedirectResponse("/winkelwagen", status_code=303), counts)
 
     @app.get(menu_href("winkelwagen"), response_class=HTMLResponse)
     def show_cart(request: Request) -> HTMLResponse:
-        slugs = cart_of(request)
-        return html(cart_page(catalog, books_for(slugs), len(slugs)))
+        counts = cart_of(request)
+        return html(cart_page(catalog, cart_items(counts), cart_size(counts)))
 
     @app.get("/afrekenen", response_class=HTMLResponse)
     def checkout_cart(request: Request) -> HTMLResponse:
-        slugs = cart_of(request)
-        books = books_for(slugs)
+        counts = cart_of(request)
+        books = books_for(counts)
         if not books:
             return html(message_page(catalog, "Winkelwagen leeg", "Leg eerst een boek in de winkelwagen.", 0), 400)
-        return html(checkout_page(catalog, books, "cart", len(slugs)))
+        return html(checkout_page(catalog, books, "cart", cart_size(counts)))
 
     @app.get("/afrekenen/boek/{slug}", response_class=HTMLResponse)
     def checkout_book(request: Request, slug: str) -> HTMLResponse:
         item = catalog.by_slug(slug)
         if item is None:
-            return html(message_page(catalog, "Onbekend boek", "Dit boek staat niet in de catalogus.", len(cart_of(request))), 404)
-        return html(checkout_page(catalog, [item], "book", len(cart_of(request)), slug=item.slug))
+            return html(message_page(catalog, "Onbekend boek", "Dit boek staat niet in de catalogus.", cart_size(cart_of(request))), 404)
+        return html(checkout_page(catalog, [item], "book", cart_size(cart_of(request)), slug=item.slug))
 
     @app.post("/afrekenen")
     async def start_payment(request: Request) -> Response:
@@ -508,7 +532,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         email = str(form.get("email") or "").strip()
         source = str(form.get("source") or "")
         posted_slug = str(form.get("slug") or "")
-        count = len(cart_of(request))
+        count = cart_size(cart_of(request))
         if source == "book":
             item = catalog.by_slug(posted_slug)
             books = [item] if item is not None else []
@@ -613,7 +637,7 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
         except (RuntimeError, OSError) as exc:
             log.warning("betaling lookup failed: %s", exc.__cause__ or exc)
             invoice = None
-        count = len(cart_of(request))
+        count = cart_size(cart_of(request))
         if invoice is None:
             return html(message_page(catalog, "Onbekende factuur", "Deze factuur is niet gevonden.", count), 404)
         invoice = refresh_invoice(invoice)
@@ -628,8 +652,8 @@ def create_app(settings: Settings, mollie: MollieClient | DevMollie | None = Non
             try:
                 mollie.fetch(payment_id)
             except KeyError:
-                return html(message_page(catalog, "Onbekende betaling", "Deze lokale betaling bestaat niet.", len(cart_of(request))), 404)
-            return html(dev_pay_page(catalog, payment_id, len(cart_of(request))))
+                return html(message_page(catalog, "Onbekende betaling", "Deze lokale betaling bestaat niet.", cart_size(cart_of(request))), 404)
+            return html(dev_pay_page(catalog, payment_id, cart_size(cart_of(request))))
 
         @app.post("/dev/betalen/{payment_id}/betaald")
         def dev_paid(payment_id: str) -> Response:

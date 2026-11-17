@@ -128,7 +128,10 @@ class ShopFlowTests(unittest.TestCase):
             self.assertIn("drag click blocked", completed.stdout)
             buying = client.get(f"/boeken/{slug}")
             self.assertEqual(buying.status_code, 200)
-            self.assertIn("Koop dit exemplaar", buying.text)
+            self.assertIn("Boek kopen", buying.text)
+            self.assertIn("Naar winkel", buying.text)
+            self.assertNotIn("Koop dit exemplaar", buying.text)
+            self.assertNotIn(f"/afrekenen/boek/{slug}", buying.text)
             self.assertIn("buy-card", buying.text)
 
     def test_checkout_creates_a_customer_invoice_and_the_paid_page(self) -> None:
@@ -138,6 +141,22 @@ class ShopFlowTests(unittest.TestCase):
             client, mollie = self._client()
             added = client.post("/winkelwagen", data={"slug": book.slug}, follow_redirects=False)
             self.assertEqual(added.status_code, 303)
+            self.assertEqual(added.headers["location"], "/winkelwagen")
+            cart = client.get("/winkelwagen")
+            self.assertEqual(cart.status_code, 200)
+            self.assertIn(">Betalen</a>", cart.text)
+            self.assertIn(">Verder winkelen</a>", cart.text)
+            self.assertNotIn(">Afrekenen</a>", cart.text)
+            self.assertNotIn("Weghalen", cart.text)
+            self.assertIn(f'name="aantal-{book.slug}" value="1"', cart.text)
+            updated = client.post(
+                "/winkelwagen/bijwerken",
+                data={f"aantal-{book.slug}": "3"},
+                follow_redirects=False,
+            )
+            self.assertEqual(updated.status_code, 303)
+            cart = client.get("/winkelwagen")
+            self.assertIn(f'name="aantal-{book.slug}" value="3"', cart.text)
             checkout = client.get("/afrekenen")
             self.assertEqual(checkout.status_code, 200)
             self.assertIn("Betaal met iDEAL via Mollie", checkout.text)

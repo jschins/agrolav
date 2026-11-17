@@ -1,0 +1,91 @@
++ run docker's agrolav container op  127.0.0.1,1433
+
+PS C:\Coding\agrolav\shop> Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+>> & .venv\Scripts\Activate.ps1
+
+
+(deboog-shop) PS C:\Coding\agrolav> docker compose -f docker-compose.sqlserver.yml up -d
+(deboog-shop) PS C:\Coding\agrolav> cd shop
+
+(deboog-shop) PS C:\Coding\agrolav\shop> $env:SHOP_DEV_PAYMENTS="1"
+(deboog-shop) PS C:\Coding\agrolav\shop> shop                 [runs on 127.0.0.1:9000]
+(deboog-shop) PS C:\Coding\agrolav\shop> admin                [runs on 127.0.0.1:9100]
+
++ op de droplet:
+PS C:\Coding\agrolav> ssh agrolav@209.38.39.105 -p 4523
+cd /opt/agrolav/shop
+uv sync   (or use the existing .venv)
+export SHOP_HOST=0.0.0.0
+export SHOP_PORT=9000
+export SHOP_PUBLIC_BASE_URL=http://expenses.apsurt.nl:9000
+uv run shop
+
+
+
+
+
+
+ssh -p 4523 -L 19100:127.0.0.1:9100 agrolav@209.38.39.105
+export ADMIN_HOST=0.0.0.0
+export ADMIN_PORT=9100
+uv run admin
+Then try http://expenses.apsurt.nl:9100 (only if port 9100 is open). Prefer the tunnel for admin.
+
+
+admin is bound to 127.0.0.1:9100, so it only accepts connections on the droplet itself — not from your PC’s browser.
+
+Preferred (keep admin private): SSH tunnel from your machine:
+
+
+ssh -p 4523 -L 9100:127.0.0.1:9100 agrolav@209.38.39.105
+Then open http://127.0.0.1:9100 locally.
+
+Or bind on all interfaces (publicly reachable if the firewall allows 9100):
+
+
+
+
+
+why does admin not run on  http://expenses.apsurt.nl:9100  
+but on  http://127.0.0.1:19100.
+
+Because of how it’s bound and how you reach it:
+
+On the droplet, admin listens on 127.0.0.1:9100 only — not on the public interface. http://expenses.apsurt.nl:9100 never hits that process.
+The SSH line -L 19100:127.0.0.1:9100 means: your browser talks to your PC’s 127.0.0.1:19100, and SSH forwards that to the droplet’s localhost:9100. So the URL is local, not expenses….
+Shop on :9000 works publicly because it was started with SHOP_HOST=0.0.0.0 (and that port is reachable). Admin was left private on purpose.
+
+To use http://expenses.apsurt.nl:9100 you’d need ADMIN_HOST=0.0.0.0 and firewall/Caddy allowing 9100 — usually worse than the tunnel for an admin UI.
+
+
+but on  http://127.0.0.1:19100.
+
+Because of how it’s bound and how you reach it:
+
+On the droplet, admin listens on 127.0.0.1:9100 only — not on the public interface. http://expenses.apsurt.nl:9100 never hits that process.
+The SSH line -L 19100:127.0.0.1:9100 means: your browser talks to your PC’s 127.0.0.1:19100, and SSH forwards that to the droplet’s localhost:9100. So the URL is local, not expenses….
+Shop on :9000 works publicly because it was started with SHOP_HOST=0.0.0.0 (and that port is reachable). Admin was left private on purpose.
+
+To use http://expenses.apsurt.nl:9100 you’d need ADMIN_HOST=0.0.0.0 and firewall/Caddy allowing 9100 — usually worse than the tunnel for an admin UI.
+
+
+
+when running admin locally
+http://127.0.0.1:19100.
+how do i know whether it operates on the remote database or on the local database?
+
+It depends which admin process the browser hits — not the URL host alone.
+
+What you open	                                    Which admin	                    Which DB
+http://127.0.0.1:19100 via SSH -L 19100:…9100       droplet uv run admin            droplet /opt/agrolav/.env → remote webshop
+http://127.0.0.1:9100 with local admin              your PC                         local root .env → usually Docker 127.0.0.1,1433 / webshop
+
+The tunnel only forwards HTTP. SQL stays on the machine where admin runs.
+
+Quick checks
+
++ Tunnel session open + droplet admin running → 19100 = remote DB.
++ Local terminal admin on 9100 → local DB (unless local .env points SERVER= at the droplet, which it normally must not).
+
+On each side, without printing secrets: look for SERVER= / DATABASE=webshop in that machine’s env for the process — droplet vs C:\Coding\agrolav\.env.
+

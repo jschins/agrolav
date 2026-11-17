@@ -142,6 +142,46 @@ h1.one-line {{ max-width: none; white-space: nowrap; }}
   margin: 1.1rem 0 1.2rem;
 }}
 .actions {{ display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.6rem; }}
+.events input[type="number"] {{
+  width: 4.5rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  background: var(--card);
+}}
+.cart-wide {{ max-width: 80rem; padding: 3rem 0 4rem; }}
+.cart-head {{
+  display: grid;
+  grid-template-columns: 1fr 4.5rem;
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 0.5rem;
+}}
+.cart-head h2 {{ margin: 0; }}
+.cart-head .mono {{
+  text-align: center;
+  padding-bottom: 0.15rem;
+}}
+.events.cart .event {{
+  grid-template-columns: 1fr 4.5rem;
+  align-items: start;
+}}
+.events.cart .cart-title-line {{
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}}
+.events.cart .cart-title-line a {{
+  flex: 1;
+  min-width: 0;
+}}
+.events.cart .cart-qty {{
+  display: flex;
+  justify-content: center;
+  padding-top: 0.1rem;
+}}
 .btn {{
   display: inline-block;
   background: var(--primary);
@@ -464,7 +504,10 @@ main.invoice {{
 }}
 main.invoice table.plain {{ margin-top: auto; }}
 @media (max-width: 800px) {{
-  .event {{ grid-template-columns: 1fr; }}
+  .event,
+  .events.cart .event,
+  .cart-head {{ grid-template-columns: 1fr; }}
+  .events.cart .cart-qty {{ justify-content: flex-start; }}
 }}
 </style>
 </head>
@@ -806,12 +849,12 @@ def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
       {"" if not book.korte_tekst else f'<p><span class="mono">Korte tekst</span> {escape(book.korte_tekst)}</p>'}
       <p><span class="mono">Prijs</span> {escape(euro(book.prijs_cent_excl))}</p>
       {"" if book.voorraad is None else f'<p><span class="mono">Voorraad</span> {book.voorraad}</p>'}
-      <p>Papieren exemplaar. Betaling met iDEAL via Mollie.</p>
+      <p>Papieren exemplaar.</p>
       <form method="post" action="/winkelwagen" class="actions">
         <input type="hidden" name="slug" value="{escape(book.slug)}">
-        <button class="btn ghost" type="submit">In de winkelwagen</button>
+        <button class="btn" type="submit">Boek kopen</button>
+        <a class="btn ghost" href="/">Naar winkel</a>
       </form>
-      <p><a class="btn" href="/afrekenen/boek/{escape(book.slug)}">Koop dit exemplaar</a></p>
     </div>
   </div>
   {"" if not book.tekst else f'<div class="sheet">{_prose(book.tekst)}</div>'}
@@ -820,31 +863,47 @@ def book_page(catalog: Catalog, book: Book, cart_count: int) -> str:
     return page(book.titel, catalog, body, cart_count)
 
 
-def cart_page(catalog: Catalog, books: list[Book], cart_count: int) -> str:
-    if not books:
+def cart_page(catalog: Catalog, items: list[tuple[Book, int]], cart_count: int) -> str:
+    if not items:
         rows = "<p>De winkelwagen is leeg.</p>"
+        total_line = ""
         pay = ""
+        form_open = ""
+        form_close = ""
     else:
         rows = "".join(
             "<div class=\"event\">"
-            f"<div><a href=\"/boeken/{escape(book.slug)}\">{escape(book.titel)}</a>"
-            f"<div class=\"mono\">{escape(book.auteur)}</div></div>"
-            f"<div><span class=\"price\">{escape(euro(book.prijs_cent_excl))}</span>"
-            f"<form method=\"post\" action=\"/winkelwagen/verwijderen\">"
-            f"<input type=\"hidden\" name=\"slug\" value=\"{escape(book.slug)}\">"
-            f"<button class=\"btn ghost\" type=\"submit\">Weghalen</button></form></div></div>"
-            for book in books
+            f"<div><div class=\"cart-title-line\">"
+            f"<a href=\"/boeken/{escape(book.slug)}\">{escape(book.titel)}</a>"
+            f"</div>"
+            f"<div class=\"mono\">{escape(book.auteur)}</div>"
+            f"<span class=\"price\">{escape(euro(book.prijs_cent_excl))}</span></div>"
+            f"<div class=\"cart-qty\">"
+            f"<input id=\"aantal-{escape(book.slug)}\" type=\"number\" min=\"1\" step=\"1\" "
+            f"name=\"aantal-{escape(book.slug)}\" value=\"{copies}\" "
+            f"aria-label=\"Aantal\" "
+            f"onchange=\"this.form.submit()\"></div></div>"
+            for book, copies in items
         )
-        total = sum(book.prijs_cent_excl for book in books)
-        pay = (
-            f"<p class=\"price\">Totaal {escape(euro(total))}</p>"
-            f"<p><a class=\"btn\" href=\"/afrekenen\">Afrekenen</a></p>"
-        )
+        total = sum(book.prijs_cent_excl * copies for book, copies in items)
+        total_line = f"<p class=\"price\">Totaal {escape(euro(total))}</p>"
+        pay = '<a class="btn" href="/afrekenen">Betalen</a>'
+        form_open = '<form method="post" action="/winkelwagen/bijwerken">'
+        form_close = "</form>"
+    head = (
+        '<div class="cart-head"><h2>Uw exemplaren</h2>'
+        '<span class="mono">Aantal</span></div>'
+        if items
+        else "<h2>Uw exemplaren</h2>"
+    )
     body = f"""
-<main class="wrap narrow">
-  <h2>Uw exemplaren</h2>
-  <div class="events">{rows}</div>
-  {pay}
+<main class="wrap cart-wide">
+  {head}
+  {form_open}
+  <div class="events cart">{rows}</div>
+  {total_line}
+  {form_close}
+  <p class="actions">{pay}<a class="btn ghost" href="/">Verder winkelen</a></p>
 </main>
 """
     return page(menu_header("winkelwagen"), catalog, body, cart_count, menu_href("winkelwagen"))
@@ -865,10 +924,23 @@ def checkout_page(
     email: str = "",
     slug: str = "",
 ) -> str:
+    copies: dict[str, int] = {}
+    price: dict[str, int] = {}
+    titles: dict[str, str] = {}
+    order: list[str] = []
+    for book in books:
+        if book.slug not in copies:
+            order.append(book.slug)
+            price[book.slug] = book.prijs_cent_excl
+            titles[book.slug] = book.titel
+            copies[book.slug] = 0
+        copies[book.slug] += 1
     lines = "".join(
-        f"<li>{escape(book.titel)} — {escape(euro(book.prijs_cent_excl))}</li>" for book in books
+        f"<li>{escape(titles[item])} × {copies[item]} — "
+        f"{escape(euro(price[item] * copies[item]))}</li>"
+        for item in order
     )
-    total = sum(book.prijs_cent_excl for book in books)
+    total = sum(price[item] * copies[item] for item in order)
     vat = ""
     if catalog.vat_label:
         vat = f"<p>{escape(catalog.vat_label)}</p>"
